@@ -1,50 +1,29 @@
-# Welcome to your Expo app 👋
+# JUDAM-Frontend
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+## 프로젝트 명: 주담 (다시 피어나는 우리 술 이야기)
 
-## Get started
+### 프로젝트 소개
 
-1. Install dependencies
+- **주제**: 소비자 맞춤형 전통주 공동 기획 펀딩 플랫폼
 
-   ```bash
-   npm install
-   ```
+- **제안배경**: 전통주시장의 변화 / 규제 완화와 인프라 구축 / 모디슈머 성향 & 팬슈머 트렌드 확산
 
-2. Start the app
 
-   ```bash
-   npx expo start
-   ```
+### 팀 소개
 
-In the output, you'll find options to open the app in a
+- **팀명**: 2팀 (칭찬해주)
+- **팀원**:
+  - 권아영
+  - 강민재
+  - 유승빈
+  - 장요한
+  - 양재원
+  - 황주원
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### 프론트엔드 프로젝트 정보
 
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- **개발 언어**: JavaScript(Node.js)
+- **코드 에디터**: Visual Studio Code
+- **빌드 엔진**: Android Studio
+- **패키지 관리**: npm

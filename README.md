@@ -23,7 +23,10 @@
 
 ---
 
-### 프로젝트 정보
+### 프론트엔드 프로젝트 정보
 
-- **프론트엔드 개발 환경**: Android Studio, React Native
-- **사용 언어**: Java Script
+- **개발 언어**: JavaScript(Node.js)
+- **코드 에디터**: Visual Studio Code
+- **빌드 엔진**: Android Studio
+- **패키지 관리**: npm
+

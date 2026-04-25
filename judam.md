@@ -1,4 +1,5 @@
 주담(酒談) 프로젝트 AI 메모리 파일 (Frontend Focus)
+# npx expo start 입력하고 a 입력하면 실행 됨
 [CRITICAL RULE]
 
 이 파일은 프로젝트의 모든 화면별 상세 기능과 기획 맥락을 기록한다.

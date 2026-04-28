@@ -32,7 +32,8 @@ import SafeStorage from '@/utils/storage';
 const SLIDES = [
   {
     id: 0,
-    image: "https://images.unsplash.com/photo-1528615141309-53f2564d3be8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    image: require('../../../../newpicutre/picure3.jpg'),
+    resizeMode: 'contain',
     badge: null,
     BadgeIcon: null,
     isBrandSlide: true,
@@ -41,7 +42,8 @@ const SLIDES = [
   },
   {
     id: 1,
-    image: "https://images.unsplash.com/photo-1452725210141-07dda20225ec?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    image: require('../../../../newpicutre/desk.jpg'),
+    resizeMode: 'contain',
     badge: "술 BTI 테스트",
     BadgeIcon: Sparkles,
     isBrandSlide: false,
@@ -50,7 +52,8 @@ const SLIDES = [
   },
   {
     id: 2,
-    image: "https://images.unsplash.com/photo-1596090823175-44a907c01fe0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    image: require('../../../../newpicutre/picture2.jpg'),
+    resizeMode: 'contain',
     badge: "크라우드펀딩",
     BadgeIcon: TrendingUp,
     isBrandSlide: false,
@@ -59,7 +62,8 @@ const SLIDES = [
   },
   {
     id: 3,
-    image: "https://images.unsplash.com/photo-1655376407073-d03c3ae3584d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    image: require('../../../../newpicutre/picture1.jpg'),
+    resizeMode: 'contain',
     badge: "오픈 키친",
     BadgeIcon: ChefHat,
     isBrandSlide: false,
@@ -179,7 +183,9 @@ function FeatureSlide({ slide, insets }: { slide: any; insets: any }) {
 
   return (
     <View style={styles.slide}>
-      <Image source={{ uri: slide.image }} style={styles.bgImage} />
+      <View style={styles.bgImageFrame}>
+        <Image source={slide.image} style={styles.bgImage} resizeMode={slide.resizeMode} />
+      </View>
       {/* Dark gradient overlay */}
       <LinearGradient
         colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.9)']}
@@ -275,7 +281,8 @@ function CTASlide({ onLogin, onSignup, onGuest, insets }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   slide: { flex: 1 },
-  bgImage: { ...StyleSheet.absoluteFillObject, resizeMode: 'cover' },
+  bgImageFrame: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  bgImage: { width: '100%', height: '100%', objectFit: 'contain' },
   gradient: { ...StyleSheet.absoluteFillObject },
   content: { flex: 1, paddingHorizontal: 32, paddingBottom: 144 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

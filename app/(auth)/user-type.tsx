@@ -43,86 +43,82 @@ export default function UserTypeSelectionScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <Animated.View entering={FadeIn.duration(600)} style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         <View style={[styles.logoSection, { paddingTop: insets.top + 60 }]}>
-           <Animated.View entering={FadeIn.duration(600)} style={{ alignItems: 'center' }}>
+           <View style={{ alignItems: 'center' }}>
               <View style={styles.mainLogo}>
                  <Image source={require('@/assets/images/logo.png')} style={styles.logoImg} />
               </View>
               <Text style={styles.mainTitle}>사용자 유형을 선택해주세요</Text>
-           </Animated.View>
+           </View>
         </View>
 
         <View style={styles.cardArea}>
-           <Animated.View entering={FadeIn.delay(200)}>
-              <TouchableOpacity 
-                style={[styles.card, selectedType === 'user' && styles.cardActive]} 
-                onPress={() => setSelectedType('user')}
-                activeOpacity={0.9}
-              >
-                 <View style={styles.cardHeader}>
-                    <View style={[styles.iconBox, { backgroundColor: '#1E293B' }]}>
-                       <UserIcon size={28} color="#FFF" />
+           <TouchableOpacity 
+             style={[styles.card, selectedType === 'user' && styles.cardActive]} 
+             onPress={() => setSelectedType('user')}
+             activeOpacity={0.9}
+           >
+              <View style={styles.cardHeader}>
+                 <View style={[styles.iconBox, { backgroundColor: '#1E293B' }]}>
+                    <UserIcon size={28} color="#FFF" />
+                 </View>
+                 <View style={{ flex: 1 }}>
+                    <View style={styles.row}>
+                       <Text style={styles.cardTitle}>일반 사용자</Text>
+                       <View style={styles.badge}><Text style={styles.badgeTxt}>기본</Text></View>
                     </View>
-                    <View style={{ flex: 1 }}>
-                       <View style={styles.row}>
-                          <Text style={styles.cardTitle}>일반 사용자</Text>
-                          <View style={styles.badge}><Text style={styles.badgeTxt}>기본</Text></View>
+                    <View style={styles.featureList}>
+                       <View style={styles.featureItem}>
+                          <Wine size={16} color="#1F2937" />
+                          <Text style={styles.featureLabel}>레시피 제안</Text>
                        </View>
-                       <View style={styles.featureList}>
-                          <View style={styles.featureItem}>
-                             <Wine size={16} color="#1F2937" />
-                             <Text style={styles.featureLabel}>레시피 제안</Text>
-                          </View>
-                          <View style={styles.featureItem}>
-                             <TrendingUp size={16} color="#1F2937" />
-                             <Text style={styles.featureLabel}>펀딩 참여</Text>
-                          </View>
-                          <View style={styles.featureItem}>
-                             <Archive size={16} color="#1F2937" />
-                             <Text style={styles.featureLabel}>아카이브</Text>
-                          </View>
+                       <View style={styles.featureItem}>
+                          <TrendingUp size={16} color="#1F2937" />
+                          <Text style={styles.featureLabel}>펀딩 참여</Text>
+                       </View>
+                       <View style={styles.featureItem}>
+                          <Archive size={16} color="#1F2937" />
+                          <Text style={styles.featureLabel}>아카이브</Text>
                        </View>
                     </View>
                  </View>
-              </TouchableOpacity>
-           </Animated.View>
+              </View>
+           </TouchableOpacity>
 
-           <Animated.View entering={FadeIn.delay(300)}>
-              <TouchableOpacity 
-                style={[styles.card, selectedType === 'brewery' && styles.cardActive]} 
-                onPress={() => setSelectedType('brewery')}
-                activeOpacity={0.9}
-              >
-                 <View style={styles.cardHeader}>
-                    <View style={[styles.iconBox, { backgroundColor: '#334155' }]}>
-                       <Building2 size={28} color="#FFF" />
+           <TouchableOpacity 
+             style={[styles.card, selectedType === 'brewery' && styles.cardActive]} 
+             onPress={() => setSelectedType('brewery')}
+             activeOpacity={0.9}
+           >
+              <View style={styles.cardHeader}>
+                 <View style={[styles.iconBox, { backgroundColor: '#334155' }]}>
+                    <Building2 size={28} color="#FFF" />
+                 </View>
+                 <View style={{ flex: 1 }}>
+                    <View style={styles.row}>
+                       <Text style={styles.cardTitle}>양조장</Text>
+                       <View style={[styles.badge, { backgroundColor: '#0f172a' }]}><Text style={styles.badgeTxt}>인증 필요</Text></View>
                     </View>
-                    <View style={{ flex: 1 }}>
-                       <View style={styles.row}>
-                          <Text style={styles.cardTitle}>양조장</Text>
-                          <View style={[styles.badge, { backgroundColor: '#0f172a' }]}><Text style={styles.badgeTxt}>인증 필요</Text></View>
+                    <View style={styles.featureList}>
+                       <View style={styles.featureItem}>
+                          <FileCheck size={16} color="#1F2937" />
+                          <Text style={styles.featureLabel}>레시피 검토</Text>
                        </View>
-                       <View style={styles.featureList}>
-                          <View style={styles.featureItem}>
-                             <FileCheck size={16} color="#1F2937" />
-                             <Text style={styles.featureLabel}>레시피 검토</Text>
-                          </View>
-                          <View style={styles.featureItem}>
-                             <FolderKanban size={16} color="#1F2937" />
-                             <Text style={styles.featureLabel}>펀딩 프로젝트 개설</Text>
-                          </View>
-                          <View style={styles.featureItem}>
-                             <LayoutDashboard size={16} color="#1F2937" />
-                             <Text style={styles.featureLabel}>양조장 대시보드 이용</Text>
-                          </View>
+                       <View style={styles.featureItem}>
+                          <FolderKanban size={16} color="#1F2937" />
+                          <Text style={styles.featureLabel}>펀딩 프로젝트 개설</Text>
+                       </View>
+                       <View style={styles.featureItem}>
+                          <LayoutDashboard size={16} color="#1F2937" />
+                          <Text style={styles.featureLabel}>양조장 대시보드 이용</Text>
                        </View>
                     </View>
                  </View>
-              </TouchableOpacity>
-           </Animated.View>
+              </View>
+           </TouchableOpacity>
         </View>
 
         <View style={styles.btnArea}>
@@ -156,7 +152,7 @@ export default function UserTypeSelectionScreen() {
            )}
         </View>
       </ScrollView>
-    </View>
+    </Animated.View>
   );
 }
 

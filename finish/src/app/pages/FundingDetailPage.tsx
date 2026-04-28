@@ -14,11 +14,19 @@ import {
   ChevronUp,
   Bell,
   LayoutDashboard,
+  Share2,
+  AlertTriangle,
+  X,
+  Check,
+  Plus,
+  Minus,
+  Package,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Progress } from "../components/ui/progress";
 import { useFavorites } from "../contexts/FavoritesContext";
 import { useAuth } from "../contexts/AuthContext";
+import { toast } from "sonner";
 
 // 더미 데이터
 const fundingProjectsData = [
@@ -39,6 +47,37 @@ const fundingProjectsData = [
     status: "진행 중",
     startDate: "2026. 03. 20",
     endDate: "2026. 04. 18",
+    // 상세 정보
+    mainIngredients: "국내산 쌀, 전통 누룩",
+    subIngredients: "식용 벚꽃잎",
+    alcoholContent: "6%",
+    bottleSize: "375ml",
+    pricePerBottle: 20000,
+    targetQuantity: 500,
+    estimatedDelivery: "2026. 06. 15",
+    tasteProfile: {
+      sweetness: 70,
+      aroma: 55,
+      acidity: 80,
+      body: 65,
+      carbonation: 75,
+    },
+    budget: [
+      { item: "원료비 (쌀, 누룩, 벚꽃)", amount: 180 },
+      { item: "양조 인건비", amount: 150 },
+      { item: "병입 및 포장 비용", amount: 100 },
+      { item: "배송비", amount: 80 },
+      { item: "디자인 및 마케팅", amount: 60 },
+      { item: "플랫폼 수수료 (7%)", amount: 40 },
+    ],
+    schedule: [
+      { date: "3월 20일", description: "펀딩 시작 및 원료 준비 완료" },
+      { date: "4월 18일", description: "펀딩 종료 및 최종 레시피 확정" },
+      { date: "4월 25일", description: "벚꽃 수확 및 양조 시작 (발효 30일)" },
+      { date: "5월 25일", description: "발효 완료 및 숙성" },
+      { date: "6월 1일", description: "병입 및 라벨링 작업" },
+      { date: "6월 15일", description: "배송 시작 (순차 발송)" },
+    ],
   },
   {
     id: 2,
@@ -57,6 +96,37 @@ const fundingProjectsData = [
     status: "진행 중",
     startDate: "2026. 03. 15",
     endDate: "2026. 04. 13",
+    // 상세 정보
+    mainIngredients: "국내산 쌀, 자가제 누룩",
+    subIngredients: "발효효모",
+    alcoholContent: "7%",
+    bottleSize: "500ml",
+    pricePerBottle: 25000,
+    targetQuantity: 400,
+    estimatedDelivery: "2026. 06. 10",
+    tasteProfile: {
+      sweetness: 60,
+      aroma: 70,
+      acidity: 65,
+      body: 80,
+      carbonation: 50,
+    },
+    budget: [
+      { item: "원료비 (쌀, 누룩)", amount: 200 },
+      { item: "양조 인건비", amount: 180 },
+      { item: "병입 및 포장 비용", amount: 120 },
+      { item: "배송비", amount: 70 },
+      { item: "디자인 및 마케팅", amount: 50 },
+      { item: "플랫폼 수수료 (7%)", amount: 35 },
+    ],
+    schedule: [
+      { date: "3월 15일", description: "펀딩 시작 및 누룩 제조 시작" },
+      { date: "4월 13일", description: "펀딩 종료" },
+      { date: "4월 20일", description: "양조 시작 (발효 35일)" },
+      { date: "5월 25일", description: "발효 완료 및 숙성" },
+      { date: "6월 5일", description: "병입 및 라벨링" },
+      { date: "6월 10일", description: "배송 시작" },
+    ],
   },
   {
     id: 3,
@@ -75,6 +145,37 @@ const fundingProjectsData = [
     status: "진행 중",
     startDate: "2026. 03. 25",
     endDate: "2026. 04. 10",
+    // 상세 정보
+    mainIngredients: "국내산 찹쌀, 백국 누룩",
+    subIngredients: "장미, 국화, 매화",
+    alcoholContent: "13%",
+    bottleSize: "500ml",
+    pricePerBottle: 35000,
+    targetQuantity: 300,
+    estimatedDelivery: "2026. 07. 01",
+    tasteProfile: {
+      sweetness: 85,
+      aroma: 90,
+      acidity: 40,
+      body: 75,
+      carbonation: 20,
+    },
+    budget: [
+      { item: "원료비 (찹쌀, 누룩, 꽃)", amount: 280 },
+      { item: "양조 인건비", amount: 220 },
+      { item: "병입 및 포장 비용", amount: 150 },
+      { item: "배송비", amount: 90 },
+      { item: "디자인 및 마케팅", amount: 80 },
+      { item: "플랫폼 수수료 (7%)", amount: 56 },
+    ],
+    schedule: [
+      { date: "3월 25일", description: "펀딩 시작 및 꽃 계약 진행" },
+      { date: "4월 10일", description: "펀딩 종료" },
+      { date: "4월 15일", description: "양조 시작 (발효 50일)" },
+      { date: "6월 5일", description: "발효 완료 및 숙성" },
+      { date: "6월 25일", description: "병입 및 라벨링" },
+      { date: "7월 1일", description: "배송 시작" },
+    ],
   },
   {
     id: 4,
@@ -93,6 +194,38 @@ const fundingProjectsData = [
     status: "진행 중",
     startDate: "2026. 03. 10",
     endDate: "2026. 04. 20",
+    // 상세 정보
+    mainIngredients: "국내산 쌀, 전통 누룩",
+    subIngredients: "청정 지하수",
+    alcoholContent: "25%",
+    bottleSize: "700ml",
+    pricePerBottle: 45000,
+    targetQuantity: 250,
+    estimatedDelivery: "2026. 07. 20",
+    tasteProfile: {
+      sweetness: 30,
+      aroma: 85,
+      acidity: 35,
+      body: 90,
+      carbonation: 0,
+    },
+    budget: [
+      { item: "원료비 (쌀, 누룩)", amount: 350 },
+      { item: "양조 및 증류 인건비", amount: 300 },
+      { item: "병입 및 포장 비용", amount: 180 },
+      { item: "배송비", amount: 100 },
+      { item: "디자인 및 마케팅", amount: 90 },
+      { item: "플랫폼 수수료 (7%)", amount: 70 },
+    ],
+    schedule: [
+      { date: "3월 10일", description: "펀딩 시작" },
+      { date: "4월 20일", description: "펀딩 종료" },
+      { date: "4월 27일", description: "양조 시작 (발효 40일)" },
+      { date: "6월 7일", description: "증류 과정 (7일)" },
+      { date: "6월 15일", description: "숙성 및 품질 검사" },
+      { date: "7월 15일", description: "병입 및 라벨링" },
+      { date: "7월 20일", description: "배송 시작" },
+    ],
   },
   {
     id: 5,
@@ -111,6 +244,37 @@ const fundingProjectsData = [
     status: "성공",
     startDate: "2026. 02. 15",
     endDate: "2026. 03. 20",
+    // 상세 정보
+    mainIngredients: "평창 오대쌀, 산사 누룩",
+    subIngredients: "청정 계곡수",
+    alcoholContent: "8%",
+    bottleSize: "300ml",
+    pricePerBottle: 18000,
+    targetQuantity: 600,
+    estimatedDelivery: "2026. 05. 15",
+    tasteProfile: {
+      sweetness: 65,
+      aroma: 60,
+      acidity: 70,
+      body: 55,
+      carbonation: 85,
+    },
+    budget: [
+      { item: "원료비 (오대쌀, 누룩)", amount: 160 },
+      { item: "양조 인건비", amount: 130 },
+      { item: "병입 및 포장 비용", amount: 90 },
+      { item: "배송비", amount: 75 },
+      { item: "디자인 및 마케팅", amount: 45 },
+      { item: "플랫폼 수수료 (7%)", amount: 28 },
+    ],
+    schedule: [
+      { date: "2월 15일", description: "펀딩 시작" },
+      { date: "3월 20일", description: "펀딩 종료" },
+      { date: "3월 25일", description: "양조 시작" },
+      { date: "4월 25일", description: "발효 완료" },
+      { date: "5월 5일", description: "병입" },
+      { date: "5월 15일", description: "배송 완료" },
+    ],
   },
   {
     id: 6,
@@ -129,6 +293,37 @@ const fundingProjectsData = [
     status: "성공",
     startDate: "2026. 02. 01",
     endDate: "2026. 03. 10",
+    // 상세 정보
+    mainIngredients: "증류식 소주 원액, 제주 한라봉",
+    subIngredients: "제주 용암수",
+    alcoholContent: "17%",
+    bottleSize: "375ml",
+    pricePerBottle: 28000,
+    targetQuantity: 350,
+    estimatedDelivery: "2026. 04. 30",
+    tasteProfile: {
+      sweetness: 75,
+      aroma: 95,
+      acidity: 55,
+      body: 70,
+      carbonation: 10,
+    },
+    budget: [
+      { item: "원료비 (소주 원액, 한라봉)", amount: 250 },
+      { item: "증류 및 혼합 인건비", amount: 200 },
+      { item: "병입 및 포장 비용", amount: 140 },
+      { item: "배송비", amount: 85 },
+      { item: "디자인 및 마케팅", amount: 70 },
+      { item: "플랫폼 수수료 (7%)", amount: 49 },
+    ],
+    schedule: [
+      { date: "2월 1일", description: "펀딩 시작" },
+      { date: "3월 10일", description: "펀딩 종료" },
+      { date: "3월 15일", description: "증류 및 혼합 시작" },
+      { date: "4월 10일", description: "숙성 완료" },
+      { date: "4월 25일", description: "병입" },
+      { date: "4월 30일", description: "배송 완료" },
+    ],
   },
 ];
 
@@ -230,6 +425,21 @@ export function FundingDetailPage() {
   // 주담 펀딩 안내 모달 상태
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
 
+  // 공유하기 모달
+  const [showShareModal, setShowShareModal] = useState(false);
+
+  // 신고하기 모달
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetail, setReportDetail] = useState("");
+
+  // 펀딩 옵션 모달
+  const [showFundingOptionModal, setShowFundingOptionModal] = useState(false);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
+
+  // 로그인 필요 모달
+  const [showLoginRequiredModal, setShowLoginRequiredModal] = useState(false);
+
   // 커뮤니티 상태 관리
   const [comments, setComments] = useState<Comment[]>(initialComments);
   const [newComment, setNewComment] = useState("");
@@ -272,11 +482,15 @@ export function FundingDetailPage() {
 
   // 댓글 추가 함수
   const handleAddComment = () => {
+    if (!user) {
+      setShowLoginRequiredModal(true);
+      return;
+    }
     if (!newComment.trim()) return;
 
     const newCommentObj: Comment = {
       id: Date.now(),
-      userName: "나",
+      userName: user.name || "나",
       content: newComment.trim(),
       date: new Date()
         .toLocaleDateString("ko-KR", {
@@ -286,7 +500,7 @@ export function FundingDetailPage() {
         })
         .replace(/\. /g, ". "),
       likes: 0,
-      isBrewery: false,
+      isBrewery: user.type === "brewery",
       replies: [],
     };
 
@@ -296,11 +510,15 @@ export function FundingDetailPage() {
 
   // 대댓글 추가 함수
   const handleAddReply = (commentId: number) => {
+    if (!user) {
+      setShowLoginRequiredModal(true);
+      return;
+    }
     if (!replyContent.trim()) return;
 
     const newReply: Reply = {
       id: Date.now(),
-      userName: "나",
+      userName: user.name || "나",
       content: replyContent.trim(),
       date: new Date()
         .toLocaleDateString("ko-KR", {
@@ -310,7 +528,7 @@ export function FundingDetailPage() {
         })
         .replace(/\. /g, ". "),
       likes: 0,
-      isBrewery: false,
+      isBrewery: user.type === "brewery",
     };
 
     setComments(
@@ -396,6 +614,84 @@ export function FundingDetailPage() {
   };
 
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified === true;
+
+  // 공유하기 핸들러
+  const handleShare = () => {
+    const url = window.location.href;
+
+    // textarea를 이용한 fallback 방식
+    const textArea = document.createElement("textarea");
+    textArea.value = url;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        toast.success("링크가 복사되었습니다!");
+        setShowShareModal(false);
+      } else {
+        throw new Error('Copy failed');
+      }
+    } catch (error) {
+      // navigator.clipboard API 시도
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url)
+          .then(() => {
+            toast.success("링크가 복사되었습니다!");
+            setShowShareModal(false);
+          })
+          .catch(() => {
+            toast.error("링크 복사에 실패했습니다.");
+          });
+      } else {
+        toast.error("링크 복사에 실패했습니다.");
+      }
+    } finally {
+      document.body.removeChild(textArea);
+    }
+  };
+
+  // 신고하기 핸들러
+  const handleReport = () => {
+    if (!user) {
+      setShowReportModal(false);
+      setShowLoginRequiredModal(true);
+      return;
+    }
+    if (!reportReason) {
+      toast.error("신고 사유를 선택해주세요.");
+      return;
+    }
+    console.log("프로젝트 신고:", {
+      projectId: project.id,
+      reason: reportReason,
+      detail: reportDetail,
+    });
+    toast.success("신고가 접수되었습니다. 검토 후 조치하겠습니다.");
+    setShowReportModal(false);
+    setReportReason("");
+    setReportDetail("");
+  };
+
+  // 후원하기 버튼 핸들러
+  const handleSupportClick = () => {
+    if (!user) {
+      setShowLoginRequiredModal(true);
+      return;
+    }
+    setShowFundingOptionModal(true);
+  };
+
+  // 펀딩 옵션 확인 핸들러
+  const handleConfirmFunding = () => {
+    setShowFundingOptionModal(false);
+    navigate(`/funding/${project.id}/support`);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-36">
@@ -581,17 +877,25 @@ export function FundingDetailPage() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <p className="text-xs text-gray-500 mb-1">메인재료</p>
-                        <p className="text-sm font-semibold text-black">국내산 쌀, 전통 누룩</p>
+                        <p className="text-sm font-semibold text-black">{project.mainIngredients}</p>
                       </div>
                       <div>
                         <p className="text-xs text-gray-500 mb-1">서브재료</p>
-                        <p className="text-sm font-semibold text-black">식용 벚꽃잎</p>
+                        <p className="text-sm font-semibold text-black">{project.subIngredients}</p>
                       </div>
                     </div>
                   </div>
                   <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-                    <p className="text-xs text-gray-500 mb-1">도수</p>
-                    <p className="text-sm font-semibold text-black">6%</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">도수</p>
+                        <p className="text-sm font-semibold text-black">{project.alcoholContent}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">예상 배송일</p>
+                        <p className="text-sm font-semibold text-black">{project.estimatedDelivery}</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -630,10 +934,10 @@ export function FundingDetailPage() {
                       <div className="flex items-end justify-between">
                         <div>
                           <p className="text-xs font-medium text-gray-500 mb-1.5">병당 단가</p>
-                          <p className="text-3xl font-bold text-black tracking-tight">20,000<span className="text-xl ml-0.5">원</span></p>
+                          <p className="text-3xl font-bold text-black tracking-tight">{project.pricePerBottle.toLocaleString()}<span className="text-xl ml-0.5">원</span></p>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm text-gray-600">375ml</p>
+                          <p className="text-sm text-gray-600">{project.bottleSize}</p>
                         </div>
                       </div>
                     </div>
@@ -646,7 +950,7 @@ export function FundingDetailPage() {
                       <div className="flex items-end justify-between">
                         <div>
                           <p className="text-xs font-medium text-gray-500 mb-1.5">총 판매 수량</p>
-                          <p className="text-3xl font-bold text-black tracking-tight">500<span className="text-xl ml-0.5">병</span></p>
+                          <p className="text-3xl font-bold text-black tracking-tight">{project.targetQuantity}<span className="text-xl ml-0.5">병</span></p>
                         </div>
                         <div className="text-right">
                           <p className="text-sm text-gray-600">목표 수량</p>
@@ -659,7 +963,7 @@ export function FundingDetailPage() {
                   <div className="mt-4 p-4 bg-gray-900 rounded-2xl">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-semibold text-gray-300">펀딩 목표 금액</p>
-                      <p className="text-lg font-bold text-white">{(500 * 20000).toLocaleString()}원</p>
+                      <p className="text-lg font-bold text-white">{(project.targetQuantity * project.pricePerBottle).toLocaleString()}원</p>
                     </div>
                   </div>
                 </div>
@@ -671,37 +975,21 @@ export function FundingDetailPage() {
                   프로젝트 예산
                 </h2>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-700">원료비 (쌀, 누룩, 벚꽃)</span>
-                    <span className="font-semibold text-black">180만원</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-700">양조 인건비</span>
-                    <span className="font-semibold text-black">150만원</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-700">병입 및 포장 비용</span>
-                    <span className="font-semibold text-black">100만원</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-700">배송비</span>
-                    <span className="font-semibold text-black">80만원</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-700">디자인 및 마케팅</span>
-                    <span className="font-semibold text-black">60만원</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-gray-700">플랫폼 수수료 (7%)</span>
-                    <span className="font-semibold text-black">40만원</span>
-                  </div>
+                  {project.budget.map((item, index) => (
+                    <div key={index} className={`flex items-center justify-between py-2 ${index < project.budget.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                      <span className="text-gray-700">{item.item}</span>
+                      <span className="font-semibold text-black">{item.amount}만원</span>
+                    </div>
+                  ))}
                   <div className="flex items-center justify-between pt-3 border-t-2 border-gray-300">
                     <span className="font-bold text-black">총 목표 금액</span>
-                    <span className="text-lg font-bold text-black">610만원</span>
+                    <span className="text-lg font-bold text-black">
+                      {project.budget.reduce((sum, item) => sum + item.amount, 0)}만원
+                    </span>
                   </div>
                 </div>
                 <p className="text-xs text-gray-600 mt-4 leading-relaxed">
-                  목표 금액을 초과 달성하는 경우, 추가 금액은 리워드 품질 향상과 
+                  목표 금액을 초과 달성하는 경우, 추가 금액은 리워드 품질 향상과
                   더 많은 후원자 분들께 제품을 전달하는 데 사용됩니다.
                 </p>
               </div>
@@ -712,70 +1000,22 @@ export function FundingDetailPage() {
                   프로젝트 일정
                 </h2>
                 <div className="space-y-4">
-                  <div className="flex gap-4">
-                    <div className="w-20 flex-shrink-0 text-sm font-semibold text-gray-900">
-                      3월 20일
+                  {project.schedule.map((item, index) => (
+                    <div key={index} className="flex gap-4">
+                      <div className="w-20 flex-shrink-0 text-sm font-semibold text-gray-900">
+                        {item.date}
+                      </div>
+                      <div className="flex-1">
+                        <p className={`text-sm leading-relaxed ${index === project.schedule.length - 1 ? 'font-bold text-black' : 'text-gray-700'}`}>
+                          {item.description}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-700 leading-relaxed">
-                        펀딩 시작 및 원료 준비 완료
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="w-20 flex-shrink-0 text-sm font-semibold text-gray-900">
-                      4월 18일
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-700 leading-relaxed">
-                        펀딩 종료 및 최종 레시피 확정
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="w-20 flex-shrink-0 text-sm font-semibold text-gray-900">
-                      4월 25일
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-700 leading-relaxed">
-                        벚꽃 수확 및 양조 시작 (발효 30일)
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="w-20 flex-shrink-0 text-sm font-semibold text-gray-900">
-                      5월 25일
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-700 leading-relaxed">
-                        발효 완료 및 숙성
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="w-20 flex-shrink-0 text-sm font-semibold text-gray-900">
-                      6월 1일
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm text-gray-700 leading-relaxed">
-                        병입 및 라벨링 작업
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="w-20 flex-shrink-0 text-sm font-semibold text-gray-900">
-                      6월 15일
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-black leading-relaxed">
-                        배송 시작 (순차 발송)
-                      </p>
-                    </div>
-                  </div>
+                  ))}
                 </div>
                 <div className="mt-6 p-4 bg-blue-50 rounded-xl">
                   <p className="text-xs text-blue-900 leading-relaxed">
-                    💡 발효는 자연 과정이므로 기후 조건에 따라 일정이 1-2주 지연될 수 있습니다. 
+                    💡 발효는 자연 과정이므로 기후 조건에 따라 일정이 1-2주 지연될 수 있습니다.
                     지연 시 양조 일지와 커뮤니티를 통해 실시간으로 소통하겠습니다.
                   </p>
                 </div>
@@ -833,11 +1073,11 @@ export function FundingDetailPage() {
                       {/* 데이터 폴리곤 */}
                       <polygon
                         points={[
-                          [200, 200 - (70 / 100) * 150],
-                          [200 + (55 / 100) * 142.5, 200 - (55 / 100) * 46.35],
-                          [200 + (80 / 100) * 88.1, 200 + (80 / 100) * 121.35],
-                          [200 - (65 / 100) * 88.1, 200 + (65 / 100) * 121.35],
-                          [200 - (75 / 100) * 142.5, 200 - (75 / 100) * 46.35],
+                          [200, 200 - (project.tasteProfile.sweetness / 100) * 150],
+                          [200 + (project.tasteProfile.aroma / 100) * 142.5, 200 - (project.tasteProfile.aroma / 100) * 46.35],
+                          [200 + (project.tasteProfile.acidity / 100) * 88.1, 200 + (project.tasteProfile.acidity / 100) * 121.35],
+                          [200 - (project.tasteProfile.body / 100) * 88.1, 200 + (project.tasteProfile.body / 100) * 121.35],
+                          [200 - (project.tasteProfile.carbonation / 100) * 142.5, 200 - (project.tasteProfile.carbonation / 100) * 46.35],
                         ].map(p => p.join(',')).join(' ')}
                         fill="rgba(0, 0, 0, 0.2)"
                         stroke="rgba(0, 0, 0, 0.8)"
@@ -846,11 +1086,11 @@ export function FundingDetailPage() {
 
                       {/* 데이터 포인트 */}
                       {[
-                        { x: 200, y: 200 - (70 / 100) * 150 },
-                        { x: 200 + (55 / 100) * 142.5, y: 200 - (55 / 100) * 46.35 },
-                        { x: 200 + (80 / 100) * 88.1, y: 200 + (80 / 100) * 121.35 },
-                        { x: 200 - (65 / 100) * 88.1, y: 200 + (65 / 100) * 121.35 },
-                        { x: 200 - (75 / 100) * 142.5, y: 200 - (75 / 100) * 46.35 },
+                        { x: 200, y: 200 - (project.tasteProfile.sweetness / 100) * 150 },
+                        { x: 200 + (project.tasteProfile.aroma / 100) * 142.5, y: 200 - (project.tasteProfile.aroma / 100) * 46.35 },
+                        { x: 200 + (project.tasteProfile.acidity / 100) * 88.1, y: 200 + (project.tasteProfile.acidity / 100) * 121.35 },
+                        { x: 200 - (project.tasteProfile.body / 100) * 88.1, y: 200 + (project.tasteProfile.body / 100) * 121.35 },
+                        { x: 200 - (project.tasteProfile.carbonation / 100) * 142.5, y: 200 - (project.tasteProfile.carbonation / 100) * 46.35 },
                       ].map((point, i) => (
                         <circle
                           key={i}
@@ -874,17 +1114,17 @@ export function FundingDetailPage() {
                 {/* 맛 지표 수치 */}
                 <div className="grid grid-cols-2 gap-4">
                   {[
-                    { label: "단맛", value: 70 },
-                    { label: "잔향", value: 55 },
-                    { label: "산미", value: 80 },
-                    { label: "바디감", value: 65 },
-                    { label: "탄산감", value: 75 },
+                    { label: "단맛", value: project.tasteProfile.sweetness },
+                    { label: "잔향", value: project.tasteProfile.aroma },
+                    { label: "산미", value: project.tasteProfile.acidity },
+                    { label: "바디감", value: project.tasteProfile.body },
+                    { label: "탄산감", value: project.tasteProfile.carbonation },
                   ].map((taste) => (
                     <div key={taste.label} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <span className="text-sm font-semibold text-gray-700">{taste.label}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className="h-full bg-gray-900 rounded-full"
                             style={{ width: `${taste.value}%` }}
                           />
@@ -1105,7 +1345,7 @@ export function FundingDetailPage() {
                       if (e.key === "Enter") handleAddComment();
                     }}
                     placeholder="댓글을 입력하세요..."
-                    className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-black transition-colors text-sm bg-[#1f1f1f]"
+                    className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:border-black transition-colors text-sm bg-white"
                   />
                   <button
                     onClick={handleAddComment}
@@ -1291,7 +1531,7 @@ export function FundingDetailPage() {
                                     handleAddReply(comment.id);
                                 }}
                                 placeholder="답글을 입력하세요..."
-                                className="flex-1 px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-black transition-colors text-sm bg-[#1f1f1f]"
+                                className="flex-1 px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-black transition-colors text-sm bg-white"
                                 autoFocus
                               />
                               <button
@@ -1417,6 +1657,24 @@ export function FundingDetailPage() {
             );
           })()}
         </motion.div>
+
+        {/* 공유하기 / 신고하기 버튼 */}
+        <div className="flex items-center gap-3 mb-6">
+          <button
+            onClick={() => setShowShareModal(true)}
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl hover:border-gray-400 transition-all"
+          >
+            <Share2 className="w-4 h-4 text-gray-600" />
+            <span className="text-sm font-semibold text-gray-700">공유하기</span>
+          </button>
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-gray-200 rounded-xl hover:border-gray-400 transition-all"
+          >
+            <AlertTriangle className="w-4 h-4 text-gray-600" />
+            <span className="text-sm font-semibold text-gray-700">신고하기</span>
+          </button>
+        </div>
 
         {/* 추천 프로젝트 */}
         <div className="mb-8">
@@ -1544,11 +1802,7 @@ export function FundingDetailPage() {
             />
           </Button>
           <Button
-            onClick={() => {
-              if (project.status === "진행 중") {
-                navigate(`/funding/${project.id}/support`);
-              }
-            }}
+            onClick={handleSupportClick}
             className="flex-1 h-14 bg-black hover:bg-gray-800 text-white rounded-2xl font-bold text-base"
             disabled={project.status !== "진행 중"}
           >
@@ -1747,6 +2001,297 @@ export function FundingDetailPage() {
                     확인
                   </Button>
                 </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* 공유하기 모달 */}
+      <AnimatePresence>
+        {showShareModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowShareModal(false)}
+              className="fixed inset-0 bg-black/50 z-50"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-sm bg-white rounded-3xl shadow-2xl z-50 p-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-black">공유하기</h3>
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mb-6">
+                이 프로젝트를 친구들과 공유해보세요!
+              </p>
+              <button
+                onClick={handleShare}
+                className="w-full flex items-center justify-center gap-2 py-3 bg-gray-900 text-white rounded-xl font-semibold hover:bg-gray-800 transition-colors"
+              >
+                <Share2 className="w-5 h-5" />
+                링크 복사하기
+              </button>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* 신고하기 모달 */}
+      <AnimatePresence>
+        {showReportModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowReportModal(false)}
+              className="fixed inset-0 bg-black/50 z-50"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-white rounded-3xl shadow-2xl z-50 max-h-[80vh] overflow-y-auto"
+            >
+              <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 rounded-t-3xl flex items-center justify-between">
+                <h3 className="text-lg font-bold text-black">프로젝트 신고</h3>
+                <button
+                  onClick={() => setShowReportModal(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    신고 사유 *
+                  </label>
+                  <select
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-gray-900 bg-white"
+                  >
+                    <option value="">선택해주세요</option>
+                    <option value="fraud">사기 / 허위 정보</option>
+                    <option value="inappropriate">부적절한 내용</option>
+                    <option value="copyright">저작권 침해</option>
+                    <option value="illegal">불법 제품</option>
+                    <option value="other">기타</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    상세 내용
+                  </label>
+                  <textarea
+                    value={reportDetail}
+                    onChange={(e) => setReportDetail(e.target.value)}
+                    placeholder="신고 사유를 자세히 작성해주세요"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-gray-900 resize-none h-24"
+                  />
+                </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs text-amber-900 leading-relaxed">
+                    ⚠️ 허위 신고 시 서비스 이용이 제한될 수 있습니다.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowReportModal(false)}
+                    className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={handleReport}
+                    className="flex-1 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-colors"
+                  >
+                    신고하기
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* 펀딩 옵션 모달 */}
+      <AnimatePresence>
+        {showFundingOptionModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowFundingOptionModal(false)}
+              className="fixed inset-0 bg-black/50 z-50"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-white rounded-3xl shadow-2xl z-50"
+            >
+              <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 rounded-t-3xl flex items-center justify-between">
+                <h3 className="text-lg font-bold text-black">후원 옵션 선택</h3>
+                <button
+                  onClick={() => setShowFundingOptionModal(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <div className="p-6 space-y-6">
+                {/* 프로젝트 정보 */}
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0">
+                      <img src={project.image} alt={project.title} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-500 mb-1">{project.brewery}</p>
+                      <p className="font-bold text-sm text-black line-clamp-2">{project.title}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white rounded-lg p-2">
+                      <p className="text-gray-500 mb-0.5">용량</p>
+                      <p className="font-semibold text-black">{project.bottleSize}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-2">
+                      <p className="text-gray-500 mb-0.5">도수</p>
+                      <p className="font-semibold text-black">{project.alcoholContent}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 수량 선택 */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    수량 선택
+                  </label>
+                  <div className="flex items-center justify-between bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <button
+                      onClick={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))}
+                      className="w-10 h-10 flex items-center justify-center bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <Minus className="w-5 h-5 text-gray-600" />
+                    </button>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-black">{selectedQuantity}</p>
+                      <p className="text-xs text-gray-500">병</p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedQuantity(selectedQuantity + 1)}
+                      className="w-10 h-10 flex items-center justify-center bg-white border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <Plus className="w-5 h-5 text-gray-600" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 가격 계산 */}
+                <div className="bg-gray-900 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-300">상품 금액</span>
+                    <span className="text-white font-semibold">
+                      {(project.pricePerBottle * selectedQuantity).toLocaleString()}원
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-gray-300">배송비</span>
+                    <span className="text-white font-semibold">2,000원</span>
+                  </div>
+                  <div className="border-t border-gray-700 pt-2 mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-bold">총 결제 금액</span>
+                      <span className="text-xl font-bold text-white">
+                        {(project.pricePerBottle * selectedQuantity + 2000).toLocaleString()}원
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 예상 배송일 */}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <div className="flex items-start gap-2">
+                    <Package className="w-4 h-4 text-blue-700 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-blue-900 mb-1">예상 배송일</p>
+                      <p className="text-xs text-blue-800">{project.estimatedDelivery} 순차 발송 예정</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 확인 버튼 */}
+                <button
+                  onClick={handleConfirmFunding}
+                  className="w-full py-4 bg-black text-white rounded-xl font-bold text-base hover:bg-gray-800 transition-colors"
+                >
+                  후원하기
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* 로그인 필요 모달 */}
+      <AnimatePresence>
+        {showLoginRequiredModal && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowLoginRequiredModal(false)}
+              className="fixed inset-0 bg-black/50 z-50"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-sm bg-white rounded-3xl shadow-2xl z-50 p-6"
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertTriangle className="w-8 h-8 text-gray-600" />
+                </div>
+                <h3 className="text-xl font-bold text-black mb-2">로그인이 필요합니다</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  이 기능을 사용하려면 로그인이 필요합니다.<br />
+                  로그인 페이지로 이동하시겠습니까?
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowLoginRequiredModal(false)}
+                  className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={() => {
+                    setShowLoginRequiredModal(false);
+                    navigate("/login");
+                  }}
+                  className="flex-1 py-3 bg-black text-white rounded-xl font-semibold hover:bg-gray-800 transition-colors"
+                >
+                  로그인하기
+                </button>
               </div>
             </motion.div>
           </>

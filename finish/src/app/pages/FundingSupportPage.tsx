@@ -80,6 +80,10 @@ export function FundingSupportPage() {
   const [agreeRefund, setAgreeRefund] = useState(false);
   const [showRefundPolicy, setShowRefundPolicy] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [addressSearch, setAddressSearch] = useState("");
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
 
   // 후원자 정보
   const [supporterInfo, setSupporterInfo] = useState({
@@ -126,7 +130,30 @@ export function FundingSupportPage() {
     setShowMessageOptions(false);
   };
 
-  const handlePayment = () => {
+  // 간단한 주소 목록 (실제로는 Daum 우편번호 API 사용)
+  const mockAddresses = [
+    { zipCode: "06234", address: "서울특별시 강남구 테헤란로 123" },
+    { zipCode: "06235", address: "서울특별시 강남구 테헤란로 456" },
+    { zipCode: "04524", address: "서울특별시 중구 세종대로 110" },
+    { zipCode: "03088", address: "서울특별시 종로구 종로 1" },
+    { zipCode: "13494", address: "경기도 성남시 분당구 판교역로 235" },
+    { zipCode: "63309", address: "제주특별자치도 제주시 첨단로 242" },
+  ];
+
+  const handleAddressSearch = () => {
+    setShowAddressModal(true);
+  };
+
+  const handleAddressSelect = (zipCode: string, address: string) => {
+    setShippingInfo({
+      ...shippingInfo,
+      address: `[${zipCode}] ${address}`,
+    });
+    setShowAddressModal(false);
+    setAddressSearch("");
+  };
+
+  const handlePayment = async () => {
     if (!selectedPaymentMethod) {
       alert("결제수단을 선택해주세요.");
       return;
@@ -148,8 +175,26 @@ export function FundingSupportPage() {
       return;
     }
 
-    // 결제 처리 로직 (실제로는 PG사 연동)
-    setShowSuccessModal(true);
+    // 결제 처리 시뮬레이션 (실제로는 PG사 SDK 연동)
+    try {
+      // 결제 정보 로깅
+      console.log("결제 정보:", {
+        projectId,
+        amount: totalAmount,
+        paymentMethod: selectedPaymentMethod,
+        supporterInfo,
+        shippingInfo,
+        supportMessage,
+      });
+
+      // 결제 처리 대기 시뮬레이션
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // 성공
+      setShowSuccessModal(true);
+    } catch (error) {
+      alert("결제 처리 중 오류가 발생했습니다. 다시 시도해주세요.");
+    }
   };
 
   return (
@@ -341,7 +386,11 @@ export function FundingSupportPage() {
                     placeholder="기본 주소"
                     className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-base text-black"
                   />
-                  <button className="px-4 py-3 bg-gray-100 text-black text-sm font-semibold rounded-xl hover:bg-gray-200 transition-colors whitespace-nowrap">
+                  <button
+                    type="button"
+                    onClick={handleAddressSearch}
+                    className="px-4 py-3 bg-gray-100 text-black text-sm font-semibold rounded-xl hover:bg-gray-200 transition-colors whitespace-nowrap"
+                  >
                     변경
                   </button>
                 </div>
@@ -499,9 +548,16 @@ export function FundingSupportPage() {
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-900">
-                    개인정보 제 3자 제공 의
+                    개인정보 제 3자 제공 동의
                   </span>
-                  <button className="text-xs text-blue-600 hover:underline">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowPrivacyModal(true);
+                    }}
+                    className="text-xs text-blue-600 hover:underline"
+                  >
                     내용보기
                   </button>
                 </div>
@@ -568,15 +624,24 @@ export function FundingSupportPage() {
           후원하기
         </Button>
         <div className="flex items-center justify-center gap-4 mt-4 text-xs text-gray-500">
-          <button className="hover:text-black transition-colors">
+          <button
+            onClick={() => setShowTermsModal(true)}
+            className="hover:text-black transition-colors"
+          >
             이용약관
           </button>
           <span>·</span>
-          <button className="hover:text-black transition-colors">
+          <button
+            onClick={() => setShowPrivacyModal(true)}
+            className="hover:text-black transition-colors"
+          >
             개인정보 처리방침
           </button>
           <span>·</span>
-          <button className="hover:text-black transition-colors">
+          <button
+            onClick={() => navigate("/faq")}
+            className="hover:text-black transition-colors"
+          >
             헬프센터
           </button>
         </div>
@@ -611,6 +676,244 @@ export function FundingSupportPage() {
                 주문 상세 보기
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 주소 검색 모달 - 전체 화면 흰색 */}
+      {showAddressModal && (
+        <div className="fixed inset-0 z-50 bg-white">
+          <div className="w-full max-w-[430px] h-full mx-auto flex flex-col">
+            {/* 헤더 */}
+            <div className="flex-none border-b border-gray-200 bg-white">
+              <div className="flex items-center px-4 py-3">
+                <button
+                  onClick={() => {
+                    setShowAddressModal(false);
+                    setAddressSearch("");
+                  }}
+                  className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <ChevronLeft className="w-6 h-6 text-gray-900" />
+                </button>
+                <h3 className="flex-1 text-center text-lg font-bold text-black pr-10">
+                  주소 검색
+                </h3>
+              </div>
+
+              {/* 검색 입력 */}
+              <div className="px-4 pb-4">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="도로명, 건물명, 지역명 입력"
+                    value={addressSearch}
+                    onChange={(e) => setAddressSearch(e.target.value)}
+                    className="w-full px-4 py-3 pr-10 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-gray-900 focus:bg-white transition-colors"
+                    autoFocus
+                  />
+                  {addressSearch && (
+                    <button
+                      onClick={() => setAddressSearch("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-full transition-colors"
+                    >
+                      <X className="w-4 h-4 text-gray-400" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 검색 결과 */}
+            <div className="flex-1 overflow-y-auto bg-gray-50">
+              {!addressSearch ? (
+                <div className="px-4 py-12 text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                    <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-2">주소를 검색해주세요</p>
+                  <p className="text-xs text-gray-400">
+                    도로명, 건물명 또는 지역명으로 검색할 수 있습니다
+                  </p>
+                </div>
+              ) : (
+                <div className="p-4">
+                  <p className="text-xs text-gray-500 mb-3">
+                    검색 결과 {mockAddresses.filter(
+                      (addr) =>
+                        addr.address.includes(addressSearch) ||
+                        addr.zipCode.includes(addressSearch)
+                    ).length}건
+                  </p>
+                  <div className="space-y-2">
+                    {mockAddresses
+                      .filter(
+                        (addr) =>
+                          addr.address.includes(addressSearch) ||
+                          addr.zipCode.includes(addressSearch)
+                      )
+                      .map((addr, index) => (
+                        <button
+                          key={index}
+                          onClick={() => handleAddressSelect(addr.zipCode, addr.address)}
+                          className="w-full text-left p-4 bg-white border border-gray-200 rounded-xl hover:border-gray-900 hover:shadow-sm transition-all"
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-2">
+                            <p className="text-xs font-medium text-gray-500 px-2 py-1 bg-gray-100 rounded">
+                              우편번호 {addr.zipCode}
+                            </p>
+                          </div>
+                          <p className="text-sm text-black font-medium leading-relaxed">
+                            {addr.address}
+                          </p>
+                        </button>
+                      ))}
+                    {mockAddresses.filter(
+                      (addr) =>
+                        addr.address.includes(addressSearch) ||
+                        addr.zipCode.includes(addressSearch)
+                    ).length === 0 && (
+                      <div className="py-12 text-center">
+                        <p className="text-sm text-gray-500 mb-1">검색 결과가 없습니다</p>
+                        <p className="text-xs text-gray-400">
+                          다른 검색어로 시도해보세요
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 안내 문구 */}
+              <div className="px-4 pb-4">
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                  <p className="text-xs text-blue-800 leading-relaxed">
+                    💡 <strong>안내</strong>
+                    <br />
+                    실제 서비스에서는 Daum 우편번호 API를 통해
+                    <br />
+                    전국의 모든 주소를 검색할 수 있습니다.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 이용약관 모달 */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black bg-opacity-50"
+            onClick={() => setShowTermsModal(false)}
+          />
+          <div className="relative w-full max-w-[430px] bg-white rounded-2xl p-6 m-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-black">이용약관</h3>
+              <button
+                onClick={() => setShowTermsModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="text-sm text-gray-700 leading-relaxed space-y-4">
+              <p className="font-semibold">제1조 (목적)</p>
+              <p>
+                본 약관은 주담(이하 "회사")이 제공하는 전통주 크라우드펀딩 플랫폼 서비스의
+                이용과 관련하여 회사와 이용자 간의 권리, 의무 및 책임사항을 규정함을
+                목적으로 합니다.
+              </p>
+
+              <p className="font-semibold">제2조 (정의)</p>
+              <p>
+                1. "서비스"란 회사가 제공하는 전통주 크라우드펀딩 플랫폼을 의미합니다.
+                <br />
+                2. "이용자"란 본 약관에 따라 회사가 제공하는 서비스를 이용하는 자를
+                의미합니다.
+                <br />
+                3. "펀딩"이란 이용자가 양조장의 프로젝트를 후원하는 행위를 의미합니다.
+              </p>
+
+              <p className="font-semibold">제3조 (약관의 효력 및 변경)</p>
+              <p>
+                본 약관은 서비스를 이용하고자 하는 모든 이용자에게 그 효력이 발생합니다.
+                회사는 필요시 약관을 변경할 수 있으며, 변경된 약관은 공지 후 7일 이후부터
+                효력이 발생합니다.
+              </p>
+            </div>
+            <Button
+              onClick={() => setShowTermsModal(false)}
+              className="w-full mt-6 bg-black text-white h-12"
+            >
+              확인
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 개인정보처리방침 모달 */}
+      {showPrivacyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black bg-opacity-50"
+            onClick={() => setShowPrivacyModal(false)}
+          />
+          <div className="relative w-full max-w-[430px] bg-white rounded-2xl p-6 m-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-black">개인정보처리방침</h3>
+              <button
+                onClick={() => setShowPrivacyModal(false)}
+                className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <div className="text-sm text-gray-700 leading-relaxed space-y-4">
+              <p className="font-semibold">1. 개인정보의 수집 및 이용 목적</p>
+              <p>
+                회사는 다음의 목적을 위해 개인정보를 수집하고 이용합니다:
+                <br />
+                - 회원 가입 및 관리
+                <br />
+                - 펀딩 서비스 제공
+                <br />
+                - 결제 및 배송
+                <br />- 고객 문의 응대
+              </p>
+
+              <p className="font-semibold">2. 수집하는 개인정보 항목</p>
+              <p>
+                - 필수항목: 이름, 이메일, 연락처, 배송지 주소
+                <br />- 선택항목: 마케팅 정보 수신 동의
+              </p>
+
+              <p className="font-semibold">3. 개인정보의 보유 및 이용기간</p>
+              <p>
+                회사는 법령에 따른 개인정보 보유·이용기간 또는 정보주체로부터 개인정보를
+                수집 시에 동의받은 개인정보 보유·이용기간 내에서 개인정보를 처리·보유합니다.
+              </p>
+
+              <p className="font-semibold">4. 개인정보의 제3자 제공</p>
+              <p>
+                회사는 원칙적으로 이용자의 개인정보를 제3자에게 제공하지 않습니다. 다만,
+                다음의 경우에는 예외로 합니다:
+                <br />
+                - 이용자가 사전에 동의한 경우
+                <br />- 법령의 규정에 의거하거나, 수사 목적으로 법령에 정해진 절차와 방법에
+                따라 수사기관의 요구가 있는 경우
+              </p>
+            </div>
+            <Button
+              onClick={() => setShowPrivacyModal(false)}
+              className="w-full mt-6 bg-black text-white h-12"
+            >
+              확인
+            </Button>
           </div>
         </div>
       )}

@@ -244,49 +244,9 @@ export function BreweryDashboardPage() {
     return () => scrollContainer.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // 양조장 계정이 아니거나 인증되지 않은 경우
-  if (!user || user.type !== "brewery") {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-8 h-8 text-red-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">접근 권한 없음</h2>
-          <p className="text-gray-600 mb-6">
-            양조장 계정만 접근할 수 있는 페이지입니다.
-          </p>
-          <Button
-            onClick={() => navigate("/")}
-            className="bg-[#2B1810] text-white hover:bg-[#3d2416]"
-          >
-            홈으로 돌아가기
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user.isBreweryVerified) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-lg p-8 text-center">
-          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Clock className="w-8 h-8 text-amber-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">인증이 필요합니다</h2>
-          <p className="text-gray-600 mb-6">
-            프로젝트를 생성하려면 양조장 인증을 먼저 완료해주세요.
-          </p>
-          <Button
-            onClick={() => navigate("/brewery/verify")}
-            className="bg-[#8B5A3C] text-white hover:bg-[#6B4423]"
-          >
-            인증하러 가기
-          </Button>
-        </div>
-      </div>
-    );
+  // ProtectedRoute가 이미 권한 체크를 수행하므로 여기서는 user가 null이 아님을 확신할 수 있음
+  if (!user) {
+    return null;
   }
 
   return (

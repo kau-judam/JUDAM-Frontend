@@ -145,6 +145,7 @@ export function SignupPage() {
         breweryData: undefined,
       });
       toast.success("회원가입 성공!");
+      // 회원가입 후 사용자 타입 선택 페이지로 이동
       navigate("/user-type-selection");
     } catch {
       toast.error("회원가입에 실패했습니다.");

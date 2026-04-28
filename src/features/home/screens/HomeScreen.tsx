@@ -37,22 +37,34 @@ const bannerSlides = [
     title: "MEET YOUR TASTE",
     subtitle: "전통을 잇는 새로운 맛",
     description: "매일 마주하는 일상을\n특별하게 만들어 줄 우리 술 이야기",
-    image: "https://images.unsplash.com/photo-1697862469018-0fa7c93a8d70?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    image: require('../../../../newpicutre/home1.png'),
   },
   {
     id: 2,
     title: "CRAFT YOUR DREAM",
     subtitle: "당신만의 술을 만드세요",
     description: "펀딩으로 함께 완성하는\n세상에 하나뿐인 전통주",
-    image: "https://images.unsplash.com/photo-1615633949535-9dd97e86d795?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    image: require('../../../../newpicutre/home2.jpg'),
   },
   {
     id: 3,
     title: "DISCOVER TRADITION",
     subtitle: "전통의 재발견",
     description: "오랜 시간이 만든 깊은 맛\n우리 술의 새로운 가능성",
-    image: "https://images.unsplash.com/photo-1694763891594-3b19ad17dec1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    image: require('../../../../newpicutre/home3.jpg'),
   },
+];
+
+const homeFundingImages = [
+  require('../../../../newpicutre/funding1.jpg'),
+  require('../../../../newpicutre/funding2.jpg'),
+  require('../../../../newpicutre/funding3.jpg'),
+];
+
+const homeRecipeImages = [
+  require('../../../../newpicutre/recipe1.jpg'),
+  require('../../../../newpicutre/recipe2.jpg'),
+  require('../../../../newpicutre/recipe3.png'),
 ];
 
 const processSteps = [
@@ -85,7 +97,9 @@ export default function HomeScreen() {
             }}
             renderItem={({ item }) => (
               <View style={styles.bannerSlide}>
-                <Image source={{ uri: item.image }} style={styles.bannerImage} />
+                <View style={styles.bannerImageFrame}>
+                  <Image source={item.image} style={styles.bannerImage} resizeMode="contain" />
+                </View>
                 <LinearGradient
                   colors={['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)']}
                   style={StyleSheet.absoluteFill}
@@ -160,7 +174,9 @@ export default function HomeScreen() {
                   onPress={() => router.push(`/funding/${project.id}`)}
                 >
                   <View style={styles.fundingRow}>
-                    <Image source={{ uri: project.image }} style={styles.fundingThumb} />
+                    <View style={styles.fundingThumbBox}>
+                      <Image source={homeFundingImages[index]} style={styles.fundingThumb} resizeMode="contain" />
+                    </View>
                     <View style={styles.fundingInfo}>
                       <View style={styles.fundingMeta}>
                         <Text style={styles.breweryName}>{project.brewery}</Text>
@@ -200,7 +216,7 @@ export default function HomeScreen() {
 
           <View style={styles.recipeList}>
             {recipesData.slice(0, 3).map((recipe, index) => (
-              <RecipeCard key={recipe.id} recipe={recipe} index={index} />
+              <RecipeCard key={recipe.id} recipe={{ ...recipe, image: homeRecipeImages[index] }} index={index} />
             ))}
           </View>
         </View>
@@ -255,7 +271,8 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 40 },
   bannerContainer: { height: SCREEN_WIDTH * 1.1, position: 'relative' },
   bannerSlide: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 1.1 },
-  bannerImage: { ...StyleSheet.absoluteFillObject, resizeMode: 'cover' },
+  bannerImageFrame: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
+  bannerImage: { width: '100%', height: '100%', objectFit: 'contain' },
   bannerText: { flex: 1, justifyContent: 'center', paddingHorizontal: 24, paddingTop: 40 },
   bannerBadge: { color: 'rgba(255,255,255,0.8)', fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 8 },
   bannerTitle: { color: '#FFF', fontSize: 40, fontWeight: '900', letterSpacing: -1, marginBottom: 4 },
@@ -284,7 +301,8 @@ const styles = StyleSheet.create({
   fundingList: { gap: 16 },
   fundingCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 16, borderWidth: 1, borderColor: '#F3F4F6', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10 },
   fundingRow: { flexDirection: 'row', gap: 16 },
-  fundingThumb: { width: 100, height: 100, borderRadius: 16, backgroundColor: '#F9FAFB' },
+  fundingThumbBox: { width: 100, height: 100, borderRadius: 16, overflow: 'hidden', backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center' },
+  fundingThumb: { width: '100%', height: '100%', objectFit: 'contain' },
   fundingInfo: { flex: 1, justifyContent: 'space-between' },
   fundingMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   breweryName: { fontSize: 12, fontWeight: '800', color: '#6B7280' },

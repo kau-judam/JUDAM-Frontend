@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   Image,
+  ImageSourcePropType,
   TouchableOpacity,
 } from 'react-native';
 import { router } from 'expo-router';
@@ -20,7 +21,7 @@ interface RecipeCardProps {
     comments: number;
     timestamp: string;
     liked?: boolean;
-    image?: string;
+    image?: string | ImageSourcePropType;
   };
   index?: number;
   onLike?: (recipeId: number) => void;
@@ -39,7 +40,7 @@ export function RecipeCard({ recipe, index = 0, onLike, showLikeButton = false }
           {/* Left: Thumbnail */}
           <View style={styles.thumbBox}>
             {recipe.image ? (
-              <Image source={{ uri: recipe.image }} style={styles.thumb} />
+              <Image source={typeof recipe.image === 'string' ? { uri: recipe.image } : recipe.image} style={styles.thumb} resizeMode="contain" />
             ) : (
               <View style={styles.placeholder}>
                 <Sparkles size={24} color="#9CA3AF" />
@@ -101,7 +102,7 @@ const styles = StyleSheet.create({
   },
   inner: { flexDirection: 'row', gap: 16 },
   thumbBox: { width: 96, height: 96, borderRadius: 16, overflow: 'hidden', backgroundColor: '#F9FAFB' },
-  thumb: { width: '100%', height: '100%', resizeMode: 'cover' },
+  thumb: { width: '100%', height: '100%', objectFit: 'contain' },
   placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { flex: 1, justifyContent: 'space-between' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },

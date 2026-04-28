@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -14,8 +15,13 @@ import {
   Receipt,
   MessageSquare,
   Phone,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import { Button } from "../components/ui/button";
 
 // ────────────────────────────────────────────
 // Mock order data (keyed by archive item id)
@@ -158,10 +164,43 @@ export function FundingOrderDetailPage() {
   const status = STATUS_CONFIG[order.deliveryStatus];
   const totalAmount = order.unitPrice * order.quantity + order.shippingFee;
 
+  const [showInquiryModal, setShowInquiryModal] = useState(false);
+  const [inquiryTitle, setInquiryTitle] = useState("");
+  const [inquiryEmail, setInquiryEmail] = useState("");
+  const [inquiryContent, setInquiryContent] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const copyTracking = () => {
     if (order.trackingNumber) {
       navigator.clipboard.writeText(order.trackingNumber);
       toast.success("운송장 번호가 복사되었습니다.");
+    }
+  };
+
+  const handleInquirySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      console.log("양조장 문의 전송:", {
+        brewery: order.brewery,
+        title: inquiryTitle,
+        email: inquiryEmail,
+        content: inquiryContent,
+      });
+
+      toast.success("문의가 접수되었습니다.");
+      setShowInquiryModal(false);
+      setInquiryTitle("");
+      setInquiryEmail("");
+      setInquiryContent("");
+    } catch (error) {
+      toast.error("문의 접수에 실패했습니다.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -430,8 +469,8 @@ export function FundingOrderDetailPage() {
               펀딩 상세
             </Link>
             <button
+              onClick={() => setShowInquiryModal(true)}
               className="flex items-center justify-center gap-2 bg-white border border-gray-200 rounded-2xl py-3.5 text-sm font-semibold text-gray-700 hover:border-gray-400 transition-all"
-              onClick={() => toast.info("양조장 채팅 준비 중입니다.")}
             >
               <MessageSquare className="w-4 h-4" />
               양조장 문의
@@ -451,6 +490,126 @@ export function FundingOrderDetailPage() {
           </div>
         </motion.div>
       </div>
+
+      {/* ── Inquiry Modal ── */}
+      <AnimatePresence>
+        {showInquiryModal && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowInquiryModal(false)}
+              className="fixed inset-0 bg-black/50 z-50"
+            />
+
+            {/* Modal */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", duration: 0.3 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-md bg-white rounded-3xl shadow-2xl z-50 max-h-[85vh] overflow-y-auto"
+            >
+              {/* Header */}
+              <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between rounded-t-3xl">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-gray-700" />
+                  <h2 className="font-bold text-gray-900">양조장 문의</h2>
+                </div>
+                <button
+                  onClick={() => setShowInquiryModal(false)}
+                  className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleInquirySubmit} className="p-5 space-y-4">
+                {/* Brewery Info */}
+                <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                  <p className="text-xs text-gray-500 mb-0.5">문의 대상</p>
+                  <p className="font-bold text-sm text-gray-900">{order.brewery}</p>
+                </div>
+
+                {/* Title */}
+                <div>
+                  <Label htmlFor="inquiry-title" className="text-sm text-gray-700 mb-2 block">
+                    문의 제목 *
+                  </Label>
+                  <Input
+                    id="inquiry-title"
+                    type="text"
+                    placeholder="문의하실 내용을 간단히 입력해주세요"
+                    value={inquiryTitle}
+                    onChange={(e) => setInquiryTitle(e.target.value)}
+                    className="h-11 bg-gray-50 border-gray-200 focus:border-gray-900"
+                    required
+                  />
+                </div>
+
+                {/* Email */}
+                <div>
+                  <Label htmlFor="inquiry-email" className="text-sm text-gray-700 mb-2 block">
+                    답변 받을 이메일 *
+                  </Label>
+                  <Input
+                    id="inquiry-email"
+                    type="email"
+                    placeholder="example@email.com"
+                    value={inquiryEmail}
+                    onChange={(e) => setInquiryEmail(e.target.value)}
+                    className="h-11 bg-gray-50 border-gray-200 focus:border-gray-900"
+                    required
+                  />
+                </div>
+
+                {/* Content */}
+                <div>
+                  <Label htmlFor="inquiry-content" className="text-sm text-gray-700 mb-2 block">
+                    문의 내용 *
+                  </Label>
+                  <Textarea
+                    id="inquiry-content"
+                    placeholder="문의하실 내용을 자세히 작성해주세요"
+                    value={inquiryContent}
+                    onChange={(e) => setInquiryContent(e.target.value)}
+                    className="min-h-[120px] bg-gray-50 border-gray-200 focus:border-gray-900 resize-none"
+                    required
+                  />
+                </div>
+
+                {/* Notice */}
+                <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
+                  <p className="text-xs text-blue-700 leading-relaxed">
+                    💡 작성하신 이메일로 양조장의 답변이 발송됩니다. 이메일 주소를 정확히 입력해주세요.
+                  </p>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowInquiryModal(false)}
+                    className="flex-1 h-12 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                  >
+                    취소
+                  </button>
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex-1 h-12 bg-gray-900 text-white rounded-xl font-semibold hover:bg-gray-800 disabled:opacity-60"
+                  >
+                    {isSubmitting ? "전송 중..." : "문의하기"}
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

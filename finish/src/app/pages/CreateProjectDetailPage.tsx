@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -20,8 +20,12 @@ import {
   Tag,
   ChevronLeft,
   Target,
+  Clock,
+  GripVertical,
 } from "lucide-react";
 import { Progress } from "../components/ui/progress";
+import { toast } from "sonner";
+import { useAuth } from "../contexts/AuthContext";
 
 // 프로젝트 생성 탭
 const projectTabs = [
@@ -37,6 +41,7 @@ const projectTabs = [
 
 export function CreateProjectDetailPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("basic");
   const [showPreview, setShowPreview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -45,7 +50,15 @@ export function CreateProjectDetailPage() {
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showSubmitSuccess, setShowSubmitSuccess] = useState(false);
+  const [showTempSaveModal, setShowTempSaveModal] = useState(false);
+  const [tempSaveTimestamp, setTempSaveTimestamp] = useState<string>("");
+  const [showAlertModal, setShowAlertModal] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [phoneTimer, setPhoneTimer] = useState(0);
+  const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
   const tabScrollRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // 인증 상태
   const [phoneVerificationSent, setPhoneVerificationSent] = useState(false);
@@ -140,37 +153,42 @@ export function CreateProjectDetailPage() {
     businessRegistrationFile: "",
   });
 
-  // 양조장 정보 불러오기 (예시 데이터)
+  // 양조장 정보 불러오기 (AuthContext에서 실제 데이터)
   const loadBreweryInfo = () => {
-    setCreatorInfo({
-      name: "금정산성막걸리",
-      profileImage: "https://images.unsplash.com/photo-1569529465841-dfecdab7503b?w=400",
-      bio: "1992년부터 전통 누룩을 사용한 우리 쌀막걸리를 빚어온 부산 금정구의 가족 양조장입니다. 지역 농가와 협력하여 국내산 쌀만을 사용하며, 100% 생막걸리로 신선한 맛을 전달합니다.",
-      phone: "051-517-5340",
-      accountBank: "농협은행",
-      accountNumber: "351-0123-4567-89",
-      idDocument: "",
-    });
-    setTaxInfo({
-      businessType: "corporation",
-      businessName: "(주)금정산성막걸리",
-      businessNumber: "617-81-12345",
-      ceoName: "김양조",
-      address: "부산광역시 금정구 금성동 123-45",
-      businessCategory: "제조업",
-      businessItem: "탁주 제조",
-      email: "info@geumjeong-makgeolli.kr",
-      businessRegistrationFile: "사업자등록증.pdf",
-    });
-    // 불러오기 시 인증도 완료된 것으로 처리
-    setPhoneVerified(true);
-    setAccountVerified(true);
-    // 파일도 업로드된 것으로 표시
-    setUploadedFiles(prev => ({
-      ...prev,
-      businessLicense: "사업자등록증.pdf",
-    }));
+    if (user && user.type === "brewery") {
+      setCreatorInfo({
+        name: user.breweryName || "",
+        profileImage: "",
+        bio: "",
+        phone: user.phone || "",
+        accountBank: "",
+        accountNumber: "",
+        idDocument: "",
+      });
+      setTaxInfo({
+        businessType: "corporation",
+        businessName: user.breweryName || "",
+        businessNumber: user.businessNumber || "",
+        ceoName: user.name || "",
+        address: user.breweryLocation || "",
+        businessCategory: "제조업",
+        businessItem: "탁주 제조",
+        email: user.email || "",
+        businessRegistrationFile: "",
+      });
+      toast.success("양조장 정보를 불러왔습니다");
+    }
   };
+
+  // 타이머 효과
+  useEffect(() => {
+    if (phoneTimer > 0) {
+      const interval = setInterval(() => {
+        setPhoneTimer(prev => prev - 1);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [phoneTimer]);
 
   // 맛 지표 상태
   const [tasteProfile, setTasteProfile] = useState({
@@ -349,27 +367,205 @@ export function CreateProjectDetailPage() {
     }
   };
 
+  // Alert 모달 함수
+  const showAlert = (message: string) => {
+    setAlertMessage(message);
+    setShowAlertModal(true);
+  };
+
+  // 실제 이미지 파일 업로드
+  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) {
+      const newImages: string[] = [];
+      const maxImages = 5 - basicInfo.images.length;
+      const filesToProcess = Math.min(files.length, maxImages);
+
+      for (let i = 0; i < filesToProcess; i++) {
+        const file = files[i];
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          newImages.push(reader.result as string);
+          if (newImages.length === filesToProcess) {
+            setBasicInfo({
+              ...basicInfo,
+              images: [...basicInfo.images, ...newImages],
+            });
+            toast.success(`${filesToProcess}개의 이미지가 추가되었습니다`);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
+  // 이미지 순서 변경 (드래그 앤 드롭)
+  const handleImageDragStart = (index: number) => {
+    setDraggedImageIndex(index);
+  };
+
+  const handleImageDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedImageIndex === null || draggedImageIndex === index) return;
+
+    const newImages = [...basicInfo.images];
+    const draggedImage = newImages[draggedImageIndex];
+    newImages.splice(draggedImageIndex, 1);
+    newImages.splice(index, 0, draggedImage);
+
+    setBasicInfo({ ...basicInfo, images: newImages });
+    setDraggedImageIndex(index);
+  };
+
+  const handleImageDragEnd = () => {
+    setDraggedImageIndex(null);
+  };
+
+  // 날짜 검증
+  const validateDates = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (fundingInfo.startDate) {
+      const startDate = new Date(fundingInfo.startDate);
+      if (startDate < today) {
+        showAlert("펀딩 시작일은 오늘 이후여야 합니다.");
+        return false;
+      }
+    }
+
+    if (fundingInfo.startDate && fundingInfo.expectedDeliveryDate) {
+      const startDate = new Date(fundingInfo.startDate);
+      const deliveryDate = new Date(fundingInfo.expectedDeliveryDate);
+      const minDeliveryDate = new Date(startDate);
+      minDeliveryDate.setDate(minDeliveryDate.getDate() + fundingInfo.duration + 30); // 펀딩 기간 + 최소 30일
+
+      if (deliveryDate < minDeliveryDate) {
+        showAlert("배송 예정일은 펀딩 종료 후 최소 30일 이후여야 합니다.");
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   // 임시 저장
   const handleSave = () => {
+    // 기존 저장된 데이터 확인
+    const existingSave = localStorage.getItem("judam_project_temp_save");
+
+    if (existingSave) {
+      // 저장된 데이터가 있으면 모달 표시
+      const saveData = JSON.parse(existingSave);
+      setTempSaveTimestamp(saveData.timestamp);
+      setShowTempSaveModal(true);
+    } else {
+      // 저장된 데이터가 없으면 자동 저장
+      saveToLocalStorage();
+    }
+  };
+
+  const saveToLocalStorage = () => {
     setIsSaving(true);
+    const saveData = {
+      timestamp: new Date().toISOString(),
+      basicInfo,
+      fundingInfo,
+      productInfo,
+      projectPlan,
+      creatorInfo,
+      taxInfo,
+      tasteProfile,
+      trustInfo,
+      uploadedFiles,
+      phoneVerified,
+      accountVerified,
+    };
+
+    localStorage.setItem("judam_project_temp_save", JSON.stringify(saveData));
+
     setTimeout(() => {
       setIsSaving(false);
-      // Toast 메시지 표시
-      const toast = document.createElement("div");
-      toast.className = "fixed top-20 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-3 rounded-full z-50 text-sm";
-      toast.textContent = "임시 저장되었습니다";
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 2000);
+      toast.success("임시 저장되었습니다");
     }, 1000);
+  };
+
+  const loadFromLocalStorage = () => {
+    const existingSave = localStorage.getItem("judam_project_temp_save");
+    if (existingSave) {
+      const saveData = JSON.parse(existingSave);
+      setBasicInfo(saveData.basicInfo);
+      setFundingInfo(saveData.fundingInfo);
+      setProductInfo(saveData.productInfo);
+      setProjectPlan(saveData.projectPlan);
+      setCreatorInfo(saveData.creatorInfo);
+      setTaxInfo(saveData.taxInfo);
+      setTasteProfile(saveData.tasteProfile);
+      setTrustInfo(saveData.trustInfo);
+      setUploadedFiles(saveData.uploadedFiles);
+      setPhoneVerified(saveData.phoneVerified);
+      setAccountVerified(saveData.accountVerified);
+      setShowTempSaveModal(false);
+      toast.success("불러오기 완료");
+    }
+  };
+
+  const deleteTempSave = () => {
+    localStorage.removeItem("judam_project_temp_save");
+    setShowTempSaveModal(false);
+    toast.success("임시 저장 삭제됨");
   };
 
   // 제출 확인 모달 열기
   const handleSubmit = () => {
-    const progress = calculateProgress();
-    if (progress < 100) {
-      alert("필수 항목을 모두 입력해주세요.");
+    // 날짜 검증
+    if (!validateDates()) {
       return;
     }
+
+    const progress = calculateProgress();
+    if (progress < 100) {
+      // 필수 항목 체크 및 시각적 피드백
+      const errors: Record<string, boolean> = {};
+
+      // 기본정보 체크
+      if (!basicInfo.category) errors.category = true;
+      if (!basicInfo.title) errors.title = true;
+      if (!basicInfo.mainIngredient) errors.mainIngredient = true;
+      if (!basicInfo.alcoholContent) errors.alcoholContent = true;
+      if (!basicInfo.summary) errors.summary = true;
+      if (basicInfo.images.length === 0) errors.images = true;
+
+      // 펀딩 정보 체크
+      if (!fundingInfo.pricePerBottle) errors.pricePerBottle = true;
+      if (!fundingInfo.bottleQuantity) errors.bottleQuantity = true;
+      if (!fundingInfo.startDate) errors.startDate = true;
+      if (!fundingInfo.expectedDeliveryDate) errors.expectedDeliveryDate = true;
+
+      // 제품 정보 체크
+      if (!productInfo.volume) errors.volume = true;
+      if (!productInfo.alcoholContent) errors.productAlcoholContent = true;
+
+      setValidationErrors(errors);
+
+      // 첫 번째 미입력 필드로 스크롤
+      if (!basicInfo.category || !basicInfo.title) {
+        setActiveTab("basic");
+      } else if (!fundingInfo.pricePerBottle || !fundingInfo.startDate) {
+        setActiveTab("funding");
+      } else if (!productInfo.volume) {
+        setActiveTab("rewards");
+      } else if (!creatorInfo.name) {
+        setActiveTab("creator");
+      } else if (!uploadedFiles.salesPermit) {
+        setActiveTab("verification");
+      }
+
+      showAlert("필수 항목을 모두 입력해주세요.");
+      return;
+    }
+
+    setValidationErrors({});
     setShowSubmitConfirm(true);
   };
 
@@ -392,46 +588,33 @@ export function CreateProjectDetailPage() {
   // 휴대폰 인증번호 발송
   const handleSendPhoneVerification = () => {
     if (!creatorInfo.phone || creatorInfo.phone.length < 10) {
-      alert("휴대폰 번호를 정확히 입력해주세요.");
+      showAlert("휴대폰 번호를 정확히 입력해주세요.");
       return;
     }
     setPhoneVerificationSent(true);
-    // Toast 메시지
-    const toast = document.createElement("div");
-    toast.className = "fixed top-20 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-3 rounded-full z-50 text-sm";
-    toast.textContent = "인증 번호가 발송되었습니다.";
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
+    setPhoneTimer(180); // 3분 타이머
+    toast.success("인증 번호가 발송되었습니다.");
   };
 
   // 휴대폰 인증 확인
   const handleVerifyPhone = () => {
     if (phoneVerificationCode.length === 6) {
       setPhoneVerified(true);
-      // Toast 메시지
-      const toast = document.createElement("div");
-      toast.className = "fixed top-20 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-3 rounded-full z-50 text-sm";
-      toast.textContent = "인증완료!";
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 2000);
+      setPhoneTimer(0);
+      toast.success("인증완료!");
     } else {
-      alert("인증번호 6자리를 입력해주세요.");
+      showAlert("인증번호 6자리를 입력해주세요.");
     }
   };
 
   // 계좌 인증
   const handleVerifyAccount = () => {
     if (!creatorInfo.accountBank || !creatorInfo.accountNumber) {
-      alert("은행과 계좌번호를 입력해주세요.");
+      showAlert("은행과 계좌번호를 입력해주세요.");
       return;
     }
     setAccountVerified(true);
-    // Toast 메시지
-    const toast = document.createElement("div");
-    toast.className = "fixed top-20 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-3 rounded-full z-50 text-sm";
-    toast.textContent = "인증완료!";
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 2000);
+    toast.success("인증완료!");
   };
 
   // 파일 업로드 핸들러
@@ -450,20 +633,15 @@ export function CreateProjectDetailPage() {
       if (fileType === "profileImage") {
         const reader = new FileReader();
         reader.onloadend = () => {
-          setCreatorInfo({ 
-            ...creatorInfo, 
-            profileImage: reader.result as string 
+          setCreatorInfo({
+            ...creatorInfo,
+            profileImage: reader.result as string
           });
         };
         reader.readAsDataURL(file);
       }
 
-      // Toast 메시지
-      const toast = document.createElement("div");
-      toast.className = "fixed top-20 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-3 rounded-full z-50 text-sm";
-      toast.textContent = `${file.name} 파일이 선택되었습니다.`;
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 2000);
+      toast.success(`${file.name} 파일이 선택되었습니다.`);
     }
   };
 
@@ -604,8 +782,13 @@ export function CreateProjectDetailPage() {
                         setBasicInfo({ ...basicInfo, category: e.target.value })
                       }
                       placeholder="예: 과일 복숭아"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium placeholder:text-gray-400"
+                      className={`w-full px-4 py-3 border rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium placeholder:text-gray-400 ${
+                        validationErrors.category ? 'border-red-500' : 'border-gray-300'
+                      }`}
                     />
+                    {validationErrors.category && (
+                      <p className="text-xs text-red-600">카테고리를 입력해주세요.</p>
+                    )}
                   </div>
 
                   {/* 프로젝트 제목 */}
@@ -620,12 +803,18 @@ export function CreateProjectDetailPage() {
                         setBasicInfo({ ...basicInfo, title: e.target.value })
                       }
                       placeholder="봄을 담은 벚꽃 막걸리 프로젝트"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium placeholder:text-gray-400"
+                      className={`w-full px-4 py-3 border rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium placeholder:text-gray-400 ${
+                        validationErrors.title ? 'border-red-500' : 'border-gray-300'
+                      }`}
                       maxLength={50}
                     />
-                    <p className="text-xs text-gray-500">
-                      {basicInfo.title.length}/50자
-                    </p>
+                    {validationErrors.title ? (
+                      <p className="text-xs text-red-600">프로젝트 제목을 입력해주세요.</p>
+                    ) : (
+                      <p className="text-xs text-gray-500">
+                        {basicInfo.title.length}/50자
+                      </p>
+                    )}
                   </div>
 
                   {/* 짧은 제목 */}
@@ -666,8 +855,13 @@ export function CreateProjectDetailPage() {
                         })
                       }
                       placeholder="예: 국내산 쌀"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium placeholder:text-gray-400"
+                      className={`w-full px-4 py-3 border rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium placeholder:text-gray-400 ${
+                        validationErrors.mainIngredient ? 'border-red-500' : 'border-gray-300'
+                      }`}
                     />
+                    {validationErrors.mainIngredient && (
+                      <p className="text-xs text-red-600">메인 재료를 입력해주세요.</p>
+                    )}
                   </div>
 
                   {/* 서브 재료 */}
@@ -708,10 +902,15 @@ export function CreateProjectDetailPage() {
                         step="0.1"
                         min="0"
                         max="100"
-                        className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium placeholder:text-gray-400"
+                        className={`flex-1 px-4 py-3 border rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium placeholder:text-gray-400 ${
+                          validationErrors.alcoholContent ? 'border-red-500' : 'border-gray-300'
+                        }`}
                       />
                       <span className="text-sm text-gray-600 font-medium">%</span>
                     </div>
+                    {validationErrors.alcoholContent && (
+                      <p className="text-xs text-red-600">도수를 입력해주세요.</p>
+                    )}
                   </div>
 
                   {/* 프로젝트 요약 */}
@@ -725,13 +924,19 @@ export function CreateProjectDetailPage() {
                         setBasicInfo({ ...basicInfo, summary: e.target.value })
                       }
                       placeholder="프로젝트를 한 문장으로 소개해주세요."
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:border-gray-900 focus:outline-none transition-colors resize-none text-sm text-gray-900 font-medium placeholder:text-gray-400"
+                      className={`w-full px-4 py-3 border rounded-xl focus:border-gray-900 focus:outline-none transition-colors resize-none text-sm text-gray-900 font-medium placeholder:text-gray-400 ${
+                        validationErrors.summary ? 'border-red-500' : 'border-gray-300'
+                      }`}
                       rows={3}
                       maxLength={150}
                     />
-                    <p className="text-xs text-gray-500">
-                      {basicInfo.summary.length}/150자
-                    </p>
+                    {validationErrors.summary ? (
+                      <p className="text-xs text-red-600">프로젝트 요약을 입력해주세요.</p>
+                    ) : (
+                      <p className="text-xs text-gray-500">
+                        {basicInfo.summary.length}/150자
+                      </p>
+                    )}
                   </div>
 
                   {/* 대표 이미지 업로드 */}
@@ -740,56 +945,59 @@ export function CreateProjectDetailPage() {
                       <label className="block text-sm font-bold text-gray-900">
                         프로젝트 대표 이미지 <span className="text-red-500">*</span>
                       </label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // AI 이미지 생성 (임시로 Unsplash 이미지 추가)
-                          const aiImage = "https://images.unsplash.com/photo-1621658537360-dfcb008fe19f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
-                          if (basicInfo.images.length < 5) {
-                            setBasicInfo({
-                              ...basicInfo,
-                              images: [...basicInfo.images, aiImage],
-                            });
-                          }
-                        }}
-                        className="px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-colors"
-                      >
-                        AI 사진 생성
-                      </button>
+                      <span className="text-xs text-gray-500">
+                        {basicInfo.images.length}/5
+                      </span>
                     </div>
+                    {validationErrors.images && (
+                      <p className="text-xs text-red-600">이미지를 1개 이상 등록해주세요.</p>
+                    )}
                     <p className="text-xs text-gray-600 mb-3">
-                      1개 이상의 이미지를 등록하면 슬라이더 형태로 제공됩니다.
+                      드래그하여 순서를 변경할 수 있습니다. 첫 번째 이미지가 대표 이미지로 표시됩니다.
                     </p>
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleImageFileUpload}
+                      className="hidden"
+                    />
                     <div className="flex gap-3 overflow-x-auto">
-                      <button 
-                        type="button"
-                        onClick={() => {
-                          // 파일 선택 시뮬레이션 (실제로는 input file을 클릭)
-                          const dummyImage = "https://images.unsplash.com/photo-1621658537360-dfcb008fe19f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
-                          if (basicInfo.images.length < 5) {
-                            setBasicInfo({
-                              ...basicInfo,
-                              images: [...basicInfo.images, dummyImage],
-                            });
-                          }
-                        }}
-                        className="flex-shrink-0 w-32 h-32 border-2 border-dashed border-gray-300 rounded-xl hover:border-gray-400 hover:bg-gray-50 transition-colors flex flex-col items-center justify-center gap-1.5"
-                      >
-                        <ImageIcon className="w-6 h-6 text-gray-400" />
-                        <span className="text-xs text-gray-500">
-                          이미지 추가
-                        </span>
-                      </button>
+                      {basicInfo.images.length < 5 && (
+                        <button
+                          type="button"
+                          onClick={() => imageInputRef.current?.click()}
+                          className="flex-shrink-0 w-32 h-32 border-2 border-dashed border-gray-300 rounded-xl hover:border-gray-400 hover:bg-gray-50 transition-colors flex flex-col items-center justify-center gap-1.5"
+                        >
+                          <Upload className="w-6 h-6 text-gray-400" />
+                          <span className="text-xs text-gray-500">
+                            이미지 추가
+                          </span>
+                        </button>
+                      )}
                       {basicInfo.images.map((img, idx) => (
                         <div
                           key={idx}
-                          className="relative flex-shrink-0 w-32 h-32 bg-gray-100 rounded-xl overflow-hidden group"
+                          draggable
+                          onDragStart={() => handleImageDragStart(idx)}
+                          onDragOver={(e) => handleImageDragOver(e, idx)}
+                          onDragEnd={handleImageDragEnd}
+                          className={`relative flex-shrink-0 w-32 h-32 bg-gray-100 rounded-xl overflow-hidden group cursor-move ${
+                            draggedImageIndex === idx ? 'opacity-50' : ''
+                          }`}
                         >
                           <img
                             src={img}
                             alt={`이미지 ${idx + 1}`}
                             className="w-full h-full object-cover"
                           />
+                          <div className="absolute top-1 left-1 px-2 py-0.5 bg-black/70 rounded text-xs text-white">
+                            {idx + 1}
+                          </div>
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <GripVertical className="w-6 h-6 text-white drop-shadow-lg" />
+                          </div>
                           <button
                             type="button"
                             onClick={() =>
@@ -878,10 +1086,15 @@ export function CreateProjectDetailPage() {
                             });
                           }}
                           placeholder="30000"
-                          className="w-full px-2 py-2.5 border border-gray-300 rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-xs text-gray-900 font-medium placeholder:text-gray-400"
+                          className={`w-full px-2 py-2.5 border rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-xs text-gray-900 font-medium placeholder:text-gray-400 ${
+                            validationErrors.pricePerBottle ? 'border-red-500' : 'border-gray-300'
+                          }`}
                         />
                         <span className="text-xs text-gray-600 font-medium whitespace-nowrap">원</span>
                       </div>
+                      {validationErrors.pricePerBottle && (
+                        <p className="text-xs text-red-600">병당 가격을 입력해주세요.</p>
+                      )}
                     </div>
 
                     {/* 몇 병 */}
@@ -905,24 +1118,34 @@ export function CreateProjectDetailPage() {
                             });
                           }}
                           placeholder="500"
-                          className="w-full px-2 py-2.5 border border-gray-300 rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-xs text-gray-900 font-medium placeholder:text-gray-400"
+                          className={`w-full px-2 py-2.5 border rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-xs text-gray-900 font-medium placeholder:text-gray-400 ${
+                            validationErrors.bottleQuantity ? 'border-red-500' : 'border-gray-300'
+                          }`}
                         />
                         <span className="text-xs text-gray-600 font-medium whitespace-nowrap">병</span>
                       </div>
+                      {validationErrors.bottleQuantity && (
+                        <p className="text-xs text-red-600">판매 수량을 입력해주세요.</p>
+                      )}
                     </div>
                   </div>
 
                   {/* 목표 금액 (자동 계산) */}
                   <div className="space-y-2">
-                    <label className="block text-sm font-bold text-gray-900">
-                      목표 금액 <span className="text-red-500">*</span>
-                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="block text-sm font-bold text-gray-900">
+                        목표 금액 <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                        자동 계산됨
+                      </span>
+                    </div>
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
                         value={fundingInfo.goalAmount ? Number(fundingInfo.goalAmount).toLocaleString() : ""}
                         readOnly
-                        placeholder="자동 계산됩니다"
+                        placeholder="병당 가격 × 수량"
                         className="flex-1 px-4 py-3 border border-gray-300 rounded-xl bg-gray-50 text-sm text-gray-900 font-medium placeholder:text-gray-400"
                       />
                       <span className="text-sm text-gray-600 font-medium">원</span>
@@ -948,8 +1171,13 @@ export function CreateProjectDetailPage() {
                           startDate: e.target.value,
                         })
                       }
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium"
+                      className={`w-full px-4 py-3 border rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium ${
+                        validationErrors.startDate ? 'border-red-500' : 'border-gray-300'
+                      }`}
                     />
+                    {validationErrors.startDate && (
+                      <p className="text-xs text-red-600">펀딩 시작일을 입력해주세요.</p>
+                    )}
                   </div>
 
                   {/* 펀딩 기간 */}
@@ -1015,10 +1243,15 @@ export function CreateProjectDetailPage() {
                           expectedDeliveryDate: e.target.value,
                         })
                       }
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium"
+                      className={`w-full px-4 py-3 border rounded-xl focus:border-gray-900 focus:outline-none transition-colors text-sm text-gray-900 font-medium ${
+                        validationErrors.expectedDeliveryDate ? 'border-red-500' : 'border-gray-300'
+                      }`}
                     />
+                    {validationErrors.expectedDeliveryDate && (
+                      <p className="text-xs text-red-600">배송 예정일을 입력해주세요.</p>
+                    )}
                     <p className="text-xs text-gray-600">
-                      펀딩 종료 후 제작 및 배송에 소요되는 기간을 고려해주세요.
+                      펀딩 종료 후 제작 및 배송에 소요되는 기간을 고려해주세요 (최소 30일).
                     </p>
                   </div>
 
@@ -1534,9 +1767,17 @@ export function CreateProjectDetailPage() {
                     {/* 인증번호 입력 (발송 후 표시) */}
                     {phoneVerificationSent && !phoneVerified && (
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                          인증번호
-                        </label>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="block text-xs font-medium text-gray-700">
+                            인증번호
+                          </label>
+                          {phoneTimer > 0 && (
+                            <span className="text-xs font-semibold text-red-600 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {Math.floor(phoneTimer / 60)}:{String(phoneTimer % 60).padStart(2, '0')}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex gap-2">
                           <input
                             type="text"
@@ -1553,6 +1794,9 @@ export function CreateProjectDetailPage() {
                             인증하기
                           </button>
                         </div>
+                        {phoneTimer === 0 && (
+                          <p className="text-xs text-red-600 mt-1">인증 시간이 만료되었습니다. 다시 요청해주세요.</p>
+                        )}
                       </div>
                     )}
 
@@ -2209,6 +2453,112 @@ export function CreateProjectDetailPage() {
                 </p>
                 <button
                   onClick={handleSubmitSuccessClose}
+                  className="w-full h-12 bg-black hover:bg-gray-800 text-white font-bold rounded-xl transition-all"
+                >
+                  확인
+                </button>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* 임시저장 모달 */}
+      <AnimatePresence>
+        {showTempSaveModal && (
+          <>
+            {/* 오버레이 - 모바일 크기만 어둡게 */}
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="w-full max-w-[430px] h-full bg-black/50"
+                onClick={() => setShowTempSaveModal(false)}
+              />
+            </div>
+
+            {/* 모달 */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-sm bg-white rounded-2xl p-6 z-50 shadow-xl"
+            >
+              <div className="text-center">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <FileCheck className="w-8 h-8 text-blue-600" />
+                </div>
+                <h3 className="text-xl font-bold text-black mb-2">
+                  임시 저장된 작성 내용
+                </h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  {tempSaveTimestamp && new Date(tempSaveTimestamp).toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}에 저장됨
+                </p>
+                <div className="space-y-3">
+                  <button
+                    onClick={loadFromLocalStorage}
+                    className="w-full h-12 bg-black hover:bg-gray-800 text-white font-bold rounded-xl transition-all"
+                  >
+                    불러오기
+                  </button>
+                  <button
+                    onClick={deleteTempSave}
+                    className="w-full h-12 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded-xl transition-all"
+                  >
+                    삭제
+                  </button>
+                  <button
+                    onClick={() => setShowTempSaveModal(false)}
+                    className="w-full h-12 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl transition-all"
+                  >
+                    취소
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Alert 모달 */}
+      <AnimatePresence>
+        {showAlertModal && (
+          <>
+            <div className="fixed inset-0 z-50 flex items-center justify-center">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="w-full max-w-[430px] h-full bg-black/50"
+                onClick={() => setShowAlertModal(false)}
+              />
+            </div>
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-sm bg-white rounded-2xl p-8 z-50 shadow-xl"
+            >
+              <div className="text-center">
+                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle className="w-8 h-8 text-red-600" />
+                </div>
+                <h3 className="text-xl font-bold text-black mb-3">
+                  알림
+                </h3>
+                <p className="text-sm text-gray-600 mb-6 whitespace-pre-wrap">
+                  {alertMessage}
+                </p>
+                <button
+                  onClick={() => setShowAlertModal(false)}
                   className="w-full h-12 bg-black hover:bg-gray-800 text-white font-bold rounded-xl transition-all"
                 >
                   확인

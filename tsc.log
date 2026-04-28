@@ -1,0 +1,230 @@
+app/funding/[id].tsx(233,28): error TS2339: Property 'emptyQna' does not exist on type '{ container: { flex: number; backgroundColor: string; }; header: { height: number; backgroundColor: string; flexDirection: "row"; alignItems: "center"; justifyContent: "space-between"; paddingHorizontal: number; borderBottomWidth: number; borderBottomColor: string; zIndex: number; }; ... 77 more ...; modalBtn: { ......'.
+components/ui/button.tsx(38,48): error TS2339: Property 'secondary' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; } | { text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+  Property 'secondary' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+components/ui/button.tsx(46,33): error TS2339: Property 'border' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; } | { text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+  Property 'border' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+components/ui/button.tsx(57,48): error TS2339: Property 'primary' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; } | { text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+  Property 'primary' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+components/ui/input.tsx(37,61): error TS2339: Property 'mutedText' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; } | { text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+  Property 'mutedText' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+components/ui/input.tsx(41,37): error TS2339: Property 'muted' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; } | { text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+  Property 'muted' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+components/ui/input.tsx(41,72): error TS2339: Property 'error' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; } | { text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+  Property 'error' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+components/ui/input.tsx(41,87): error TS2339: Property 'border' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; } | { text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+  Property 'border' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+components/ui/input.tsx(45,10): error TS2769: No overload matches this call.
+  Overload 2 of 2, '(props: TextInputProps, context: any): TextInput', gave the following error.
+    Type 'false | "" | 0 | 0n | { paddingLeft: number; } | null | undefined' is not assignable to type 'Falsy | TextStyle | RegisteredStyle<TextStyle> | RecursiveArray<Falsy | TextStyle | RegisteredStyle<TextStyle>> | readonly (Falsy | ... 1 more ... | RegisteredStyle<...>)[]'.
+      Type '0' is not assignable to type 'Falsy | TextStyle | RegisteredStyle<TextStyle> | RecursiveArray<Falsy | TextStyle | RegisteredStyle<TextStyle>> | readonly (Falsy | ... 1 more ... | RegisteredStyle<...>)[]'.
+  Overload 2 of 2, '(props: TextInputProps, context: any): TextInput', gave the following error.
+    Type 'false | "" | 0 | 0n | { paddingRight: number; } | null | undefined' is not assignable to type 'Falsy | TextStyle | RegisteredStyle<TextStyle> | RecursiveArray<Falsy | TextStyle | RegisteredStyle<TextStyle>> | readonly (Falsy | ... 1 more ... | RegisteredStyle<...>)[]'.
+      Type '0' is not assignable to type 'Falsy | TextStyle | RegisteredStyle<TextStyle> | RecursiveArray<Falsy | TextStyle | RegisteredStyle<TextStyle>> | readonly (Falsy | ... 1 more ... | RegisteredStyle<...>)[]'.
+components/ui/input.tsx(46,40): error TS2339: Property 'mutedText' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; } | { text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+  Property 'mutedText' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+components/ui/input.tsx(58,61): error TS2339: Property 'error' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; } | { text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+  Property 'error' does not exist on type '{ text: string; background: string; tint: string; icon: string; tabIconDefault: string; tabIconSelected: string; }'.
+finish/src/app/App.tsx(1,32): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/App.tsx(7,25): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/components/MobileHomeIndicator.tsx(1,21): error TS2307: Cannot find module 'figma:asset/5923f7b494ad282b1ed43b17230bf4627841b458.png' or its corresponding type declarations.
+finish/src/app/components/MobileStatusBar.tsx(1,39): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/components/MobileStatusBar.tsx(3,21): error TS2307: Cannot find module 'figma:asset/5923f7b494ad282b1ed43b17230bf4627841b458.png' or its corresponding type declarations.
+finish/src/app/components/PageHeader.tsx(1,22): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/components/PageHeader.tsx(2,54): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/components/RecipeCard.tsx(1,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/components/RecipeCard.tsx(2,48): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/components/RecipeCard.tsx(3,22): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/components/RootLayout.tsx(1,43): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/components/RootLayout.tsx(2,85): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/components/RootLayout.tsx(7,23): error TS2307: Cannot find module 'figma:asset/d754389bb9f5ce60b4245b6766636b08663a6081.png' or its corresponding type declarations.
+finish/src/app/components/RootLayout.tsx(8,27): error TS2307: Cannot find module 'figma:asset/5923f7b494ad282b1ed43b17230bf4627841b458.png' or its corresponding type declarations.
+finish/src/app/components/ScrollToTop.tsx(2,48): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/components/StatusBar.tsx(2,28): error TS2307: Cannot find module 'figma:asset/4dcc3552c565ba4d7f8f3034cbcc0a537c1c9b6d.png' or its corresponding type declarations.
+finish/src/app/components/ui/avatar.tsx(4,34): error TS2307: Cannot find module '@radix-ui/react-avatar' or its corresponding type declarations.
+finish/src/app/components/ui/badge.tsx(3,40): error TS2307: Cannot find module 'class-variance-authority' or its corresponding type declarations.
+finish/src/app/components/ui/button.tsx(3,40): error TS2307: Cannot find module 'class-variance-authority' or its corresponding type declarations.
+finish/src/app/components/ui/label.tsx(4,33): error TS2307: Cannot find module '@radix-ui/react-label' or its corresponding type declarations.
+finish/src/app/components/ui/progress.tsx(4,36): error TS2307: Cannot find module '@radix-ui/react-progress' or its corresponding type declarations.
+finish/src/app/components/ui/progress.tsx(13,3): error TS2339: Property 'className' does not exist on type 'ProgressProps'.
+finish/src/app/components/ui/progress.tsx(14,3): error TS2339: Property 'value' does not exist on type 'ProgressProps'.
+finish/src/app/components/ui/tabs.tsx(4,32): error TS2307: Cannot find module '@radix-ui/react-tabs' or its corresponding type declarations.
+finish/src/app/components/ui/utils.ts(1,39): error TS2307: Cannot find module 'clsx' or its corresponding type declarations.
+finish/src/app/components/ui/utils.ts(2,25): error TS2307: Cannot find module 'tailwind-merge' or its corresponding type declarations.
+finish/src/app/pages/AddArchivePage.tsx(2,40): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/AddArchivePage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/AddArchivePage.tsx(17,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/AddArchivePage.tsx(22,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/AddArchivePage.tsx(667,27): error TS2322: Type '{ value: number; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & ProgressProps'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & ProgressProps'.
+finish/src/app/pages/AIChatPage.tsx(2,92): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/AIChatPage.tsx(3,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/AIChatPage.tsx(4,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/AIChatRoomPage.tsx(2,35): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/AIChatRoomPage.tsx(3,40): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/AIChatRoomPage.tsx(57,20): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<ChatCategory, string>'.
+finish/src/app/pages/AIChatRoomPage.tsx(171,25): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'Record<ChatCategory, string>'.
+finish/src/app/pages/AnnouncementPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/AnnouncementPage.tsx(3,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/AnnouncementPage.tsx(4,57): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/ArchiveDetailPage.tsx(2,46): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/ArchiveDetailPage.tsx(3,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/ArchiveDetailPage.tsx(18,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/ArchiveDetailPage.tsx(19,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/ArchivePage.tsx(2,46): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/ArchivePage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/ArchivePage.tsx(13,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/ArchivePage.tsx(339,29): error TS2322: Type '{ value: number; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & ProgressProps'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & ProgressProps'.
+finish/src/app/pages/BreweryDashboardPage.tsx(1,35): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/BreweryDashboardPage.tsx(2,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/BreweryDashboardPage.tsx(21,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/BreweryDashboardPage.tsx(27,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/BreweryDashboardPage.tsx(522,29): error TS2322: Type '{ value: number; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & ProgressProps'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & ProgressProps'.
+finish/src/app/pages/BreweryPage.tsx(1,46): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/BreweryPage.tsx(2,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/BreweryPage.tsx(15,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/BreweryProjectTermsPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/BreweryProjectTermsPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/BreweryProjectTermsPage.tsx(4,32): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/BreweryProjectTermsPage.tsx(260,25): error TS7006: Parameter 'e' implicitly has an 'any' type.
+finish/src/app/pages/BreweryVerificationPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/BreweryVerificationPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/BreweryVerificationPage.tsx(4,86): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/BreweryVerificationPage.tsx(9,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/BreweryVerificationPage.tsx(10,28): error TS2307: Cannot find module 'figma:asset/d754389bb9f5ce60b4245b6766636b08663a6081.png' or its corresponding type declarations.
+finish/src/app/pages/BreweryVerificationPage.tsx(11,21): error TS2307: Cannot find module 'figma:asset/5923f7b494ad282b1ed43b17230bf4627841b458.png' or its corresponding type declarations.
+finish/src/app/pages/BTIResultPage.tsx(1,46): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/BTIResultPage.tsx(3,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/BTIResultPage.tsx(4,75): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/BTIResultPage.tsx(13,8): error TS2307: Cannot find module 'recharts' or its corresponding type declarations.
+finish/src/app/pages/BTIResultPage.tsx(14,23): error TS2307: Cannot find module 'figma:asset/077be0a11981ede2d2797e331499ae1f33b4d6da.png' or its corresponding type declarations.
+finish/src/app/pages/BTITestPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/BTITestPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/BTITestPage.tsx(4,39): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/BTITestPage.tsx(6,23): error TS2307: Cannot find module 'figma:asset/077be0a11981ede2d2797e331499ae1f33b4d6da.png' or its corresponding type declarations.
+finish/src/app/pages/CommunityPage.tsx(2,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/CommunityPage.tsx(3,102): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/CommunityPage.tsx(6,35): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/CreatePostPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/CreatePostPage.tsx(3,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/CreatePostPage.tsx(4,50): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/CreateProjectDetailPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/CreateProjectDetailPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/CreateProjectDetailPage.tsx(23,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/CreateProjectDetailPage.tsx(2303,21): error TS2322: Type '{ value: number; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & ProgressProps'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & ProgressProps'.
+finish/src/app/pages/CreateProjectDetailPage.tsx(2716,25): error TS7006: Parameter 'e' implicitly has an 'any' type.
+finish/src/app/pages/FAQPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/FAQPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/FAQPage.tsx(16,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/FundedProjectsPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/FundedProjectsPage.tsx(3,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/FundedProjectsPage.tsx(4,60): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/FundedProjectsPage.tsx(178,25): error TS2322: Type '{ value: number; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & ProgressProps'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & ProgressProps'.
+finish/src/app/pages/FundingDetailPage.tsx(2,63): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/FundingDetailPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/FundingDetailPage.tsx(17,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/FundingDetailPage.tsx(494,13): error TS2322: Type '{ value: number; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & ProgressProps'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & ProgressProps'.
+finish/src/app/pages/FundingDetailPage.tsx(1518,27): error TS2322: Type '{ value: number; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & ProgressProps'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & ProgressProps'.
+finish/src/app/pages/FundingListPage.tsx(2,35): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/FundingListPage.tsx(3,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/FundingListPage.tsx(4,69): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/FundingListPage.tsx(357,27): error TS2322: Type '{ value: number; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & ProgressProps'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & ProgressProps'.
+finish/src/app/pages/FundingOrderDetailPage.tsx(1,46): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/FundingOrderDetailPage.tsx(2,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/FundingOrderDetailPage.tsx(17,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/FundingOrderDetailPage.tsx(18,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/FundingReviewWritePage.tsx(2,40): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/FundingReviewWritePage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/FundingReviewWritePage.tsx(13,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/FundingReviewWritePage.tsx(17,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/FundingSupportPage.tsx(2,40): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/FundingSupportPage.tsx(3,56): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/HomePage.tsx(1,22): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/HomePage.tsx(2,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/HomePage.tsx(3,132): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/HomePage.tsx(7,23): error TS2307: Cannot find module 'figma:asset/d754389bb9f5ce60b4245b6766636b08663a6081.png' or its corresponding type declarations.
+finish/src/app/pages/HomePage.tsx(8,24): error TS2307: Cannot find module 'figma:asset/46448a89e475a2c961c67320b11b630caa3b2423.png' or its corresponding type declarations.
+finish/src/app/pages/HomePage.tsx(406,31): error TS2322: Type '{ value: number; className: string; indicatorClassName: string; }' is not assignable to type 'IntrinsicAttributes & ProgressProps'.
+  Property 'value' does not exist on type 'IntrinsicAttributes & ProgressProps'.
+finish/src/app/pages/LoginPage.tsx(2,35): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/LoginPage.tsx(3,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/LoginPage.tsx(4,69): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/LoginPage.tsx(7,28): error TS2307: Cannot find module 'figma:asset/d754389bb9f5ce60b4245b6766636b08663a6081.png' or its corresponding type declarations.
+finish/src/app/pages/MyPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/MyPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/MyPage.tsx(30,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/MyPage.tsx(33,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/MyPostsPage.tsx(1,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/MyPostsPage.tsx(2,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/MyPostsPage.tsx(3,60): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/NotFoundPage.tsx(1,22): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/NotFoundPage.tsx(2,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/NotFoundPage.tsx(3,28): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/NotificationPage.tsx(2,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/NotificationPage.tsx(3,98): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/NotificationPage.tsx(4,35): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/NotificationPage.tsx(223,44): error TS2503: Cannot find namespace 'JSX'.
+finish/src/app/pages/OnboardingPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/OnboardingPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/OnboardingPage.tsx(10,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/OnboardingPage.tsx(11,28): error TS2307: Cannot find module 'figma:asset/d754389bb9f5ce60b4245b6766636b08663a6081.png' or its corresponding type declarations.
+finish/src/app/pages/PasswordResetPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/PasswordResetPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/PasswordResetPage.tsx(4,54): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/PasswordResetPage.tsx(8,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/PasswordResetPage.tsx(9,28): error TS2307: Cannot find module 'figma:asset/d754389bb9f5ce60b4245b6766636b08663a6081.png' or its corresponding type declarations.
+finish/src/app/pages/PasswordResetPage.tsx(10,21): error TS2307: Cannot find module 'figma:asset/5923f7b494ad282b1ed43b17230bf4627841b458.png' or its corresponding type declarations.
+finish/src/app/pages/PostDetailPage.tsx(2,40): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/PostDetailPage.tsx(3,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/PostDetailPage.tsx(4,61): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/PostDetailPage.tsx(170,20): error TS2339: Property 'avatar' does not exist on type 'User'.
+finish/src/app/pages/RecipeCreationPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/RecipeCreationPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/RecipeCreationPage.tsx(4,81): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/RecipeCreationPage.tsx(9,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/RecipeDetailPage.tsx(2,40): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/RecipeDetailPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/RecipeDetailPage.tsx(4,71): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/RecipeDetailPage.tsx(130,21): error TS2339: Property 'profileImage' does not exist on type 'User'.
+finish/src/app/pages/RecipePage.tsx(2,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/RecipePage.tsx(3,72): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/RecipePage.tsx(7,22): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/RecipePage.tsx(35,7): error TS18048: 'recipe.ingredients' is possibly 'undefined'.
+finish/src/app/pages/ReviewDetailPage.tsx(2,40): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/ReviewDetailPage.tsx(3,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/ReviewDetailPage.tsx(4,64): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/ReviewDetailPage.tsx(86,20): error TS2339: Property 'avatar' does not exist on type 'User'.
+finish/src/app/pages/ReviewDetailPage.tsx(142,18): error TS2367: This comparison appears to be unintentional because the types '"user"' and '"brewery"' have no overlap.
+finish/src/app/pages/SettingsPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/SettingsPage.tsx(3,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/SettingsPage.tsx(15,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/SettingsPage.tsx(17,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/SettingsPage.tsx(173,34): error TS2339: Property 'danger' does not exist on type '{ key: ActivePanel; icon: Element; label: string; value: string; } | { key: ActivePanel; icon: Element; label: string; value: string; danger: boolean; }'.
+  Property 'danger' does not exist on type '{ key: ActivePanel; icon: Element; label: string; value: string; }'.
+finish/src/app/pages/SignupPage.tsx(2,35): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/SignupPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/SignupPage.tsx(7,8): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/SignupPage.tsx(10,23): error TS2307: Cannot find module 'sonner' or its corresponding type declarations.
+finish/src/app/pages/SignupPage.tsx(11,28): error TS2307: Cannot find module 'figma:asset/d754389bb9f5ce60b4245b6766636b08663a6081.png' or its corresponding type declarations.
+finish/src/app/pages/SignupPage.tsx(145,9): error TS2353: Object literal may only specify known properties, and 'breweryData' does not exist in type 'SignupData'.
+finish/src/app/pages/TermsPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/TermsPage.tsx(3,41): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/TermsPage.tsx(4,61): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/UserTypeSelectionPage.tsx(2,29): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/app/pages/UserTypeSelectionPage.tsx(3,139): error TS2307: Cannot find module 'lucide-react' or its corresponding type declarations.
+finish/src/app/pages/UserTypeSelectionPage.tsx(5,24): error TS2307: Cannot find module 'motion/react' or its corresponding type declarations.
+finish/src/app/pages/UserTypeSelectionPage.tsx(7,28): error TS2307: Cannot find module 'figma:asset/d754389bb9f5ce60b4245b6766636b08663a6081.png' or its corresponding type declarations.
+finish/src/app/routes.tsx(1,55): error TS2307: Cannot find module 'react-router' or its corresponding type declarations.
+finish/src/main.tsx(2,30): error TS7016: Could not find a declaration file for module 'react-dom/client'. '/Users/young/Documents/GitHub/JUDAM-Frontend/node_modules/react-dom/client.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/react-dom` if it exists or add a new declaration (.d.ts) file containing `declare module 'react-dom/client';`
+finish/src/main.tsx(3,19): error TS5097: An import path can only end with a '.tsx' extension when 'allowImportingTsExtensions' is enabled.
+finish/vite.config.ts(1,30): error TS2307: Cannot find module 'vite' or its corresponding type declarations.
+finish/vite.config.ts(3,25): error TS2307: Cannot find module '@tailwindcss/vite' or its corresponding type declarations.
+finish/vite.config.ts(4,19): error TS2307: Cannot find module '@vitejs/plugin-react' or its corresponding type declarations.
+finish/vite.config.ts(10,15): error TS7006: Parameter 'id' implicitly has an 'any' type.

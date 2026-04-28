@@ -37,7 +37,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const BG_IMAGE = "https://images.unsplash.com/photo-1528615141309-53f2564d3be8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
+const BG_IMAGE = require('../../../../newpicutre/picure3.jpg');
 
 const SPRING_CONFIG = {
   damping: 25,
@@ -108,7 +108,7 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <StatusBar hidden={true} />
-      <Image source={{ uri: BG_IMAGE }} style={styles.bgImage} />
+      <Image source={BG_IMAGE} style={styles.bgImage} />
       <LinearGradient
         colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0.20)', 'rgba(0,0,0,0.80)']}
         locations={[0, 0.45, 1]}

@@ -28,7 +28,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const BG_IMAGE = "https://images.unsplash.com/photo-1599021419847-d8a7a6aba5b4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080";
+const BG_IMAGE = require('../../../../newpicutre/ok.jpg');
 
 export default function BreweryVerificationScreen() {
   const insets = useSafeAreaInsets();
@@ -113,7 +113,7 @@ export default function BreweryVerificationScreen() {
       {/* Background Image - Fixed position */}
       <View style={StyleSheet.absoluteFill}>
         <Image
-          source={{ uri: BG_IMAGE }}
+          source={BG_IMAGE}
           style={styles.backgroundImage}
           resizeMode="cover"
         />

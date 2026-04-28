@@ -1,53 +1,85 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
 import { Platform } from 'react-native';
-
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    text: '#111111',
+    background: '#ffffff',
+    primary: '#111111',
+    primaryForeground: '#ffffff',
+    secondary: '#f3f4f6',
+    secondaryForeground: '#111111',
+    muted: '#f3f4f6',
+    mutedForeground: '#6b7280',
+    accent: '#f3f4f6',
+    accentForeground: '#111111',
+    destructive: '#ef4444',
+    destructiveForeground: '#ffffff',
+    border: '#e5e7eb',
+    input: '#ffffff',
+    ring: '#111111',
+    tint: '#111111',
+    tabIconDefault: '#9BA1A6',
+    tabIconSelected: '#111111',
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
+    text: '#F5F1E8',
+    background: '#1A0F0A',
+    primary: '#8B5A3C',
+    primaryForeground: '#F5F1E8',
+    secondary: '#3D2415',
+    secondaryForeground: '#E8DCC8',
+    muted: '#4A2C1D',
+    mutedForeground: '#B8A488',
+    accent: '#A0522D',
+    accentForeground: '#F5F1E8',
+    destructive: '#A43820',
+    destructiveForeground: '#F5F1E8',
+    border: 'rgba(139, 90, 60, 0.2)',
+    input: '#3D2415',
+    ring: '#8B5A3C',
+    tint: '#8B5A3C',
     tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    tabIconSelected: '#8B5A3C',
   },
 };
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
-    serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
-    mono: 'ui-monospace',
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  xxl: 48,
+};
+
+export const BorderRadius = {
+  sm: 4,
+  md: 8,
+  lg: 12,
+  xl: 16,
+  xxl: 24,
+  full: 9999,
+};
+
+export const Typography = {
+  h1: {
+    fontSize: 24,
+    fontWeight: '700' as const,
   },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
+  h2: {
+    fontSize: 20,
+    fontWeight: '700' as const,
   },
-  web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+  h3: {
+    fontSize: 18,
+    fontWeight: '600' as const,
   },
-});
+  body: {
+    fontSize: 16,
+    fontWeight: '400' as const,
+  },
+  caption: {
+    fontSize: 12,
+    fontWeight: '400' as const,
+  },
+};

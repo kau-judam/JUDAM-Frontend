@@ -84,7 +84,7 @@ export function BreweryVerificationPage() {
       });
 
       toast.success(isEditMode ? "양조장 정보가 수정되었습니다!" : "양조장 인증이 완료되었습니다!");
-      navigate(isEditMode ? "/brewery/dashboard" : "/");
+      navigate("/home"); // 인증 완료 후 홈으로 이동
     } catch (error) {
       toast.error(isEditMode ? "정보 수정에 실패했습니다." : "인증에 실패했습니다. 다시 시도해주세요.");
     } finally {

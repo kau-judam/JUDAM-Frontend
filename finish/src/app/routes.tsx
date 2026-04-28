@@ -1,5 +1,6 @@
 import { createBrowserRouter, Outlet, Navigate } from "react-router";
 import { RootLayout } from "./components/RootLayout";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import { HomePage } from "./pages/HomePage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { BTITestPage } from "./pages/BTITestPage";
@@ -108,10 +109,34 @@ export const router = createBrowserRouter([
           { path: "funding/:id/support", Component: FundingSupportPage },
           { path: "funding/:id", Component: FundingDetailPage },
           { path: "mypage", Component: MyPage },
-          { path: "brewery/verify", Component: BreweryVerificationPage },
-          { path: "brewery/dashboard", Component: BreweryDashboardPage },
-          { path: "brewery/project/terms", Component: BreweryProjectTermsPage },
-          { path: "brewery/project/details", Component: CreateProjectDetailPage },
+          {
+            path: "brewery/verify",
+            Component: BreweryVerificationPage, // 로그인한 모든 사용자 접근 가능 (인증받으러 오는 페이지)
+          },
+          {
+            path: "brewery/dashboard",
+            element: (
+              <ProtectedRoute requiredType="brewery" requireVerified>
+                <BreweryDashboardPage />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "brewery/project/terms",
+            element: (
+              <ProtectedRoute requiredType="brewery" requireVerified>
+                <BreweryProjectTermsPage />
+              </ProtectedRoute>
+            ),
+          },
+          {
+            path: "brewery/project/details",
+            element: (
+              <ProtectedRoute requiredType="brewery" requireVerified>
+                <CreateProjectDetailPage />
+              </ProtectedRoute>
+            ),
+          },
           { path: "archive", Component: ArchivePage },
           { path: "archive/add", Component: AddArchivePage },
           { path: "archive/review/:fundingId", Component: FundingReviewWritePage },

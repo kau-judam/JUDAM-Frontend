@@ -21,9 +21,19 @@ export function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await login(email, password, "user");
+      // 실제 구현에서는 서버에서 사용자 타입을 조회해야 함
+      // Mock: 이메일에 "brewery"가 포함되면 양조장 계정으로 간주
+      const userType = email.includes("brewery") ? "brewery" : "user";
+
+      await login(email, password, userType);
       setIsLoading(false);
-      navigate("/home");
+
+      // 양조장 계정이면 대시보드로, 일반 사용자면 홈으로 이동
+      if (userType === "brewery") {
+        navigate("/brewery/dashboard");
+      } else {
+        navigate("/home");
+      }
     } catch {
       setIsLoading(false);
       alert("로그인에 실패했습니다.");

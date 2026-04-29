@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import {
   Heart,
   ChevronLeft,
   ChevronRight,
+  ShieldCheck,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp } from 'react-native-reanimated';
@@ -41,7 +42,13 @@ export default function FundingListScreen() {
   const itemsPerPage = 5;
 
   const statusOptions = ["전체 프로젝트", "진행중인 프로젝트", "성사된 프로젝트"];
-  const isBrewery = user?.type === "brewery" && user?.isBreweryVerified;
+  const isBreweryAccount = user?.type === "brewery";
+  const isVerifiedBrewery = isBreweryAccount && user?.isBreweryVerified;
+  const currentBreweryName = user?.breweryName || user?.name;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedStatus]);
 
   const filteredProjects = fundingProjects.filter((project) => {
     const matchesSearch =
@@ -60,6 +67,16 @@ export default function FundingListScreen() {
 
   const totalPages = Math.max(1, Math.ceil(filteredProjects.length / itemsPerPage));
   const pagedProjects = filteredProjects.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalRaised = fundingProjects.reduce((sum, p) => sum + p.currentAmount, 0);
+  const totalBackers = fundingProjects.reduce((sum, p) => sum + p.backers, 0);
+
+  const handleHeroAction = () => {
+    if (isVerifiedBrewery) {
+      router.push('/brewery/project/terms' as any);
+      return;
+    }
+    router.push('/brewery/verification' as any);
+  };
 
   return (
     <View style={styles.container}>
@@ -77,15 +94,18 @@ export default function FundingListScreen() {
           />
           <View style={styles.heroContent}>
             <Animated.View entering={FadeInUp.duration(800)}>
+              <View style={styles.heroPill}>
+                <Text style={styles.heroPillText}>{isBreweryAccount ? "양조장 파트너" : "주담 펀딩"}</Text>
+              </View>
               <Text style={styles.heroTitle}>당신의 선택으로{'\n'}완성되는 전통주</Text>
-              {isBrewery ? (
+              {isBreweryAccount ? (
                 <TouchableOpacity 
                   style={styles.createBtn} 
-                  onPress={() => router.push('/brewery/project/terms' as any)}
+                  onPress={handleHeroAction}
                   activeOpacity={0.9}
                 >
-                  <Plus size={20} color="#000" />
-                  <Text style={styles.createBtnTxt}>프로젝트 등록</Text>
+                  {isVerifiedBrewery ? <Plus size={20} color="#000" /> : <ShieldCheck size={20} color="#000" />}
+                  <Text style={styles.createBtnTxt}>{isVerifiedBrewery ? "프로젝트 등록" : "양조장 인증 후 등록"}</Text>
                 </TouchableOpacity>
               ) : (
                 <Text style={styles.heroDesc}>
@@ -135,6 +155,9 @@ export default function FundingListScreen() {
               </View>
             )}
           </View>
+          <Text style={styles.resultSummary}>
+            {selectedStatus.replace("프로젝트", "").trim()} {filteredProjects.length}개 · 누적 후원 {(totalRaised / 10000).toLocaleString()}만원
+          </Text>
         </View>
 
         {/* 3. Funding Project Feed */}
@@ -147,6 +170,10 @@ export default function FundingListScreen() {
           ) : (
             pagedProjects.map((project, index) => {
               const progressPercentage = Math.min((project.currentAmount / project.goalAmount) * 100, 100);
+              const isOwnProject =
+                isBreweryAccount &&
+                Boolean(currentBreweryName) &&
+                currentBreweryName?.trim() === project.brewery.trim();
               return (
                 <Animated.View key={project.id} entering={FadeInUp.delay(index * 50)} style={styles.fundingCard}>
                   <TouchableOpacity 
@@ -177,6 +204,11 @@ export default function FundingListScreen() {
                           <Text style={[styles.statusTxt, project.status === '성공' && { color: '#2563EB' }]}>{project.status}</Text>
                         </View>
                       </View>
+                      {isOwnProject && (
+                        <View style={styles.ownProjectBadge}>
+                          <Text style={styles.ownProjectTxt}>내 프로젝트</Text>
+                        </View>
+                      )}
                       <Text style={styles.projectTitle} numberOfLines={2}>{project.title}</Text>
                       <View style={styles.progressRow}>
                         <View style={styles.progressTextRow}>
@@ -251,7 +283,7 @@ export default function FundingListScreen() {
             />
             <StatCard 
               icon={<Users size={22} color="#FFF" />} 
-              val={fundingProjects.reduce((sum, p) => sum + p.backers, 0).toLocaleString()} 
+              val={totalBackers.toLocaleString()}
               label="총 참여자" 
               sub="함께한 사람들"
             />
@@ -292,6 +324,8 @@ const styles = StyleSheet.create({
   hero: { height: SCREEN_HEIGHT * 0.65, backgroundColor: '#000' },
   heroImg: { ...StyleSheet.absoluteFillObject, resizeMode: 'cover' },
   heroContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  heroPill: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', marginBottom: 14 },
+  heroPillText: { color: '#FFF', fontSize: 12, fontWeight: '900' },
   heroTitle: { color: '#FFF', fontSize: 44, fontWeight: '800', textAlign: 'center', lineHeight: 54, marginBottom: 24, letterSpacing: -1 },
   heroDesc: { color: 'rgba(255,255,255,0.85)', fontSize: 14, textAlign: 'center', lineHeight: 24, fontWeight: '500' },
   createBtn: { backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 32, paddingVertical: 18, borderRadius: 20, elevation: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 },
@@ -305,6 +339,7 @@ const styles = StyleSheet.create({
   dropdown: { position: 'absolute', top: 75, right: 12, backgroundColor: '#FFF', borderRadius: 20, width: 200, elevation: 25, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 15, paddingVertical: 8, borderWidth: 1, borderColor: '#F3F4F6' },
   dropItem: { paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
   dropTxt: { fontSize: 14, color: '#4B5563' },
+  resultSummary: { marginTop: 12, marginLeft: 8, fontSize: 12, color: '#6B7280', fontWeight: '800' },
   listSection: { padding: 20, paddingTop: 40 },
   emptyBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyTxt: { fontSize: 16, color: '#9CA3AF', marginTop: 16, fontWeight: '500' },
@@ -322,6 +357,8 @@ const styles = StyleSheet.create({
   statusBadgeActive: { backgroundColor: '#ECFDF5' },
   statusBadgeSuccess: { backgroundColor: '#EFF6FF' },
   statusTxt: { fontSize: 10, fontWeight: '900', color: '#059669' },
+  ownProjectBadge: { alignSelf: 'flex-start', backgroundColor: '#111', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6 },
+  ownProjectTxt: { color: '#FFF', fontSize: 10, fontWeight: '900' },
   projectTitle: { fontSize: 16, fontWeight: '800', color: '#111', lineHeight: 22, marginBottom: 8 },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6 },
   progressTextRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },

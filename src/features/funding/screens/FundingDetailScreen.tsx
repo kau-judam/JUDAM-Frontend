@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -23,6 +24,9 @@ import {
   ChevronUp,
   Bell,
   LayoutDashboard,
+  Plus,
+  Minus,
+  Package,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInUp, SlideInDown } from 'react-native-reanimated';
@@ -68,6 +72,8 @@ export default function FundingDetailScreen() {
   const [project, setProject] = useState<FundingProject | null>(null);
   const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">("소개");
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
+  const [showFundingOptionModal, setShowFundingOptionModal] = useState(false);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
 
   // Q&A State
   const [comments, setComments] = useState(initialComments);
@@ -94,8 +100,74 @@ export default function FundingDetailScreen() {
 
   const progressPercentage = Math.min((project.currentAmount / project.goalAmount) * 100, 100);
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified;
+  const currentBreweryName = user?.breweryName || user?.name;
+  const isOwnBreweryProject =
+    user?.type === "brewery" &&
+    Boolean(currentBreweryName) &&
+    currentBreweryName?.trim() === project.brewery.trim();
+  const unitPrice = project.pricePerBottle || 20000;
+  const shippingFee = project.shippingFee ?? 2000;
+  const optionTotalAmount = unitPrice * selectedQuantity + shippingFee;
+  const projectBudget = project.budget || [
+    { item: "원료비", amount: 180 },
+    { item: "양조 인건비", amount: 150 },
+    { item: "병입 및 포장 비용", amount: 100 },
+    { item: "배송비", amount: 80 },
+    { item: "디자인 및 마케팅", amount: 60 },
+    { item: "플랫폼 수수료 7%", amount: 40 },
+  ];
+  const projectSchedule = project.schedule || [
+    { date: "3월 20일", description: "펀딩 시작 및 원료 준비 완료" },
+    { date: "4월 18일", description: "펀딩 종료 및 최종 레시피 확정" },
+    { date: "4월 25일", description: "양조 시작" },
+    { date: "5월 25일", description: "발효 완료 및 숙성" },
+    { date: "6월 1일", description: "병입 및 라벨링 작업" },
+    { date: "6월 15일", description: "배송 시작" },
+  ];
+  const tasteProfile = project.tasteProfile || {
+    sweetness: 70,
+    aroma: 55,
+    acidity: 80,
+    body: 65,
+    carbonation: 75,
+  };
+  const tasteItems = [
+    { label: "단맛", value: tasteProfile.sweetness },
+    { label: "잔향", value: tasteProfile.aroma },
+    { label: "산미", value: tasteProfile.acidity },
+    { label: "바디감", value: tasteProfile.body },
+    { label: "탄산감", value: tasteProfile.carbonation },
+  ];
+  const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
+  const supportButtonLabel =
+    isOwnBreweryProject
+      ? "프로젝트 관리하기"
+      : project.status !== "진행 중"
+      ? "펀딩 종료"
+      : "프로젝트 후원하기";
 
   const recommendedProjects = fundingProjects.filter(p => p.id !== project.id).slice(0, 4);
+
+  const handleSupportClick = () => {
+    if (!user) {
+      Alert.alert("로그인이 필요합니다", "후원하려면 먼저 로그인해주세요.", [
+        { text: "취소", style: "cancel" },
+        { text: "로그인하기", onPress: () => router.push('/login' as any) },
+      ]);
+      return;
+    }
+    if (isOwnBreweryProject) {
+      router.push(user.isBreweryVerified ? '/brewery/dashboard' as any : '/brewery/verification' as any);
+      return;
+    }
+    if (project.status !== "진행 중") return;
+    setShowFundingOptionModal(true);
+  };
+
+  const handleConfirmFundingOption = () => {
+    setShowFundingOptionModal(false);
+    router.push(`/funding/support?id=${project.id}&quantity=${selectedQuantity}` as any);
+  };
 
   const handleAddComment = () => {
     if (!newComment.trim()) return;
@@ -105,7 +177,7 @@ export default function FundingDetailScreen() {
       content: newComment.trim(),
       date: new Date().toLocaleDateString("ko-KR"),
       likes: 0,
-      isBrewery: false,
+      isBrewery: user?.type === "brewery",
       replies: [],
     };
     setComments([comment, ...comments]);
@@ -120,7 +192,7 @@ export default function FundingDetailScreen() {
       content: replyContent.trim(),
       date: new Date().toLocaleDateString("ko-KR"),
       likes: 0,
-      isBrewery: false,
+      isBrewery: user?.type === "brewery",
     };
     setComments(comments.map(c => c.id === commentId ? { ...c, replies: [...c.replies, newReply] } : c));
     setReplyContent("");
@@ -280,28 +352,27 @@ export default function FundingDetailScreen() {
                          <View style={styles.ingRow}>
                             <View style={{ flex: 1 }}>
                                <Text style={styles.ingLab}>메인재료</Text>
-                               <Text style={styles.ingVal}>국내산 쌀, 전통 누룩</Text>
+                               <Text style={styles.ingVal}>{project.mainIngredients || "국내산 쌀, 전통 누룩"}</Text>
                             </View>
                             <View style={{ flex: 1 }}>
                                <Text style={styles.ingLab}>서브재료</Text>
-                               <Text style={styles.ingVal}>식용 벚꽃잎</Text>
+                               <Text style={styles.ingVal}>{project.subIngredients || "식용 벚꽃잎"}</Text>
                             </View>
                          </View>
                       </View>
                       <View style={styles.ingCardMini}>
                          <Text style={styles.ingLab}>도수</Text>
-                         <Text style={styles.ingVal}>6%</Text>
+                         <Text style={styles.ingVal}>{project.alcoholContent || "6%"}</Text>
                       </View>
                    </View>
 
                    <View style={styles.summaryBox}>
                       <Text style={styles.summaryTitle}>📝 프로젝트 요약</Text>
-                      <Text style={styles.summaryTxt}>봄철 벚꽃이 만개할 때 수확한 식용 벚꽃잎을 활용하여, 전통 누룩 발효 방식으로 빚어내는 계절 한정 막걸리입니다. 벚꽃의 은은한 향과 자연스러운 색감이 더해져 봄의 낭만을 한 병에 담았습니다.</Text>
+                      <Text style={styles.summaryTxt}>{project.projectSummary || project.shortDescription}</Text>
                    </View>
 
                    <Text style={styles.bodyTxt}>
-                     {project.title}는 전통 방식을 고수하면서도 현대적인 감각을 더한 특별한 프로젝트입니다. {'\n\n'}
-                     우리 양조장은 3대째 이어온 전통 누룩 제조 기술을 바탕으로, 여러분과 함께 새로운 맛을 창조하고자 합니다. 봄의 청량한 기운과 벚꽃의 은은한 향을 담아, 전통주의 새로운 매력을 선사합니다.
+                     {project.story || `${project.title}는 전통 방식을 고수하면서도 현대적인 감각을 더한 특별한 프로젝트입니다.`}
                    </Text>
                 </View>
 
@@ -314,9 +385,9 @@ export default function FundingDetailScreen() {
                       <View style={styles.priceContent}>
                          <View>
                             <Text style={styles.priceLab}>병당 단가</Text>
-                            <Text style={styles.priceVal}>20,000<Text style={{ fontSize: 20, fontWeight: 'normal' }}>원</Text></Text>
+                            <Text style={styles.priceVal}>{unitPrice.toLocaleString()}<Text style={{ fontSize: 20, fontWeight: 'normal' }}>원</Text></Text>
                          </View>
-                         <Text style={styles.priceSub}>375ml</Text>
+                         <Text style={styles.priceSub}>{project.bottleSize || "375ml"}</Text>
                       </View>
                    </View>
 
@@ -325,7 +396,7 @@ export default function FundingDetailScreen() {
                       <View style={styles.priceContent}>
                          <View>
                             <Text style={styles.priceLab}>총 판매 수량</Text>
-                            <Text style={styles.priceVal}>500<Text style={{ fontSize: 20, fontWeight: 'normal' }}>병</Text></Text>
+                            <Text style={styles.priceVal}>{(project.totalQuantity || 500).toLocaleString()}<Text style={{ fontSize: 20, fontWeight: 'normal' }}>병</Text></Text>
                          </View>
                          <Text style={styles.priceSub}>목표 수량</Text>
                       </View>
@@ -333,22 +404,22 @@ export default function FundingDetailScreen() {
 
                    <View style={styles.totalGoalBox}>
                       <Text style={styles.totalGoalLab}>펀딩 목표 금액</Text>
-                      <Text style={styles.totalGoalVal}>{(500 * 20000).toLocaleString()}원</Text>
+                      <Text style={styles.totalGoalVal}>{project.goalAmount.toLocaleString()}원</Text>
                    </View>
                 </View>
 
                 {/* Budget Section */}
                 <View style={styles.sectionCard}>
                    <Text style={styles.sectionHeaderTitle}>프로젝트 예산</Text>
-                   <View style={styles.budgetRow}><Text style={styles.budgetLab}>원료비 (쌀, 누룩, 벚꽃)</Text><Text style={styles.budgetVal}>180만원</Text></View>
-                   <View style={styles.budgetRow}><Text style={styles.budgetLab}>양조 인건비</Text><Text style={styles.budgetVal}>150만원</Text></View>
-                   <View style={styles.budgetRow}><Text style={styles.budgetLab}>병입 및 포장 비용</Text><Text style={styles.budgetVal}>100만원</Text></View>
-                   <View style={styles.budgetRow}><Text style={styles.budgetLab}>배송비</Text><Text style={styles.budgetVal}>80만원</Text></View>
-                   <View style={styles.budgetRow}><Text style={styles.budgetLab}>디자인 및 마케팅</Text><Text style={styles.budgetVal}>60만원</Text></View>
-                   <View style={styles.budgetRow}><Text style={styles.budgetLab}>플랫폼 수수료 (7%)</Text><Text style={styles.budgetVal}>40만원</Text></View>
+                   {projectBudget.map((item) => (
+                     <View key={item.item} style={styles.budgetRow}>
+                       <Text style={styles.budgetLab}>{item.item}</Text>
+                       <Text style={styles.budgetVal}>{item.amount.toLocaleString()}만원</Text>
+                     </View>
+                   ))}
                    <View style={[styles.budgetRow, styles.budgetTotal]}>
                      <Text style={styles.budgetTotalLab}>총 목표 금액</Text>
-                     <Text style={styles.budgetTotalVal}>610만원</Text>
+                     <Text style={styles.budgetTotalVal}>{totalBudgetAmount.toLocaleString()}만원</Text>
                    </View>
                    <Text style={styles.budgetGuide}>목표 금액을 초과 달성하는 경우, 추가 금액은 리워드 품질 향상과 더 많은 후원자 분들께 제품을 전달하는 데 사용됩니다.</Text>
                 </View>
@@ -357,12 +428,12 @@ export default function FundingDetailScreen() {
                 <View style={styles.sectionCard}>
                    <Text style={styles.sectionHeaderTitle}>프로젝트 일정</Text>
                    <View style={{ gap: 16 }}>
-                     <View style={styles.schRow}><Text style={styles.schDate}>3월 20일</Text><Text style={styles.schDesc}>펀딩 시작 및 원료 준비 완료</Text></View>
-                     <View style={styles.schRow}><Text style={styles.schDate}>4월 18일</Text><Text style={styles.schDesc}>펀딩 종료 및 최종 레시피 확정</Text></View>
-                     <View style={styles.schRow}><Text style={styles.schDate}>4월 25일</Text><Text style={styles.schDesc}>벚꽃 수확 및 양조 시작 (발효 30일)</Text></View>
-                     <View style={styles.schRow}><Text style={styles.schDate}>5월 25일</Text><Text style={styles.schDesc}>발효 완료 및 숙성</Text></View>
-                     <View style={styles.schRow}><Text style={styles.schDate}>6월 1일</Text><Text style={styles.schDesc}>병입 및 라벨링 작업</Text></View>
-                     <View style={styles.schRow}><Text style={styles.schDate}>6월 15일</Text><Text style={[styles.schDesc, { fontWeight: '700', color: '#111' }]}>배송 시작 (순차 발송)</Text></View>
+                     {projectSchedule.map((item, index) => (
+                       <View key={`${item.date}-${item.description}`} style={styles.schRow}>
+                         <Text style={styles.schDate}>{item.date}</Text>
+                         <Text style={[styles.schDesc, index === projectSchedule.length - 1 && { fontWeight: '700', color: '#111' }]}>{item.description}</Text>
+                       </View>
+                     ))}
                    </View>
                    <View style={styles.schAlert}>
                       <Text style={styles.schAlertTxt}>💡 발효는 자연 과정이므로 기후 조건에 따라 일정이 1-2주 지연될 수 있습니다. 지연 시 양조 일지와 커뮤니티를 통해 실시간으로 소통하겠습니다.</Text>
@@ -406,22 +477,22 @@ export default function FundingDetailScreen() {
                         ))}
                         <Polygon
                           points={[
-                            [200, 200 - (70 / 100) * 150],
-                            [200 + (55 / 100) * 142.5, 200 - (55 / 100) * 46.35],
-                            [200 + (80 / 100) * 88.1, 200 + (80 / 100) * 121.35],
-                            [200 - (65 / 100) * 88.1, 200 + (65 / 100) * 121.35],
-                            [200 - (75 / 100) * 142.5, 200 - (75 / 100) * 46.35],
+                            [200, 200 - (tasteProfile.sweetness / 100) * 150],
+                            [200 + (tasteProfile.aroma / 100) * 142.5, 200 - (tasteProfile.aroma / 100) * 46.35],
+                            [200 + (tasteProfile.acidity / 100) * 88.1, 200 + (tasteProfile.acidity / 100) * 121.35],
+                            [200 - (tasteProfile.body / 100) * 88.1, 200 + (tasteProfile.body / 100) * 121.35],
+                            [200 - (tasteProfile.carbonation / 100) * 142.5, 200 - (tasteProfile.carbonation / 100) * 46.35],
                           ].map(p => p.join(',')).join(' ')}
                           fill="rgba(0, 0, 0, 0.2)"
                           stroke="rgba(0, 0, 0, 0.8)"
                           strokeWidth="2"
                         />
                         {[
-                          { x: 200, y: 200 - (70 / 100) * 150 },
-                          { x: 200 + (55 / 100) * 142.5, y: 200 - (55 / 100) * 46.35 },
-                          { x: 200 + (80 / 100) * 88.1, y: 200 + (80 / 100) * 121.35 },
-                          { x: 200 - (65 / 100) * 88.1, y: 200 + (65 / 100) * 121.35 },
-                          { x: 200 - (75 / 100) * 142.5, y: 200 - (75 / 100) * 46.35 },
+                          { x: 200, y: 200 - (tasteProfile.sweetness / 100) * 150 },
+                          { x: 200 + (tasteProfile.aroma / 100) * 142.5, y: 200 - (tasteProfile.aroma / 100) * 46.35 },
+                          { x: 200 + (tasteProfile.acidity / 100) * 88.1, y: 200 + (tasteProfile.acidity / 100) * 121.35 },
+                          { x: 200 - (tasteProfile.body / 100) * 88.1, y: 200 + (tasteProfile.body / 100) * 121.35 },
+                          { x: 200 - (tasteProfile.carbonation / 100) * 142.5, y: 200 - (tasteProfile.carbonation / 100) * 46.35 },
                         ].map((point, i) => (
                           <Circle key={`circle-${i}`} cx={point.x} cy={point.y} r="4" fill="black" />
                         ))}
@@ -433,13 +504,7 @@ export default function FundingDetailScreen() {
                       </Svg>
                    </View>
                    <View style={styles.tasteGrid}>
-                      {[
-                        { label: "단맛", value: 70 },
-                        { label: "잔향", value: 55 },
-                        { label: "산미", value: 80 },
-                        { label: "바디감", value: 65 },
-                        { label: "탄산감", value: 75 },
-                      ].map(t => (
+                      {tasteItems.map(t => (
                         <View key={t.label} style={styles.tasteItemBox}>
                            <Text style={styles.tasteLab}>{t.label}</Text>
                            <View style={styles.tasteRowWrap}>
@@ -495,69 +560,34 @@ export default function FundingDetailScreen() {
            {activeTab === "양조일지" && (
              <Animated.View entering={FadeIn}>
                 <View style={styles.journalList}>
-                   <View style={styles.sectionCard}>
-                      <View style={styles.journalItem}>
-                         <View style={styles.journalStep}><Text style={styles.journalStepTxt}>1</Text></View>
-                         <View style={{ flex: 1 }}>
-                            <View style={styles.journalHeader}>
-                               <Text style={styles.journalTitle}>엄선된 원료 준비 및 검수</Text>
-                               <Text style={styles.journalDate}>2026. 03. 22</Text>
+                   {projectSchedule.slice(0, 5).map((item, index) => {
+                     const completed = project.status !== "진행 중" || index === 0;
+                     return (
+                       <View key={`${item.date}-${item.description}`} style={styles.sectionCard}>
+                          <View style={styles.journalItem}>
+                             <View style={completed ? styles.journalStep : styles.journalStepUpcoming}>
+                               <Text style={completed ? styles.journalStepTxt : styles.journalStepTxtUpcoming}>{index + 1}</Text>
+                             </View>
+                             <View style={{ flex: 1 }}>
+                                <View style={styles.journalHeader}>
+                                   <Text style={completed ? styles.journalTitle : styles.journalTitleUpcoming}>{item.description}</Text>
+                                   <Text style={styles.journalDate}>{completed ? item.date : "예정"}</Text>
+                                </View>
+                                <Text style={completed ? styles.journalBody : styles.journalBodyUpcoming}>
+                                  {completed
+                                    ? `${project.brewery}에서 ${item.description} 단계를 진행했습니다. 후원자에게 이어지는 과정을 투명하게 공유합니다.`
+                                    : `${item.description} 단계는 펀딩 진행 상황에 맞춰 순차적으로 업데이트될 예정입니다.`}
+                                </Text>
+                             </View>
+                          </View>
+                          {index === 0 && (
+                            <View style={styles.journalImgBox}>
+                               <Image source={{ uri: project.image }} style={styles.journalImg} />
                             </View>
-                            <Text style={styles.journalBody}>프로젝트에 사용될 국산 쌀과 누룩을 모두 준비했습니다. 여러분의 의견을 반영하여 최고급 쌀을 선정했어요!</Text>
-                         </View>
-                      </View>
-                      <View style={styles.journalImgBox}>
-                         <Image source={{ uri: "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=600" }} style={styles.journalImg} />
-                      </View>
-                   </View>
-                   <View style={styles.sectionCard}>
-                      <View style={styles.journalItem}>
-                         <View style={styles.journalStepUpcoming}><Text style={styles.journalStepTxtUpcoming}>2</Text></View>
-                         <View style={{ flex: 1 }}>
-                            <View style={styles.journalHeader}>
-                               <Text style={styles.journalTitleUpcoming}>원료 가공 및 혼합</Text>
-                               <Text style={styles.journalDate}>예정</Text>
-                            </View>
-                            <Text style={styles.journalBodyUpcoming}>펀딩 마감 후 원료 가공 및 혼합 과정을 시작할 예정입니다.</Text>
-                         </View>
-                      </View>
-                   </View>
-                   <View style={styles.sectionCard}>
-                      <View style={styles.journalItem}>
-                         <View style={styles.journalStepUpcoming}><Text style={styles.journalStepTxtUpcoming}>3</Text></View>
-                         <View style={{ flex: 1 }}>
-                            <View style={styles.journalHeader}>
-                               <Text style={styles.journalTitleUpcoming}>자연의 기다림, 발효</Text>
-                               <Text style={styles.journalDate}>예정</Text>
-                            </View>
-                            <Text style={styles.journalBodyUpcoming}>전통 방식으로 자연 발효를 진행할 예정입니다.</Text>
-                         </View>
-                      </View>
-                   </View>
-                   <View style={styles.sectionCard}>
-                      <View style={styles.journalItem}>
-                         <View style={styles.journalStepUpcoming}><Text style={styles.journalStepTxtUpcoming}>4</Text></View>
-                         <View style={{ flex: 1 }}>
-                            <View style={styles.journalHeader}>
-                               <Text style={styles.journalTitleUpcoming}>제술 및 정제</Text>
-                               <Text style={styles.journalDate}>예정</Text>
-                            </View>
-                            <Text style={styles.journalBodyUpcoming}>정성스럽게 제술하고 정제하는 과정을 거칠 예정입니다.</Text>
-                         </View>
-                      </View>
-                   </View>
-                   <View style={styles.sectionCard}>
-                      <View style={styles.journalItem}>
-                         <View style={styles.journalStepUpcoming}><Text style={styles.journalStepTxtUpcoming}>5</Text></View>
-                         <View style={{ flex: 1 }}>
-                            <View style={styles.journalHeader}>
-                               <Text style={styles.journalTitleUpcoming}>병입</Text>
-                               <Text style={styles.journalDate}>예정</Text>
-                            </View>
-                            <Text style={styles.journalBodyUpcoming}>완성된 전통주를 병에 담아 마무리할 예정입니다.</Text>
-                         </View>
-                      </View>
-                   </View>
+                          )}
+                       </View>
+                     );
+                   })}
                 </View>
              </Animated.View>
            )}
@@ -766,13 +796,89 @@ export default function FundingDetailScreen() {
             <Heart size={24} color={isFavoriteFunding(project.id) ? "#EF4444" : "#111"} fill={isFavoriteFunding(project.id) ? "#EF4444" : "transparent"} />
          </TouchableOpacity>
          <TouchableOpacity 
-           style={[styles.mainSupportBtn, project.status !== "진행 중" && { backgroundColor: '#374151' }]} 
-           disabled={project.status !== "진행 중"}
-           onPress={() => router.push(`/funding/support?id=${project.id}` as any)}
+           style={[styles.mainSupportBtn, !isOwnBreweryProject && project.status !== "진행 중" && { backgroundColor: '#374151' }]}
+           disabled={!isOwnBreweryProject && project.status !== "진행 중"}
+           onPress={handleSupportClick}
          >
-            <Text style={styles.mainSupportTxt}>{project.status === "진행 중" ? "프로젝트 후원하기" : "펀딩 종료"}</Text>
+            <Text style={styles.mainSupportTxt}>{supportButtonLabel}</Text>
          </TouchableOpacity>
       </View>
+
+      <Modal visible={showFundingOptionModal} animationType="fade" transparent>
+        <View style={styles.optionOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowFundingOptionModal(false)} />
+          <Animated.View entering={SlideInDown} style={styles.optionModal}>
+            <View style={styles.optionHeader}>
+              <Text style={styles.optionTitle}>후원 옵션 선택</Text>
+              <TouchableOpacity style={styles.optionClose} onPress={() => setShowFundingOptionModal(false)}>
+                <Text style={styles.optionCloseTxt}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.optionBody}>
+              <View style={styles.optionProjectBox}>
+                <Image source={{ uri: project.image }} style={styles.optionProjectImg} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.optionBrewery}>{project.brewery}</Text>
+                  <Text style={styles.optionProjectTitle} numberOfLines={2}>{project.title}</Text>
+                </View>
+              </View>
+
+              <View style={styles.optionSpecGrid}>
+                <View style={styles.optionSpecCard}>
+                  <Text style={styles.optionSpecLabel}>용량</Text>
+                  <Text style={styles.optionSpecValue}>{project.bottleSize || "375ml"}</Text>
+                </View>
+                <View style={styles.optionSpecCard}>
+                  <Text style={styles.optionSpecLabel}>도수</Text>
+                  <Text style={styles.optionSpecValue}>{project.alcoholContent || "6%"}</Text>
+                </View>
+              </View>
+
+              <View style={styles.quantityBox}>
+                <TouchableOpacity style={styles.quantityControl} onPress={() => setSelectedQuantity(Math.max(1, selectedQuantity - 1))}>
+                  <Minus size={20} color="#4B5563" />
+                </TouchableOpacity>
+                <View style={styles.quantityCenter}>
+                  <Text style={styles.quantityValue}>{selectedQuantity}</Text>
+                  <Text style={styles.quantityUnit}>병</Text>
+                </View>
+                <TouchableOpacity style={styles.quantityControl} onPress={() => setSelectedQuantity(selectedQuantity + 1)}>
+                  <Plus size={20} color="#4B5563" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.optionPriceBox}>
+                <View style={styles.optionPriceRow}>
+                  <Text style={styles.optionPriceLabel}>상품 금액</Text>
+                  <Text style={styles.optionPriceValue}>{(unitPrice * selectedQuantity).toLocaleString()}원</Text>
+                </View>
+                <View style={styles.optionPriceRow}>
+                  <Text style={styles.optionPriceLabel}>배송비</Text>
+                  <Text style={styles.optionPriceValue}>{shippingFee.toLocaleString()}원</Text>
+                </View>
+                <View style={styles.optionPriceDivider} />
+                <View style={styles.optionPriceRow}>
+                  <Text style={styles.optionTotalLabel}>총 결제 금액</Text>
+                  <Text style={styles.optionTotalValue}>{optionTotalAmount.toLocaleString()}원</Text>
+                </View>
+              </View>
+
+              <View style={styles.deliveryNotice}>
+                <Package size={16} color="#1D4ED8" />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.deliveryNoticeTitle}>예상 배송일</Text>
+                  <Text style={styles.deliveryNoticeTxt}>{project.estimatedDelivery || "펀딩 종료 후 순차 발송"} 순차 발송 예정</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity style={styles.optionConfirmBtn} onPress={handleConfirmFundingOption}>
+                <Text style={styles.optionConfirmTxt}>후원하기</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
 
       {/* ── Funding Guide Modal ── */}
       <Modal visible={showFundingGuideModal} animationType="fade" transparent>
@@ -1037,6 +1143,38 @@ const styles = StyleSheet.create({
   heartBtn: { width: 56, height: 56, borderRadius: 16, borderWidth: 2, borderColor: '#E5E7EB', backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
   mainSupportBtn: { flex: 1, height: 56, backgroundColor: '#111', borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   mainSupportTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  optionOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 16 },
+  optionModal: { backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden' },
+  optionHeader: { paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  optionTitle: { fontSize: 18, fontWeight: '900', color: '#111' },
+  optionClose: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center' },
+  optionCloseTxt: { fontSize: 24, color: '#6B7280', marginTop: -2 },
+  optionBody: { padding: 20, gap: 16 },
+  optionProjectBox: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  optionProjectImg: { width: 64, height: 64, borderRadius: 12, backgroundColor: '#E5E7EB' },
+  optionBrewery: { fontSize: 12, color: '#6B7280', fontWeight: '700', marginBottom: 4 },
+  optionProjectTitle: { fontSize: 14, color: '#111', fontWeight: '900', lineHeight: 20 },
+  optionSpecGrid: { flexDirection: 'row', gap: 8 },
+  optionSpecCard: { flex: 1, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, padding: 12 },
+  optionSpecLabel: { fontSize: 12, color: '#6B7280', fontWeight: '700', marginBottom: 4 },
+  optionSpecValue: { fontSize: 14, color: '#111', fontWeight: '900' },
+  quantityBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#E5E7EB' },
+  quantityControl: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
+  quantityCenter: { alignItems: 'center' },
+  quantityValue: { fontSize: 26, color: '#111', fontWeight: '900' },
+  quantityUnit: { fontSize: 12, color: '#6B7280', fontWeight: '700' },
+  optionPriceBox: { backgroundColor: '#111827', borderRadius: 16, padding: 16, gap: 10 },
+  optionPriceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  optionPriceLabel: { fontSize: 13, color: '#D1D5DB', fontWeight: '700' },
+  optionPriceValue: { fontSize: 14, color: '#FFF', fontWeight: '800' },
+  optionPriceDivider: { height: 1, backgroundColor: '#374151' },
+  optionTotalLabel: { fontSize: 15, color: '#FFF', fontWeight: '900' },
+  optionTotalValue: { fontSize: 21, color: '#FFF', fontWeight: '900' },
+  deliveryNotice: { backgroundColor: '#EFF6FF', borderWidth: 1, borderColor: '#DBEAFE', borderRadius: 14, padding: 12, flexDirection: 'row', gap: 10 },
+  deliveryNoticeTitle: { fontSize: 12, color: '#1E3A8A', fontWeight: '900', marginBottom: 2 },
+  deliveryNoticeTxt: { fontSize: 12, color: '#1D4ED8', fontWeight: '700', lineHeight: 18 },
+  optionConfirmBtn: { height: 52, backgroundColor: '#111', borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  optionConfirmTxt: { color: '#FFF', fontSize: 16, fontWeight: '900' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 16 },
   modalContent: { backgroundColor: '#FFF', borderRadius: 24, maxHeight: '85%', overflow: 'hidden' },
   modalHeader: { paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

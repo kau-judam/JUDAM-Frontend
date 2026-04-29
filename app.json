@@ -37,7 +37,14 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "프로젝트 대표 이미지를 등록하기 위해 갤러리 접근 권한이 필요합니다."
+        }
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,

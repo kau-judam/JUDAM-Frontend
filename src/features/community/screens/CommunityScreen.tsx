@@ -27,6 +27,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 
 const POSTS_PER_PAGE = 6;
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 interface Post {
   id: number;
@@ -149,11 +150,13 @@ export default function CommunityScreen() {
            </View>
          ) : (
            pagedPosts.map((post, idx) => (
-             <Animated.View 
+             <AnimatedTouchable
                key={post.id} 
                entering={FadeInUp.delay(idx * 50)} 
                layout={Layout.springify()}
                style={styles.postCard}
+               activeOpacity={0.86}
+               onPress={() => router.push(`/community/${post.id}` as any)}
              >
                 <View style={styles.postHeader}>
                    <Image source={{ uri: post.avatar }} style={styles.avatar} />
@@ -167,7 +170,7 @@ export default function CommunityScreen() {
                    </View>
                 </View>
 
-                <Text style={styles.postContent} numberOfLines={3}>{post.content}</Text>
+                <Text style={styles.postContent} numberOfLines={2} ellipsizeMode="tail">{post.content}</Text>
 
                 <View style={styles.postFooter}>
                    <TouchableOpacity style={styles.statBtn} onPress={() => handlePostLike(post.id)}>
@@ -179,7 +182,7 @@ export default function CommunityScreen() {
                       <Text style={styles.statTxt}>{post.comments}</Text>
                    </View>
                 </View>
-             </Animated.View>
+             </AnimatedTouchable>
            ))
          )}
 
@@ -257,7 +260,7 @@ const styles = StyleSheet.create({
   postCatBadge: { marginLeft: 'auto', backgroundColor: '#F9FAFB', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   postCatTxt: { fontSize: 10, fontWeight: '700', color: '#9CA3AF' },
   timeTxt: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
-  postContent: { fontSize: 14, lineHeight: 22, color: '#374151', fontWeight: '500' },
+  postContent: { height: 44, fontSize: 14, lineHeight: 22, color: '#374151', fontWeight: '500' },
   postFooter: { flexDirection: 'row', gap: 20, marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F9FAFB' },
   statBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statTxt: { fontSize: 13, fontWeight: '700', color: '#9CA3AF' },

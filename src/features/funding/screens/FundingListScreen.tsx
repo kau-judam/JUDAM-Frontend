@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,8 @@ import {
   Image,
   TextInput,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Search,
   Plus,
@@ -28,12 +29,14 @@ import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { Progress } from '@/components/ui/progress';
-import { fundingProjects } from '@/constants/data';
+import { fundingProjects, getFundingProjectImageSource, sortFundingProjectsByPopularity } from '@/constants/data';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function FundingListScreen() {
   const { user } = useAuth();
+  const { scrollToTop } = useLocalSearchParams<{ scrollToTop?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
   const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("전체 프로젝트");
@@ -50,6 +53,15 @@ export default function FundingListScreen() {
     setCurrentPage(1);
   }, [searchTerm, selectedStatus]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!scrollToTop) return;
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
+    }, [scrollToTop])
+  );
+
   const filteredProjects = fundingProjects.filter((project) => {
     const matchesSearch =
       project.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -65,8 +77,9 @@ export default function FundingListScreen() {
     return matchesSearch && matchesStatus;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filteredProjects.length / itemsPerPage));
-  const pagedProjects = filteredProjects.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const sortedProjects = sortFundingProjectsByPopularity(filteredProjects);
+  const totalPages = Math.max(1, Math.ceil(sortedProjects.length / itemsPerPage));
+  const pagedProjects = sortedProjects.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
   const totalRaised = fundingProjects.reduce((sum, p) => sum + p.currentAmount, 0);
   const totalBackers = fundingProjects.reduce((sum, p) => sum + p.backers, 0);
 
@@ -81,7 +94,7 @@ export default function FundingListScreen() {
   return (
     <View style={styles.container}>
       <PageHeader title="펀딩" />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* 1. Hero Section */}
         <View style={styles.hero}>
           <Image
@@ -182,7 +195,7 @@ export default function FundingListScreen() {
                     onPress={() => router.push(`/funding/${project.id}`)}
                   >
                     <View style={styles.thumbBox}>
-                      <Image source={{ uri: project.image }} style={styles.thumb} />
+                      <Image source={getFundingProjectImageSource(project)} style={styles.thumb} />
                       <TouchableOpacity 
                         style={styles.heartBtn} 
                         onPress={() => toggleFavoriteFunding(project.id)}

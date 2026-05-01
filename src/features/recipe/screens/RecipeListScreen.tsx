@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { 
   Sparkles, 
   Search, 
@@ -19,10 +20,14 @@ import {
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { RecipeCard } from '@/components/recipe-card';
-import { recipesData } from '@/constants/data';
+import { recipesData, sortRecipesByPopularity } from '@/constants/data';
+
+const ACTION_CONTROL_HEIGHT = 40;
 
 export default function RecipeScreen() {
   const { user } = useAuth();
+  const { scrollToTop } = useLocalSearchParams<{ scrollToTop?: string }>();
+  const scrollRef = useRef<ScrollView>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOption, setSortOption] = useState<"인기순" | "최신순" | "내 추천순">("인기순");
   const [showSortDropdown, setShowSortDropdown] = useState(false);
@@ -37,11 +42,19 @@ export default function RecipeScreen() {
     return !query || r.title.toLowerCase().includes(query) || r.description.toLowerCase().includes(query) || r.author.toLowerCase().includes(query);
   });
 
-  const sortedRecipes = [...filteredRecipes].sort((a, b) => {
-    if (sortOption === "인기순") return b.likes - a.likes;
-    if (sortOption === "최신순") return b.id - a.id;
-    return b.likes - a.likes;
-  });
+  const sortedRecipes =
+    sortOption === "최신순"
+      ? [...filteredRecipes].sort((a, b) => b.id - a.id)
+      : sortRecipesByPopularity(filteredRecipes);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!scrollToTop) return;
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
+    }, [scrollToTop])
+  );
 
   return (
     <View style={styles.container}>
@@ -64,7 +77,7 @@ export default function RecipeScreen() {
          </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
          <View style={styles.actionRow}>
             {user ? (
               <TouchableOpacity style={styles.proposeBtn} onPress={() => router.push('/recipe/create' as any)}>
@@ -123,18 +136,18 @@ const styles = StyleSheet.create({
   searchBar: { height: 52, backgroundColor: '#F3F4F6', borderRadius: 26, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20 },
   searchInput: { flex: 1, marginLeft: 12, fontSize: 14, fontWeight: '600', color: '#111' },
   scrollContent: { padding: 20 },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24, zIndex: 100 },
-  proposeBtn: { flex: 1, height: 44, backgroundColor: '#111', borderRadius: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18, zIndex: 100 },
+  proposeBtn: { flex: 1, height: ACTION_CONTROL_HEIGHT, backgroundColor: '#111', borderRadius: ACTION_CONTROL_HEIGHT / 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   proposeBtnTxt: { color: '#FFF', fontSize: 13, fontWeight: '800' },
-  loginReqBtn: { flex: 1, height: 44, backgroundColor: '#F3F4F6', borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  loginReqBtn: { flex: 1, height: ACTION_CONTROL_HEIGHT, backgroundColor: '#F3F4F6', borderRadius: ACTION_CONTROL_HEIGHT / 2, alignItems: 'center', justifyContent: 'center' },
   loginReqBtnTxt: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
   sortContainer: { position: 'relative' },
-  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
+  sortBtn: { height: ACTION_CONTROL_HEIGHT, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F3F4F6', paddingHorizontal: 14, borderRadius: ACTION_CONTROL_HEIGHT / 2 },
   sortBtnTxt: { fontSize: 12, fontWeight: '700', color: '#4B5563' },
   sortDropdown: { position: 'absolute', top: 40, right: 0, backgroundColor: '#FFF', borderRadius: 16, width: 140, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6', overflow: 'hidden' },
   dropItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
   dropTxt: { fontSize: 13, color: '#374151' },
-  recipeList: { gap: 16 },
+  recipeList: { gap: 12 },
   emptyState: { paddingVertical: 80, alignItems: 'center' },
   emptyTxt: { fontSize: 14, color: '#9CA3AF', fontWeight: '600' },
 });

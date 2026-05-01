@@ -27,7 +27,7 @@ import { Progress } from '@/components/ui/progress';
 import { RecipeCard } from '@/components/recipe-card';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { fundingProjects, recipesData } from '@/constants/data';
+import { getFundingProjectImageSource, getPopularFundingProjects, getPopularRecipes } from '@/constants/data';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -55,18 +55,6 @@ const bannerSlides = [
   },
 ];
 
-const homeFundingImages = [
-  require('../../../../newpicutre/funding1.jpg'),
-  require('../../../../newpicutre/funding2.jpg'),
-  require('../../../../newpicutre/funding3.jpg'),
-];
-
-const homeRecipeImages = [
-  require('../../../../newpicutre/recipe1.jpg'),
-  require('../../../../newpicutre/recipe2.jpg'),
-  require('../../../../newpicutre/recipe3.png'),
-];
-
 const processSteps = [
   { number: "01", title: "레시피\n제안", description: "당신이 원하는 맛을 제안하세요", icon: Lightbulb },
   { number: "02", title: "양조장\n선택", description: "양조장이 레시피를 선택합니다", icon: Factory },
@@ -74,10 +62,19 @@ const processSteps = [
   { number: "04", title: "양조\n과정", description: "실시간으로 제작 과정을 확인하세요", icon: Wine },
 ];
 
+function pushTabToTop(pathname: '/recipe' | '/funding') {
+  router.push({
+    pathname,
+    params: { scrollToTop: Date.now().toString() },
+  } as any);
+}
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
   const [currentSlide, setCurrentSlide] = useState(0);
+  const popularFundingProjects = getPopularFundingProjects(3);
+  const popularRecipes = getPopularRecipes(3);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -144,7 +141,7 @@ export default function HomeScreen() {
             variant="outline"
             style={styles.processBtn}
             labelStyle={styles.processBtnLabel}
-            onPress={() => router.push('/recipe' as any)}
+            onPress={() => pushTabToTop('/recipe')}
           />
         </View>
 
@@ -155,7 +152,7 @@ export default function HomeScreen() {
               <Text style={styles.sectionTitle}>현재 인기 펀딩</Text>
               <Text style={styles.sectionSubtitle}>지금 가장 뜨거운 프로젝트</Text>
             </View>
-            <TouchableOpacity onPress={() => router.push('/funding')}>
+            <TouchableOpacity onPress={() => pushTabToTop('/funding')}>
               <View style={styles.moreBtn}>
                 <Text style={styles.moreBtnTxt}>전체보기</Text>
                 <ChevronRight size={16} color={colors.primary} />
@@ -164,7 +161,7 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.fundingList}>
-            {fundingProjects.slice(0, 3).map((project, index) => {
+            {popularFundingProjects.map((project) => {
               const progress = (project.currentAmount / project.goalAmount) * 100;
               return (
                 <TouchableOpacity 
@@ -175,7 +172,7 @@ export default function HomeScreen() {
                 >
                   <View style={styles.fundingRow}>
                     <View style={styles.fundingThumbBox}>
-                      <Image source={homeFundingImages[index]} style={styles.fundingThumb} resizeMode="contain" />
+                      <Image source={getFundingProjectImageSource(project)} style={styles.fundingThumb} resizeMode="contain" />
                     </View>
                     <View style={styles.fundingInfo}>
                       <View style={styles.fundingMeta}>
@@ -206,7 +203,7 @@ export default function HomeScreen() {
               <Text style={styles.sectionTitle}>인기 레시피 제안</Text>
               <Text style={styles.sectionSubtitle}>커뮤니티에서 가장 인기있는 레시피</Text>
             </View>
-            <TouchableOpacity onPress={() => router.push('/recipe')}>
+            <TouchableOpacity onPress={() => pushTabToTop('/recipe')}>
               <View style={styles.moreBtn}>
                 <Text style={styles.moreBtnTxt}>더보기</Text>
                 <ChevronRight size={16} color={colors.primary} />
@@ -215,8 +212,8 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.recipeList}>
-            {recipesData.slice(0, 3).map((recipe, index) => (
-              <RecipeCard key={recipe.id} recipe={{ ...recipe, image: homeRecipeImages[index] }} index={index} />
+            {popularRecipes.map((recipe, index) => (
+              <RecipeCard key={recipe.id} recipe={recipe} index={index} />
             ))}
           </View>
         </View>
@@ -245,14 +242,14 @@ export default function HomeScreen() {
               <Text style={styles.statsLabel}>참여 양조장</Text>
             </View>
             <View style={styles.statsItem}>
-              <View style={[styles.statsIconCircle, { backgroundColor: '#444' }]}>
+              <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
                 <TrendingUp size={20} color="#FFF" />
               </View>
               <Text style={styles.statsValue}>156</Text>
               <Text style={styles.statsLabel}>진행중인 펀딩</Text>
             </View>
             <View style={styles.statsItem}>
-              <View style={[styles.statsIconCircle, { backgroundColor: '#059669' }]}>
+              <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
                 <Trophy size={20} color="#FFF" />
               </View>
               <Text style={styles.statsValue}>89</Text>
@@ -268,7 +265,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
+  scrollContent: { paddingBottom: 20 },
   bannerContainer: { height: SCREEN_WIDTH * 1.1, position: 'relative' },
   bannerSlide: { width: SCREEN_WIDTH, height: SCREEN_WIDTH * 1.1 },
   bannerImageFrame: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
@@ -316,7 +313,7 @@ const styles = StyleSheet.create({
   progressBar: { height: 6 },
   recipeSection: { paddingVertical: 60, paddingHorizontal: 20 },
   recipeList: { gap: 12 },
-  statsSection: { paddingVertical: 60, paddingHorizontal: 20 },
+  statsSection: { paddingTop: 60, paddingBottom: 30, paddingHorizontal: 20 },
   statsHeader: { alignItems: 'center', marginBottom: 40 },
   statsIcon: { marginBottom: 16 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

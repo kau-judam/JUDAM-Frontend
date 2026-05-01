@@ -38,7 +38,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { fundingProjects, FundingProject } from '@/constants/data';
+import { fundingProjects, FundingProject, getFundingProjectImageSource } from '@/constants/data';
 
 const reviewsData = [
   { id: 1, projectId: 5, userName: "전통주러버", rating: 5, date: "2026. 03. 25", comment: "정말 기대 이상이었어요! 벚꽃의 은은한 향이 정말 좋았습니다." },
@@ -277,7 +277,7 @@ export default function FundingDetailScreen() {
       >
         {/* 1. Hero Visual */}
         <View style={styles.visualContainer}>
-           <Image source={{ uri: project.image }} style={styles.mainImg} />
+           <Image source={getFundingProjectImageSource(project)} style={styles.mainImg} />
         </View>
 
         {/* 2. Title & Desc */}
@@ -582,7 +582,7 @@ export default function FundingDetailScreen() {
                           </View>
                           {index === 0 && (
                             <View style={styles.journalImgBox}>
-                               <Image source={{ uri: project.image }} style={styles.journalImg} />
+                               <Image source={getFundingProjectImageSource(project)} style={styles.journalImg} />
                             </View>
                           )}
                        </View>
@@ -817,7 +817,7 @@ export default function FundingDetailScreen() {
 
             <View style={styles.optionBody}>
               <View style={styles.optionProjectBox}>
-                <Image source={{ uri: project.image }} style={styles.optionProjectImg} />
+                <Image source={getFundingProjectImageSource(project)} style={styles.optionProjectImg} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.optionBrewery}>{project.brewery}</Text>
                   <Text style={styles.optionProjectTitle} numberOfLines={2}>{project.title}</Text>

@@ -25,6 +25,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { getImageSource, recipesData } from '@/constants/data';
 
 const INITIAL_COMMENT_COUNT = 3;
 
@@ -34,24 +35,25 @@ export default function RecipeDetailScreen() {
   const { user } = useAuth();
   const rawRecipeId = Array.isArray(id) ? id[0] : id;
   const recipeId = Number(rawRecipeId);
+  const selectedRecipe = recipesData.find((item) => item.id === recipeId) || recipesData[0];
   
   const [showAllComments, setShowAllComments] = useState(false);
   const [commentInput, setCommentInput] = useState("");
-  const [liked, setLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState(89);
+  const [liked, setLiked] = useState(Boolean(selectedRecipe.liked));
+  const [likesCount, setLikesCount] = useState(selectedRecipe.likes);
 
   const [recipe] = useState({
-    id: Number.isFinite(recipeId) ? recipeId : 1,
-    title: "전통 누룩의 재발견 - 현대적 막걸리",
-    author: "전통주러버",
+    id: selectedRecipe.id,
+    title: selectedRecipe.title,
+    author: selectedRecipe.author,
     alcoholRange: "6%~8%",
-    description: "전통 누룩과 국내산 쌀을 사용한 현대적인 막걸리 레시피입니다. 부드러운 단맛과 은은한 탄산이 특징이에요. 초보자도 쉽게 따라할 수 있도록 구성했습니다.",
-    mainIngredients: ["국내산 찹쌀", "전통 누룩", "천연 효모"],
+    description: selectedRecipe.description,
+    mainIngredients: selectedRecipe.ingredients?.slice(0, 3) || ["국내산 찹쌀", "전통 누룩", "천연 효모"],
     subIngredients: ["생수", "황설탕"],
     flavorTags: ["달콤함", "부드러움", "탄산감"],
-    commentsCount: 6,
-    timestamp: "2시간 전",
-    image: "https://images.unsplash.com/photo-1567697242574-e0c68f5e9b0e?w=800",
+    commentsCount: selectedRecipe.comments,
+    timestamp: selectedRecipe.timestamp,
+    image: selectedRecipe.image,
   });
 
   const [comments, setComments] = useState([
@@ -93,18 +95,17 @@ export default function RecipeDetailScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <View style={[styles.header, { height: insets.top + 56, paddingTop: insets.top }]}>
          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <ChevronLeft size={24} color="#111" />
          </TouchableOpacity>
-         <Text style={styles.headerTitle}>레시피 상세</Text>
          <View style={{ width: 44 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         {/* Banner Image */}
         <View style={styles.imageBox}>
-          <Image source={{ uri: recipe.image }} style={styles.mainImg} />
+          <Image source={getImageSource(recipe.image)!} style={styles.mainImg} />
         </View>
 
         {/* Content Section */}
@@ -236,9 +237,8 @@ export default function RecipeDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
-  header: { height: 60, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  header: { backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#111' },
   imageBox: { width: '100%', height: 300, backgroundColor: '#F9FAFB' },
   mainImg: { width: '100%', height: '100%', resizeMode: 'cover' },
   content: { padding: 24 },

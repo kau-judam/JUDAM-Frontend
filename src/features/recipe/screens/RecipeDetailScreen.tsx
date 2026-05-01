@@ -95,11 +95,10 @@ export default function RecipeDetailScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <View style={[styles.header, { height: insets.top + 56, paddingTop: insets.top }]}>
          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <ChevronLeft size={24} color="#111" />
          </TouchableOpacity>
-         <Text style={styles.headerTitle}>레시피 상세</Text>
          <View style={{ width: 44 }} />
       </View>
 
@@ -238,9 +237,8 @@ export default function RecipeDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
-  header: { height: 60, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  header: { backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#111' },
   imageBox: { width: '100%', height: 300, backgroundColor: '#F9FAFB' },
   mainImg: { width: '100%', height: '100%', resizeMode: 'cover' },
   content: { padding: 24 },

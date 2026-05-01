@@ -32,7 +32,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Progress } from '@/components/ui/progress';
-import { fundingProjects, FundingProject } from '@/constants/data';
+import { fundingProjects, FundingProject, getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 
@@ -248,7 +248,7 @@ export default function FundingSupportScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 148 }]}
       >
         <View style={styles.projectSection}>
-          <Image source={{ uri: project.image }} style={styles.projectImage} />
+          <Image source={getFundingProjectImageSource(project)} style={styles.projectImage} />
           <View style={styles.projectInfo}>
             <View style={styles.metaRow}>
               <Text style={styles.breweryText}>{project.brewery}</Text>

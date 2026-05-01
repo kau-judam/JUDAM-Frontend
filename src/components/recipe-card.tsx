@@ -11,6 +11,8 @@ import { router } from 'expo-router';
 import { Heart, MessageCircle, Sparkles } from 'lucide-react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
+import { getImageSource } from '@/constants/data';
+
 interface RecipeCardProps {
   recipe: {
     id: number;
@@ -40,7 +42,7 @@ export function RecipeCard({ recipe, index = 0, onLike, showLikeButton = false }
           {/* Left: Thumbnail */}
           <View style={styles.thumbBox}>
             {recipe.image ? (
-              <Image source={typeof recipe.image === 'string' ? { uri: recipe.image } : recipe.image} style={styles.thumb} resizeMode="contain" />
+              <Image source={getImageSource(recipe.image)!} style={styles.thumb} resizeMode="contain" />
             ) : (
               <View style={styles.placeholder}>
                 <Sparkles size={24} color="#9CA3AF" />
@@ -56,7 +58,7 @@ export function RecipeCard({ recipe, index = 0, onLike, showLikeButton = false }
                 <Text style={styles.dot}>•</Text>
                 <Text style={styles.time}>{recipe.timestamp}</Text>
               </View>
-              <Text style={styles.title} numberOfLines={2}>{recipe.title}</Text>
+              <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">{recipe.title}</Text>
               <Text style={styles.desc} numberOfLines={2}>{recipe.description}</Text>
             </View>
 
@@ -91,7 +93,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderRadius: 24,
     padding: 16,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#F3F4F6',
     elevation: 2,

@@ -1,3 +1,5 @@
+import type { ImageSourcePropType } from 'react-native';
+
 export interface FundingProject {
   id: number;
   title: string;
@@ -7,6 +9,8 @@ export interface FundingProject {
   category: string;
   shortDescription?: string;
   image: string;
+  localImage?: ImageSourcePropType;
+  popularRank?: number;
   goalAmount: number;
   currentAmount: number;
   backers: number;
@@ -46,6 +50,8 @@ export const fundingProjects: FundingProject[] = [
     category: "막걸리",
     shortDescription: "우리나라 전통의 맛을 현대적으로 재해석한 막걸리입니다.",
     image: "https://images.unsplash.com/photo-1582204964885-7bc2d62b6917?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    localImage: require('../../newpicutre/funding1.jpg'),
+    popularRank: 1,
     goalAmount: 5000000,
     currentAmount: 4350000,
     backers: 156,
@@ -91,6 +97,8 @@ export const fundingProjects: FundingProject[] = [
     category: "막걸리",
     shortDescription: "전통 누룩을 사용한 현대적인 막걸리를 함께 만들어요.",
     image: "https://images.unsplash.com/photo-1694763893369-f7affaa9155d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    localImage: require('../../newpicutre/funding2.jpg'),
+    popularRank: 2,
     goalAmount: 5000000,
     currentAmount: 3750000,
     backers: 127,
@@ -136,6 +144,8 @@ export const fundingProjects: FundingProject[] = [
     category: "약주",
     shortDescription: "계절의 꽃향기를 담은 프리미엄 약주입니다.",
     image: "https://images.unsplash.com/photo-1770734331757-f40d64eafbc2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    localImage: require('../../newpicutre/funding3.jpg'),
+    popularRank: 3,
     goalAmount: 8000000,
     currentAmount: 6400000,
     backers: 203,
@@ -319,7 +329,8 @@ export interface Recipe {
   comments: number;
   timestamp: string;
   liked?: boolean;
-  image?: string;
+  image?: string | ImageSourcePropType;
+  popularRank?: number;
 }
 
 export const recipesData: Recipe[] = [
@@ -333,7 +344,8 @@ export const recipesData: Recipe[] = [
     comments: 23,
     timestamp: "2시간 전",
     liked: false,
-    image: "https://images.unsplash.com/photo-1567697242574-e0c68f5e9b0e?w=800&h=600&fit=crop",
+    image: require('../../newpicutre/recipe1.jpg'),
+    popularRank: 1,
   },
   {
     id: 2,
@@ -345,7 +357,8 @@ export const recipesData: Recipe[] = [
     comments: 37,
     timestamp: "5시간 전",
     liked: true,
-    image: "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?w=800&h=600&fit=crop",
+    image: require('../../newpicutre/recipe2.jpg'),
+    popularRank: 2,
   },
   {
     id: 3,
@@ -357,6 +370,42 @@ export const recipesData: Recipe[] = [
     comments: 18,
     timestamp: "1일 전",
     liked: false,
-    image: "https://images.unsplash.com/photo-1615633949535-9dd97e86d795?w=800&h=600&fit=crop",
+    image: require('../../newpicutre/recipe3.png'),
+    popularRank: 3,
   },
 ];
+
+export function getImageSource(image?: string | ImageSourcePropType) {
+  if (!image) return undefined;
+  return typeof image === 'string' ? { uri: image } : image;
+}
+
+export function getFundingProjectImageSource(project: FundingProject) {
+  return project.localImage || getImageSource(project.image);
+}
+
+export function sortFundingProjectsByPopularity(projects: FundingProject[]) {
+  return [...projects].sort((a, b) => {
+    const aRank = a.popularRank ?? Number.MAX_SAFE_INTEGER;
+    const bRank = b.popularRank ?? Number.MAX_SAFE_INTEGER;
+    if (aRank !== bRank) return aRank - bRank;
+    return b.backers - a.backers;
+  });
+}
+
+export function sortRecipesByPopularity(recipes: Recipe[]) {
+  return [...recipes].sort((a, b) => {
+    const aRank = a.popularRank ?? Number.MAX_SAFE_INTEGER;
+    const bRank = b.popularRank ?? Number.MAX_SAFE_INTEGER;
+    if (aRank !== bRank) return aRank - bRank;
+    return b.likes - a.likes;
+  });
+}
+
+export function getPopularFundingProjects(limit = 3) {
+  return sortFundingProjectsByPopularity(fundingProjects).slice(0, limit);
+}
+
+export function getPopularRecipes(limit = 3) {
+  return sortRecipesByPopularity(recipesData).slice(0, limit);
+}

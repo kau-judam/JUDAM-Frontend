@@ -1,14 +1,14 @@
 import { Tabs } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import {
+  Home,
+  MessageSquare,
+  TrendingUp,
+  User,
+  Wine
+} from 'lucide-react-native';
 import React, { useEffect } from 'react';
 import { Platform, StatusBar as RNStatusBar } from 'react-native';
-import { 
-  Home, 
-  Wine, 
-  TrendingUp, 
-  MessageSquare, 
-  User 
-} from 'lucide-react-native';
-import { StatusBar } from 'expo-status-bar';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { Colors } from '@/constants/theme';
@@ -19,7 +19,6 @@ export default function TabLayout() {
   const colors = Colors[colorScheme];
 
   useEffect(() => {
-    // 앱 메인 진입 시 상단바 다시 표시
     RNStatusBar.setHidden(false, 'fade');
   }, []);
 

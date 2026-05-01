@@ -23,6 +23,7 @@ import { RecipeCard } from '@/components/recipe-card';
 import { recipesData, sortRecipesByPopularity } from '@/constants/data';
 
 const ACTION_CONTROL_HEIGHT = 40;
+const SORT_BUTTON_WIDTH = 104;
 
 export default function RecipeScreen() {
   const { user } = useAuth();
@@ -141,8 +142,8 @@ const styles = StyleSheet.create({
   proposeBtnTxt: { color: '#FFF', fontSize: 13, fontWeight: '800' },
   loginReqBtn: { flex: 1, height: ACTION_CONTROL_HEIGHT, backgroundColor: '#F3F4F6', borderRadius: ACTION_CONTROL_HEIGHT / 2, alignItems: 'center', justifyContent: 'center' },
   loginReqBtnTxt: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
-  sortContainer: { position: 'relative' },
-  sortBtn: { height: ACTION_CONTROL_HEIGHT, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F3F4F6', paddingHorizontal: 14, borderRadius: ACTION_CONTROL_HEIGHT / 2 },
+  sortContainer: { position: 'relative', width: SORT_BUTTON_WIDTH },
+  sortBtn: { width: SORT_BUTTON_WIDTH, height: ACTION_CONTROL_HEIGHT, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#F3F4F6', borderRadius: ACTION_CONTROL_HEIGHT / 2 },
   sortBtnTxt: { fontSize: 12, fontWeight: '700', color: '#4B5563' },
   sortDropdown: { position: 'absolute', top: 40, right: 0, backgroundColor: '#FFF', borderRadius: 16, width: 140, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, borderWidth: 1, borderColor: '#F3F4F6', overflow: 'hidden' },
   dropItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },

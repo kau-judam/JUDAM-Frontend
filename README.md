@@ -13,9 +13,8 @@
 
 ## Front-end 팀 소개
 
-| 이름 | 학과 |
-| **권아영** | 소프트웨어학과 |
-| **강민재** | 소프트웨어학과 |
+**권아영** | 소프트웨어학과 |
+**강민재** | 소프트웨어학과 |
 
 ---
 
@@ -25,6 +24,7 @@
 - `React 19` / `React Native 0.81.5`
 - `Expo SDK 54` / `Expo Router 6`
 - `TypeScript` (Strict Mode)
+
 
 ### **Libraries**
 - **Navigation**: `Expo Router`, `React Navigation`

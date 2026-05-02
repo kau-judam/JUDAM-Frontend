@@ -25,6 +25,7 @@ import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
+import { showLoginRequired } from '@/utils/authPrompt';
 
 const POSTS_PER_PAGE = 6;
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
@@ -63,7 +64,19 @@ export default function CommunityScreen() {
   const [posts, setPosts] = useState<Post[]>(initialPosts);
 
   const handlePostLike = (postId: number) => {
+    if (!user) {
+      showLoginRequired('커뮤니티 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, liked: !p.liked, likes: p.liked ? p.likes - 1 : p.likes + 1 } : p));
+  };
+
+  const handleCreatePost = () => {
+    if (!user) {
+      showLoginRequired('커뮤니티 글 작성은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    router.push('/community/create' as any);
   };
 
   const filteredPosts = posts.filter(p => {
@@ -224,7 +237,7 @@ export default function CommunityScreen() {
       <TouchableOpacity 
         style={[styles.fab, { bottom: insets.bottom + 20 }]}
         activeOpacity={0.9}
-        onPress={() => user ? router.push('/community/create' as any) : router.push('/login' as any)}
+        onPress={handleCreatePost}
       >
          <Plus size={28} color="#FFF" />
       </TouchableOpacity>

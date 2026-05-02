@@ -1,5 +1,79 @@
 import type { ImageSourcePropType } from 'react-native';
 
+export type ProjectStatus =
+  | "작성 중"
+  | "심사 중"
+  | "심사 반려"
+  | "펀딩 예정"
+  | "진행 중"
+  | "목표 달성"
+  | "펀딩 성공"
+  | "펀딩 실패"
+  | "제작 중"
+  | "배송 중"
+  | "완료";
+
+export interface TasteProfile {
+  sweetness: number;
+  aroma: number;
+  acidity: number;
+  body: number;
+  carbonation: number;
+}
+
+export interface BudgetItem {
+  item: string;
+  amount: number;
+}
+
+export interface ScheduleItem {
+  date: string;
+  description: string;
+}
+
+export type BrewingStage = 1 | 2 | 3 | 4 | 5;
+
+export const BREWING_STAGES = [
+  { id: 1 as BrewingStage, name: "엄선된 원료 준비 및 검수" },
+  { id: 2 as BrewingStage, name: "원료 가공 및 혼합" },
+  { id: 3 as BrewingStage, name: "자연의 기다림, 발효" },
+  { id: 4 as BrewingStage, name: "제술 및 정제" },
+  { id: 5 as BrewingStage, name: "병입" },
+];
+
+export interface JournalReply {
+  id: number;
+  commentId: number;
+  userName: string;
+  isBrewery?: boolean;
+  content: string;
+  date: string;
+  likes: number;
+}
+
+export interface JournalComment {
+  id: number;
+  journalId: number;
+  userName: string;
+  isBrewery?: boolean;
+  content: string;
+  date: string;
+  likes: number;
+  replies: JournalReply[];
+}
+
+export interface JournalEntry {
+  id: number;
+  stage: BrewingStage;
+  date: string;
+  title: string;
+  content: string;
+  images?: string[];
+  videoUrl?: string;
+  likes: number;
+  comments: JournalComment[];
+}
+
 export interface FundingProject {
   id: number;
   title: string;
@@ -9,35 +83,43 @@ export interface FundingProject {
   category: string;
   shortDescription?: string;
   image: string;
+  images?: string[];
   localImage?: ImageSourcePropType;
+  videoUrl?: string;
   popularRank?: number;
   goalAmount: number;
   currentAmount: number;
   backers: number;
   daysLeft: number;
-  status: string;
+  status: ProjectStatus;
   startDate?: string;
   endDate?: string;
   pricePerBottle?: number;
   bottleSize?: string;
+  volume?: string;
   alcoholContent?: string;
   totalQuantity?: number;
+  targetQuantity?: number;
   estimatedDelivery?: string;
   rewardItems?: string[];
   shippingFee?: number;
   mainIngredients?: string;
   subIngredients?: string;
   projectSummary?: string;
+  introduction?: string;
   story?: string;
-  budget?: { item: string; amount: number }[];
-  schedule?: { date: string; description: string }[];
-  tasteProfile?: {
-    sweetness: number;
-    aroma: number;
-    acidity: number;
-    body: number;
-    carbonation: number;
-  };
+  rewardDetails?: string;
+  budget?: BudgetItem[];
+  schedule?: ScheduleItem[];
+  tasteProfile?: TasteProfile;
+  team?: string;
+  breweryBio?: string;
+  breweryProfileImage?: string;
+  productType?: string;
+  ingredients?: { id: number; ingredient: string; origin: string }[];
+  journals?: JournalEntry[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const fundingProjects: FundingProject[] = [
@@ -63,6 +145,7 @@ export const fundingProjects: FundingProject[] = [
     bottleSize: "375ml",
     alcoholContent: "6%",
     totalQuantity: 500,
+    targetQuantity: 500,
     estimatedDelivery: "2026. 06. 15",
     rewardItems: ["벚꽃 막걸리 375ml x 1", "프로젝트 스토리 카드", "양조 일지 알림"],
     shippingFee: 2000,
@@ -87,6 +170,7 @@ export const fundingProjects: FundingProject[] = [
       { date: "6월 15일", description: "배송 시작" },
     ],
     tasteProfile: { sweetness: 70, aroma: 55, acidity: 80, body: 65, carbonation: 75 },
+    journals: [],
   },
   {
     id: 2,
@@ -110,6 +194,7 @@ export const fundingProjects: FundingProject[] = [
     bottleSize: "500ml",
     alcoholContent: "7%",
     totalQuantity: 420,
+    targetQuantity: 420,
     estimatedDelivery: "2026. 06. 20",
     rewardItems: ["현대적 막걸리 500ml x 1", "전통 누룩 소개 카드", "양조장 감사 메시지"],
     shippingFee: 2000,
@@ -134,6 +219,7 @@ export const fundingProjects: FundingProject[] = [
       { date: "6월 20일", description: "순차 배송" },
     ],
     tasteProfile: { sweetness: 58, aroma: 68, acidity: 62, body: 72, carbonation: 45 },
+    journals: [],
   },
   {
     id: 3,
@@ -157,6 +243,7 @@ export const fundingProjects: FundingProject[] = [
     bottleSize: "500ml",
     alcoholContent: "10%",
     totalQuantity: 350,
+    targetQuantity: 350,
     estimatedDelivery: "2026. 07. 05",
     rewardItems: ["꽃향기 약주 500ml x 1", "시음 노트 카드", "프리미엄 패키지"],
     shippingFee: 2500,
@@ -181,6 +268,7 @@ export const fundingProjects: FundingProject[] = [
       { date: "7월 5일", description: "배송 시작" },
     ],
     tasteProfile: { sweetness: 66, aroma: 88, acidity: 54, body: 58, carbonation: 15 },
+    journals: [],
   },
   {
     id: 4,
@@ -202,6 +290,7 @@ export const fundingProjects: FundingProject[] = [
     bottleSize: "375ml",
     alcoholContent: "25%",
     totalQuantity: 260,
+    targetQuantity: 260,
     estimatedDelivery: "2026. 07. 15",
     rewardItems: ["증류식 소주 375ml x 1", "향미 설명 카드", "전용 포장 박스"],
     shippingFee: 3000,
@@ -226,6 +315,7 @@ export const fundingProjects: FundingProject[] = [
       { date: "7월 15일", description: "배송 시작" },
     ],
     tasteProfile: { sweetness: 22, aroma: 72, acidity: 28, body: 86, carbonation: 5 },
+    journals: [],
   },
   {
     id: 5,
@@ -240,13 +330,14 @@ export const fundingProjects: FundingProject[] = [
     currentAmount: 4500000,
     backers: 178,
     daysLeft: 0,
-    status: "성공",
+    status: "펀딩 성공",
     startDate: "2026. 02. 15",
     endDate: "2026. 03. 20",
     pricePerBottle: 25000,
     bottleSize: "500ml",
     alcoholContent: "6%",
     totalQuantity: 300,
+    targetQuantity: 300,
     estimatedDelivery: "2026. 05. 30",
     rewardItems: ["산사 막걸리 500ml x 1", "산사 원료 이야기 카드"],
     shippingFee: 2000,
@@ -271,6 +362,7 @@ export const fundingProjects: FundingProject[] = [
       { date: "5월 30일", description: "후기 수집" },
     ],
     tasteProfile: { sweetness: 48, aroma: 52, acidity: 78, body: 55, carbonation: 60 },
+    journals: [],
   },
   {
     id: 6,
@@ -285,13 +377,14 @@ export const fundingProjects: FundingProject[] = [
     currentAmount: 8200000,
     backers: 234,
     daysLeft: 0,
-    status: "성공",
+    status: "펀딩 성공",
     startDate: "2026. 02. 01",
     endDate: "2026. 03. 10",
     pricePerBottle: 39000,
     bottleSize: "375ml",
     alcoholContent: "16%",
     totalQuantity: 240,
+    targetQuantity: 240,
     estimatedDelivery: "2026. 05. 20",
     rewardItems: ["한라봉 소주 375ml x 1", "제주 감귤 향미 카드", "한정 패키지"],
     shippingFee: 3000,
@@ -316,6 +409,7 @@ export const fundingProjects: FundingProject[] = [
       { date: "5월 20일", description: "후원자 배송" },
     ],
     tasteProfile: { sweetness: 35, aroma: 82, acidity: 64, body: 48, carbonation: 8 },
+    journals: [],
   },
 ];
 
@@ -382,6 +476,29 @@ export function getImageSource(image?: string | ImageSourcePropType) {
 
 export function getFundingProjectImageSource(project: FundingProject) {
   return project.localImage || getImageSource(project.image);
+}
+
+export const activeFundingStatuses: ProjectStatus[] = ["펀딩 예정", "진행 중", "목표 달성"];
+
+export const completedFundingStatuses: ProjectStatus[] = ["펀딩 성공", "펀딩 실패", "제작 중", "배송 중", "완료"];
+
+export function isActiveFundingStatus(status: ProjectStatus) {
+  return activeFundingStatuses.includes(status);
+}
+
+export function isSupportableFundingStatus(status: ProjectStatus) {
+  return status === "진행 중" || status === "목표 달성";
+}
+
+export function isCompletedFundingStatus(status: ProjectStatus) {
+  return completedFundingStatuses.includes(status);
+}
+
+export function getFundingStatusLabel(status: ProjectStatus) {
+  if (status === "목표 달성") return "목표 달성";
+  if (status === "펀딩 성공") return "펀딩 성공";
+  if (status === "펀딩 실패") return "펀딩 실패";
+  return status;
 }
 
 export function sortFundingProjectsByPopularity(projects: FundingProject[]) {

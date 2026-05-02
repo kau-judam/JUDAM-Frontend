@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Alert,
   StatusBar,
   Dimensions,
+  Modal,
 } from 'react-native';
 import { router } from 'expo-router';
 import { 
@@ -22,13 +23,39 @@ import {
   Phone, 
   Upload, 
   MessageSquare,
+  Search,
+  X,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatBusinessNumber, formatPhoneNumber, isValidBusinessNumber, isValidPhone } from '@/utils/validation';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const BG_IMAGE = require('../../../../newpicutre/ok.jpg');
+
+const MOCK_ADDRESSES = [
+  {
+    zipCode: '12545',
+    roadAddress: '경기도 양평군 용문면 용문로 123',
+    jibunAddress: '경기도 양평군 용문면 다문리 456-7',
+  },
+  {
+    zipCode: '03048',
+    roadAddress: '서울특별시 종로구 북촌로 77',
+    jibunAddress: '서울특별시 종로구 가회동 31-2',
+  },
+  {
+    zipCode: '38187',
+    roadAddress: '경상북도 경주시 첨성로 150',
+    jibunAddress: '경상북도 경주시 황남동 221-4',
+  },
+  {
+    zipCode: '58217',
+    roadAddress: '전라남도 나주시 금성관길 8',
+    jibunAddress: '전라남도 나주시 과원동 109-5',
+  },
+];
 
 export default function BreweryVerificationScreen() {
   const insets = useSafeAreaInsets();
@@ -39,6 +66,7 @@ export default function BreweryVerificationScreen() {
     businessNumber: user?.businessNumber || '',
     breweryName: user?.breweryName || '',
     breweryLocation: user?.breweryLocation || '',
+    breweryLocationDetail: user?.breweryLocationDetail || '',
     phone: user?.phone || '',
   });
   
@@ -47,10 +75,22 @@ export default function BreweryVerificationScreen() {
   const [isVerificationSent, setIsVerificationSent] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
   const [isPhoneVerified, setIsPhoneVerified] = useState(isEditMode);
+  const [showAddressModal, setShowAddressModal] = useState(false);
+  const [addressSearch, setAddressSearch] = useState('');
+
+  const addressResults = useMemo(() => {
+    const keyword = addressSearch.trim().toLowerCase();
+    if (!keyword) return MOCK_ADDRESSES;
+    return MOCK_ADDRESSES.filter((address) => (
+      address.zipCode.includes(keyword)
+      || address.roadAddress.toLowerCase().includes(keyword)
+      || address.jibunAddress.toLowerCase().includes(keyword)
+    ));
+  }, [addressSearch]);
 
   const handleSendVerification = () => {
-    if (!formData.phone) {
-      Alert.alert('알림', '연락처를 입력해주세요.');
+    if (!isValidPhone(formData.phone)) {
+      Alert.alert('알림', '연락처를 정확히 입력해주세요.');
       return;
     }
     Alert.alert('알림', '인증번호가 전송되었습니다.');
@@ -71,6 +111,14 @@ export default function BreweryVerificationScreen() {
   };
 
   const handleSubmit = async () => {
+    if (!isValidBusinessNumber(formData.businessNumber)) {
+      Alert.alert('알림', '사업자등록번호를 정확히 입력해주세요.');
+      return;
+    }
+    if (!formData.breweryName.trim() || !formData.breweryLocation.trim()) {
+      Alert.alert('알림', '양조장 이름과 위치를 입력해주세요.');
+      return;
+    }
     if (!isEditMode && !businessLicense) {
       Alert.alert('알림', '사업자등록증을 업로드해주세요.');
       return;
@@ -88,11 +136,12 @@ export default function BreweryVerificationScreen() {
         businessNumber: formData.businessNumber,
         breweryName: formData.breweryName,
         breweryLocation: formData.breweryLocation,
+        breweryLocationDetail: formData.breweryLocationDetail,
         phone: formData.phone,
       });
 
       Alert.alert('알림', isEditMode ? "양조장 정보가 수정되었습니다!" : "양조장 인증이 완료되었습니다!", [
-        { text: '확인', onPress: () => router.replace(isEditMode ? '/brewery/dashboard' as any : '/(tabs)') }
+        { text: '확인', onPress: () => router.replace('/(tabs)' as any) }
       ]);
     } catch {
       Alert.alert('오류', isEditMode ? "정보 수정에 실패했습니다." : "인증에 실패했습니다. 다시 시도해주세요.");
@@ -104,6 +153,15 @@ export default function BreweryVerificationScreen() {
   const pickImage = () => {
     setBusinessLicense('business_license_sample.jpg');
     Alert.alert('알림', '사업자등록증 파일이 선택되었습니다.');
+  };
+
+  const handleAddressSelect = (address: typeof MOCK_ADDRESSES[number]) => {
+    setFormData({
+      ...formData,
+      breweryLocation: `[${address.zipCode}] ${address.roadAddress}`,
+    });
+    setShowAddressModal(false);
+    setAddressSearch('');
   };
 
   return (
@@ -163,7 +221,7 @@ export default function BreweryVerificationScreen() {
                     placeholder="000-00-00000"
                     placeholderTextColor="#9CA3AF"
                     value={formData.businessNumber}
-                    onChangeText={(t) => setFormData({...formData, businessNumber: t})}
+                    onChangeText={(t) => setFormData({...formData, businessNumber: formatBusinessNumber(t)})}
                     keyboardType="numeric"
                   />
                 </View>
@@ -187,14 +245,42 @@ export default function BreweryVerificationScreen() {
               {/* Location */}
               <View style={styles.inputGroup}>
                 <Text style={styles.label}>양조장 위치</Text>
+                <View style={styles.row}>
+                  <TouchableOpacity
+                    style={[styles.inputBox, styles.addressInputBox]}
+                    onPress={() => setShowAddressModal(true)}
+                    activeOpacity={0.75}
+                  >
+                    <MapPin size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <Text
+                      style={[
+                        styles.addressInputText,
+                        !formData.breweryLocation ? styles.addressPlaceholder : null,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {formData.breweryLocation || '주소를 검색해주세요'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.smallBtn}
+                    onPress={() => setShowAddressModal(true)}
+                  >
+                    <Text style={styles.smallBtnTxt}>주소검색</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>상세 주소</Text>
                 <View style={styles.inputBox}>
                   <MapPin size={20} color="#9CA3AF" style={styles.inputIcon} />
                   <TextInput 
                     style={styles.input}
-                    placeholder="경기 양평"
+                    placeholder="상세 주소를 입력해주세요"
                     placeholderTextColor="#9CA3AF"
-                    value={formData.breweryLocation}
-                    onChangeText={(t) => setFormData({...formData, breweryLocation: t})}
+                    value={formData.breweryLocationDetail}
+                    onChangeText={(t) => setFormData({...formData, breweryLocationDetail: t})}
                   />
                 </View>
               </View>
@@ -210,7 +296,12 @@ export default function BreweryVerificationScreen() {
                       placeholder="010-0000-0000"
                       placeholderTextColor="#9CA3AF"
                       value={formData.phone}
-                      onChangeText={(t) => setFormData({...formData, phone: t})}
+                      onChangeText={(t) => {
+                        setFormData({...formData, phone: formatPhoneNumber(t)});
+                        setIsPhoneVerified(false);
+                        setIsVerificationSent(false);
+                        setVerificationCode('');
+                      }}
                       keyboardType="phone-pad"
                       editable={!isPhoneVerified}
                     />
@@ -306,7 +397,79 @@ export default function BreweryVerificationScreen() {
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <AddressSearchModal
+        visible={showAddressModal}
+        search={addressSearch}
+        results={addressResults}
+        onChangeSearch={setAddressSearch}
+        onClose={() => setShowAddressModal(false)}
+        onSelect={handleAddressSelect}
+      />
     </View>
+  );
+}
+
+function AddressSearchModal({
+  visible,
+  search,
+  results,
+  onChangeSearch,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  search: string;
+  results: typeof MOCK_ADDRESSES;
+  onChangeSearch: (value: string) => void;
+  onClose: () => void;
+  onSelect: (address: typeof MOCK_ADDRESSES[number]) => void;
+}) {
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.addressModalBackdrop}>
+        <View style={styles.addressModal}>
+          <View style={styles.addressHeader}>
+            <Text style={styles.addressTitle}>주소 검색</Text>
+            <TouchableOpacity style={styles.addressCloseBtn} onPress={onClose}>
+              <X size={18} color="#111" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.addressSearchBox}>
+            <Search size={18} color="#9CA3AF" style={styles.inputIcon} />
+            <TextInput
+              style={styles.addressSearchInput}
+              placeholder="도로명, 지번, 우편번호 검색"
+              placeholderTextColor="#9CA3AF"
+              value={search}
+              onChangeText={onChangeSearch}
+              autoFocus
+            />
+          </View>
+          <ScrollView
+            style={styles.addressResultList}
+            contentContainerStyle={styles.addressResultContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {results.length > 0 ? results.map((address) => (
+              <TouchableOpacity
+                key={`${address.zipCode}-${address.roadAddress}`}
+                style={styles.addressResultItem}
+                onPress={() => onSelect(address)}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.addressZip}>[{address.zipCode}]</Text>
+                <Text style={styles.addressRoad}>{address.roadAddress}</Text>
+                <Text style={styles.addressJibun}>{address.jibunAddress}</Text>
+              </TouchableOpacity>
+            )) : (
+              <View style={styles.addressEmpty}>
+                <Text style={styles.addressEmptyText}>검색 결과가 없습니다.</Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -328,6 +491,9 @@ const styles = StyleSheet.create({
   inputIcon: { marginRight: 12 },
   input: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111' },
   row: { flexDirection: 'row', gap: 8 },
+  addressInputBox: { flex: 1 },
+  addressInputText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111' },
+  addressPlaceholder: { color: '#9CA3AF' },
   smallBtn: { height: 48, paddingHorizontal: 16, backgroundColor: '#1E293B', borderRadius: 12, justifyContent: 'center', alignItems: 'center', minWidth: 80 },
   smallBtnDone: { backgroundColor: '#059669' },
   smallBtnTxt: { color: '#FFF', fontSize: 13, fontWeight: '700' },
@@ -343,4 +509,19 @@ const styles = StyleSheet.create({
   cancelBtnTxt: { color: '#6B7280', fontSize: 15, fontWeight: '700' },
   submitBtn: { flex: 1, height: 52, borderRadius: 14, backgroundColor: '#1E293B', justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
   submitBtnTxt: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  addressModalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  addressModal: { maxHeight: SCREEN_HEIGHT * 0.78, backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 18, paddingHorizontal: 20, paddingBottom: 22 },
+  addressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  addressTitle: { fontSize: 18, fontWeight: '900', color: '#111' },
+  addressCloseBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  addressSearchBox: { height: 48, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 12 },
+  addressSearchInput: { flex: 1, fontSize: 14, color: '#111', fontWeight: '600' },
+  addressResultList: { maxHeight: SCREEN_HEIGHT * 0.52 },
+  addressResultContent: { gap: 8, paddingBottom: 8 },
+  addressResultItem: { borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', padding: 14, gap: 4 },
+  addressZip: { fontSize: 12, fontWeight: '800', color: '#1E293B' },
+  addressRoad: { fontSize: 14, fontWeight: '800', color: '#111', lineHeight: 20 },
+  addressJibun: { fontSize: 12.5, fontWeight: '500', color: '#6B7280', lineHeight: 18 },
+  addressEmpty: { minHeight: 120, justifyContent: 'center', alignItems: 'center' },
+  addressEmptyText: { fontSize: 14, color: '#9CA3AF', fontWeight: '700' },
 });

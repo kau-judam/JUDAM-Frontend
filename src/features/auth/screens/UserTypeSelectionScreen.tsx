@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { 
+  ArrowLeft,
   User as UserIcon, 
   Building2, 
   Wine, 
@@ -34,14 +35,19 @@ export default function UserTypeSelectionScreen() {
     router.replace('/(tabs)');
   };
 
-  const handleBrewerySelection = async () => {
-    await updateUser({ type: 'brewery' });
+  const handleBrewerySelection = () => {
     router.push('/brewery/verification' as any);
   };
 
   return (
     <Animated.View entering={FadeIn.duration(600)} style={styles.container}>
       <StatusBar barStyle="dark-content" />
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={[styles.backBtn, { top: insets.top + 16 }]}
+      >
+        <ArrowLeft size={20} color="#111" />
+      </TouchableOpacity>
       <ScrollView contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         <View style={[styles.logoSection, { paddingTop: insets.top + 60 }]}>
            <View style={{ alignItems: 'center' }}>
@@ -142,9 +148,10 @@ export default function UserTypeSelectionScreen() {
                   activeOpacity={0.8}
                 >
                   <View style={styles.navyBtn}>
-                    <Text style={styles.confirmBtnTxt}>양조장 인증하러 가기</Text>
+                    <Text style={styles.confirmBtnTxt}>양조장으로 시작</Text>
                   </View>
                 </TouchableOpacity>
+                <Text style={styles.disclaimer}>양조장 인증을 완료해야 펀딩 프로젝트 등록이 가능합니다.</Text>
              </Animated.View>
            )}
         </View>
@@ -155,6 +162,7 @@ export default function UserTypeSelectionScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
+  backBtn: { position: 'absolute', left: 20, width: 40, height: 40, borderRadius: 20, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
   logoSection: { alignItems: 'center', paddingHorizontal: 24, marginBottom: 48 },
   mainLogo: { width: 80, height: 80, backgroundColor: '#FFF', borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
   logoImg: { width: 80, height: 80 },

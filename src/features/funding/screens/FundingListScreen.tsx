@@ -28,8 +28,16 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
+import { useFunding } from '@/contexts/FundingContext';
 import { Progress } from '@/components/ui/progress';
-import { fundingProjects, getFundingProjectImageSource, sortFundingProjectsByPopularity } from '@/constants/data';
+import {
+  getFundingProjectImageSource,
+  getFundingStatusLabel,
+  isCompletedFundingStatus,
+  isSupportableFundingStatus,
+  sortFundingProjectsByPopularity,
+} from '@/constants/data';
+import { showLoginRequired } from '@/utils/authPrompt';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -38,6 +46,7 @@ export default function FundingListScreen() {
   const { scrollToTop } = useLocalSearchParams<{ scrollToTop?: string }>();
   const scrollRef = useRef<ScrollView>(null);
   const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
+  const { projects } = useFunding();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("전체 프로젝트");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -62,16 +71,16 @@ export default function FundingListScreen() {
     }, [scrollToTop])
   );
 
-  const filteredProjects = fundingProjects.filter((project) => {
+  const filteredProjects = projects.filter((project) => {
     const matchesSearch =
       project.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.brewery.toLowerCase().includes(searchTerm.toLowerCase());
     
     let matchesStatus = true;
     if (selectedStatus === "진행중인 프로젝트") {
-      matchesStatus = project.status === "진행 중";
+      matchesStatus = isSupportableFundingStatus(project.status);
     } else if (selectedStatus === "성사된 프로젝트") {
-      matchesStatus = project.status === "성공";
+      matchesStatus = isCompletedFundingStatus(project.status);
     }
     
     return matchesSearch && matchesStatus;
@@ -80,15 +89,27 @@ export default function FundingListScreen() {
   const sortedProjects = sortFundingProjectsByPopularity(filteredProjects);
   const totalPages = Math.max(1, Math.ceil(sortedProjects.length / itemsPerPage));
   const pagedProjects = sortedProjects.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const totalRaised = fundingProjects.reduce((sum, p) => sum + p.currentAmount, 0);
-  const totalBackers = fundingProjects.reduce((sum, p) => sum + p.backers, 0);
+  const totalRaised = projects.reduce((sum, p) => sum + p.currentAmount, 0);
+  const totalBackers = projects.reduce((sum, p) => sum + p.backers, 0);
 
   const handleHeroAction = () => {
+    if (!user) {
+      showLoginRequired('펀딩 프로젝트 등록은 로그인 후 이용할 수 있어요.');
+      return;
+    }
     if (isVerifiedBrewery) {
       router.push('/brewery/project/terms' as any);
       return;
     }
     router.push('/brewery/verification' as any);
+  };
+
+  const handleFavoritePress = (projectId: number) => {
+    if (!user) {
+      showLoginRequired('펀딩 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    toggleFavoriteFunding(projectId);
   };
 
   return (
@@ -198,7 +219,7 @@ export default function FundingListScreen() {
                       <Image source={getFundingProjectImageSource(project)} style={styles.thumb} />
                       <TouchableOpacity 
                         style={styles.heartBtn} 
-                        onPress={() => toggleFavoriteFunding(project.id)}
+                        onPress={() => handleFavoritePress(project.id)}
                       >
                         <Heart 
                           size={14} 
@@ -213,8 +234,8 @@ export default function FundingListScreen() {
                         <View style={styles.categoryBadge}>
                           <Text style={styles.categoryTxt}>{project.category}</Text>
                         </View>
-                        <View style={[styles.statusBadge, project.status === '성공' ? styles.statusBadgeSuccess : styles.statusBadgeActive]}>
-                          <Text style={[styles.statusTxt, project.status === '성공' && { color: '#2563EB' }]}>{project.status}</Text>
+                        <View style={[styles.statusBadge, isCompletedFundingStatus(project.status) ? styles.statusBadgeSuccess : styles.statusBadgeActive]}>
+                          <Text style={[styles.statusTxt, isCompletedFundingStatus(project.status) && { color: '#2563EB' }]}>{getFundingStatusLabel(project.status)}</Text>
                         </View>
                       </View>
                       {isOwnProject && (
@@ -229,7 +250,7 @@ export default function FundingListScreen() {
                            <Text style={styles.amountTxt}>{(project.currentAmount / 10000).toLocaleString()}만원</Text>
                         </View>
                         <Text style={styles.daysLeft}>
-                          {project.status === '성공' ? '펀딩 종료' : `${project.daysLeft}일 남음`}
+                          {isCompletedFundingStatus(project.status) ? '펀딩 종료' : `${project.daysLeft}일 남음`}
                         </Text>
                       </View>
                       <Progress 
@@ -290,7 +311,7 @@ export default function FundingListScreen() {
           <View style={styles.statsGrid}>
             <StatCard 
               icon={<TrendingUp size={22} color="#FFF" />} 
-              val={fundingProjects.filter(p => p.status === "진행 중").length.toString()} 
+              val={projects.filter(p => isSupportableFundingStatus(p.status)).length.toString()} 
               label="진행중인 펀딩" 
               sub="지금 참여 가능"
             />
@@ -302,7 +323,7 @@ export default function FundingListScreen() {
             />
             <StatCard 
               icon={<Text style={{ fontSize: 18, color: '#FFF' }}>✓</Text>} 
-              val={fundingProjects.filter(p => p.status === "성공").length.toString()} 
+              val={projects.filter(p => isCompletedFundingStatus(p.status)).length.toString()} 
               label="성공 프로젝트" 
               sub="여러분의 선택"
             />
@@ -311,7 +332,7 @@ export default function FundingListScreen() {
           <View style={styles.milestoneContainer}>
             <View style={styles.milestoneBox}>
               <Text style={styles.milestoneTxt}>
-                총 <Text style={styles.milestoneVal}>{(fundingProjects.reduce((sum, p) => sum + p.currentAmount, 0) / 100000000).toFixed(1)}억원</Text> 이상 모금 달성
+                총 <Text style={styles.milestoneVal}>{(projects.reduce((sum, p) => sum + p.currentAmount, 0) / 100000000).toFixed(1)}억원</Text> 이상 모금 달성
               </Text>
             </View>
           </View>

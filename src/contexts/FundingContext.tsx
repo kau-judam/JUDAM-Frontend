@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from "react";
-import { fundingProjects, FundingProject } from "@/constants/data";
+import { fundingProjects, FundingProject, JournalEntry, ProjectStatus } from "@/constants/data";
 
 interface ParticipatedFunding {
   fundingId: number;
@@ -11,6 +11,10 @@ interface FundingContextType {
   projects: FundingProject[];
   participatedFundings: ParticipatedFunding[];
   addParticipation: (fundingId: number, amount: number) => void;
+  addProject: (project: Omit<FundingProject, "id">) => FundingProject;
+  updateProjectJournals: (projectId: number, journals: JournalEntry[]) => void;
+  updateProjectStatus: (projectId: number, status: ProjectStatus) => void;
+  updateProjectFunding: (projectId: number, amount: number) => void;
 }
 
 const initialParticipations: ParticipatedFunding[] = [
@@ -25,7 +29,7 @@ const initialParticipations: ParticipatedFunding[] = [
 const FundingContext = createContext<FundingContextType | undefined>(undefined);
 
 export function FundingProvider({ children }: { children: ReactNode }) {
-  const [projects] = useState<FundingProject[]>(fundingProjects);
+  const [projects, setProjects] = useState<FundingProject[]>(fundingProjects);
   const [participatedFundings, setParticipatedFundings] = useState<ParticipatedFunding[]>(
     initialParticipations
   );
@@ -41,8 +45,67 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const addProject = (project: Omit<FundingProject, "id">) => {
+    const nextProject: FundingProject = {
+      ...project,
+      id: Math.max(0, ...projects.map((p) => p.id)) + 1,
+      createdAt: project.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setProjects((prev) => [nextProject, ...prev]);
+    return nextProject;
+  };
+
+  const updateProjectJournals = (projectId: number, journals: JournalEntry[]) => {
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === projectId ? { ...project, journals, updatedAt: new Date().toISOString() } : project
+      )
+    );
+  };
+
+  const updateProjectStatus = (projectId: number, status: ProjectStatus) => {
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id === projectId ? { ...project, status, updatedAt: new Date().toISOString() } : project
+      )
+    );
+  };
+
+  const updateProjectFunding = (projectId: number, amount: number) => {
+    setProjects((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        const currentAmount = project.currentAmount + amount;
+        const progress = (currentAmount / project.goalAmount) * 100;
+        const status =
+          progress >= 100 && (project.status === "진행 중" || project.status === "펀딩 예정")
+            ? "목표 달성"
+            : project.status;
+
+        return {
+          ...project,
+          currentAmount,
+          backers: project.backers + 1,
+          status,
+          updatedAt: new Date().toISOString(),
+        };
+      })
+    );
+  };
+
   return (
-    <FundingContext.Provider value={{ projects, participatedFundings, addParticipation }}>
+    <FundingContext.Provider
+      value={{
+        projects,
+        participatedFundings,
+        addParticipation,
+        addProject,
+        updateProjectJournals,
+        updateProjectStatus,
+        updateProjectFunding,
+      }}
+    >
       {children}
     </FundingContext.Provider>
   );

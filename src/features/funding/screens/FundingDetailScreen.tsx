@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   View,
   Text,
   StyleSheet,
@@ -36,9 +35,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
+import { useFunding } from '@/contexts/FundingContext';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { fundingProjects, FundingProject, getFundingProjectImageSource } from '@/constants/data';
+import {
+  BREWING_STAGES,
+  getFundingProjectImageSource,
+  getFundingStatusLabel,
+  isCompletedFundingStatus,
+  isSupportableFundingStatus,
+} from '@/constants/data';
+import { showLoginRequired } from '@/utils/authPrompt';
 
 const reviewsData = [
   { id: 1, projectId: 5, userName: "전통주러버", rating: 5, date: "2026. 03. 25", comment: "정말 기대 이상이었어요! 벚꽃의 은은한 향이 정말 좋았습니다." },
@@ -62,15 +69,17 @@ const initialComments = [
 ];
 
 export default function FundingDetailScreen() {
-  const { id } = useLocalSearchParams();
+  const { id, tab } = useLocalSearchParams<{ id?: string; tab?: string }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
+  const { projects } = useFunding();
   const rawProjectId = Array.isArray(id) ? id[0] : id;
   const projectId = Number(rawProjectId);
+  const initialTab = tab === "journal" ? "양조일지" : "소개";
+  const project = useMemo(() => projects.find((p) => p.id === projectId) || null, [projectId, projects]);
   
-  const [project, setProject] = useState<FundingProject | null>(null);
-  const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">("소개");
+  const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">(initialTab);
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
   const [showFundingOptionModal, setShowFundingOptionModal] = useState(false);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
@@ -83,11 +92,6 @@ export default function FundingDetailScreen() {
   const [likedComments, setLikedComments] = useState<Set<number>>(new Set());
   const [likedReplies, setLikedReplies] = useState<Set<number>>(new Set());
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set([1]));
-
-  useEffect(() => {
-    const found = fundingProjects.find(p => p.id === projectId);
-    setProject(found || null);
-  }, [projectId]);
 
   if (!project) {
     return (
@@ -142,25 +146,25 @@ export default function FundingDetailScreen() {
   const supportButtonLabel =
     isOwnBreweryProject
       ? "프로젝트 관리하기"
-      : project.status !== "진행 중"
-      ? "펀딩 종료"
+      : !isSupportableFundingStatus(project.status)
+      ? project.status === "심사 중" || project.status === "펀딩 예정"
+        ? "후원 준비중"
+        : "펀딩 종료"
       : "프로젝트 후원하기";
 
-  const recommendedProjects = fundingProjects.filter(p => p.id !== project.id).slice(0, 4);
+  const recommendedProjects = projects.filter(p => p.id !== project.id).slice(0, 4);
+  const journals = project.journals || [];
 
   const handleSupportClick = () => {
     if (!user) {
-      Alert.alert("로그인이 필요합니다", "후원하려면 먼저 로그인해주세요.", [
-        { text: "취소", style: "cancel" },
-        { text: "로그인하기", onPress: () => router.push('/login' as any) },
-      ]);
+      showLoginRequired('후원하려면 먼저 로그인해주세요.');
       return;
     }
     if (isOwnBreweryProject) {
       router.push(user.isBreweryVerified ? '/brewery/dashboard' as any : '/brewery/verification' as any);
       return;
     }
-    if (project.status !== "진행 중") return;
+    if (!isSupportableFundingStatus(project.status)) return;
     setShowFundingOptionModal(true);
   };
 
@@ -171,6 +175,10 @@ export default function FundingDetailScreen() {
 
   const handleAddComment = () => {
     if (!newComment.trim()) return;
+    if (!user) {
+      showLoginRequired('펀딩 Q&A 댓글은 로그인 후 이용할 수 있어요.');
+      return;
+    }
     const comment = {
       id: Date.now(),
       userName: user?.name || "나",
@@ -186,6 +194,10 @@ export default function FundingDetailScreen() {
 
   const handleAddReply = (commentId: number) => {
     if (!replyContent.trim()) return;
+    if (!user) {
+      showLoginRequired('펀딩 Q&A 답글은 로그인 후 이용할 수 있어요.');
+      return;
+    }
     const newReply = {
       id: Date.now(),
       userName: user?.name || "나",
@@ -201,6 +213,10 @@ export default function FundingDetailScreen() {
   };
 
   const toggleCommentLike = (commentId: number) => {
+    if (!user) {
+      showLoginRequired('펀딩 Q&A 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
     const newLiked = new Set(likedComments);
     let diff = 0;
     if (newLiked.has(commentId)) {
@@ -215,6 +231,10 @@ export default function FundingDetailScreen() {
   };
 
   const toggleReplyLike = (commentId: number, replyId: number) => {
+    if (!user) {
+      showLoginRequired('펀딩 Q&A 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
     const uniqueId = commentId * 10000 + replyId;
     const newLiked = new Set(likedReplies);
     let diff = 0;
@@ -237,6 +257,29 @@ export default function FundingDetailScreen() {
     if (newExpanded.has(commentId)) newExpanded.delete(commentId);
     else newExpanded.add(commentId);
     setExpandedComments(newExpanded);
+  };
+
+  const handleFavoritePress = (targetProjectId: number) => {
+    if (!user) {
+      showLoginRequired('펀딩 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    toggleFavoriteFunding(targetProjectId);
+  };
+
+  const handleReplyOpen = (commentId: number) => {
+    if (!user) {
+      showLoginRequired('펀딩 Q&A 답글은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    setReplyingTo(replyingTo === commentId ? null : commentId);
+  };
+
+  const handleReviewWrite = () => {
+    if (!user) {
+      showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.');
+      return;
+    }
   };
 
   return (
@@ -262,7 +305,16 @@ export default function FundingDetailScreen() {
                <Bell size={20} color="#111" />
              </TouchableOpacity>
            )}
-           <TouchableOpacity onPress={() => router.push('/ai-chat' as any)} style={styles.headerIconBtn}>
+           <TouchableOpacity
+             onPress={() => {
+               if (!user) {
+                 showLoginRequired('AI 챗봇은 로그인 후 이용할 수 있어요.');
+                 return;
+               }
+               router.push('/ai-chat' as any);
+             }}
+             style={styles.headerIconBtn}
+           >
              <MessageCircle size={20} color="#111" />
            </TouchableOpacity>
         </View>
@@ -306,7 +358,7 @@ export default function FundingDetailScreen() {
           <View style={styles.dateInfo}>
              <View style={styles.dateRow}>
                 <Calendar size={16} color="#4B5563" />
-                <Text style={styles.dateTxt}>{project.status === "진행 중" ? `${project.daysLeft}일 남음` : "펀딩 종료"}</Text>
+                <Text style={styles.dateTxt}>{isSupportableFundingStatus(project.status) ? `${project.daysLeft}일 남음` : getFundingStatusLabel(project.status)}</Text>
              </View>
              <Text style={styles.periodTxt}>{project.startDate} ~ {project.endDate}</Text>
           </View>
@@ -559,30 +611,39 @@ export default function FundingDetailScreen() {
 
            {activeTab === "양조일지" && (
              <Animated.View entering={FadeIn}>
+                {isOwnBreweryProject && (
+                  <TouchableOpacity style={styles.writeReviewBtn} onPress={() => router.push(`/brewery/project/${project.id}/journal` as any)}>
+                    <Plus size={16} color="#FFF" />
+                    <Text style={styles.writeReviewTxt}>양조일지 관리하기</Text>
+                  </TouchableOpacity>
+                )}
                 <View style={styles.journalList}>
-                   {projectSchedule.slice(0, 5).map((item, index) => {
-                     const completed = project.status !== "진행 중" || index === 0;
+                   {BREWING_STAGES.map((stage, index) => {
+                     const entries = journals.filter((entry) => entry.stage === stage.id);
+                     const fallbackSchedule = projectSchedule[index];
+                     const completed = entries.length > 0 || !isSupportableFundingStatus(project.status) || index === 0;
                      return (
-                       <View key={`${item.date}-${item.description}`} style={styles.sectionCard}>
+                       <View key={stage.id} style={styles.sectionCard}>
                           <View style={styles.journalItem}>
                              <View style={completed ? styles.journalStep : styles.journalStepUpcoming}>
                                <Text style={completed ? styles.journalStepTxt : styles.journalStepTxtUpcoming}>{index + 1}</Text>
                              </View>
                              <View style={{ flex: 1 }}>
                                 <View style={styles.journalHeader}>
-                                   <Text style={completed ? styles.journalTitle : styles.journalTitleUpcoming}>{item.description}</Text>
-                                   <Text style={styles.journalDate}>{completed ? item.date : "예정"}</Text>
+                                   <Text style={completed ? styles.journalTitle : styles.journalTitleUpcoming}>{stage.name}</Text>
+                                   <Text style={styles.journalDate}>{entries[0]?.date || fallbackSchedule?.date || "예정"}</Text>
                                 </View>
                                 <Text style={completed ? styles.journalBody : styles.journalBodyUpcoming}>
-                                  {completed
-                                    ? `${project.brewery}에서 ${item.description} 단계를 진행했습니다. 후원자에게 이어지는 과정을 투명하게 공유합니다.`
-                                    : `${item.description} 단계는 펀딩 진행 상황에 맞춰 순차적으로 업데이트될 예정입니다.`}
+                                  {entries[0]?.content ||
+                                    (completed
+                                      ? `${project.brewery}에서 ${stage.name} 단계를 진행했습니다. 후원자에게 이어지는 과정을 투명하게 공유합니다.`
+                                      : `${stage.name} 단계는 펀딩 진행 상황에 맞춰 순차적으로 업데이트될 예정입니다.`)}
                                 </Text>
                              </View>
                           </View>
-                          {index === 0 && (
+                          {(entries[0]?.images?.[0] || index === 0) && (
                             <View style={styles.journalImgBox}>
-                               <Image source={getFundingProjectImageSource(project)} style={styles.journalImg} />
+                               <Image source={entries[0]?.images?.[0] ? { uri: entries[0].images[0] } : getFundingProjectImageSource(project)} style={styles.journalImg} />
                             </View>
                           )}
                        </View>
@@ -596,18 +657,24 @@ export default function FundingDetailScreen() {
              <Animated.View entering={FadeIn}>
                 <View style={styles.sectionCard}>
                    <Text style={styles.sectionHeaderTitle}>Q&A</Text>
-                   <View style={styles.qaInputRow}>
-                      <TextInput 
-                        style={styles.qaInput} 
-                        placeholder="댓글을 입력하세요..." 
-                        placeholderTextColor="#9CA3AF"
-                        value={newComment} 
-                        onChangeText={setNewComment} 
-                      />
-                      <TouchableOpacity style={styles.qaSend} onPress={handleAddComment}>
-                         <Send size={20} color="#FFF" />
-                      </TouchableOpacity>
-                   </View>
+                   {user ? (
+                     <View style={styles.qaInputRow}>
+                        <TextInput
+                          style={styles.qaInput}
+                          placeholder="댓글을 입력하세요..."
+                          placeholderTextColor="#9CA3AF"
+                          value={newComment}
+                          onChangeText={setNewComment}
+                        />
+                        <TouchableOpacity style={styles.qaSend} onPress={handleAddComment}>
+                           <Send size={20} color="#FFF" />
+                        </TouchableOpacity>
+                     </View>
+                   ) : (
+                     <TouchableOpacity style={styles.guestActionButton} onPress={() => showLoginRequired('펀딩 Q&A 댓글은 로그인 후 이용할 수 있어요.')}>
+                       <Text style={styles.guestActionText}>로그인하고 댓글 작성하기</Text>
+                     </TouchableOpacity>
+                   )}
 
                    <View style={styles.commentList}>
                       {comments.map((c, index) => (
@@ -631,7 +698,7 @@ export default function FundingDetailScreen() {
                                  <ThumbsUp size={16} color={likedComments.has(c.id) ? "#111" : "#9CA3AF"} fill={likedComments.has(c.id) ? "#111" : "transparent"} />
                                  <Text style={[styles.actionTxt, likedComments.has(c.id) && { color: "#111" }]}>{c.likes}</Text>
                               </TouchableOpacity>
-                              <TouchableOpacity style={styles.commentAction} onPress={() => setReplyingTo(replyingTo === c.id ? null : c.id)}>
+                              <TouchableOpacity style={styles.commentAction} onPress={() => handleReplyOpen(c.id)}>
                                  <MessageCircle size={16} color="#9CA3AF" />
                                  <Text style={styles.actionTxt}>답글</Text>
                               </TouchableOpacity>
@@ -701,10 +768,10 @@ export default function FundingDetailScreen() {
                 <View style={styles.sectionCard}>
                    <View style={styles.rowBetweenHeader}>
                       <Text style={styles.sectionHeaderTitle}>후원자 후기</Text>
-                      {project.status !== "진행 중" && <Text style={styles.countTxt}>{reviewsData.filter(r => r.projectId === project.id).length}개</Text>}
+                      {!isSupportableFundingStatus(project.status) && <Text style={styles.countTxt}>{reviewsData.filter(r => r.projectId === project.id).length}개</Text>}
                    </View>
                    
-                   {project.status === "진행 중" ? (
+                   {isSupportableFundingStatus(project.status) ? (
                      <View style={styles.emptyReviews}>
                         <View style={styles.emptyIconCircle}>
                            <Target size={32} color="#9CA3AF" />
@@ -719,7 +786,7 @@ export default function FundingDetailScreen() {
                         </View>
                         <Text style={styles.emptyTitle}>아직 후기가 없어요</Text>
                         <Text style={styles.emptySubMulti}>이 술을 마셔본 첫 번째 후기를{'\n'}남겨주세요! 다른 분들에게 큰 도움이 돼요 🍶</Text>
-                        <TouchableOpacity style={styles.writeReviewBtn}>
+                        <TouchableOpacity style={styles.writeReviewBtn} onPress={handleReviewWrite}>
                            <Star size={16} color="#FFF" />
                            <Text style={styles.writeReviewTxt}>첫 번째 후기 작성하기</Text>
                         </TouchableOpacity>
@@ -740,7 +807,7 @@ export default function FundingDetailScreen() {
                              <Text style={styles.reviewTxt} numberOfLines={3}>{r.comment}</Text>
                           </View>
                         ))}
-                        <TouchableOpacity style={styles.writeReviewOutline}>
+                        <TouchableOpacity style={styles.writeReviewOutline} onPress={handleReviewWrite}>
                            <Text style={styles.writeReviewOutlineTxt}>✏️ 나도 후기 작성하기</Text>
                         </TouchableOpacity>
                      </View>
@@ -763,7 +830,7 @@ export default function FundingDetailScreen() {
                <TouchableOpacity key={p.id} style={styles.recCard} onPress={() => router.push(`/funding/${p.id}`)}>
                   <View style={styles.recThumbBox}>
                      <Image source={{ uri: p.image }} style={styles.recImg} />
-                     <TouchableOpacity style={styles.recHeart} onPress={() => toggleFavoriteFunding(p.id)}>
+                     <TouchableOpacity style={styles.recHeart} onPress={() => handleFavoritePress(p.id)}>
                         <Heart size={16} color={isFavoriteFunding(p.id) ? "#EF4444" : "#FFF"} fill={isFavoriteFunding(p.id) ? "#EF4444" : "transparent"} />
                      </TouchableOpacity>
                   </View>
@@ -771,7 +838,7 @@ export default function FundingDetailScreen() {
                      <View style={styles.recTopRow}>
                         <Text style={styles.recBrewery}>{p.brewery}</Text>
                         <View style={styles.catBadge}><Text style={styles.catTxt}>{p.category}</Text></View>
-                        {p.status === '성공' && (
+                        {isCompletedFundingStatus(p.status) && (
                           <View style={styles.recSuccessBadge}><Text style={styles.recSuccessTxt}>성사됨</Text></View>
                         )}
                      </View>
@@ -781,7 +848,7 @@ export default function FundingDetailScreen() {
                            <Text style={styles.recPct}>{Math.min((p.currentAmount/p.goalAmount)*100, 100).toFixed(0)}%</Text>
                            <Text style={styles.recAmt}>{(p.currentAmount / 10000).toLocaleString()}만원</Text>
                         </View>
-                        <Text style={styles.recDays}>{p.status === "성공" ? "종료" : `${p.daysLeft}일 남음`}</Text>
+                        <Text style={styles.recDays}>{isCompletedFundingStatus(p.status) ? "종료" : `${p.daysLeft}일 남음`}</Text>
                      </View>
                   </View>
                </TouchableOpacity>
@@ -792,12 +859,12 @@ export default function FundingDetailScreen() {
 
       {/* ── Fixed Bottom Actions ── */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
-         <TouchableOpacity style={styles.heartBtn} onPress={() => toggleFavoriteFunding(project.id)}>
+         <TouchableOpacity style={styles.heartBtn} onPress={() => handleFavoritePress(project.id)}>
             <Heart size={24} color={isFavoriteFunding(project.id) ? "#EF4444" : "#111"} fill={isFavoriteFunding(project.id) ? "#EF4444" : "transparent"} />
          </TouchableOpacity>
          <TouchableOpacity 
-           style={[styles.mainSupportBtn, !isOwnBreweryProject && project.status !== "진행 중" && { backgroundColor: '#374151' }]}
-           disabled={!isOwnBreweryProject && project.status !== "진행 중"}
+           style={[styles.mainSupportBtn, !isOwnBreweryProject && !isSupportableFundingStatus(project.status) && { backgroundColor: '#374151' }]}
+           disabled={!isOwnBreweryProject && !isSupportableFundingStatus(project.status)}
            onPress={handleSupportClick}
          >
             <Text style={styles.mainSupportTxt}>{supportButtonLabel}</Text>
@@ -1077,6 +1144,8 @@ const styles = StyleSheet.create({
   qaInputRow: { flexDirection: 'row', gap: 8, marginBottom: 24 },
   qaInput: { flex: 1, height: 52, backgroundColor: '#F9FAFB', borderRadius: 16, paddingHorizontal: 16, fontSize: 14, color: '#111', borderWidth: 1, borderColor: '#E5E7EB' },
   qaSend: { width: 52, height: 52, backgroundColor: '#111', borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  guestActionButton: { height: 52, backgroundColor: '#F3F4F6', borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  guestActionText: { fontSize: 14, fontWeight: '800', color: '#4B5563' },
   commentList: { gap: 24 },
   commentCard: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 24 },
   commentTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },

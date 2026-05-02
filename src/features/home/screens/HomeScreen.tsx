@@ -27,7 +27,8 @@ import { Progress } from '@/components/ui/progress';
 import { RecipeCard } from '@/components/recipe-card';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getFundingProjectImageSource, getPopularFundingProjects, getPopularRecipes } from '@/constants/data';
+import { useFunding } from '@/contexts/FundingContext';
+import { getFundingProjectImageSource, getPopularRecipes, isCompletedFundingStatus, sortFundingProjectsByPopularity } from '@/constants/data';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -72,9 +73,13 @@ function pushTabToTop(pathname: '/recipe' | '/funding') {
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+  const { projects } = useFunding();
   const [currentSlide, setCurrentSlide] = useState(0);
-  const popularFundingProjects = getPopularFundingProjects(3);
+  const popularFundingProjects = sortFundingProjectsByPopularity(projects).slice(0, 3);
   const popularRecipes = getPopularRecipes(3);
+  const totalBackers = projects.reduce((sum, project) => sum + project.backers, 0);
+  const activeProjects = projects.filter((project) => !isCompletedFundingStatus(project.status)).length;
+  const completedProjects = projects.filter((project) => isCompletedFundingStatus(project.status)).length;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -185,7 +190,7 @@ export default function HomeScreen() {
                       <View style={styles.fundingProgressRow}>
                         <Text style={styles.progressPct}>{Math.round(progress)}%</Text>
                         <Text style={styles.fundingAmount}>{(project.currentAmount / 10000).toLocaleString()}만원</Text>
-                        <Text style={styles.daysLeft}>{project.daysLeft}일 남음</Text>
+                        <Text style={styles.daysLeft}>{isCompletedFundingStatus(project.status) ? '펀딩 종료' : `${project.daysLeft}일 남음`}</Text>
                       </View>
                       <Progress value={progress} style={styles.progressBar} />
                     </View>
@@ -231,7 +236,7 @@ export default function HomeScreen() {
               <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
                 <Users size={20} color="#FFF" />
               </View>
-              <Text style={styles.statsValue}>2,847</Text>
+              <Text style={styles.statsValue}>{totalBackers.toLocaleString()}</Text>
               <Text style={styles.statsLabel}>가입 회원</Text>
             </View>
             <View style={styles.statsItem}>
@@ -245,14 +250,14 @@ export default function HomeScreen() {
               <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
                 <TrendingUp size={20} color="#FFF" />
               </View>
-              <Text style={styles.statsValue}>156</Text>
+              <Text style={styles.statsValue}>{activeProjects}</Text>
               <Text style={styles.statsLabel}>진행중인 펀딩</Text>
             </View>
             <View style={styles.statsItem}>
               <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
                 <Trophy size={20} color="#FFF" />
               </View>
-              <Text style={styles.statsValue}>89</Text>
+              <Text style={styles.statsValue}>{completedProjects}</Text>
               <Text style={styles.statsLabel}>성공한 펀딩</Text>
             </View>
           </View>

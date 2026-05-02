@@ -21,6 +21,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { RecipeCard } from '@/components/recipe-card';
 import { recipesData, sortRecipesByPopularity } from '@/constants/data';
+import { showLoginRequired } from '@/utils/authPrompt';
 
 const ACTION_CONTROL_HEIGHT = 40;
 const SORT_BUTTON_WIDTH = 104;
@@ -35,7 +36,19 @@ export default function RecipeScreen() {
   const [recipes, setRecipes] = useState(recipesData);
 
   const handleRecipeLike = (recipeId: number) => {
+    if (!user) {
+      showLoginRequired('레시피 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
     setRecipes(prev => prev.map(r => r.id === recipeId ? { ...r, liked: !r.liked, likes: r.liked ? r.likes - 1 : r.likes + 1 } : r));
+  };
+
+  const handleRecipeComment = (recipeId: number) => {
+    if (!user) {
+      showLoginRequired('레시피 댓글은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    router.push(`/recipe/${recipeId}` as any);
   };
 
   const filteredRecipes = recipes.filter(r => {
@@ -86,7 +99,7 @@ export default function RecipeScreen() {
                  <Text style={styles.proposeBtnTxt}>레시피 제안하기</Text>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={styles.loginReqBtn} onPress={() => router.push('/login' as any)}>
+              <TouchableOpacity style={styles.loginReqBtn} onPress={() => showLoginRequired('레시피 제안은 로그인 후 이용할 수 있어요.')}>
                  <Text style={styles.loginReqBtnTxt}>로그인하고 제안하기</Text>
               </TouchableOpacity>
             )}
@@ -116,6 +129,7 @@ export default function RecipeScreen() {
                 recipe={item} 
                 index={index}
                 onLike={handleRecipeLike}
+                onComment={handleRecipeComment}
                 showLikeButton={true}
               />
             ))}

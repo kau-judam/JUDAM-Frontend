@@ -16,6 +16,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { ChevronLeft, Image as ImageIcon, Plus, Wand2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/contexts/AuthContext';
+
 const FLAVOR_TAG_POOL = [
   '달콤함',
   '상큼함',
@@ -47,6 +49,7 @@ type NoticeState = {
 
 export default function RecipeCreateScreen() {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [title, setTitle] = useState('');
   const [mainIngredients, setMainIngredients] = useState(['']);
   const [generatedSubIngredients, setGeneratedSubIngredients] = useState<string[]>([]);
@@ -168,6 +171,27 @@ export default function RecipeCreateScreen() {
       () => router.replace('/recipe' as any)
     );
   };
+
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top, height: insets.top + 56 }]}>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.back()}>
+            <ChevronLeft size={26} color="#111" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>레시피 제안하기</Text>
+          <View style={styles.headerIconBtn} />
+        </View>
+        <View style={styles.lockedContainer}>
+          <Text style={styles.lockedTitle}>로그인이 필요합니다</Text>
+          <Text style={styles.lockedDesc}>레시피 제안은 로그인한 사용자만 이용할 수 있어요.</Text>
+          <TouchableOpacity style={styles.lockedButton} onPress={() => router.push('/login' as any)}>
+            <Text style={styles.lockedButtonText}>로그인하러 가기</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -556,6 +580,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   submitText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  lockedContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
+  lockedTitle: { fontSize: 22, fontWeight: '900', color: '#111', marginBottom: 10 },
+  lockedDesc: { fontSize: 14, fontWeight: '600', color: '#6B7280', lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+  lockedButton: { width: '100%', height: 52, borderRadius: 14, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+  lockedButtonText: { color: '#FFF', fontSize: 16, fontWeight: '900' },
   guideBox: {
     backgroundColor: '#F9FAFB',
     borderRadius: 10,

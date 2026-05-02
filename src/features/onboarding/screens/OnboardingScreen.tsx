@@ -8,9 +8,10 @@ import {
   Sparkles,
   TrendingUp,
 } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Image,
+  PanResponder,
   StatusBar as RNStatusBar,
   StyleSheet,
   Text,
@@ -27,6 +28,7 @@ import AnimatedRe, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/contexts/AuthContext';
 import SafeStorage from '@/utils/storage';
 
 const SLIDES = [
@@ -76,6 +78,7 @@ const TOTAL = SLIDES.length + 1;
 
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
+  const { logout } = useAuth();
   const [current, setCurrent] = useState(0);
   const [dir, setDir] = useState(1);
 
@@ -85,10 +88,10 @@ export default function OnboardingScreen() {
 
   const isCTA = current === SLIDES.length;
 
-  const go = (index: number) => {
+  const go = useCallback((index: number) => {
     setDir(index > current ? 1 : -1);
     setCurrent(index);
-  };
+  }, [current]);
 
   const handleNext = () => {
     if (current < SLIDES.length) go(current + 1);
@@ -96,13 +99,37 @@ export default function OnboardingScreen() {
 
   const handleSkip = () => go(SLIDES.length);
 
+  const panResponder = useMemo(
+    () => PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => (
+        Math.abs(gesture.dx) > 18 && Math.abs(gesture.dx) > Math.abs(gesture.dy)
+      ),
+      onPanResponderRelease: (_, gesture) => {
+        if (Math.abs(gesture.dx) < 52) return;
+        if (gesture.dx < 0 && current < SLIDES.length) {
+          go(current + 1);
+        }
+        if (gesture.dx > 0 && current > 0) {
+          go(current - 1);
+        }
+      },
+    }),
+    [current, go]
+  );
+
   const finishOnboarding = async (target: string) => {
     await SafeStorage.setItem('judam_onboarded', 'true');
     router.replace(target as any);
   };
 
+  const handleGuestStart = async () => {
+    RNStatusBar.setHidden(false, 'fade');
+    await logout();
+    await finishOnboarding('/(tabs)');
+  };
+
   return (
-    <View style={styles.container}>
+    <View style={styles.container} {...panResponder.panHandlers}>
       <StatusBar hidden={true} />
       {/* Slides */}
       <View style={StyleSheet.absoluteFill}>
@@ -125,10 +152,7 @@ export default function OnboardingScreen() {
             <CTASlide
               onLogin={() => finishOnboarding('/login')}
               onSignup={() => finishOnboarding('/signup')}
-              onGuest={() => {
-                RNStatusBar.setHidden(false, 'fade');
-                finishOnboarding('/(tabs)');
-              }}
+              onGuest={handleGuestStart}
               insets={insets}
             />
           </AnimatedRe.View>
@@ -141,8 +165,10 @@ export default function OnboardingScreen() {
           {/* Progress dots */}
           <View style={styles.pagination}>
             {Array.from({ length: TOTAL }).map((_, i) => (
-              <View
+              <TouchableOpacity
                 key={i}
+                activeOpacity={0.85}
+                onPress={() => go(i)}
                 style={[
                   styles.dot,
                   i === current ? styles.dotActive : styles.dotInactive,

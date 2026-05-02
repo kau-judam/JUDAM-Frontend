@@ -33,75 +33,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { SlideInRight } from 'react-native-reanimated';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useFunding } from '@/contexts/FundingContext';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import {
+  getFundingProjectImageSource,
+  getFundingStatusLabel,
+  isCompletedFundingStatus,
+  isSupportableFundingStatus,
+} from '@/constants/data';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-const summaryStats = {
-  activeFundings: 3,
-  pendingRecipes: 8,
-  newNotifications: 5,
-  totalBackers: 847,
-};
-
-const activeFundings = [
-  {
-    id: 1,
-    title: "벚꽃 막걸리",
-    description: "봄을 담은 벚꽃향이 가득한 프리미엄 막걸리",
-    progress: 87,
-    supporters: 156,
-    dday: 12,
-    goalAmount: "5,000,000",
-    currentAmount: "4,350,000",
-    image: "https://images.unsplash.com/photo-1697862469018-0fa7c93a8d70?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-  {
-    id: 2,
-    title: "전통 누룩 막걸리",
-    description: "100% 전통 누룩으로 빚은 깊은 맛의 막걸리",
-    progress: 64,
-    supporters: 98,
-    dday: 8,
-    goalAmount: "3,000,000",
-    currentAmount: "1,920,000",
-    image: "https://images.unsplash.com/photo-1582204964885-7bc2d62b6917?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-  {
-    id: 3,
-    title: "제주 한라봉 소주",
-    description: "제주 한라봉의 상큼함이 살아있는 증류식 소주",
-    progress: 45,
-    supporters: 67,
-    dday: 15,
-    goalAmount: "7,000,000",
-    currentAmount: "3,150,000",
-    image: "https://images.unsplash.com/photo-1615633949535-9dd97e86d795?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-  {
-    id: 4,
-    title: "산사 막걸리",
-    description: "산사나무 열매로 빚은 건강한 막걸리",
-    progress: 112,
-    supporters: 178,
-    dday: 0,
-    goalAmount: "4,000,000",
-    currentAmount: "4,500,000",
-    image: "https://images.unsplash.com/photo-1760920193193-91dd96af7862?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-  {
-    id: 5,
-    title: "한라봉 소주 특별판",
-    description: "제주 한라봉으로 만든 프리미엄 소주",
-    progress: 117,
-    supporters: 234,
-    dday: 0,
-    goalAmount: "7,000,000",
-    currentAmount: "8,200,000",
-    image: "https://images.unsplash.com/photo-1598191392914-c6b3616f6369?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-];
 
 const productionStages = [
   {
@@ -148,13 +90,23 @@ const stages = ["원료 투입", "발효", "증류", "숙성", "병입", "출고
 export default function BreweryDashboardScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { projects } = useFunding();
   const [fundingFilter, setFundingFilter] = useState<"active" | "completed">("active");
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [currentStageIndex, setCurrentStageIndex] = useState(0);
 
+  const ownProjects = projects.filter((project) => {
+    const breweryName = user?.breweryName || user?.name;
+    return breweryName ? project.brewery.trim() === breweryName.trim() : false;
+  });
+  const fallbackProjects = ownProjects.length > 0 ? ownProjects : projects.filter((project) => project.brewery === "술샘양조장");
   const filteredFundings = fundingFilter === "active"
-    ? activeFundings.filter(f => f.progress < 100)
-    : activeFundings.filter(f => f.progress >= 100);
+    ? fallbackProjects.filter((project) => isSupportableFundingStatus(project.status) || project.status === "심사 중" || project.status === "펀딩 예정")
+    : fallbackProjects.filter((project) => isCompletedFundingStatus(project.status));
+  const totalBackers = fallbackProjects.reduce((sum, project) => sum + project.backers, 0);
+  const averageProgress = fallbackProjects.length
+    ? Math.round(fallbackProjects.reduce((sum, project) => sum + Math.min((project.currentAmount / project.goalAmount) * 100, 100), 0) / fallbackProjects.length)
+    : 0;
 
   if (!user || user.type !== "brewery") {
     return (
@@ -252,35 +204,35 @@ export default function BreweryDashboardScreen() {
           <View style={styles.statsGrid}>
             <View style={styles.statsCard}>
                <View style={styles.statsIconCircle}><TrendingUp size={16} color="#FFF" /></View>
-               <Text style={styles.statsVal}>{summaryStats.activeFundings}</Text>
+               <Text style={styles.statsVal}>{fallbackProjects.filter((project) => isSupportableFundingStatus(project.status)).length}</Text>
                <Text style={styles.statsLab}>진행 중</Text>
             </View>
             <View style={[styles.statsCard, {backgroundColor: '#F3F4F6'}]}>
                <View style={[styles.statsIconCircle, {backgroundColor: '#4B5563'}]}><Users size={16} color="#FFF" /></View>
-               <Text style={styles.statsVal}>{summaryStats.totalBackers}</Text>
+               <Text style={styles.statsVal}>{totalBackers.toLocaleString()}</Text>
                <Text style={styles.statsLab}>총 참여자</Text>
             </View>
             <View style={[styles.statsCard, {backgroundColor: '#F3F4F6'}]}>
                <View style={[styles.statsIconCircle, {backgroundColor: '#1F2937'}]}><Target size={16} color="#FFF" /></View>
-               <Text style={styles.statsVal}>72%</Text>
+               <Text style={styles.statsVal}>{averageProgress}%</Text>
                <Text style={styles.statsLab}>평균 달성률</Text>
             </View>
           </View>
 
           {/* Funding List */}
           <View style={styles.fundingList}>
-            {filteredFundings.map((funding, index) => {
-              const progress = Math.min(funding.progress, 100);
-              const status = funding.progress >= 100 ? "성공" : "진행 중";
+            {filteredFundings.map((funding) => {
+              const progress = Math.min((funding.currentAmount / funding.goalAmount) * 100, 100);
+              const status = getFundingStatusLabel(funding.status);
 
               return (
-                <TouchableOpacity key={funding.id} style={styles.fundingItemCard} activeOpacity={0.8}>
+                <TouchableOpacity key={funding.id} style={styles.fundingItemCard} activeOpacity={0.8} onPress={() => router.push(`/funding/${funding.id}` as any)}>
                    <View style={styles.fundingRow}>
-                      <Image source={{ uri: funding.image }} style={styles.fundingThumb} />
+                      <Image source={getFundingProjectImageSource(funding)} style={styles.fundingThumb} />
                       <View style={{ flex: 1 }}>
                          <View style={styles.rowBetween}>
-                            <Text style={styles.fundingBrewery}>{user.breweryName}</Text>
-                            <View style={[styles.statusBadge, status === '성공' ? styles.statusBadgeSuccess : styles.statusBadgeActive]}>
+                            <Text style={styles.fundingBrewery}>{funding.brewery}</Text>
+                            <View style={[styles.statusBadge, isCompletedFundingStatus(funding.status) ? styles.statusBadgeSuccess : styles.statusBadgeActive]}>
                                <Text style={styles.statusBadgeTxt}>{status}</Text>
                             </View>
                          </View>
@@ -288,11 +240,14 @@ export default function BreweryDashboardScreen() {
                          <View style={styles.rowBetweenBottom}>
                             <View style={styles.rowAlign}>
                                <Text style={styles.progressPct}>{progress}%</Text>
-                               <Text style={styles.progressAmt}>{funding.currentAmount}원</Text>
+                               <Text style={styles.progressAmt}>{funding.currentAmount.toLocaleString()}원</Text>
                             </View>
-                            <Text style={styles.dday}>{status === '성공' ? '종료' : `D-${funding.dday}`}</Text>
+                            <Text style={styles.dday}>{isCompletedFundingStatus(funding.status) ? '종료' : `D-${funding.daysLeft}`}</Text>
                          </View>
                          <Progress value={progress} style={styles.progressBar} />
+                         <TouchableOpacity style={styles.stageUpdateBtnMini} onPress={() => router.push(`/brewery/project/${funding.id}/journal` as any)}>
+                           <Text style={styles.stageUpdateBtnMiniText}>양조일지 관리</Text>
+                         </TouchableOpacity>
                       </View>
                    </View>
                 </TouchableOpacity>
@@ -501,6 +456,8 @@ const styles = StyleSheet.create({
   progressAmt: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
   dday: { fontSize: 11, fontWeight: '700', color: '#111' },
   progressBar: { height: 4 },
+  stageUpdateBtnMini: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#111' },
+  stageUpdateBtnMiniText: { fontSize: 11, fontWeight: '800', color: '#FFF' },
   stageCardContainer: { width: SCREEN_WIDTH, paddingHorizontal: 20 },
   stageCard: { flex: 1, borderRadius: 24, padding: 20 },
   stageProj: { fontSize: 16, fontWeight: '700', color: '#FFF', marginBottom: 4 },

@@ -9,7 +9,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
-  Alert,
+  Modal,
   StatusBar as RNStatusBar,
   ScrollView,
 } from 'react-native';
@@ -21,6 +21,7 @@ import {
   ChevronLeft, 
   Eye, 
   EyeOff,
+  Check,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -34,6 +35,8 @@ import Animated, {
 import { StatusBar } from 'expo-status-bar';
 
 import { useAuth } from '@/contexts/AuthContext';
+import SafeStorage from '@/utils/storage';
+import { isValidEmail } from '@/utils/validation';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -50,11 +53,15 @@ const SPRING_CONFIG = {
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [rememberEmail, setRememberEmail] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
 
   const MIN_HEIGHT = SCREEN_HEIGHT * 0.68;
   const translateY = useSharedValue(SCREEN_HEIGHT);
@@ -64,6 +71,16 @@ export default function LoginScreen() {
     RNStatusBar.setHidden(true, 'none');
     translateY.value = withSpring(SCREEN_HEIGHT - MIN_HEIGHT, SPRING_CONFIG);
   }, [MIN_HEIGHT, translateY]);
+
+  useEffect(() => {
+    const loadRememberedEmail = async () => {
+      const savedEmail = await SafeStorage.getItem('judam_remember_email');
+      if (!savedEmail) return;
+      setEmail(savedEmail);
+      setRememberEmail(true);
+    };
+    loadRememberedEmail();
+  }, []);
 
   const panGesture = Gesture.Pan()
     .onStart(() => {
@@ -92,17 +109,45 @@ export default function LoginScreen() {
   }));
 
   const handleLogin = async () => {
-    if (!email || !password) return;
+    setEmailError("");
+    setPasswordError("");
+
+    if (!isValidEmail(email)) {
+      setEmailError('올바른 이메일을 입력해주세요.');
+      return;
+    }
+    if (password.length < 6) {
+      setPasswordError('비밀번호는 6자 이상 입력해주세요.');
+      return;
+    }
     setIsLoading(true);
     try {
-      await login(email, password, "user");
+      const accountType = email.toLowerCase().includes('brewery') || email.includes('양조') ? 'brewery' : 'user';
+      await login(email, password, accountType);
+      if (rememberEmail) {
+        await SafeStorage.setItem('judam_remember_email', email);
+      } else {
+        await SafeStorage.removeItem('judam_remember_email');
+      }
       setIsLoading(false);
       RNStatusBar.setHidden(false, 'fade');
-      router.replace('/(tabs)');
+      const savedUser = await SafeStorage.getItem('judam_user');
+      const parsedUser = savedUser ? JSON.parse(savedUser) : null;
+      if (accountType === 'brewery' && parsedUser?.isBreweryVerified === false) {
+        router.replace('/brewery/verification' as any);
+        return;
+      }
+      router.replace(accountType === 'brewery' ? '/brewery/dashboard' as any : '/(tabs)');
     } catch {
       setIsLoading(false);
-      Alert.alert("알림", "로그인에 실패했습니다.");
+      setNotice("로그인에 실패했습니다.");
     }
+  };
+
+  const handleGuestStart = async () => {
+    RNStatusBar.setHidden(false, 'fade');
+    await logout();
+    router.replace('/(tabs)');
   };
 
   return (
@@ -153,31 +198,38 @@ export default function LoginScreen() {
               <View style={styles.form}>
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>이메일</Text>
-                  <View style={styles.inputBox}>
+                  <View style={[styles.inputBox, emailError ? styles.inputBoxError : null]}>
                     <Mail size={18} color="#9CA3AF" style={styles.inputIcon} />
                     <TextInput 
                       style={styles.input}
                       placeholder="example@email.com"
                       placeholderTextColor="#9CA3AF"
                       value={email}
-                      onChangeText={setEmail}
+                      onChangeText={(value) => {
+                        setEmail(value);
+                        if (emailError) setEmailError("");
+                      }}
                       keyboardType="email-address"
                       autoCapitalize="none"
                       autoCorrect={false}
                     />
                   </View>
+                  {emailError && <Text style={styles.errorText}>{emailError}</Text>}
                 </View>
 
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>비밀번호</Text>
-                  <View style={styles.inputBox}>
+                  <View style={[styles.inputBox, passwordError ? styles.inputBoxError : null]}>
                     <Lock size={18} color="#9CA3AF" style={styles.inputIcon} />
                     <TextInput 
                       style={styles.input}
                       placeholder="••••••••"
                       placeholderTextColor="#9CA3AF"
                       value={password}
-                      onChangeText={setPassword}
+                      onChangeText={(value) => {
+                        setPassword(value);
+                        if (passwordError) setPasswordError("");
+                      }}
                       secureTextEntry={!showPw}
                       autoCapitalize="none"
                       autoCorrect={false}
@@ -186,11 +238,20 @@ export default function LoginScreen() {
                       {showPw ? <EyeOff size={18} color="#9CA3AF" /> : <Eye size={18} color="#9CA3AF" />}
                     </TouchableOpacity>
                   </View>
+                  {passwordError && <Text style={styles.errorText}>{passwordError}</Text>}
                 </View>
 
-                <TouchableOpacity style={styles.forgotBtn} onPress={() => Alert.alert("알림", "비밀번호 재설정 기능은 준비 중입니다.")}>
-                  <Text style={styles.forgotTxt}>비밀번호를 잊으셨나요?</Text>
-                </TouchableOpacity>
+                <View style={styles.optionRow}>
+                  <TouchableOpacity style={styles.rememberButton} onPress={() => setRememberEmail((prev) => !prev)}>
+                    <View style={[styles.rememberCheck, rememberEmail && styles.rememberCheckActive]}>
+                      {rememberEmail && <Check size={12} color="#FFF" />}
+                    </View>
+                    <Text style={styles.rememberText}>로그인 유지</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.forgotBtn} onPress={() => router.push('/password-reset' as any)}>
+                    <Text style={styles.forgotTxt}>비밀번호를 잊으셨나요?</Text>
+                  </TouchableOpacity>
+                </View>
 
                 <TouchableOpacity 
                   activeOpacity={0.8}
@@ -208,7 +269,7 @@ export default function LoginScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
-              <TouchableOpacity activeOpacity={0.8} onPress={() => Alert.alert("알림", "카카오 로그인은 준비 중입니다.")} style={styles.kakaoBtn}>
+              <TouchableOpacity activeOpacity={0.8} onPress={() => setNotice("카카오 로그인은 준비 중입니다.")} style={styles.kakaoBtn}>
                 <MessageCircle size={20} color="#1a1a1a" fill="#1a1a1a" />
                 <Text style={styles.kakaoTxt}>카카오로 로그인</Text>
               </TouchableOpacity>
@@ -218,10 +279,7 @@ export default function LoginScreen() {
                   <Text style={styles.footerLinkBold}>회원가입</Text>
                 </TouchableOpacity>
                 <View style={styles.footerBar} />
-                <TouchableOpacity onPress={() => {
-                  RNStatusBar.setHidden(false, 'fade');
-                  router.replace('/(tabs)');
-                }}>
+                <TouchableOpacity onPress={handleGuestStart}>
                   <Text style={styles.footerLinkMuted}>비회원으로 둘러보기</Text>
                 </TouchableOpacity>
               </View>
@@ -229,6 +287,17 @@ export default function LoginScreen() {
           </Animated.View>
         </Animated.View>
       </KeyboardAvoidingView>
+      <Modal transparent visible={Boolean(notice)} animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.noticeCard}>
+            <Text style={styles.noticeTitle}>알림</Text>
+            <Text style={styles.noticeBody}>{notice}</Text>
+            <TouchableOpacity style={styles.noticeButton} onPress={() => setNotice("")}>
+              <Text style={styles.noticeButtonText}>확인</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -252,9 +321,16 @@ const styles = StyleSheet.create({
   inputGroup: { gap: 6 },
   label: { fontSize: 12.8, fontWeight: '500', color: '#374151', marginLeft: 2 },
   inputBox: { height: 48, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
+  inputBoxError: { borderColor: '#DC2626', backgroundColor: '#FEF2F2' },
   inputIcon: { marginRight: 12 },
   input: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111' },
-  forgotBtn: { alignSelf: 'flex-end', paddingVertical: 4 },
+  errorText: { color: '#DC2626', fontSize: 11.5, fontWeight: '600', marginLeft: 4 },
+  optionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  rememberButton: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 4 },
+  rememberCheck: { width: 18, height: 18, borderRadius: 5, borderWidth: 1.5, borderColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center' },
+  rememberCheckActive: { backgroundColor: '#111', borderColor: '#111' },
+  rememberText: { fontSize: 12.5, color: '#6B7280', fontWeight: '600' },
+  forgotBtn: { paddingVertical: 4 },
   forgotTxt: { fontSize: 12.5, color: '#6B7280', fontWeight: '500' },
   loginBtn: { height: 52, backgroundColor: '#111', borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginTop: 4 },
   loginBtnTxt: { color: '#FFF', fontSize: 16, fontWeight: '600' },
@@ -267,4 +343,10 @@ const styles = StyleSheet.create({
   footerLinkBold: { fontSize: 13, fontWeight: '600', color: '#111' },
   footerBar: { width: 1, height: 14, backgroundColor: '#E5E7EB' },
   footerLinkMuted: { fontSize: 13, fontWeight: '600', color: '#9CA3AF' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  noticeCard: { width: '100%', maxWidth: 320, backgroundColor: '#FFF', borderRadius: 20, padding: 22, alignItems: 'center' },
+  noticeTitle: { fontSize: 18, fontWeight: '900', color: '#111', marginBottom: 8 },
+  noticeBody: { fontSize: 14, color: '#4B5563', fontWeight: '700', lineHeight: 20, textAlign: 'center', marginBottom: 20 },
+  noticeButton: { height: 48, minWidth: 120, borderRadius: 14, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  noticeButtonText: { fontSize: 14, fontWeight: '900', color: '#FFF' },
 });

@@ -26,6 +26,7 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { getImageSource, recipesData } from '@/constants/data';
+import { showLoginRequired } from '@/utils/authPrompt';
 
 const INITIAL_COMMENT_COUNT = 3;
 
@@ -66,16 +67,28 @@ export default function RecipeDetailScreen() {
   ]);
 
   const handleLike = () => {
+    if (!user) {
+      showLoginRequired('레시피 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
     setLiked(!liked);
     setLikesCount(liked ? likesCount - 1 : likesCount + 1);
   };
 
   const handleCommentLike = (cid: number) => {
+    if (!user) {
+      showLoginRequired('댓글 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
     setComments(comments.map(c => c.id === cid ? { ...c, liked: !c.liked, likes: c.liked ? c.likes - 1 : c.likes + 1 } : c));
   };
 
   const handleCommentSubmit = () => {
     if (!commentInput.trim()) return;
+    if (!user) {
+      showLoginRequired('댓글 작성은 로그인 후 이용할 수 있어요.');
+      return;
+    }
     const newComment = {
       id: comments.length + 1,
       author: user?.name || "익명",
@@ -91,6 +104,14 @@ export default function RecipeDetailScreen() {
   };
 
   const visibleComments = showAllComments ? comments : comments.slice(0, INITIAL_COMMENT_COUNT);
+
+  const handleFundingProposal = () => {
+    if (!user) {
+      showLoginRequired('펀딩 제안은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    router.push('/brewery/project/create' as any);
+  };
 
   return (
     <View style={styles.container}>
@@ -165,7 +186,7 @@ export default function RecipeDetailScreen() {
            )}
 
            {/* Propose Action */}
-           <TouchableOpacity style={styles.proposeBtn} onPress={() => router.push('/brewery/project/create' as any)}>
+           <TouchableOpacity style={styles.proposeBtn} onPress={handleFundingProposal}>
               <LinearGradient colors={['#111', '#333']} start={{x:0, y:0}} end={{x:1, y:0}} style={styles.proposeInner}>
                  <Rocket size={20} color="#FFF" />
                  <Text style={styles.proposeTxt}>이 레시피로 펀딩 제안하기</Text>
@@ -193,7 +214,11 @@ export default function RecipeDetailScreen() {
                       <TouchableOpacity onPress={() => handleCommentLike(c.id)}>
                          <Text style={[styles.actionTxt, c.liked && { color: '#111', fontWeight: '800' }]}>좋아요 {c.likes > 0 && c.likes}</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity><Text style={styles.actionTxt}>답글</Text></TouchableOpacity>
+                      <TouchableOpacity onPress={() => {
+                        if (!user) showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
+                      }}>
+                        <Text style={styles.actionTxt}>답글</Text>
+                      </TouchableOpacity>
                    </View>
                 </View>
              </Animated.View>
@@ -225,7 +250,7 @@ export default function RecipeDetailScreen() {
                   </TouchableOpacity>
                </View>
             ) : (
-               <TouchableOpacity style={styles.loginReqBtn} onPress={() => router.push('/login' as any)}>
+               <TouchableOpacity style={styles.loginReqBtn} onPress={() => showLoginRequired('댓글 작성은 로그인 후 이용할 수 있어요.')}>
                   <Text style={styles.loginReqTxt}>로그인하고 댓글 작성하기</Text>
                </TouchableOpacity>
             )}

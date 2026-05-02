@@ -3,6 +3,7 @@ import DateTimePicker, { type DateTimePickerEvent } from '@react-native-communit
 import * as ImagePicker from 'expo-image-picker';
 import {
   Animated,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -42,10 +43,12 @@ import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import SafeStorage from '@/utils/storage';
 
 type TabId = 'basic' | 'funding' | 'rewards' | 'taste' | 'plan' | 'creator' | 'trust' | 'verification';
 type FileKey = 'profileImage' | 'idCard' | 'businessLicense' | 'salesPermit' | 'alcoholPermit' | 'manufacturingLicense';
 type DatePickerTarget = 'startDate' | 'expectedDeliveryDate';
+type TempSaveMode = 'saved' | 'existing' | 'exitExisting';
 
 interface IngredientRow {
   id: number;
@@ -83,12 +86,31 @@ const mockAddresses: AddressItem[] = [
   { zipCode: '63309', address: '제주특별자치도 제주시 첨단로 242' },
 ];
 
+const BANK_OPTIONS = ['KB국민', '신한', '우리', '하나', '농협은행', 'IBK기업', '카카오뱅크', '토스뱅크', '케이뱅크', 'SC제일', '부산', '대구', '광주', '전북', '경남', '수협', '새마을금고', '신협'];
+const TEMP_SAVE_KEY = 'judam_project_temp_save';
 const IMAGE_THUMB_SIZE = 128;
 const IMAGE_THUMB_GAP = 12;
 const IMAGE_REORDER_STEP = IMAGE_THUMB_SIZE + IMAGE_THUMB_GAP;
 
 function digitsOnly(value: string) {
   return value.replace(/[^0-9]/g, '');
+}
+
+function decimalOnly(value: string) {
+  const normalized = value.replace(/[^0-9.]/g, '');
+  const [first, ...rest] = normalized.split('.');
+  return rest.length > 0 ? `${first}.${rest.join('')}` : first;
+}
+
+function formatProjectPhone(value: string) {
+  const digits = digitsOnly(value).slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+}
+
+function isValidProjectPhone(value: string) {
+  return /^01[016789][0-9]{7,8}$/.test(digitsOnly(value));
 }
 
 function parseDate(value: string) {
@@ -115,6 +137,14 @@ function currency(value: string | number) {
   return Number.isFinite(number) ? number.toLocaleString() : '0';
 }
 
+function volumeText(value: string) {
+  return value ? `${value}ml` : '';
+}
+
+function alcoholText(value: string) {
+  return value ? `${value}%` : '';
+}
+
 function parseTextLines(value: string) {
   return value
     .split('\n')
@@ -134,11 +164,14 @@ export default function BreweryProjectCreateScreen() {
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showSubmitSuccess, setShowSubmitSuccess] = useState(false);
   const [showTempSaveModal, setShowTempSaveModal] = useState(false);
+  const [tempSaveMode, setTempSaveMode] = useState<TempSaveMode>('saved');
   const [tempSaveTimestamp, setTempSaveTimestamp] = useState('');
+  const [hasTempSave, setHasTempSave] = useState(false);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
+  const [showBankModal, setShowBankModal] = useState(false);
   const [datePickerTarget, setDatePickerTarget] = useState<DatePickerTarget | null>(null);
   const [addressSearch, setAddressSearch] = useState('');
   const [phoneVerificationSent, setPhoneVerificationSent] = useState(false);
@@ -229,6 +262,21 @@ export default function BreweryProjectCreateScreen() {
   }, [phoneTimer]);
 
   useEffect(() => {
+    const loadTempSaveMeta = async () => {
+      const saved = await SafeStorage.getItem(TEMP_SAVE_KEY);
+      if (!saved) return;
+      try {
+        const parsed = JSON.parse(saved);
+        setTempSaveTimestamp(parsed.timestamp || '');
+        setHasTempSave(true);
+      } catch {
+        await SafeStorage.removeItem(TEMP_SAVE_KEY);
+      }
+    };
+    void loadTempSaveMeta();
+  }, []);
+
+  useEffect(() => {
     if (!user || user.type !== 'brewery') return;
     setCreatorInfo((prev) => ({
       ...prev,
@@ -300,6 +348,8 @@ export default function BreweryProjectCreateScreen() {
       taxInfo.businessCategory,
       taxInfo.businessItem,
       taxInfo.email,
+      trustInfo.projectPolicy,
+      trustInfo.expectedDifficulties,
       uploadedFiles.businessLicense,
       uploadedFiles.salesPermit,
       uploadedFiles.alcoholPermit,
@@ -318,10 +368,12 @@ export default function BreweryProjectCreateScreen() {
     projectPlan.introduction,
     startDateWarning,
     taxInfo,
+    trustInfo,
     uploadedFiles,
   ]);
 
   const canSubmit = progress >= 100;
+  const canSendPhoneVerification = isValidProjectPhone(creatorInfo.phone);
 
   const showAlert = (message: string) => {
     setAlertMessage(message);
@@ -331,15 +383,114 @@ export default function BreweryProjectCreateScreen() {
   const hasUnsavedChanges = () => {
     return Boolean(
       basicInfo.title ||
+        basicInfo.category ||
         basicInfo.summary ||
+        basicInfo.images.length > 0 ||
         fundingInfo.goalAmount ||
         fundingInfo.startDate ||
         productInfo.volume ||
         productInfo.alcoholContent ||
         productInfo.ingredients.some((item) => item.ingredient || item.origin) ||
         projectPlan.introduction ||
-        creatorInfo.name
+        projectPlan.budget ||
+        projectPlan.schedule ||
+        creatorInfo.name ||
+        creatorInfo.phone ||
+        creatorInfo.accountBank ||
+        creatorInfo.accountNumber ||
+        taxInfo.businessName ||
+        taxInfo.address ||
+        uploadedFiles.businessLicense ||
+        uploadedFiles.salesPermit ||
+        uploadedFiles.alcoholPermit ||
+        uploadedFiles.manufacturingLicense
     );
+  };
+
+  const createDraftPayload = () => ({
+    timestamp: new Date().toISOString(),
+    basicInfo,
+    fundingInfo,
+    productInfo,
+    tasteProfile,
+    projectPlan,
+    creatorInfo,
+    taxInfo,
+    trustInfo,
+    uploadedFiles,
+    phoneVerified,
+    accountVerified,
+  });
+
+  const applyDraftPayload = (draft: any) => {
+    if (draft.basicInfo) setBasicInfo(draft.basicInfo);
+    if (draft.fundingInfo) setFundingInfo(draft.fundingInfo);
+    if (draft.productInfo) setProductInfo(draft.productInfo);
+    if (draft.tasteProfile) setTasteProfile(draft.tasteProfile);
+    if (draft.projectPlan) setProjectPlan(draft.projectPlan);
+    if (draft.creatorInfo) setCreatorInfo(draft.creatorInfo);
+    if (draft.taxInfo) setTaxInfo(draft.taxInfo);
+    if (draft.trustInfo) setTrustInfo(draft.trustInfo);
+    if (draft.uploadedFiles) setUploadedFiles(draft.uploadedFiles);
+    setPhoneVerified(Boolean(draft.phoneVerified));
+    setAccountVerified(Boolean(draft.accountVerified));
+  };
+
+  const getSavedDraft = async () => {
+    const saved = await SafeStorage.getItem(TEMP_SAVE_KEY);
+    if (!saved) return null;
+    try {
+      return JSON.parse(saved);
+    } catch {
+      await SafeStorage.removeItem(TEMP_SAVE_KEY);
+      setHasTempSave(false);
+      setTempSaveTimestamp('');
+      return null;
+    }
+  };
+
+  const saveDraft = async ({ showSavedModal = true, exitAfter = false }: { showSavedModal?: boolean; exitAfter?: boolean } = {}) => {
+    setIsSaving(true);
+    const draft = createDraftPayload();
+    await SafeStorage.setItem(TEMP_SAVE_KEY, JSON.stringify(draft));
+    setIsSaving(false);
+    setHasTempSave(true);
+    setTempSaveTimestamp(draft.timestamp);
+    if (exitAfter) {
+      router.back();
+      return;
+    }
+    if (showSavedModal) {
+      setTempSaveMode('saved');
+      setShowTempSaveModal(true);
+    }
+  };
+
+  const loadSavedDraft = async () => {
+    const draft = await getSavedDraft();
+    if (!draft) {
+      setShowTempSaveModal(false);
+      showAlert('불러올 임시저장 내용이 없습니다.');
+      return;
+    }
+    applyDraftPayload(draft);
+    setTempSaveTimestamp(draft.timestamp || '');
+    setHasTempSave(true);
+    setShowTempSaveModal(false);
+    showAlert('임시저장 내용을 불러왔습니다.');
+  };
+
+  const deleteSavedDraft = async () => {
+    await SafeStorage.removeItem(TEMP_SAVE_KEY);
+    setHasTempSave(false);
+    setTempSaveTimestamp('');
+    setShowTempSaveModal(false);
+    showAlert('임시저장 내용이 삭제되었습니다.');
+  };
+
+  const overwriteSavedDraft = async () => {
+    setShowTempSaveModal(false);
+    await saveDraft({ showSavedModal: true });
   };
 
   const updateFundingPrice = (key: 'pricePerBottle' | 'bottleQuantity', value: string) => {
@@ -350,30 +501,42 @@ export default function BreweryProjectCreateScreen() {
     setFundingInfo(next);
   };
 
-  const handleExit = () => {
+  const handleExit = async () => {
     if (hasUnsavedChanges()) {
+      const savedDraft = await getSavedDraft();
+      if (savedDraft) {
+        setTempSaveTimestamp(savedDraft.timestamp || tempSaveTimestamp);
+        setHasTempSave(true);
+        setTempSaveMode('exitExisting');
+        setShowTempSaveModal(true);
+        return;
+      }
       setShowExitConfirm(true);
       return;
     }
     router.back();
   };
 
-  const handleSave = () => {
-    setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
-      setTempSaveTimestamp(new Date().toISOString());
+  const handleSave = async () => {
+    const savedDraft = await getSavedDraft();
+    if (savedDraft || hasTempSave) {
+      setTempSaveTimestamp(savedDraft?.timestamp || tempSaveTimestamp);
+      setHasTempSave(true);
+      setTempSaveMode('existing');
       setShowTempSaveModal(true);
-    }, 500);
+      return;
+    }
+    await saveDraft({ showSavedModal: true });
   };
 
-  const handleSaveAndExit = () => {
+  const handleSaveAndExit = async () => {
     setShowExitConfirm(false);
-    handleSave();
+    await saveDraft({ showSavedModal: false, exitAfter: true });
   };
 
   const handleExitWithoutSave = () => {
     setShowExitConfirm(false);
+    setShowTempSaveModal(false);
     router.back();
   };
 
@@ -507,13 +670,15 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleSendPhoneVerification = () => {
-    if (!creatorInfo.phone || creatorInfo.phone.length < 10) {
+    if (!canSendPhoneVerification) {
       showAlert('휴대폰 번호를 정확히 입력해주세요.');
       return;
     }
+    const wasAlreadySent = phoneVerificationSent;
     setPhoneVerificationSent(true);
+    setPhoneVerificationCode('');
     setPhoneTimer(180);
-    showAlert('인증번호가 전송되었습니다.');
+    showAlert(wasAlreadySent ? '인증번호가 재전송되었습니다.' : '인증번호가 전송되었습니다.');
   };
 
   const handleVerifyPhone = () => {
@@ -539,6 +704,67 @@ export default function BreweryProjectCreateScreen() {
     showAlert('인증완료!');
   };
 
+  const handlePickProfileFromLibrary = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        showAlert('프로필 이미지를 선택하려면 갤러리 접근 권한이 필요합니다.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      const fileName = asset.fileName || `brewery_profile_${Date.now()}.jpg`;
+      setCreatorInfo((prev) => ({ ...prev, profileImage: asset.uri }));
+      setUploadedFiles((prev) => ({ ...prev, profileImage: fileName }));
+      showAlert('프로필 이미지가 선택되었습니다.');
+    } catch {
+      showAlert('이미지를 불러오지 못했습니다. 다시 시도해주세요.');
+    }
+  };
+
+  const handleTakeProfilePhoto = async () => {
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        showAlert('프로필 사진을 촬영하려면 카메라 접근 권한이 필요합니다.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      const fileName = asset.fileName || `brewery_profile_camera_${Date.now()}.jpg`;
+      setCreatorInfo((prev) => ({ ...prev, profileImage: asset.uri }));
+      setUploadedFiles((prev) => ({ ...prev, profileImage: fileName }));
+      showAlert('프로필 사진이 등록되었습니다.');
+    } catch {
+      showAlert('카메라를 실행하지 못했습니다. 다시 시도해주세요.');
+    }
+  };
+
+  const handleProfileImageUpload = () => {
+    Alert.alert('프로필 이미지 업로드', '이미지를 등록할 방식을 선택해주세요.', [
+      { text: '갤러리에서 선택', onPress: () => { void handlePickProfileFromLibrary(); } },
+      { text: '카메라로 촬영', onPress: () => { void handleTakeProfilePhoto(); } },
+      { text: '취소', style: 'cancel' },
+    ]);
+  };
+
   const handleFileUpload = (key: FileKey, name: string) => {
     setUploadedFiles((prev) => ({ ...prev, [key]: name }));
     if (key === 'profileImage') {
@@ -548,6 +774,17 @@ export default function BreweryProjectCreateScreen() {
 
   const handleSelectAddress = (zipCode: string, address: string) => {
     setTaxInfo((prev) => ({ ...prev, address: `(${zipCode}) ${address}` }));
+    setAddressSearch('');
+    setShowAddressModal(false);
+  };
+
+  const handleUseManualAddress = () => {
+    const nextAddress = addressSearch.trim();
+    if (!nextAddress) {
+      showAlert('주소를 입력해주세요.');
+      return;
+    }
+    setTaxInfo((prev) => ({ ...prev, address: nextAddress }));
     setAddressSearch('');
     setShowAddressModal(false);
   };
@@ -592,13 +829,13 @@ export default function BreweryProjectCreateScreen() {
         startDate: fundingInfo.startDate,
         endDate: endDateText,
         pricePerBottle: Number(fundingInfo.pricePerBottle) || 0,
-        bottleSize: productInfo.volume,
-        volume: productInfo.volume,
-        alcoholContent: productInfo.alcoholContent || basicInfo.alcoholContent,
+        bottleSize: volumeText(productInfo.volume),
+        volume: volumeText(productInfo.volume),
+        alcoholContent: alcoholText(productInfo.alcoholContent || basicInfo.alcoholContent),
         totalQuantity: Number(fundingInfo.bottleQuantity) || 0,
         targetQuantity: Number(fundingInfo.bottleQuantity) || 0,
         estimatedDelivery: fundingInfo.expectedDeliveryDate,
-        rewardItems: [`${basicInfo.title} ${productInfo.volume || ''} x 1`.trim()],
+        rewardItems: [`${basicInfo.title} ${volumeText(productInfo.volume)} x 1`.trim()],
         shippingFee: 3000,
         mainIngredients: basicInfo.mainIngredient,
         subIngredients: basicInfo.subIngredient,
@@ -615,6 +852,9 @@ export default function BreweryProjectCreateScreen() {
         journals: [],
       });
       setIsSubmitting(false);
+      void SafeStorage.removeItem(TEMP_SAVE_KEY);
+      setHasTempSave(false);
+      setTempSaveTimestamp('');
       setShowSubmitSuccess(true);
     }, 700);
   };
@@ -680,7 +920,7 @@ export default function BreweryProjectCreateScreen() {
             counter={`${basicInfo.title.length}/50자`}
           />
           <Field
-            label="짧은 제목"
+            label="짧은 제목 (선택)"
             helper="목록에서 표시될 짧은 제목입니다."
             value={basicInfo.shortTitle}
             onChangeText={(value) => setBasicInfo((prev) => ({ ...prev, shortTitle: value }))}
@@ -695,7 +935,7 @@ export default function BreweryProjectCreateScreen() {
             placeholder="예: 국내산 쌀"
           />
           <Field
-            label="서브 재료"
+            label="서브 재료 (선택)"
             value={basicInfo.subIngredient}
             onChangeText={(value) => setBasicInfo((prev) => ({ ...prev, subIngredient: value }))}
             placeholder="예: 복숭아, 누룩"
@@ -704,7 +944,7 @@ export default function BreweryProjectCreateScreen() {
             label="도수"
             required
             value={basicInfo.alcoholContent}
-            onChangeText={(value) => setBasicInfo((prev) => ({ ...prev, alcoholContent: value }))}
+            onChangeText={(value) => setBasicInfo((prev) => ({ ...prev, alcoholContent: decimalOnly(value).slice(0, 5) }))}
             placeholder="6"
             keyboardType="decimal-pad"
             suffix="%"
@@ -760,7 +1000,7 @@ export default function BreweryProjectCreateScreen() {
             </ScrollView>
           </View>
           <View style={styles.formGroup}>
-            <Text style={styles.label}>검색 태그</Text>
+            <Text style={styles.label}>검색 태그 <Text style={styles.optionalText}>(선택)</Text></Text>
             <View style={styles.tagList}>
               {basicInfo.tags.map((tag, index) => (
                 <View key={`${tag}-${index}`} style={styles.tagChip}>
@@ -906,15 +1146,19 @@ export default function BreweryProjectCreateScreen() {
                   label="용량"
                   required
                   value={productInfo.volume}
-                  onChangeText={(value) => setProductInfo((prev) => ({ ...prev, volume: value }))}
-                  placeholder="예: 750ml"
+                  onChangeText={(value) => setProductInfo((prev) => ({ ...prev, volume: digitsOnly(value).slice(0, 5) }))}
+                  placeholder="예: 750"
+                  keyboardType="number-pad"
+                  suffix="ml"
                 />
                 <LegalField
                   label="도수"
                   required
                   value={productInfo.alcoholContent}
-                  onChangeText={(value) => setProductInfo((prev) => ({ ...prev, alcoholContent: value }))}
-                  placeholder="예: 6%"
+                  onChangeText={(value) => setProductInfo((prev) => ({ ...prev, alcoholContent: decimalOnly(value).slice(0, 5) }))}
+                  placeholder="예: 6"
+                  keyboardType="decimal-pad"
+                  suffix="%"
                 />
               </View>
               <View style={styles.legalSectionDivider}>
@@ -1007,7 +1251,7 @@ export default function BreweryProjectCreateScreen() {
             ]}
           />
           <TextArea
-            label="프로젝트 예산"
+            label="프로젝트 예산 (선택)"
             value={projectPlan.budget}
             onChangeText={(value) => setProjectPlan((prev) => ({ ...prev, budget: value }))}
             placeholder={'예시:\n- 원료비: 200만원\n- 인건비: 150만원\n- 포장비: 100만원'}
@@ -1016,7 +1260,7 @@ export default function BreweryProjectCreateScreen() {
             mono
           />
           <TextArea
-            label="프로젝트 일정"
+            label="프로젝트 일정 (선택)"
             value={projectPlan.schedule}
             onChangeText={(value) => setProjectPlan((prev) => ({ ...prev, schedule: value }))}
             placeholder={'예시:\n- 4월 1일: 발효 시작\n- 4월 20일: 1차 숙성 완료\n- 5월 10일: 병입 작업\n- 5월 20일: 라벨링 및 포장\n- 6월 1일: 배송 시작'}
@@ -1046,7 +1290,7 @@ export default function BreweryProjectCreateScreen() {
             />
           </View>
           <View style={styles.formGroup}>
-            <Text style={styles.label}>프로필 이미지</Text>
+            <Text style={styles.label}>프로필 이미지 <Text style={styles.optionalText}>(선택)</Text></Text>
             <View style={styles.profileUploadRow}>
               <View style={styles.profileImageBox}>
                 {creatorInfo.profileImage ? (
@@ -1055,14 +1299,14 @@ export default function BreweryProjectCreateScreen() {
                   <User size={32} color="#9CA3AF" />
                 )}
               </View>
-              <TouchableOpacity style={styles.blackSmallButton} onPress={() => handleFileUpload('profileImage', 'profile_image_sample.jpg')}>
+              <TouchableOpacity style={styles.blackSmallButton} onPress={handleProfileImageUpload}>
                 <Text style={styles.blackSmallButtonText}>이미지 업로드</Text>
               </TouchableOpacity>
             </View>
             {Boolean(uploadedFiles.profileImage) && <Text style={styles.helper}>선택됨: {uploadedFiles.profileImage}</Text>}
           </View>
           <TextArea
-            label="창작자 소개"
+            label="창작자 소개 (선택)"
             value={creatorInfo.bio}
             onChangeText={(value) => setCreatorInfo((prev) => ({ ...prev, bio: value }))}
             placeholder="양조장을 소개해주세요..."
@@ -1076,9 +1320,11 @@ export default function BreweryProjectCreateScreen() {
                 style={[styles.input, styles.inlineInput]}
                 value={creatorInfo.phone}
                 onChangeText={(value) => {
-                  setCreatorInfo((prev) => ({ ...prev, phone: value }));
+                  setCreatorInfo((prev) => ({ ...prev, phone: formatProjectPhone(value) }));
                   setPhoneVerified(false);
                   setPhoneVerificationSent(false);
+                  setPhoneVerificationCode('');
+                  setPhoneTimer(0);
                 }}
                 placeholder="010-1234-5678"
                 placeholderTextColor="#9CA3AF"
@@ -1087,11 +1333,11 @@ export default function BreweryProjectCreateScreen() {
               />
               {!phoneVerified ? (
                 <TouchableOpacity
-                  style={[styles.inlineBlackButton, (!creatorInfo.phone || creatorInfo.phone.length < 10) && styles.disabledButton]}
+                  style={[styles.inlineBlackButton, !canSendPhoneVerification && styles.disabledButton]}
                   onPress={handleSendPhoneVerification}
-                  disabled={!creatorInfo.phone || creatorInfo.phone.length < 10}
+                  disabled={!canSendPhoneVerification}
                 >
-                  <Text style={styles.inlineBlackButtonText}>인증하기</Text>
+                  <Text style={styles.inlineBlackButtonText}>{phoneVerificationSent ? '인증번호 재전송' : '인증하기'}</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={styles.doneBadge}>
@@ -1099,6 +1345,9 @@ export default function BreweryProjectCreateScreen() {
                 </View>
               )}
             </View>
+            {Boolean(creatorInfo.phone) && !canSendPhoneVerification && !phoneVerified && (
+              <Text style={styles.warningText}>올바른 휴대폰 번호를 입력하면 인증하기 버튼이 활성화됩니다.</Text>
+            )}
             {phoneVerificationSent && !phoneVerified && (
               <View style={styles.verificationBlock}>
                 <View style={styles.rowBetween}>
@@ -1127,7 +1376,7 @@ export default function BreweryProjectCreateScreen() {
               </View>
             )}
             <View style={styles.formGroup}>
-              <Text style={styles.smallSubLabel}>신분증/사업자등록증</Text>
+              <Text style={styles.smallSubLabel}>신분증/사업자등록증 <Text style={styles.optionalText}>(선택)</Text></Text>
               <UploadButton fileName={uploadedFiles.idCard} onPress={() => handleFileUpload('idCard', 'identity_document_sample.pdf')} />
             </View>
           </View>
@@ -1149,26 +1398,25 @@ export default function BreweryProjectCreateScreen() {
               )}
             </View>
             <Text style={styles.helper}>후원금을 받을 계좌를 등록해주세요.</Text>
-            <View style={styles.twoCol}>
-              <SelectLike
+            <View style={styles.accountFields}>
+              <BankSelectButton
                 value={creatorInfo.accountBank}
                 placeholder="은행 선택"
-                options={['KB국민', '신한', '우리', '하나', '농협은행', 'IBK기업']}
-                onChange={(value) => {
-                  setCreatorInfo((prev) => ({ ...prev, accountBank: value }));
-                  setAccountVerified(false);
-                }}
+                disabled={accountVerified}
+                onPress={() => setShowBankModal(true)}
               />
               <TextInput
-                style={styles.input}
+                style={[styles.input, styles.accountNumberInput, accountVerified && styles.inputDisabled]}
                 value={creatorInfo.accountNumber}
                 onChangeText={(value) => {
-                  setCreatorInfo((prev) => ({ ...prev, accountNumber: value }));
+                  setCreatorInfo((prev) => ({ ...prev, accountNumber: digitsOnly(value).slice(0, 20) }));
                   setAccountVerified(false);
                 }}
-                placeholder="계좌번호"
+                placeholder="계좌번호를 입력해주세요"
                 placeholderTextColor="#9CA3AF"
                 keyboardType="number-pad"
+                editable={!accountVerified}
+                maxLength={20}
               />
             </View>
           </View>
@@ -1203,6 +1451,7 @@ export default function BreweryProjectCreateScreen() {
                   onChangeText={(value) => setTaxInfo((prev) => ({ ...prev, address: value }))}
                   placeholder="주소를 입력하거나 검색하세요"
                   placeholderTextColor="#9CA3AF"
+                  editable={false}
                 />
                 <TouchableOpacity style={styles.inlineBlackButton} onPress={() => setShowAddressModal(true)}>
                   <Text style={styles.inlineBlackButtonText}>주소 검색</Text>
@@ -1210,8 +1459,12 @@ export default function BreweryProjectCreateScreen() {
               </View>
             </View>
             <View style={styles.twoCol}>
-              <Field label="업태" required value={taxInfo.businessCategory} onChangeText={(value) => setTaxInfo((prev) => ({ ...prev, businessCategory: value }))} placeholder="예: 제조업" />
-              <Field label="종목" required value={taxInfo.businessItem} onChangeText={(value) => setTaxInfo((prev) => ({ ...prev, businessItem: value }))} placeholder="예: 주류제조" />
+              <View style={styles.twoColItem}>
+                <Field label="업태" required value={taxInfo.businessCategory} onChangeText={(value) => setTaxInfo((prev) => ({ ...prev, businessCategory: value }))} placeholder="예: 제조업" />
+              </View>
+              <View style={styles.twoColItem}>
+                <Field label="종목" required value={taxInfo.businessItem} onChangeText={(value) => setTaxInfo((prev) => ({ ...prev, businessItem: value }))} placeholder="예: 주류제조" />
+              </View>
             </View>
             <Field label="이메일 주소" required helper="전자세금계산서를 수령할 담당자 이메일" value={taxInfo.email} onChangeText={(value) => setTaxInfo((prev) => ({ ...prev, email: value }))} placeholder="example@company.com" keyboardType="email-address" />
             <View style={styles.formGroup}>
@@ -1296,7 +1549,7 @@ export default function BreweryProjectCreateScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.progressStrip}>
-            <Text style={styles.progressStatus}>기획중</Text>
+            <Text style={styles.progressStatus}>기획중 · 필수 항목 기준</Text>
             <Text style={styles.progressText}>{progress}% 완료</Text>
           </View>
           <View style={styles.projectMini}>
@@ -1335,10 +1588,29 @@ export default function BreweryProjectCreateScreen() {
       <SimpleModal visible={showAlertModal} icon="alert" title="알림" body={alertMessage} primaryLabel="확인" onPrimary={() => setShowAlertModal(false)} />
       <ConfirmModal visible={showSubmitConfirm} title="제출 하시겠습니까?" body="제출 후에는 수정이 불가능합니다." onCancel={() => setShowSubmitConfirm(false)} onConfirm={confirmSubmit} />
       <SimpleModal visible={showSubmitSuccess} icon="success" title="성공적으로 업로드 되었습니다" body="심사는 3-5영업일이 소요됩니다." primaryLabel="확인" onPrimary={handleSubmitSuccessClose} />
-      <TempSaveModal visible={showTempSaveModal} timestamp={tempSaveTimestamp} onClose={() => setShowTempSaveModal(false)} onLoad={() => setShowTempSaveModal(false)} onDelete={() => setShowTempSaveModal(false)} />
+      <TempSaveModal
+        visible={showTempSaveModal}
+        mode={tempSaveMode}
+        timestamp={tempSaveTimestamp}
+        onClose={() => setShowTempSaveModal(false)}
+        onLoad={() => { void loadSavedDraft(); }}
+        onDelete={() => { void deleteSavedDraft(); }}
+        onOverwrite={() => { void overwriteSavedDraft(); }}
+        onExitWithoutLoad={handleExitWithoutSave}
+      />
       <ExitConfirmModal visible={showExitConfirm} onSave={handleSaveAndExit} onExit={handleExitWithoutSave} onContinue={() => setShowExitConfirm(false)} />
       <FundingGuideModal visible={showFundingGuideModal} onClose={() => setShowFundingGuideModal(false)} />
-      <AddressModal visible={showAddressModal} insetsTop={insets.top} search={addressSearch} results={filteredAddresses} onChangeSearch={setAddressSearch} onClose={() => setShowAddressModal(false)} onSelect={handleSelectAddress} />
+      <AddressModal visible={showAddressModal} insetsTop={insets.top} search={addressSearch} results={filteredAddresses} onChangeSearch={setAddressSearch} onClose={() => setShowAddressModal(false)} onSelect={handleSelectAddress} onUseManual={handleUseManualAddress} />
+      <BankSelectModal
+        visible={showBankModal}
+        value={creatorInfo.accountBank}
+        onClose={() => setShowBankModal(false)}
+        onSelect={(value) => {
+          setCreatorInfo((prev) => ({ ...prev, accountBank: value }));
+          setAccountVerified(false);
+          setShowBankModal(false);
+        }}
+      />
       <NativeDatePicker
         target={datePickerTarget}
         title={datePickerTarget === 'expectedDeliveryDate' ? '예상 발송 시작일' : '펀딩 시작일'}
@@ -1355,6 +1627,7 @@ export default function BreweryProjectCreateScreen() {
         productInfo={productInfo}
         projectPlan={projectPlan}
         creatorInfo={creatorInfo}
+        taxInfo={taxInfo}
         trustInfo={trustInfo}
         tasteProfile={tasteProfile}
         goalAmount={fundingInfo.goalAmount}
@@ -1548,6 +1821,8 @@ function LegalField({
   placeholder,
   required,
   editable = true,
+  keyboardType,
+  suffix,
 }: {
   label: string;
   value: string;
@@ -1555,20 +1830,26 @@ function LegalField({
   placeholder: string;
   required?: boolean;
   editable?: boolean;
+  keyboardType?: KeyboardTypeOptions;
+  suffix?: string;
 }) {
   return (
     <View style={styles.legalField}>
       <Text style={styles.legalLabel}>
         {label} {required && <Text style={styles.required}>*</Text>}
       </Text>
-      <TextInput
-        style={[styles.legalInput, !editable && styles.legalInputDisabled]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="#9CA3AF"
-        editable={editable}
-      />
+      <View style={[styles.legalInputBox, !editable && styles.legalInputDisabled]}>
+        <TextInput
+          style={styles.legalInputText}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="#9CA3AF"
+          editable={editable}
+          keyboardType={keyboardType}
+        />
+        {suffix && <Text style={styles.legalSuffix}>{suffix}</Text>}
+      </View>
     </View>
   );
 }
@@ -1673,16 +1954,36 @@ function FileCard({ title, desc, fileName, onPress }: { title: string; desc: str
   );
 }
 
-function SelectLike({ value, placeholder, options, onChange }: { value: string; placeholder: string; options: string[]; onChange: (value: string) => void }) {
-  const currentIndex = Math.max(options.indexOf(value), -1);
-  const handlePress = () => {
-    onChange(options[(currentIndex + 1) % options.length]);
-  };
-
+function BankSelectButton({ value, placeholder, onPress, disabled }: { value: string; placeholder: string; onPress: () => void; disabled?: boolean }) {
   return (
-    <TouchableOpacity style={styles.selectLike} onPress={handlePress}>
+    <TouchableOpacity style={[styles.selectLike, disabled && styles.inputDisabled]} onPress={onPress} disabled={disabled}>
       <Text style={[styles.selectText, !value && styles.selectPlaceholder]}>{value || placeholder}</Text>
     </TouchableOpacity>
+  );
+}
+
+function BankSelectModal({ visible, value, onClose, onSelect }: { visible: boolean; value: string; onClose: () => void; onSelect: (value: string) => void }) {
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalBackdrop}>
+        <View style={styles.bankModal}>
+          <View style={styles.bankModalHeader}>
+            <Text style={styles.modalTitle}>은행 선택</Text>
+            <TouchableOpacity style={styles.bankModalClose} onPress={onClose}>
+              <X size={18} color="#111" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.bankList}>
+            {BANK_OPTIONS.map((bank) => (
+              <TouchableOpacity key={bank} style={[styles.bankItem, value === bank && styles.bankItemActive]} onPress={() => onSelect(bank)}>
+                <Text style={[styles.bankItemText, value === bank && styles.bankItemTextActive]}>{bank}</Text>
+                {value === bank && <Check size={18} color="#111" />}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -1856,8 +2157,28 @@ function ConfirmModal({ visible, title, body, onCancel, onConfirm }: { visible: 
   );
 }
 
-function TempSaveModal({ visible, timestamp, onClose, onLoad, onDelete }: { visible: boolean; timestamp: string; onClose: () => void; onLoad: () => void; onDelete: () => void }) {
+function TempSaveModal({
+  visible,
+  mode,
+  timestamp,
+  onClose,
+  onLoad,
+  onDelete,
+  onOverwrite,
+  onExitWithoutLoad,
+}: {
+  visible: boolean;
+  mode: TempSaveMode;
+  timestamp: string;
+  onClose: () => void;
+  onLoad: () => void;
+  onDelete: () => void;
+  onOverwrite: () => void;
+  onExitWithoutLoad: () => void;
+}) {
   const label = timestamp ? new Date(timestamp).toLocaleString('ko-KR') : '';
+  const isSaved = mode === 'saved';
+  const isExit = mode === 'exitExisting';
   return (
     <Modal transparent visible={visible} animationType="fade">
       <View style={styles.modalBackdrop}>
@@ -1865,17 +2186,36 @@ function TempSaveModal({ visible, timestamp, onClose, onLoad, onDelete }: { visi
           <View style={[styles.modalIconCircle, styles.blueCircle]}>
             <FileCheck size={32} color="#2563EB" />
           </View>
-          <Text style={styles.modalTitle}>임시 저장된 작성 내용</Text>
-          <Text style={styles.modalBody}>{label}에 저장됨</Text>
-          <TouchableOpacity style={styles.modalPrimary} onPress={onLoad}>
-            <Text style={styles.modalPrimaryText}>불러오기</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteButton} onPress={onDelete}>
-            <Text style={styles.deleteButtonText}>삭제</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.modalSecondaryWide} onPress={onClose}>
-            <Text style={styles.modalSecondaryText}>취소</Text>
-          </TouchableOpacity>
+          <Text style={styles.modalTitle}>{isSaved ? '임시저장 되었습니다.' : '임시 저장된 작성 내용'}</Text>
+          <Text style={styles.modalBody}>{label ? `${label}에 저장됨` : '저장된 시간이 없습니다.'}</Text>
+          {isSaved ? (
+            <TouchableOpacity style={styles.modalPrimary} onPress={onClose}>
+              <Text style={styles.modalPrimaryText}>확인</Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              <TouchableOpacity style={styles.modalPrimary} onPress={onLoad}>
+                <Text style={styles.modalPrimaryText}>불러오기</Text>
+              </TouchableOpacity>
+              {isExit ? (
+                <TouchableOpacity style={styles.modalSecondaryWide} onPress={onExitWithoutLoad}>
+                  <Text style={styles.modalSecondaryText}>불러오지 않고 나가기</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.modalSecondaryWide} onPress={onOverwrite}>
+                  <Text style={styles.modalSecondaryText}>현재 내용으로 새로 저장</Text>
+                </TouchableOpacity>
+              )}
+              {!isExit && (
+                <TouchableOpacity style={styles.deleteButton} onPress={onDelete}>
+                  <Text style={styles.deleteButtonText}>삭제</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.modalPlain} onPress={onClose}>
+                <Text style={styles.modalPlainText}>{isExit ? '계속 작성하기' : '닫기'}</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
     </Modal>
@@ -1953,7 +2293,7 @@ function ExitConfirmModal({ visible, onSave, onExit, onContinue }: { visible: bo
   );
 }
 
-function AddressModal({ visible, insetsTop, search, results, onChangeSearch, onClose, onSelect }: { visible: boolean; insetsTop: number; search: string; results: AddressItem[]; onChangeSearch: (value: string) => void; onClose: () => void; onSelect: (zipCode: string, address: string) => void }) {
+function AddressModal({ visible, insetsTop, search, results, onChangeSearch, onClose, onSelect, onUseManual }: { visible: boolean; insetsTop: number; search: string; results: AddressItem[]; onChangeSearch: (value: string) => void; onClose: () => void; onSelect: (zipCode: string, address: string) => void; onUseManual: () => void }) {
   return (
     <Modal visible={visible} animationType="slide">
       <View style={styles.addressModal}>
@@ -1985,6 +2325,10 @@ function AddressModal({ visible, insetsTop, search, results, onChangeSearch, onC
           ) : (
             <>
               <Text style={styles.resultCount}>검색 결과 {results.length}건</Text>
+              <TouchableOpacity style={styles.manualAddressCard} onPress={onUseManual}>
+                <Text style={styles.manualAddressLabel}>입력한 주소 사용</Text>
+                <Text style={styles.manualAddressText}>{search}</Text>
+              </TouchableOpacity>
               {results.map((item) => (
                 <TouchableOpacity key={`${item.zipCode}-${item.address}`} style={styles.addressResultCard} onPress={() => onSelect(item.zipCode, item.address)}>
                   <Text style={styles.zipCode}>우편번호 {item.zipCode}</Text>
@@ -2069,6 +2413,7 @@ function PreviewModal({
   productInfo,
   projectPlan,
   creatorInfo,
+  taxInfo,
   trustInfo,
   tasteProfile,
   goalAmount,
@@ -2077,11 +2422,12 @@ function PreviewModal({
   visible: boolean;
   insetsTop: number;
   onClose: () => void;
-  basicInfo: { category: string; title: string; summary: string; mainIngredient: string; subIngredient: string; images: string[] };
+  basicInfo: { category: string; title: string; summary: string; mainIngredient: string; subIngredient: string; alcoholContent: string; images: string[] };
   fundingInfo: { duration: string; startDate: string; pricePerBottle: string; bottleQuantity: string; goalAmount: string };
   productInfo: { volume: string; alcoholContent: string };
   projectPlan: { introduction: string; budget: string; schedule: string };
   creatorInfo: { name: string; profileImage: string };
+  taxInfo: { address: string };
   trustInfo: { projectPolicy: string; expectedDifficulties: string };
   tasteProfile: { sweetness: number; aroma: number; acidity: number; body: number; carbonation: number };
   goalAmount: string;
@@ -2109,8 +2455,8 @@ function PreviewModal({
                   <Text style={styles.previewStatLabel}>달성률</Text>
                 </View>
                 <View style={[styles.previewStat, styles.previewStatMiddle]}>
-                  <Text style={styles.previewStatNumber}>{goalAmount ? (Number(goalAmount) / 10000).toLocaleString() : '0'}<Text style={styles.previewStatUnit}>만원</Text></Text>
-                  <Text style={styles.previewStatLabel}>목표금액</Text>
+                  <Text style={styles.previewStatNumber}>0<Text style={styles.previewStatUnit}>만원</Text></Text>
+                  <Text style={styles.previewStatLabel}>모인금액</Text>
                 </View>
                 <View style={styles.previewStat}>
                   <Text style={styles.previewStatNumber}>0</Text>
@@ -2130,18 +2476,18 @@ function PreviewModal({
               </View>
               <View style={styles.creatorPreviewText}>
                 <Text style={styles.creatorPreviewName}>{creatorInfo.name || '양조장 이름'}</Text>
-                <Text style={styles.creatorPreviewCategory}>{basicInfo.category || '카테고리'}</Text>
+                <Text style={styles.creatorPreviewCategory}>{taxInfo.address || '위치 미정'}</Text>
               </View>
               <View style={styles.creatorBadge}>
-                <Text style={styles.creatorBadgeText}>양조장</Text>
+                <Text style={styles.creatorBadgeText}>{basicInfo.category || '카테고리'}</Text>
               </View>
             </View>
             <PreviewSection title="프로젝트 소개">
-              {(basicInfo.mainIngredient || basicInfo.subIngredient || productInfo.alcoholContent) && (
+              {(basicInfo.mainIngredient || basicInfo.subIngredient || productInfo.alcoholContent || basicInfo.alcoholContent) && (
                 <View style={styles.previewInfoGrid}>
                   {basicInfo.mainIngredient && <PreviewMiniInfo label="메인재료" value={basicInfo.mainIngredient} />}
                   {basicInfo.subIngredient && <PreviewMiniInfo label="서브재료" value={basicInfo.subIngredient} />}
-                  {productInfo.alcoholContent && <PreviewMiniInfo label="도수" value={productInfo.alcoholContent} />}
+                  {(productInfo.alcoholContent || basicInfo.alcoholContent) && <PreviewMiniInfo label="도수" value={alcoholText(productInfo.alcoholContent || basicInfo.alcoholContent)} />}
                 </View>
               )}
               {basicInfo.summary && (
@@ -2154,7 +2500,7 @@ function PreviewModal({
             </PreviewSection>
             {(fundingInfo.pricePerBottle || fundingInfo.bottleQuantity || fundingInfo.goalAmount) && (
               <PreviewSection title="가격 안내">
-                {fundingInfo.pricePerBottle && <PreviewPriceBlock label="병당 단가" value={`${currency(fundingInfo.pricePerBottle)}원`} sub={productInfo.volume} dark />}
+                {fundingInfo.pricePerBottle && <PreviewPriceBlock label="병당 단가" value={`${currency(fundingInfo.pricePerBottle)}원`} sub={volumeText(productInfo.volume)} dark />}
                 {fundingInfo.bottleQuantity && <PreviewPriceBlock label="총 판매 수량" value={`${currency(fundingInfo.bottleQuantity)}병`} sub="목표 수량" />}
                 {fundingInfo.goalAmount && (
                   <View style={styles.previewGoalBox}>
@@ -2265,6 +2611,7 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '900', color: '#111' },
   smallLabel: { fontSize: 12, fontWeight: '900', color: '#111' },
   required: { color: '#EF4444' },
+  optionalText: { color: '#9CA3AF', fontWeight: '800' },
   helper: { fontSize: 12, lineHeight: 18, fontWeight: '700', color: '#6B7280' },
   input: { minHeight: 48, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, paddingHorizontal: 14, fontSize: 14, fontWeight: '700', color: '#111', backgroundColor: '#FFF' },
   inputWithSuffix: { minHeight: 48, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF' },
@@ -2329,8 +2676,10 @@ const styles = StyleSheet.create({
   legalTwoCol: { flexDirection: 'row', gap: 12 },
   legalField: { flex: 1, gap: 6 },
   legalLabel: { fontSize: 12, lineHeight: 18, fontWeight: '900', color: '#374151' },
-  legalInput: { minHeight: 42, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, paddingHorizontal: 12, fontSize: 14, fontWeight: '700', color: '#111', backgroundColor: '#FFF' },
-  legalInputDisabled: { backgroundColor: '#F3F4F6', color: '#6B7280' },
+  legalInputBox: { minHeight: 42, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF' },
+  legalInputText: { flex: 1, minHeight: 40, fontSize: 14, fontWeight: '700', color: '#111' },
+  legalSuffix: { marginLeft: 6, fontSize: 13, fontWeight: '900', color: '#4B5563' },
+  legalInputDisabled: { backgroundColor: '#F3F4F6' },
   legalSectionDivider: { borderTopWidth: 1, borderTopColor: '#E5E7EB', paddingTop: 12, gap: 12 },
   legalSectionTitle: { fontSize: 12, lineHeight: 18, fontWeight: '900', color: '#111' },
   ingredientList: { gap: 12 },
@@ -2373,7 +2722,9 @@ const styles = StyleSheet.create({
   smallSubLabel: { fontSize: 12, fontWeight: '700', color: '#374151' },
   uploadButton: { minHeight: 48, borderWidth: 2, borderStyle: 'dashed', borderColor: '#D1D5DB', borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   uploadButtonText: { flexShrink: 1, fontSize: 13, fontWeight: '800', color: '#4B5563' },
-  selectLike: { minHeight: 48, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, paddingHorizontal: 12, justifyContent: 'center' },
+  accountFields: { gap: 10 },
+  accountNumberInput: { width: '100%', fontSize: 13.5, letterSpacing: 0 },
+  selectLike: { minHeight: 48, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, paddingHorizontal: 12, justifyContent: 'center', backgroundColor: '#FFF' },
   selectText: { fontSize: 14, fontWeight: '800', color: '#111' },
   selectPlaceholder: { color: '#9CA3AF' },
   taxBox: { borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', borderRadius: 12, padding: 16, gap: 18 },
@@ -2399,6 +2750,14 @@ const styles = StyleSheet.create({
   submitButtonText: { fontSize: 16, fontWeight: '900', color: '#FFF' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   centerModal: { width: '100%', maxWidth: 390, backgroundColor: '#FFF', borderRadius: 20, padding: 24, alignItems: 'center', gap: 14 },
+  bankModal: { width: '100%', maxWidth: 390, maxHeight: '72%', backgroundColor: '#FFF', borderRadius: 20, padding: 18 },
+  bankModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+  bankModalClose: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  bankList: { gap: 8, paddingBottom: 4 },
+  bankItem: { minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  bankItemActive: { borderColor: '#111', backgroundColor: '#F9FAFB' },
+  bankItemText: { fontSize: 14, fontWeight: '800', color: '#374151' },
+  bankItemTextActive: { color: '#111' },
   modalIconCircle: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
   alertCircle: { backgroundColor: '#FEE2E2' },
   successCircle: { backgroundColor: '#DCFCE7' },
@@ -2451,6 +2810,9 @@ const styles = StyleSheet.create({
   addressEmptyText: { fontSize: 13, fontWeight: '700', color: '#9CA3AF', textAlign: 'center' },
   resultCount: { fontSize: 13, fontWeight: '900', color: '#6B7280' },
   addressResultCard: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16, gap: 6, borderWidth: 1, borderColor: '#E5E7EB' },
+  manualAddressCard: { backgroundColor: '#111827', borderRadius: 16, padding: 16, gap: 5 },
+  manualAddressLabel: { fontSize: 12, fontWeight: '900', color: '#D1D5DB' },
+  manualAddressText: { fontSize: 14, lineHeight: 20, fontWeight: '900', color: '#FFF' },
   zipCode: { fontSize: 12, fontWeight: '900', color: '#6B7280' },
   addressResultText: { fontSize: 14, lineHeight: 20, fontWeight: '900', color: '#111' },
   noResult: { paddingVertical: 48, alignItems: 'center', gap: 6 },

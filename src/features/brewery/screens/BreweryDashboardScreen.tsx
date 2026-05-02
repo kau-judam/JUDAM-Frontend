@@ -42,6 +42,7 @@ import {
   isCompletedFundingStatus,
   isSupportableFundingStatus,
 } from '@/constants/data';
+import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -95,10 +96,7 @@ export default function BreweryDashboardScreen() {
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [currentStageIndex, setCurrentStageIndex] = useState(0);
 
-  const ownProjects = projects.filter((project) => {
-    const breweryName = user?.breweryName || user?.name;
-    return breweryName ? project.brewery.trim() === breweryName.trim() : false;
-  });
+  const ownProjects = projects.filter((project) => isFundingProjectOwnedByBrewery(user, project));
   const fallbackProjects = ownProjects.length > 0 ? ownProjects : projects.filter((project) => project.brewery === "술샘양조장");
   const filteredFundings = fundingFilter === "active"
     ? fallbackProjects.filter((project) => isSupportableFundingStatus(project.status) || project.status === "심사 중" || project.status === "펀딩 예정")

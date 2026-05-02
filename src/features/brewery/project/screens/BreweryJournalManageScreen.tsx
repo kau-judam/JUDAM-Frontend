@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BREWING_STAGES, BrewingStage, JournalEntry, getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 
 function todayText() {
   const today = new Date();
@@ -40,12 +41,7 @@ export default function BreweryJournalManageScreen() {
   const [message, setMessage] = useState('');
 
   const journals = project?.journals || [];
-  const currentBreweryName = user?.breweryName || user?.name;
-  const canManage =
-    user?.type === 'brewery' &&
-    Boolean(currentBreweryName) &&
-    project &&
-    currentBreweryName?.trim() === project.brewery.trim();
+  const canManage = isFundingProjectOwnedByBrewery(user, project);
 
   const resetForm = () => {
     setEditingEntry(null);
@@ -109,7 +105,8 @@ export default function BreweryJournalManageScreen() {
 
     updateProjectJournals(project.id, nextJournals);
     resetForm();
-    setMessage(editingEntry ? '양조일지가 수정되었습니다.' : '양조일지가 작성되었습니다.');
+    setSelectedStage(null);
+    router.replace(`/funding/${project.id}?tab=journal` as any);
   };
 
   const deleteJournal = (entryId: number) => {

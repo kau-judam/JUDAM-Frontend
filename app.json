@@ -41,9 +41,10 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "프로젝트 대표 이미지를 등록하기 위해 갤러리 접근 권한이 필요합니다."
+          "photosPermission": "이미지 또는 사업자등록증 사진을 등록하기 위해 갤러리 접근 권한이 필요합니다."
         }
       ],
+      "expo-document-picker",
       "@react-native-community/datetimepicker"
     ],
     "experiments": {

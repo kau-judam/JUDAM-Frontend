@@ -136,6 +136,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyBrewery = async (data: BreweryVerificationData) => {
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
+    if (!user) {
+      throw new Error("Login is required to verify brewery");
+    }
+
     if (user) {
       const updatedUser: User = {
         ...user,

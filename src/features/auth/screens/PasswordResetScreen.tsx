@@ -3,6 +3,8 @@ import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   ArrowLeft,
+  Eye,
+  EyeOff,
   Lock,
   Mail,
   MessageSquare,
@@ -48,6 +50,8 @@ export default function PasswordResetScreen() {
   const [verificationCode, setVerificationCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState('');
   const passwordStrength = useMemo(() => getPasswordStrength(newPassword), [newPassword]);
@@ -230,7 +234,16 @@ export default function PasswordResetScreen() {
                       placeholder="최소 8자 이상"
                       value={newPassword}
                       onChangeText={setNewPassword}
-                      secureTextEntry
+                      secureTextEntry={!showNewPassword}
+                      rightAccessory={(
+                        <TouchableOpacity
+                          activeOpacity={0.75}
+                          style={styles.passwordToggle}
+                          onPress={() => setShowNewPassword((prev) => !prev)}
+                        >
+                          {showNewPassword ? <EyeOff size={19} color="#9CA3AF" /> : <Eye size={19} color="#9CA3AF" />}
+                        </TouchableOpacity>
+                      )}
                     />
                     {newPassword.length > 0 && (
                       <View style={styles.strengthArea}>
@@ -257,7 +270,16 @@ export default function PasswordResetScreen() {
                       placeholder="비밀번호 재입력"
                       value={confirmPassword}
                       onChangeText={setConfirmPassword}
-                      secureTextEntry
+                      secureTextEntry={!showConfirmPassword}
+                      rightAccessory={(
+                        <TouchableOpacity
+                          activeOpacity={0.75}
+                          style={styles.passwordToggle}
+                          onPress={() => setShowConfirmPassword((prev) => !prev)}
+                        >
+                          {showConfirmPassword ? <EyeOff size={19} color="#9CA3AF" /> : <Eye size={19} color="#9CA3AF" />}
+                        </TouchableOpacity>
+                      )}
                     />
                     {passwordMatches && <Text style={styles.matchText}>비밀번호가 일치합니다.</Text>}
                     {passwordMismatch && <Text style={styles.errorText}>비밀번호가 일치하지 않습니다.</Text>}
@@ -306,6 +328,7 @@ type FieldProps = {
   onChangeText: (value: string) => void;
   keyboardType?: 'default' | 'email-address' | 'number-pad';
   secureTextEntry?: boolean;
+  rightAccessory?: React.ReactNode;
 };
 
 function Field({
@@ -316,6 +339,7 @@ function Field({
   onChangeText,
   keyboardType = 'default',
   secureTextEntry,
+  rightAccessory,
 }: FieldProps) {
   return (
     <View style={styles.inputGroup}>
@@ -333,6 +357,7 @@ function Field({
           autoCapitalize="none"
           autoCorrect={false}
         />
+        {rightAccessory}
       </View>
     </View>
   );
@@ -358,6 +383,7 @@ const styles = StyleSheet.create({
   inputBox: { height: 50, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
   inputIcon: { marginRight: 12 },
   input: { flex: 1, fontSize: 15, fontWeight: '700', color: '#111' },
+  passwordToggle: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
   primaryButton: { height: 50, borderRadius: 12, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   disabledButton: { opacity: 0.58 },
   primaryButtonText: { fontSize: 16, fontWeight: '800', color: '#FFF' },

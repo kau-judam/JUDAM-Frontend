@@ -15,6 +15,8 @@ import {
   Modal,
 } from 'react-native';
 import { router } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { 
   ArrowLeft, 
   FileText, 
@@ -33,6 +35,15 @@ import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const BG_IMAGE = require('../../../../newpicutre/ok.jpg');
+const MAX_LICENSE_FILE_SIZE = 10 * 1024 * 1024;
+
+type BusinessLicenseFile = {
+  name: string;
+  uri: string;
+  mimeType?: string;
+  size?: number;
+  source: 'photo' | 'file';
+};
 
 const MOCK_ADDRESSES = [
   {
@@ -70,7 +81,7 @@ export default function BreweryVerificationScreen() {
     phone: user?.phone || '',
   });
   
-  const [businessLicense, setBusinessLicense] = useState<string | null>(null);
+  const [businessLicense, setBusinessLicense] = useState<BusinessLicenseFile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isVerificationSent, setIsVerificationSent] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
@@ -88,13 +99,42 @@ export default function BreweryVerificationScreen() {
     ));
   }, [addressSearch]);
 
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <View style={StyleSheet.absoluteFill}>
+          <Image source={BG_IMAGE} style={styles.backgroundImage} resizeMode="cover" />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(255,255,255,0.62)' }]} />
+        </View>
+        <View style={[styles.authGuard, { paddingTop: insets.top + 80 }]}>
+          <View style={styles.logoBox}>
+            <Image source={require('@/assets/images/logo.png')} style={styles.logoImg} />
+          </View>
+          <Text style={styles.authGuardTitle}>로그인이 필요합니다</Text>
+          <Text style={styles.authGuardDesc}>
+            양조장 인증은 회원가입 또는 로그인 후 진행할 수 있어요.
+          </Text>
+          <TouchableOpacity style={styles.authGuardPrimary} onPress={() => router.replace('/login' as any)}>
+            <Text style={styles.authGuardPrimaryText}>로그인하러 가기</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.authGuardSecondary} onPress={() => router.replace('/signup' as any)}>
+            <Text style={styles.authGuardSecondaryText}>회원가입</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   const handleSendVerification = () => {
     if (!isValidPhone(formData.phone)) {
       Alert.alert('알림', '연락처를 정확히 입력해주세요.');
       return;
     }
-    Alert.alert('알림', '인증번호가 전송되었습니다.');
+    const wasAlreadySent = isVerificationSent;
+    setVerificationCode('');
     setIsVerificationSent(true);
+    Alert.alert('알림', wasAlreadySent ? '인증번호가 재전송되었습니다.' : '인증번호가 전송되었습니다.');
   };
 
   const handleVerifyCode = () => {
@@ -150,9 +190,93 @@ export default function BreweryVerificationScreen() {
     }
   };
 
+  const validateBusinessLicenseFile = (file: BusinessLicenseFile) => {
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    const isAllowed = ['pdf', 'jpg', 'jpeg', 'png'].includes(extension || '')
+      || ['application/pdf', 'image/jpeg', 'image/png'].includes(file.mimeType || '');
+
+    if (!isAllowed) {
+      Alert.alert('알림', 'PDF, JPG, PNG 파일만 업로드할 수 있습니다.');
+      return false;
+    }
+
+    if (file.size && file.size > MAX_LICENSE_FILE_SIZE) {
+      Alert.alert('알림', '사업자등록증 파일은 최대 10MB까지 업로드할 수 있습니다.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const pickBusinessLicenseFromPhoto = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert('알림', '사업자등록증 사진을 선택하려면 갤러리 접근 권한이 필요합니다.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        quality: 0.9,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      const file: BusinessLicenseFile = {
+        name: asset.fileName || `business_license_${Date.now()}.jpg`,
+        uri: asset.uri,
+        mimeType: asset.mimeType || 'image/jpeg',
+        size: asset.fileSize,
+        source: 'photo',
+      };
+
+      if (!validateBusinessLicenseFile(file)) return;
+
+      setBusinessLicense(file);
+      Alert.alert('알림', '사업자등록증 사진이 선택되었습니다.');
+    } catch {
+      Alert.alert('오류', '사진을 불러오지 못했습니다. 다시 시도해주세요.');
+    }
+  };
+
+  const pickBusinessLicenseFromFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/jpeg', 'image/png'],
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      const file: BusinessLicenseFile = {
+        name: asset.name,
+        uri: asset.uri,
+        mimeType: asset.mimeType,
+        size: asset.size,
+        source: 'file',
+      };
+
+      if (!validateBusinessLicenseFile(file)) return;
+
+      setBusinessLicense(file);
+      Alert.alert('알림', '사업자등록증 파일이 선택되었습니다.');
+    } catch {
+      Alert.alert('오류', '파일을 불러오지 못했습니다. 다시 시도해주세요.');
+    }
+  };
+
   const pickImage = () => {
-    setBusinessLicense('business_license_sample.jpg');
-    Alert.alert('알림', '사업자등록증 파일이 선택되었습니다.');
+    Alert.alert('사업자등록증 업로드', '업로드할 방식을 선택해주세요.', [
+      { text: '사진에서 업로드', onPress: () => { void pickBusinessLicenseFromPhoto(); } },
+      { text: '파일로 업로드', onPress: () => { void pickBusinessLicenseFromFile(); } },
+      { text: '취소', style: 'cancel' },
+    ]);
   };
 
   const handleAddressSelect = (address: typeof MOCK_ADDRESSES[number]) => {
@@ -307,11 +431,17 @@ export default function BreweryVerificationScreen() {
                     />
                   </View>
                   <TouchableOpacity 
-                    style={[styles.smallBtn, isPhoneVerified && styles.smallBtnDone]}
+                    style={[
+                      styles.smallBtn,
+                      isVerificationSent && !isPhoneVerified && styles.resendBtn,
+                      isPhoneVerified && styles.smallBtnDone,
+                    ]}
                     onPress={handleSendVerification}
                     disabled={isPhoneVerified}
                   >
-                    <Text style={styles.smallBtnTxt}>{isPhoneVerified ? "완료" : "인증"}</Text>
+                    <Text style={styles.smallBtnTxt}>
+                      {isPhoneVerified ? "완료" : (isVerificationSent ? "인증번호 재전송" : "인증")}
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
@@ -353,7 +483,12 @@ export default function BreweryVerificationScreen() {
                 >
                   <Upload size={32} color="#9CA3AF" />
                   {businessLicense ? (
-                    <Text style={styles.uploadMainTxt}>{businessLicense}</Text>
+                    <>
+                      <Text style={styles.uploadMainTxt}>{businessLicense.name}</Text>
+                      <Text style={styles.uploadSubTxt}>
+                        {businessLicense.source === 'photo' ? '사진에서 업로드됨' : '파일에서 업로드됨'}
+                      </Text>
+                    </>
                   ) : (
                     <>
                       <Text style={styles.uploadMainTxt}>
@@ -370,7 +505,7 @@ export default function BreweryVerificationScreen() {
                 <View style={styles.infoBox}>
                   <Text style={styles.infoTitle}>인증 안내</Text>
                   <Text style={styles.infoTxt}>• 사업자등록증은 영업 중인 양조장임을 확인하는 용도로만 사용됩니다.</Text>
-                  <Text style={styles.infoTxt}>• 인증은 영업일 기준 2~3일 내에 완료됩니다.</Text>
+                  <Text style={styles.infoTxt}>• 인증은 영업일 기준 1~2일 내에 완료됩니다.</Text>
                   <Text style={styles.infoTxt}>• 인증 완료 후 프로젝트 생성이 가능합니다.</Text>
                 </View>
               )}
@@ -495,6 +630,7 @@ const styles = StyleSheet.create({
   addressInputText: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111' },
   addressPlaceholder: { color: '#9CA3AF' },
   smallBtn: { height: 48, paddingHorizontal: 16, backgroundColor: '#1E293B', borderRadius: 12, justifyContent: 'center', alignItems: 'center', minWidth: 80 },
+  resendBtn: { minWidth: 122, paddingHorizontal: 12 },
   smallBtnDone: { backgroundColor: '#059669' },
   smallBtnTxt: { color: '#FFF', fontSize: 13, fontWeight: '700' },
   testHint: { color: '#9CA3AF', fontSize: 12, marginLeft: 4 },
@@ -524,4 +660,11 @@ const styles = StyleSheet.create({
   addressJibun: { fontSize: 12.5, fontWeight: '500', color: '#6B7280', lineHeight: 18 },
   addressEmpty: { minHeight: 120, justifyContent: 'center', alignItems: 'center' },
   addressEmptyText: { fontSize: 14, color: '#9CA3AF', fontWeight: '700' },
+  authGuard: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
+  authGuardTitle: { fontSize: 23, fontWeight: '900', color: '#111', textAlign: 'center', marginTop: 18, marginBottom: 8 },
+  authGuardDesc: { fontSize: 14, fontWeight: '600', color: '#4B5563', lineHeight: 21, textAlign: 'center', marginBottom: 24 },
+  authGuardPrimary: { width: '100%', height: 52, borderRadius: 14, backgroundColor: '#1E293B', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  authGuardPrimaryText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+  authGuardSecondary: { height: 42, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  authGuardSecondaryText: { color: '#6B7280', fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
 });

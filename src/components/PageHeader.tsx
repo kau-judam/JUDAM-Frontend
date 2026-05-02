@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { Bell, MessageCircle, LayoutDashboard, ChevronLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import { showLoginRequired } from '@/utils/authPrompt';
 
 interface PageHeaderProps {
   title: string;
@@ -52,7 +53,13 @@ export function PageHeader({ title, showBack = false, showIcons = true }: PageHe
               )}
               <TouchableOpacity 
                 style={styles.iconBtn}
-                onPress={() => router.push('/ai-chat' as any)}
+                onPress={() => {
+                  if (!user) {
+                    showLoginRequired('AI 챗봇은 로그인 후 이용할 수 있어요.');
+                    return;
+                  }
+                  router.push('/ai-chat' as any);
+                }}
               >
                 <MessageCircle size={22} color="#111" />
               </TouchableOpacity>

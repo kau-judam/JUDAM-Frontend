@@ -20,6 +20,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeOut } from 'react-native-reanimated';
 
+import { useAuth } from '@/contexts/AuthContext';
+
 type ChatCategory = "recommend" | "pairing" | "brewery" | "general";
 
 interface ChatRoom {
@@ -40,6 +42,7 @@ const categories = [
 
 export default function AIChatScreen() {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<ChatCategory>("recommend");
   const [chatRooms] = useState<ChatRoom[]>([
     {
@@ -81,6 +84,31 @@ export default function AIChatScreen() {
       return `${date.getMonth() + 1}/${date.getDate()}`;
     }
   };
+
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <View style={[styles.header, { paddingTop: insets.top }]}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+              <ChevronLeft size={24} color="#000" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>AI 챗봇</Text>
+            <View style={{ width: 40 }} />
+          </View>
+        </View>
+        <View style={styles.lockedContainer}>
+          <MessageCircle size={64} color="#E5E7EB" />
+          <Text style={styles.lockedTitle}>로그인이 필요합니다</Text>
+          <Text style={styles.lockedDesc}>AI 챗봇은 로그인한 사용자만 이용할 수 있어요.</Text>
+          <TouchableOpacity style={styles.lockedButton} onPress={() => router.push('/login' as any)}>
+            <Text style={styles.lockedButtonText}>로그인하러 가기</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -209,4 +237,9 @@ const styles = StyleSheet.create({
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16 },
   menuTxt: { fontSize: 14, fontWeight: '600', color: '#111' },
   fab: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5 },
+  lockedContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  lockedTitle: { fontSize: 22, fontWeight: '900', color: '#111', marginTop: 18, marginBottom: 8 },
+  lockedDesc: { fontSize: 14, fontWeight: '600', color: '#6B7280', lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+  lockedButton: { width: '100%', height: 52, borderRadius: 16, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+  lockedButtonText: { color: '#FFF', fontSize: 15, fontWeight: '900' },
 });

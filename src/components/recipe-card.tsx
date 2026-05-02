@@ -27,10 +27,11 @@ interface RecipeCardProps {
   };
   index?: number;
   onLike?: (recipeId: number) => void;
+  onComment?: (recipeId: number) => void;
   showLikeButton?: boolean;
 }
 
-export function RecipeCard({ recipe, index = 0, onLike, showLikeButton = false }: RecipeCardProps) {
+export function RecipeCard({ recipe, index = 0, onLike, onComment, showLikeButton = false }: RecipeCardProps) {
   return (
     <Animated.View entering={FadeInUp.delay(index * 50).duration(400)}>
       <TouchableOpacity 
@@ -76,10 +77,14 @@ export function RecipeCard({ recipe, index = 0, onLike, showLikeButton = false }
                 />
                 <Text style={[styles.statTxt, recipe.liked && { color: '#111' }]}>{recipe.likes}</Text>
               </TouchableOpacity>
-              <View style={styles.stat}>
+              <TouchableOpacity
+                disabled={!onComment}
+                onPress={() => onComment?.(recipe.id)}
+                style={styles.stat}
+              >
                 <MessageCircle size={16} color="#9CA3AF" />
                 <Text style={styles.statTxt}>{recipe.comments}</Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </View>

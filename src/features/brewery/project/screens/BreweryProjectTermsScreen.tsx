@@ -11,6 +11,8 @@ import { router } from 'expo-router';
 import { AlertCircle, Check, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/contexts/AuthContext';
+
 interface TermItem {
   id: string;
   title: string;
@@ -69,6 +71,7 @@ const termsData: TermItem[] = [
 
 export default function BreweryProjectTermsScreen() {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [agreedTerms, setAgreedTerms] = useState<string[]>([]);
   const [modalTerm, setModalTerm] = useState<TermItem | null>(null);
 
@@ -90,6 +93,29 @@ export default function BreweryProjectTermsScreen() {
       router.push('/brewery/project/create' as any);
     }
   };
+
+  if (!user) {
+    return (
+      <View style={styles.root}>
+        <View style={styles.screen}>
+          <View style={[styles.header, { paddingTop: insets.top }]}>
+            <TouchableOpacity style={styles.headerButton} activeOpacity={0.75} onPress={() => router.back()}>
+              <X size={24} color="#111827" strokeWidth={2.25} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>펀딩 프로젝트 약관</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+          <View style={styles.lockedContainer}>
+            <Text style={styles.lockedTitle}>로그인이 필요합니다</Text>
+            <Text style={styles.lockedDesc}>펀딩 프로젝트 등록은 로그인 후 이용할 수 있어요.</Text>
+            <TouchableOpacity style={styles.lockedButton} onPress={() => router.push('/login' as any)}>
+              <Text style={styles.lockedButtonText}>로그인하러 가기</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -409,6 +435,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: '900',
   },
+  lockedContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
+  lockedTitle: { fontSize: 22, fontWeight: '900', color: '#111827', marginBottom: 10 },
+  lockedDesc: { fontSize: 14, fontWeight: '600', color: '#6B7280', lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+  lockedButton: { width: '100%', height: 52, borderRadius: 14, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
+  lockedButtonText: { color: '#FFF', fontSize: 16, fontWeight: '900' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

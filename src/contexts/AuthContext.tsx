@@ -5,7 +5,7 @@ export type UserType = "user" | "brewery";
 
 export interface User {
   id: string;
-  uid: string;        // 변경 불가 고유 ID (JD-XXXXXXXX 형식)
+  uid: string;
   name: string;
   email: string;
   phone?: string;
@@ -13,6 +13,7 @@ export interface User {
   isBreweryVerified?: boolean;
   breweryName?: string;
   breweryLocation?: string;
+  breweryLocationDetail?: string;
   businessNumber?: string;
   sulbti?: string;
 }
@@ -34,17 +35,18 @@ interface SignupData {
   type: UserType;
   breweryName?: string;
   breweryLocation?: string;
+  breweryLocationDetail?: string;
 }
 
 interface BreweryVerificationData {
   businessNumber: string;
-  businessLicense?: any; // Removed File type for React Native
+  businessLicense?: unknown;
   breweryName: string;
   breweryLocation: string;
+  breweryLocationDetail?: string;
   phone: string;
 }
 
-/** 고유 UID 생성: JD-XXXXXXXX */
 function generateUID(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "JD-";
@@ -86,6 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isBreweryVerified: type === "brewery" ? true : undefined,
       breweryName: type === "brewery" ? "술샘양조장" : undefined,
       breweryLocation: type === "brewery" ? "경기 양평" : undefined,
+      breweryLocationDetail: type === "brewery" ? "누룩길 12" : undefined,
+      businessNumber: type === "brewery" ? "123-45-67890" : undefined,
     };
 
     setUser(mockUser);
@@ -118,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isBreweryVerified: false,
       breweryName: data.breweryName,
       breweryLocation: data.breweryLocation,
+      breweryLocationDetail: data.breweryLocationDetail,
     };
 
     setUser(mockUser);
@@ -138,6 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isBreweryVerified: true,
         breweryName: data.breweryName,
         breweryLocation: data.breweryLocation,
+        breweryLocationDetail: data.breweryLocationDetail,
         businessNumber: data.businessNumber,
         phone: data.phone,
       };

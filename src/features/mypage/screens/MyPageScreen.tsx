@@ -31,12 +31,15 @@ import {
   ChevronUp,
   Factory,
   LayoutDashboard,
+  Lock,
+  UserRound,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import { showLoginRequired } from '@/utils/authPrompt';
 
 const MY_ACTIVITIES = [
   { id: 1, type: "post", label: "게시글 작성", content: "오늘 드디어 벚꽃 막걸리 도착했어요! 첫 모금부터 꽃향기가 확 퍼지는 게 정말 감동이에요. 🌸", category: "자유게시판", likes: 42, comments: 8, time: "2시간 전" },
@@ -56,13 +59,73 @@ export default function MyPageScreen() {
 
   if (!user) {
     return (
-      <View style={styles.loginReqContainer}>
-        <View style={styles.loginReqCard}>
-           <Wine size={60} color="#9CA3AF" />
-           <Text style={styles.loginReqTitle}>로그인이 필요합니다</Text>
-           <Text style={styles.loginReqDesc}>마이페이지를 이용하시려면{'\n'}로그인을 해주세요</Text>
-           <Button label="로그인하러 가기" onPress={() => router.push('/login')} style={styles.loginReqBtn} />
-        </View>
+      <View style={styles.container}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+          <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
+             <View style={styles.profileRow}>
+                <View style={[styles.avatar, styles.guestAvatar]}>
+                   <UserRound size={26} color="#6B7280" />
+                </View>
+                <View style={styles.profileInfo}>
+                   <Text style={styles.profileName}>비회원 님</Text>
+                   <View style={styles.typeBadge}>
+                      <Lock size={10} color="#6B7280" />
+                      <Text style={styles.typeBadgeTxt}>둘러보기 모드</Text>
+                   </View>
+                </View>
+                <TouchableOpacity style={styles.settingsBtn} onPress={() => showLoginRequired('설정은 로그인 후 이용할 수 있어요.')}>
+                   <Settings size={20} color="#6B7280" />
+                </TouchableOpacity>
+             </View>
+
+             <View style={styles.guestGuideCard}>
+                <Text style={styles.guestGuideTitle}>비회원으로 구경 중이에요</Text>
+                <Text style={styles.guestGuideDesc}>게시글과 펀딩은 볼 수 있지만 좋아요, 댓글, 후원, AI 챗봇은 로그인 후 이용할 수 있어요.</Text>
+                <View style={styles.guestButtonRow}>
+                  <TouchableOpacity style={styles.guestPrimaryBtn} onPress={() => router.push('/login' as any)}>
+                    <Text style={styles.guestPrimaryTxt}>로그인</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.guestSecondaryBtn} onPress={() => router.push('/signup' as any)}>
+                    <Text style={styles.guestSecondaryTxt}>회원가입</Text>
+                  </TouchableOpacity>
+                </View>
+             </View>
+          </View>
+
+          <View style={styles.btiContainer}>
+             <View style={[styles.btiCard, styles.lockedCard]}>
+                <View style={styles.btiIconBox}><Text style={{fontSize: 24}}>🍶</Text></View>
+                <View style={styles.btiTxtBox}>
+                   <Text style={styles.btiTitle}>술BTI는 로그인 후 확인할 수 있어요</Text>
+                   <Text style={styles.btiDesc}>취향 기록과 아카이브가 계정에 저장됩니다</Text>
+                </View>
+                <Lock size={18} color="#9CA3AF" />
+             </View>
+          </View>
+
+          <View style={styles.statsGrid}>
+             <StatItem icon={<TrendingUp size={18} color="#9CA3AF" />} label="참여 펀딩" val="-" />
+             <StatItem icon={<BookOpen size={18} color="#9CA3AF" />} label="내 아카이브" val="-" />
+             <StatItem icon={<PenSquare size={18} color="#9CA3AF" />} label="작성 게시글" val="-" />
+          </View>
+
+          <View style={styles.sectionArea}>
+             <Text style={styles.sectionLabel}>비회원 이용 안내</Text>
+             <View style={styles.menuCard}>
+                <GuestMenuItem title="펀딩 프로젝트 구경" />
+                <GuestMenuItem title="주담 레시피 구경" />
+                <GuestMenuItem title="커뮤니티 게시글 읽기" last />
+             </View>
+
+             <Text style={[styles.sectionLabel, { marginTop: 24 }]}>로그인 후 이용 가능</Text>
+             <View style={styles.menuCard}>
+                <GuestMenuItem title="레시피 제안하기" locked />
+                <GuestMenuItem title="좋아요와 댓글 작성" locked />
+                <GuestMenuItem title="펀딩 후원하기" locked />
+                <GuestMenuItem title="AI 챗봇 상담" locked last />
+             </View>
+          </View>
+        </ScrollView>
       </View>
     );
   }
@@ -249,11 +312,22 @@ function MenuItem({ icon, title, danger, last, onPress }: any) {
   );
 }
 
+function GuestMenuItem({ title, locked, last }: any) {
+  return (
+    <View style={[styles.menuItem, !last && styles.borderB]}>
+       <View style={styles.menuIconBox}>{locked ? <Lock size={18} color="#9CA3AF" /> : <Wine size={18} color="#6B7280" />}</View>
+       <Text style={[styles.menuTitle, locked && styles.guestLockedText]}>{title}</Text>
+       <ChevronRight size={16} color="#D1D5DB" />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
   header: { backgroundColor: '#FFF', paddingHorizontal: 24, paddingBottom: 24, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   profileRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
+  guestAvatar: { backgroundColor: '#F3F4F6' },
   avatarTxt: { color: '#FFF', fontSize: 20, fontWeight: '800' },
   profileInfo: { flex: 1 },
   profileName: { fontSize: 20, fontWeight: '800', color: '#111' },
@@ -264,8 +338,17 @@ const styles = StyleSheet.create({
   dashboardInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 20 },
   dashboardTxtBox: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dashboardTitle: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+  guestGuideCard: { marginTop: 20, backgroundColor: '#F9FAFB', borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB', padding: 18 },
+  guestGuideTitle: { fontSize: 17, fontWeight: '900', color: '#111', marginBottom: 6 },
+  guestGuideDesc: { fontSize: 13, fontWeight: '600', color: '#6B7280', lineHeight: 20 },
+  guestButtonRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  guestPrimaryBtn: { flex: 1, height: 44, borderRadius: 14, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+  guestPrimaryTxt: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  guestSecondaryBtn: { flex: 1, height: 44, borderRadius: 14, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center' },
+  guestSecondaryTxt: { color: '#111', fontSize: 14, fontWeight: '800' },
   btiContainer: { padding: 20 },
   btiCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: '#F3F4F6', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
+  lockedCard: { opacity: 0.9 },
   btiIconBox: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' },
   btiTxtBox: { flex: 1 },
   btiTitle: { fontSize: 15, fontWeight: '800', color: '#111' },
@@ -301,6 +384,7 @@ const styles = StyleSheet.create({
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 18, gap: 12 },
   menuIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' },
   menuTitle: { flex: 1, fontSize: 15, fontWeight: '700', color: '#111' },
+  guestLockedText: { color: '#6B7280' },
   loginReqContainer: { flex: 1, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center', padding: 30 },
   loginReqCard: { width: '100%', backgroundColor: '#FFF', borderRadius: 32, padding: 40, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.05, shadowRadius: 20, elevation: 5 },
   loginReqTitle: { fontSize: 22, fontWeight: '800', marginTop: 24, marginBottom: 12 },

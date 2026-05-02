@@ -32,7 +32,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Progress } from '@/components/ui/progress';
-import { fundingProjects, FundingProject, getFundingProjectImageSource } from '@/constants/data';
+import { FundingProject, getFundingProjectImageSource, isSupportableFundingStatus } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 
@@ -85,11 +85,11 @@ export default function FundingSupportScreen() {
   const insets = useSafeAreaInsets();
   const { id, quantity: quantityParam } = useLocalSearchParams();
   const { user } = useAuth();
-  const { addParticipation } = useFunding();
+  const { projects, addParticipation, updateProjectFunding } = useFunding();
   const fundingId = getFundingId(id);
   const project = useMemo(
-    () => fundingProjects.find((item) => item.id === fundingId) || null,
-    [fundingId]
+    () => projects.find((item) => item.id === fundingId) || null,
+    [fundingId, projects]
   );
   const [quantity, setQuantity] = useState(getInitialQuantity(quantityParam));
   const [additionalSupport, setAdditionalSupport] = useState('0');
@@ -169,6 +169,7 @@ export default function FundingSupportScreen() {
     setIsProcessing(true);
     setTimeout(() => {
       addParticipation(project.id, totalAmount);
+      updateProjectFunding(project.id, totalAmount);
       setIsProcessing(false);
       setShowSuccessModal(true);
     }, 700);
@@ -218,7 +219,7 @@ export default function FundingSupportScreen() {
     );
   }
 
-  if (project.status !== '진행 중') {
+  if (!isSupportableFundingStatus(project.status)) {
     return (
       <AccessNotice
         insetsTop={insets.top}

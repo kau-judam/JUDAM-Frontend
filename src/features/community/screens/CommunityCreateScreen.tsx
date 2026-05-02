@@ -48,6 +48,25 @@ export default function CommunityCreateScreen() {
     nextAction?.();
   };
 
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { height: insets.top + 56, paddingTop: insets.top }]}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
+            <ChevronLeft size={26} color="#111" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>새 게시글 작성</Text>
+          <View style={styles.iconBtn} />
+        </View>
+        <View style={styles.lockedContainer}>
+          <Text style={styles.lockedTitle}>로그인이 필요합니다</Text>
+          <Text style={styles.lockedDesc}>커뮤니티 글 작성은 로그인한 사용자만 이용할 수 있어요.</Text>
+          <Button label="로그인하러 가기" onPress={() => router.push('/login' as any)} style={styles.lockedButton} />
+        </View>
+      </View>
+    );
+  }
+
   const handleAddImage = async () => {
     if (imageUris.length >= 5) {
       showNotice('최대 5개까지 업로드 가능합니다.');
@@ -321,6 +340,10 @@ const styles = StyleSheet.create({
   },
   submitButton: { height: 52, borderRadius: 14, backgroundColor: '#111' },
   submitButtonText: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+  lockedContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
+  lockedTitle: { fontSize: 22, fontWeight: '900', color: '#111', marginBottom: 10 },
+  lockedDesc: { fontSize: 14, fontWeight: '600', color: '#6B7280', lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+  lockedButton: { width: '100%', height: 52, borderRadius: 14 },
   guidelineBox: {
     borderRadius: 12,
     borderWidth: 1,

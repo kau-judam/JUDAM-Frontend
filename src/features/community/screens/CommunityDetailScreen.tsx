@@ -16,6 +16,7 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { showLoginRequired } from '@/utils/authPrompt';
 
 const INITIAL_COMMENT_COUNT = 3;
 
@@ -187,11 +188,19 @@ export default function CommunityDetailScreen() {
   const hasMoreComments = comments.length > INITIAL_COMMENT_COUNT;
 
   const handleLike = () => {
+    if (!user) {
+      showLoginRequired('커뮤니티 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
     setLiked((prev) => !prev);
     setLikeCount((prev) => (liked ? prev - 1 : prev + 1));
   };
 
   const handleCommentLike = (commentId: number) => {
+    if (!user) {
+      showLoginRequired('댓글 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
     setComments((prev) =>
       prev.map((comment) =>
         comment.id === commentId
@@ -204,7 +213,7 @@ export default function CommunityDetailScreen() {
   const handleCommentSubmit = () => {
     if (!commentInput.trim()) return;
     if (!user) {
-      router.push('/login' as any);
+      showLoginRequired('댓글 작성은 로그인 후 이용할 수 있어요.');
       return;
     }
 
@@ -225,6 +234,12 @@ export default function CommunityDetailScreen() {
 
   const handleMenuAction = () => {
     setShowMenu(false);
+  };
+
+  const handleReplyPress = () => {
+    if (!user) {
+      showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
+    }
   };
 
   return (
@@ -310,7 +325,7 @@ export default function CommunityDetailScreen() {
                       좋아요 {comment.likes > 0 ? comment.likes : ''}
                     </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity>
+                  <TouchableOpacity onPress={handleReplyPress}>
                     <Text style={styles.commentAction}>답글</Text>
                   </TouchableOpacity>
                 </View>
@@ -349,7 +364,7 @@ export default function CommunityDetailScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity style={styles.loginCommentButton} onPress={() => router.push('/login' as any)}>
+            <TouchableOpacity style={styles.loginCommentButton} onPress={() => showLoginRequired('댓글 작성은 로그인 후 이용할 수 있어요.')}>
               <Text style={styles.loginCommentText}>로그인하고 댓글 작성하기</Text>
             </TouchableOpacity>
           )}

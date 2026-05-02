@@ -41,6 +41,7 @@ import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFunding } from '@/contexts/FundingContext';
 
 type TabId = 'basic' | 'funding' | 'rewards' | 'taste' | 'plan' | 'creator' | 'trust' | 'verification';
 type FileKey = 'profileImage' | 'idCard' | 'businessLicense' | 'salesPermit' | 'alcoholPermit' | 'manufacturingLicense';
@@ -114,9 +115,17 @@ function currency(value: string | number) {
   return Number.isFinite(number) ? number.toLocaleString() : '0';
 }
 
+function parseTextLines(value: string) {
+  return value
+    .split('\n')
+    .map((line) => line.replace(/^[-•]\s*/, '').trim())
+    .filter(Boolean);
+}
+
 export default function BreweryProjectCreateScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { addProject } = useFunding();
   const [activeTab, setActiveTab] = useState<TabId>('basic');
   const [showPreview, setShowPreview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -564,6 +573,47 @@ export default function BreweryProjectCreateScreen() {
     setShowSubmitConfirm(false);
     setIsSubmitting(true);
     setTimeout(() => {
+      const budgetLines = parseTextLines(projectPlan.budget);
+      const scheduleLines = parseTextLines(projectPlan.schedule);
+      addProject({
+        title: basicInfo.title,
+        brewery: creatorInfo.name || user?.breweryName || '양조장',
+        breweryLogo: '🍶',
+        location: taxInfo.address || user?.breweryLocation || '지역 미정',
+        category: basicInfo.category,
+        shortDescription: basicInfo.summary,
+        image: basicInfo.images[0] || aiImages[0],
+        images: basicInfo.images,
+        goalAmount: Number(fundingInfo.goalAmount) || 0,
+        currentAmount: 0,
+        backers: 0,
+        daysLeft: Number(fundingInfo.duration) || 30,
+        status: '심사 중',
+        startDate: fundingInfo.startDate,
+        endDate: endDateText,
+        pricePerBottle: Number(fundingInfo.pricePerBottle) || 0,
+        bottleSize: productInfo.volume,
+        volume: productInfo.volume,
+        alcoholContent: productInfo.alcoholContent || basicInfo.alcoholContent,
+        totalQuantity: Number(fundingInfo.bottleQuantity) || 0,
+        targetQuantity: Number(fundingInfo.bottleQuantity) || 0,
+        estimatedDelivery: fundingInfo.expectedDeliveryDate,
+        rewardItems: [`${basicInfo.title} ${productInfo.volume || ''} x 1`.trim()],
+        shippingFee: 3000,
+        mainIngredients: basicInfo.mainIngredient,
+        subIngredients: basicInfo.subIngredient,
+        projectSummary: basicInfo.summary,
+        introduction: projectPlan.introduction,
+        story: projectPlan.introduction,
+        budget: budgetLines.length > 0 ? budgetLines.map((line, index) => ({ item: line, amount: index === 0 ? Math.round((Number(fundingInfo.goalAmount) || 0) / 10000) : 0 })) : [],
+        schedule: scheduleLines.length > 0 ? scheduleLines.map((line) => ({ date: line.split(':')[0] || '일정', description: line.includes(':') ? line.split(':').slice(1).join(':').trim() : line })) : [],
+        tasteProfile,
+        breweryBio: creatorInfo.bio,
+        breweryProfileImage: creatorInfo.profileImage,
+        productType: productInfo.productType,
+        ingredients: productInfo.ingredients,
+        journals: [],
+      });
       setIsSubmitting(false);
       setShowSubmitSuccess(true);
     }, 700);

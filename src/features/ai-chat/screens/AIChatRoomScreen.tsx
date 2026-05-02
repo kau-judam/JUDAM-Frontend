@@ -4,8 +4,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, Send } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/contexts/AuthContext';
+
 export default function AIChatRoomScreen() {
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const { category } = useLocalSearchParams();
   const chatCategory = Array.isArray(category) ? category[0] : category;
   const [input, setInput] = useState('');
@@ -22,6 +25,27 @@ export default function AIChatRoomScreen() {
     ]);
     setInput('');
   };
+
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top }]}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
+            <ChevronLeft size={24} color="#111" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>AI 챗봇</Text>
+          <View style={styles.iconBtn} />
+        </View>
+        <View style={styles.lockedContainer}>
+          <Text style={styles.lockedTitle}>로그인이 필요합니다</Text>
+          <Text style={styles.lockedDesc}>AI 챗봇 대화는 로그인한 사용자만 이용할 수 있어요.</Text>
+          <TouchableOpacity style={styles.lockedButton} onPress={() => router.push('/login' as any)}>
+            <Text style={styles.lockedButtonText}>로그인하러 가기</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -69,4 +93,9 @@ const styles = StyleSheet.create({
   inputBar: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6', backgroundColor: '#FFF' },
   input: { flex: 1, height: 46, borderRadius: 23, backgroundColor: '#F3F4F6', paddingHorizontal: 16, fontSize: 14, fontWeight: '600', color: '#111' },
   sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+  lockedContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  lockedTitle: { fontSize: 22, fontWeight: '900', color: '#111', marginBottom: 8 },
+  lockedDesc: { fontSize: 14, fontWeight: '600', color: '#6B7280', lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+  lockedButton: { width: '100%', height: 52, borderRadius: 16, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+  lockedButtonText: { color: '#FFF', fontSize: 15, fontWeight: '900' },
 });

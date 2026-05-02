@@ -35,6 +35,7 @@ import { Progress } from '@/components/ui/progress';
 import { FundingProject, getFundingProjectImageSource, isSupportableFundingStatus } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 
 type PaymentMethod = 'card' | 'npay' | 'account';
 type InfoModalType = 'terms' | 'privacy' | null;
@@ -138,12 +139,7 @@ export default function FundingSupportScreen() {
     (addr) => addr.address.includes(addressSearch) || addr.zipCode.includes(addressSearch)
   );
   const canSubmit = Boolean(selectedPaymentMethod && agreeTerms && agreeRefund && !isProcessing);
-  const currentBreweryName = user?.breweryName || user?.name;
-  const isOwnBreweryProject =
-    user?.type === 'brewery' &&
-    project !== null &&
-    Boolean(currentBreweryName) &&
-    currentBreweryName?.trim() === project.brewery.trim();
+  const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
 
   const handleAdditionalSupportChange = (value: string) => {
     const next = digitsOnly(value);

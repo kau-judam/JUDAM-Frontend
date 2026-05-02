@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
+  ArrowLeft,
   ArrowRight,
   ChefHat,
   ChevronRight,
@@ -66,7 +67,7 @@ const SLIDES = [
     id: 3,
     image: require('../../../../newpicutre/picture1.jpg'),
     resizeMode: 'contain',
-    badge: "오픈 키친",
+    badge: "양조 일지",
     BadgeIcon: ChefHat,
     isBrandSlide: false,
     title: "양조장 현장을\n실시간으로",
@@ -158,6 +159,16 @@ export default function OnboardingScreen() {
           </AnimatedRe.View>
         )}
       </View>
+
+      {!isCTA && current > 0 && (
+        <TouchableOpacity
+          activeOpacity={0.82}
+          onPress={() => go(current - 1)}
+          style={[styles.slideBackBtn, { top: insets.top + 18 }]}
+        >
+          <ArrowLeft size={23} color="#FFF" />
+        </TouchableOpacity>
+      )}
 
       {/* Bottom nav (feature slides only) */}
       {!isCTA && (
@@ -319,6 +330,7 @@ const styles = StyleSheet.create({
   badgeText: { color: '#FFF', fontSize: 11, fontWeight: '600', letterSpacing: 1.2 },
   title: { color: '#FFF', fontSize: 34, fontWeight: '700', lineHeight: 44, marginBottom: 16 },
   subtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 24.5 },
+  slideBackBtn: { position: 'absolute', left: 20, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', zIndex: 30, backgroundColor: 'rgba(0,0,0,0.18)' },
   bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 32, zIndex: 20 },
   pagination: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginBottom: 20 },
   dot: { height: 6, borderRadius: 3 },

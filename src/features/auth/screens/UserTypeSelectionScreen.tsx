@@ -27,7 +27,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function UserTypeSelectionScreen() {
   const insets = useSafeAreaInsets();
-  const { updateUser } = useAuth();
+  const { user, updateUser } = useAuth();
   const [selectedType, setSelectedType] = useState<'user' | 'brewery' | null>(null);
 
   const handleUserSelection = async () => {
@@ -38,6 +38,29 @@ export default function UserTypeSelectionScreen() {
   const handleBrewerySelection = () => {
     router.push('/brewery/verification' as any);
   };
+
+  if (!user) {
+    return (
+      <Animated.View entering={FadeIn.duration(300)} style={styles.container}>
+        <StatusBar barStyle="dark-content" />
+        <View style={[styles.authGuard, { paddingTop: insets.top + 80 }]}>
+          <View style={styles.authGuardLogo}>
+            <Image source={require('@/assets/images/logo.png')} style={styles.authGuardLogoImg} />
+          </View>
+          <Text style={styles.authGuardTitle}>회원가입 후 선택할 수 있어요</Text>
+          <Text style={styles.authGuardDesc}>
+            일반 사용자와 양조장 유형 선택은 계정 생성 후 진행됩니다.
+          </Text>
+          <TouchableOpacity style={styles.authGuardPrimary} onPress={() => router.replace('/signup' as any)}>
+            <Text style={styles.authGuardPrimaryText}>회원가입하러 가기</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.authGuardSecondary} onPress={() => router.replace('/login' as any)}>
+            <Text style={styles.authGuardSecondaryText}>로그인</Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+    );
+  }
 
   return (
     <Animated.View entering={FadeIn.duration(600)} style={styles.container}>
@@ -185,4 +208,13 @@ const styles = StyleSheet.create({
   navyBtn: { flex: 1, backgroundColor: '#1E293B', justifyContent: 'center', alignItems: 'center' },
   confirmBtnTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   disclaimer: { fontSize: 11, color: '#9CA3AF', fontWeight: '500', textAlign: 'center', paddingHorizontal: 20 },
+  authGuard: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
+  authGuardLogo: { width: 82, height: 82, borderRadius: 24, backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  authGuardLogoImg: { width: 62, height: 62 },
+  authGuardTitle: { fontSize: 22, fontWeight: '800', color: '#111', textAlign: 'center', marginBottom: 8 },
+  authGuardDesc: { fontSize: 14, fontWeight: '600', color: '#6B7280', lineHeight: 21, textAlign: 'center', marginBottom: 24 },
+  authGuardPrimary: { width: '100%', height: 52, borderRadius: 14, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  authGuardPrimaryText: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+  authGuardSecondary: { height: 42, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  authGuardSecondaryText: { color: '#6B7280', fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
 });

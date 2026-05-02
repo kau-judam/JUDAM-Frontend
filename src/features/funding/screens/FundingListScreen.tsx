@@ -37,6 +37,7 @@ import {
   isSupportableFundingStatus,
   sortFundingProjectsByPopularity,
 } from '@/constants/data';
+import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -56,7 +57,6 @@ export default function FundingListScreen() {
   const statusOptions = ["전체 프로젝트", "진행중인 프로젝트", "성사된 프로젝트"];
   const isBreweryAccount = user?.type === "brewery";
   const isVerifiedBrewery = isBreweryAccount && user?.isBreweryVerified;
-  const currentBreweryName = user?.breweryName || user?.name;
 
   useEffect(() => {
     setCurrentPage(1);
@@ -89,7 +89,6 @@ export default function FundingListScreen() {
   const sortedProjects = sortFundingProjectsByPopularity(filteredProjects);
   const totalPages = Math.max(1, Math.ceil(sortedProjects.length / itemsPerPage));
   const pagedProjects = sortedProjects.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const totalRaised = projects.reduce((sum, p) => sum + p.currentAmount, 0);
   const totalBackers = projects.reduce((sum, p) => sum + p.backers, 0);
 
   const handleHeroAction = () => {
@@ -189,9 +188,6 @@ export default function FundingListScreen() {
               </View>
             )}
           </View>
-          <Text style={styles.resultSummary}>
-            {selectedStatus.replace("프로젝트", "").trim()} {filteredProjects.length}개 · 누적 후원 {(totalRaised / 10000).toLocaleString()}만원
-          </Text>
         </View>
 
         {/* 3. Funding Project Feed */}
@@ -204,10 +200,7 @@ export default function FundingListScreen() {
           ) : (
             pagedProjects.map((project, index) => {
               const progressPercentage = Math.min((project.currentAmount / project.goalAmount) * 100, 100);
-              const isOwnProject =
-                isBreweryAccount &&
-                Boolean(currentBreweryName) &&
-                currentBreweryName?.trim() === project.brewery.trim();
+              const isOwnProject = isFundingProjectOwnedByBrewery(user, project);
               return (
                 <Animated.View key={project.id} entering={FadeInUp.delay(index * 50)} style={styles.fundingCard}>
                   <TouchableOpacity 
@@ -373,7 +366,6 @@ const styles = StyleSheet.create({
   dropdown: { position: 'absolute', top: 75, right: 12, backgroundColor: '#FFF', borderRadius: 20, width: 200, elevation: 25, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 15, paddingVertical: 8, borderWidth: 1, borderColor: '#F3F4F6' },
   dropItem: { paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
   dropTxt: { fontSize: 14, color: '#4B5563' },
-  resultSummary: { marginTop: 12, marginLeft: 8, fontSize: 12, color: '#6B7280', fontWeight: '800' },
   listSection: { padding: 20, paddingTop: 40 },
   emptyBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyTxt: { fontSize: 16, color: '#9CA3AF', marginTop: 16, fontWeight: '500' },

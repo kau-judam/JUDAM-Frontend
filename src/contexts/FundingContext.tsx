@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 import { fundingProjects, FundingProject, JournalEntry, ProjectStatus } from "@/constants/data";
+import { fundingReviews as seedFundingReviews, FundingReview } from "@/features/funding/reviews";
 
 interface ParticipatedFunding {
   fundingId: number;
@@ -10,8 +11,10 @@ interface ParticipatedFunding {
 interface FundingContextType {
   projects: FundingProject[];
   participatedFundings: ParticipatedFunding[];
+  fundingReviews: FundingReview[];
   addParticipation: (fundingId: number, amount: number) => void;
   addProject: (project: Omit<FundingProject, "id">) => FundingProject;
+  addFundingReview: (review: Omit<FundingReview, "id" | "date" | "timestamp" | "likes">) => FundingReview;
   updateProjectJournals: (projectId: number, journals: JournalEntry[]) => void;
   updateProjectStatus: (projectId: number, status: ProjectStatus) => void;
   updateProjectFunding: (projectId: number, amount: number) => void;
@@ -33,6 +36,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
   const [participatedFundings, setParticipatedFundings] = useState<ParticipatedFunding[]>(
     initialParticipations
   );
+  const [fundingReviews, setFundingReviews] = useState<FundingReview[]>(seedFundingReviews);
 
   const addParticipation = (fundingId: number, amount: number) => {
     const today = new Date();
@@ -54,6 +58,22 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     };
     setProjects((prev) => [nextProject, ...prev]);
     return nextProject;
+  };
+
+  const addFundingReview = (review: Omit<FundingReview, "id" | "date" | "timestamp" | "likes">) => {
+    const today = new Date();
+    const date = `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, "0")}. ${String(
+      today.getDate()
+    ).padStart(2, "0")}`;
+    const nextReview: FundingReview = {
+      ...review,
+      id: Math.max(0, ...fundingReviews.map((item) => item.id)) + 1,
+      date,
+      timestamp: "방금 전",
+      likes: 0,
+    };
+    setFundingReviews((prev) => [nextReview, ...prev]);
+    return nextReview;
   };
 
   const updateProjectJournals = (projectId: number, journals: JournalEntry[]) => {
@@ -99,8 +119,10 @@ export function FundingProvider({ children }: { children: ReactNode }) {
       value={{
         projects,
         participatedFundings,
+        fundingReviews,
         addParticipation,
         addProject,
+        addFundingReview,
         updateProjectJournals,
         updateProjectStatus,
         updateProjectFunding,

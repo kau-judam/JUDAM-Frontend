@@ -18,69 +18,42 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
-  CreditCard,
-  Landmark,
   MapPin,
   MessageCircle,
   Package,
   Search,
   ShieldCheck,
-  Smartphone,
   UserRound,
   X,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Progress } from '@/components/ui/progress';
-import { FundingProject, getFundingProjectImageSource, isSupportableFundingStatus } from '@/constants/data';
+import { getFundingProjectImageSource, isSupportableFundingStatus } from '@/constants/data';
+import type { FundingProject } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
-
-type PaymentMethod = 'card' | 'npay' | 'account';
-type InfoModalType = 'terms' | 'privacy' | null;
-
-const messageOptions = [
-  '이 프로젝트의 성공을 응원합니다!',
-  '우리 술의 미래를 함께 만들어요!',
-  '전통주의 새로운 도전을 지지합니다.',
-  '맛있는 술 기대하겠습니다. 화이팅!',
-  '정성스럽게 빚어주세요.',
-];
-
-const paymentMethods: {
-  id: PaymentMethod;
-  title: string;
-  desc: string;
-  icon: React.ReactNode;
-}[] = [
-  { id: 'card', title: '카드 간편결제', desc: '할부 가능', icon: <CreditCard size={20} color="#111" /> },
-  { id: 'npay', title: '네이버페이', desc: '간편 결제', icon: <Smartphone size={20} color="#111" /> },
-  { id: 'account', title: '계좌이체', desc: '무통장 입금', icon: <Landmark size={20} color="#111" /> },
-];
-
-const mockAddresses = [
-  { zipCode: '06234', address: '서울특별시 강남구 테헤란로 123' },
-  { zipCode: '06235', address: '서울특별시 강남구 테헤란로 456' },
-  { zipCode: '04524', address: '서울특별시 중구 세종대로 110' },
-  { zipCode: '03088', address: '서울특별시 종로구 종로 1' },
-  { zipCode: '13494', address: '경기도 성남시 분당구 판교역로 235' },
-  { zipCode: '63309', address: '제주특별자치도 제주시 첨단로 242' },
-];
-
-function digitsOnly(value: string) {
-  return value.replace(/[^0-9]/g, '');
-}
-
-function getInitialQuantity(value: string | string[] | undefined) {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return Math.max(1, Number(raw) || 1);
-}
-
-function getFundingId(value: string | string[] | undefined) {
-  const raw = Array.isArray(value) ? value[0] : value;
-  return Number(raw);
-}
+import {
+  MAX_ADDITIONAL_SUPPORT,
+  bankOptions,
+  cardCompanies,
+  digitsOnly,
+  getFundingId,
+  getInitialQuantity,
+  getPaymentSummary,
+  getPrimaryRewardItem,
+  getRecentShippingKey,
+  installmentOptions,
+  messageOptions,
+  mockAddresses,
+  paymentMethods,
+  type InfoModalType,
+  type PaymentMethod,
+  type ShippingInfo,
+} from '@/features/funding/supportConfig';
+import SafeStorage from '@/utils/storage';
+import { formatPhoneNumber, isValidEmail, isValidPhone } from '@/utils/validation';
 
 export default function FundingSupportScreen() {
   const insets = useSafeAreaInsets();
@@ -96,6 +69,7 @@ export default function FundingSupportScreen() {
   const [additionalSupport, setAdditionalSupport] = useState('0');
   const [supportMessage, setSupportMessage] = useState('');
   const [showMessageOptions, setShowMessageOptions] = useState(false);
+  const [showCustomMessageInput, setShowCustomMessageInput] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [agreeRefund, setAgreeRefund] = useState(false);
@@ -103,8 +77,15 @@ export default function FundingSupportScreen() {
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [addressSearch, setAddressSearch] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [infoModal, setInfoModal] = useState<InfoModalType>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [cardCompany, setCardCompany] = useState(cardCompanies[0]);
+  const [installment, setInstallment] = useState(installmentOptions[0]);
+  const [accountBank, setAccountBank] = useState('');
+  const [depositorName, setDepositorName] = useState(user?.name || '');
+  const [recentShippingInfo, setRecentShippingInfo] = useState<ShippingInfo | null>(null);
   const [supporterInfo, setSupporterInfo] = useState({
     phone: user?.phone || '',
     email: user?.email || '',
@@ -115,6 +96,15 @@ export default function FundingSupportScreen() {
     detailAddress: '',
     phone: user?.phone || '',
   });
+
+  const clearValidationError = (key: string) => {
+    setValidationErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -127,10 +117,49 @@ export default function FundingSupportScreen() {
       recipientName: prev.recipientName || user.name,
       phone: prev.phone || user.phone || '',
     }));
+    setDepositorName((prev) => prev || user.name);
   }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+    SafeStorage.getItem(getRecentShippingKey(user.id))
+      .then((saved) => {
+        if (!mounted || !saved) return;
+        const parsed = JSON.parse(saved) as ShippingInfo;
+        if (parsed?.recipientName && parsed?.address && parsed?.phone) {
+          setRecentShippingInfo(parsed);
+        }
+      })
+      .catch(() => {
+        if (mounted) setRecentShippingInfo(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    setQuantity(getInitialQuantity(quantityParam));
+    setAdditionalSupport('0');
+    setSupportMessage('');
+    setShowMessageOptions(false);
+    setShowCustomMessageInput(false);
+    setSelectedPaymentMethod(null);
+    setCardCompany(cardCompanies[0]);
+    setInstallment(installmentOptions[0]);
+    setAccountBank('');
+    setDepositorName(user?.name || '');
+    setAgreeTerms(false);
+    setAgreeRefund(false);
+    setShowRefundPolicy(false);
+    setValidationErrors({});
+    setShowConfirmModal(false);
+  }, [project?.id, quantityParam, user?.name]);
 
   const unitPrice = project?.pricePerBottle || 35000;
   const shippingFee = project?.shippingFee ?? 2000;
+  const primaryRewardItem = project ? getPrimaryRewardItem(project) : '';
   const rewardAmount = unitPrice * quantity;
   const extraAmount = Number(additionalSupport) || 0;
   const totalAmount = rewardAmount + shippingFee + extraAmount;
@@ -140,35 +169,78 @@ export default function FundingSupportScreen() {
   );
   const canSubmit = Boolean(selectedPaymentMethod && agreeTerms && agreeRefund && !isProcessing);
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
+  const paymentSummary = getPaymentSummary(selectedPaymentMethod, cardCompany, installment, accountBank, depositorName);
 
   const handleAdditionalSupportChange = (value: string) => {
     const next = digitsOnly(value);
     setAdditionalSupport(next || '0');
+    clearValidationError('additionalSupport');
   };
 
   const handleAddressSelect = (zipCode: string, address: string) => {
     setShippingInfo((prev) => ({ ...prev, address: zipCode ? `[${zipCode}] ${address}` : address }));
+    clearValidationError('address');
     setShowAddressModal(false);
     setAddressSearch('');
   };
 
+  const handleUseRecentShippingInfo = () => {
+    if (!recentShippingInfo) return;
+    setShippingInfo(recentShippingInfo);
+    setValidationErrors((prev) => {
+      const next = { ...prev };
+      delete next.recipientName;
+      delete next.address;
+      delete next.detailAddress;
+      delete next.shippingPhone;
+      return next;
+    });
+  };
+
+  const validateForm = () => {
+    const next: Record<string, string> = {};
+    const extra = Number(additionalSupport) || 0;
+    if (!isValidPhone(supporterInfo.phone)) next.supporterPhone = '올바른 연락처를 입력해주세요.';
+    if (!isValidEmail(supporterInfo.email)) next.supporterEmail = '올바른 이메일 주소를 입력해주세요.';
+    if (!shippingInfo.recipientName.trim()) next.recipientName = '받는 분 이름을 입력해주세요.';
+    if (!shippingInfo.address.trim()) next.address = '기본 주소를 입력해주세요.';
+    if (!shippingInfo.detailAddress.trim()) next.detailAddress = '상세 주소를 입력해주세요.';
+    if (!isValidPhone(shippingInfo.phone)) next.shippingPhone = '배송 연락처를 올바르게 입력해주세요.';
+    if (extra > MAX_ADDITIONAL_SUPPORT) next.additionalSupport = '추가 후원금은 1,000만원 이하로 입력해주세요.';
+    if (!selectedPaymentMethod) next.payment = '결제수단을 선택해주세요.';
+    if (selectedPaymentMethod === 'account') {
+      if (!accountBank) next.accountBank = '입금 은행을 선택해주세요.';
+      if (!depositorName.trim()) next.depositorName = '입금자명을 입력해주세요.';
+    }
+    setValidationErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
   const handlePayment = () => {
-    if (!canSubmit || !project) return;
-    if (!supporterInfo.phone || !supporterInfo.email) {
-      Alert.alert('알림', '후원자 정보를 입력해주세요.');
+    if (!canSubmit || !project || isProcessing) return;
+    if (!validateForm()) {
+      Alert.alert('입력 정보를 확인해주세요', '표시된 항목을 확인한 뒤 다시 진행해주세요.');
       return;
     }
-    if (!shippingInfo.recipientName || !shippingInfo.address || !shippingInfo.phone) {
-      Alert.alert('알림', '배송지 정보를 입력해주세요.');
-      return;
-    }
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!project || !user || isProcessing) return;
     setIsProcessing(true);
-    setTimeout(() => {
+    setShowConfirmModal(false);
+    try {
+      await SafeStorage.setItem(getRecentShippingKey(user.id), JSON.stringify(shippingInfo));
+      setRecentShippingInfo(shippingInfo);
+      await new Promise((resolve) => setTimeout(resolve, 700));
       addParticipation(project.id, totalAmount);
       updateProjectFunding(project.id, totalAmount);
-      setIsProcessing(false);
       setShowSuccessModal(true);
-    }, 700);
+    } catch {
+      Alert.alert('알림', '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   if (!project) {
@@ -272,12 +344,24 @@ export default function FundingSupportScreen() {
 
         <Section title="가격 안내">
           <View style={styles.rewardItems}>
-            {(project.rewardItems || [`${project.title} ${project.bottleSize || '375ml'} x 1`]).map((item) => (
-              <View key={item} style={styles.rewardItemRow}>
-                <View style={styles.dot} />
-                <Text style={styles.rewardItemText}>{item}</Text>
+            <View style={styles.rewardItemRow}>
+              <View style={styles.dot} />
+              <Text style={styles.rewardItemText}>{primaryRewardItem}</Text>
+            </View>
+            <View style={styles.rewardSpecGrid}>
+              <View style={styles.rewardSpecBox}>
+                <Text style={styles.rewardSpecLabel}>용량</Text>
+                <Text style={styles.rewardSpecValue}>{project.bottleSize || project.volume || '375ml'}</Text>
               </View>
-            ))}
+              <View style={styles.rewardSpecBox}>
+                <Text style={styles.rewardSpecLabel}>도수</Text>
+                <Text style={styles.rewardSpecValue}>{project.alcoholContent || '별도 안내'}</Text>
+              </View>
+              <View style={styles.rewardSpecBox}>
+                <Text style={styles.rewardSpecLabel}>1병 가격</Text>
+                <Text style={styles.rewardSpecValue}>{unitPrice.toLocaleString()}원</Text>
+              </View>
+            </View>
           </View>
           <View style={styles.deliveryRow}>
             <Package size={16} color="#EF4444" />
@@ -291,14 +375,14 @@ export default function FundingSupportScreen() {
 
         <Section title="수량 선택">
           <View style={styles.quantityBox}>
-            <TouchableOpacity style={styles.quantityBtn} onPress={() => setQuantity(Math.max(1, quantity - 1))}>
+            <TouchableOpacity disabled={isProcessing} style={[styles.quantityBtn, isProcessing && styles.disabledControl]} onPress={() => setQuantity(Math.max(1, quantity - 1))}>
               <Text style={styles.quantityBtnText}>-</Text>
             </TouchableOpacity>
             <View style={styles.quantityCenter}>
               <Text style={styles.quantityValue}>{quantity}</Text>
               <Text style={styles.quantityUnit}>병</Text>
             </View>
-            <TouchableOpacity style={styles.quantityBtn} onPress={() => setQuantity(quantity + 1)}>
+            <TouchableOpacity disabled={isProcessing} style={[styles.quantityBtn, isProcessing && styles.disabledControl]} onPress={() => setQuantity(quantity + 1)}>
               <Text style={styles.quantityBtnText}>+</Text>
             </TouchableOpacity>
           </View>
@@ -318,9 +402,11 @@ export default function FundingSupportScreen() {
               textAlign="right"
               placeholder="0"
               placeholderTextColor="#9CA3AF"
+              editable={!isProcessing}
             />
             <Text style={styles.moneyUnit}>원</Text>
           </View>
+          <FieldError message={validationErrors.additionalSupport} />
           <Text style={styles.helperText}>추가 후원으로 프로젝트를 더 응원할 수 있어요.</Text>
         </Section>
 
@@ -330,14 +416,24 @@ export default function FundingSupportScreen() {
             value={supporterInfo.phone}
             placeholder="010-0000-0000"
             keyboardType="phone-pad"
-            onChangeText={(phone) => setSupporterInfo((prev) => ({ ...prev, phone }))}
+            error={validationErrors.supporterPhone}
+            editable={!isProcessing}
+            onChangeText={(phone) => {
+              setSupporterInfo((prev) => ({ ...prev, phone: formatPhoneNumber(phone) }));
+              clearValidationError('supporterPhone');
+            }}
           />
           <LabeledInput
             label="이메일"
             value={supporterInfo.email}
             placeholder="example@email.com"
             keyboardType="email-address"
-            onChangeText={(email) => setSupporterInfo((prev) => ({ ...prev, email }))}
+            error={validationErrors.supporterEmail}
+            editable={!isProcessing}
+            onChangeText={(email) => {
+              setSupporterInfo((prev) => ({ ...prev, email }));
+              clearValidationError('supporterEmail');
+            }}
           />
           <View style={styles.infoBox}>
             <UserRound size={15} color="#6B7280" />
@@ -349,11 +445,27 @@ export default function FundingSupportScreen() {
           title="배송지"
           trailing={<View style={styles.adultBadge}><Text style={styles.adultBadgeText}>성인인증 필수</Text></View>}
         >
+          {recentShippingInfo && (
+            <View style={styles.recentAddressBox}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.recentAddressTitle}>최근 배송지</Text>
+                <Text style={styles.recentAddressText} numberOfLines={2}>{recentShippingInfo.address} {recentShippingInfo.detailAddress}</Text>
+              </View>
+              <TouchableOpacity disabled={isProcessing} style={[styles.recentAddressBtn, isProcessing && styles.disabledControl]} onPress={handleUseRecentShippingInfo}>
+                <Text style={styles.recentAddressBtnText}>불러오기</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <LabeledInput
             label="받는 분"
             value={shippingInfo.recipientName}
             placeholder="이름을 입력하세요"
-            onChangeText={(recipientName) => setShippingInfo((prev) => ({ ...prev, recipientName }))}
+            error={validationErrors.recipientName}
+            editable={!isProcessing}
+            onChangeText={(recipientName) => {
+              setShippingInfo((prev) => ({ ...prev, recipientName }));
+              clearValidationError('recipientName');
+            }}
           />
           <Text style={styles.inputLabel}>주소</Text>
           <View style={styles.addressRow}>
@@ -362,25 +474,40 @@ export default function FundingSupportScreen() {
               value={shippingInfo.address}
               placeholder="기본 주소"
               placeholderTextColor="#9CA3AF"
-              onChangeText={(address) => setShippingInfo((prev) => ({ ...prev, address }))}
+              editable={!isProcessing}
+              onChangeText={(address) => {
+                setShippingInfo((prev) => ({ ...prev, address }));
+                clearValidationError('address');
+              }}
             />
-            <TouchableOpacity style={styles.addressBtn} onPress={() => setShowAddressModal(true)}>
+            <TouchableOpacity disabled={isProcessing} style={[styles.addressBtn, isProcessing && styles.disabledControl]} onPress={() => setShowAddressModal(true)}>
               <Text style={styles.addressBtnText}>검색</Text>
             </TouchableOpacity>
           </View>
+          <FieldError message={validationErrors.address} />
           <TextInput
             style={styles.input}
             value={shippingInfo.detailAddress}
             placeholder="상세 주소"
             placeholderTextColor="#9CA3AF"
-            onChangeText={(detailAddress) => setShippingInfo((prev) => ({ ...prev, detailAddress }))}
+            editable={!isProcessing}
+            onChangeText={(detailAddress) => {
+              setShippingInfo((prev) => ({ ...prev, detailAddress }));
+              clearValidationError('detailAddress');
+            }}
           />
+          <FieldError message={validationErrors.detailAddress} />
           <LabeledInput
             label="연락처"
             value={shippingInfo.phone}
             placeholder="010-0000-0000"
             keyboardType="phone-pad"
-            onChangeText={(phone) => setShippingInfo((prev) => ({ ...prev, phone }))}
+            error={validationErrors.shippingPhone}
+            editable={!isProcessing}
+            onChangeText={(phone) => {
+              setShippingInfo((prev) => ({ ...prev, phone: formatPhoneNumber(phone) }));
+              clearValidationError('shippingPhone');
+            }}
           />
           <View style={styles.alcoholNotice}>
             <ShieldCheck size={16} color="#991B1B" />
@@ -389,9 +516,9 @@ export default function FundingSupportScreen() {
         </Section>
 
         <Section title="양조장에게 한마디" optional>
-          <TouchableOpacity style={styles.messageSelect} onPress={() => setShowMessageOptions((prev) => !prev)}>
-            <Text style={[styles.messageText, !supportMessage && { color: '#9CA3AF' }]}>
-              {supportMessage || '응원 메시지를 선택하세요'}
+          <TouchableOpacity disabled={isProcessing} style={[styles.messageSelect, isProcessing && styles.disabledControl]} onPress={() => setShowMessageOptions((prev) => !prev)}>
+            <Text style={[styles.messageText, !supportMessage && !showCustomMessageInput && { color: '#9CA3AF' }]}>
+              {supportMessage || (showCustomMessageInput ? '직접 입력' : '응원 메시지를 선택하세요')}
             </Text>
             {showMessageOptions ? <ChevronUp size={18} color="#6B7280" /> : <ChevronDown size={18} color="#6B7280" />}
           </TouchableOpacity>
@@ -401,8 +528,10 @@ export default function FundingSupportScreen() {
                 <TouchableOpacity
                   key={option}
                   style={styles.messageOption}
+                  disabled={isProcessing}
                   onPress={() => {
                     setSupportMessage(option);
+                    setShowCustomMessageInput(false);
                     setShowMessageOptions(false);
                   }}
                 >
@@ -410,7 +539,31 @@ export default function FundingSupportScreen() {
                   <Text style={styles.messageOptionText}>{option}</Text>
                 </TouchableOpacity>
               ))}
+              <TouchableOpacity
+                style={styles.messageOption}
+                disabled={isProcessing}
+                onPress={() => {
+                  setSupportMessage('');
+                  setShowCustomMessageInput(true);
+                  setShowMessageOptions(false);
+                }}
+              >
+                <MessageCircle size={15} color="#6B7280" />
+                <Text style={styles.messageOptionText}>직접 입력</Text>
+              </TouchableOpacity>
             </View>
+          )}
+          {showCustomMessageInput && (
+            <TextInput
+              style={styles.customMessageInput}
+              value={supportMessage}
+              onChangeText={setSupportMessage}
+              placeholder="양조장에게 전하고 싶은 말을 직접 입력하세요."
+              placeholderTextColor="#9CA3AF"
+              multiline
+              textAlignVertical="top"
+              editable={!isProcessing}
+            />
           )}
         </Section>
 
@@ -422,7 +575,11 @@ export default function FundingSupportScreen() {
                 <TouchableOpacity
                   key={method.id}
                   style={[styles.paymentOption, selected && styles.paymentOptionSelected]}
-                  onPress={() => setSelectedPaymentMethod(method.id)}
+                  disabled={isProcessing}
+                  onPress={() => {
+                    setSelectedPaymentMethod(method.id);
+                    clearValidationError('payment');
+                  }}
                 >
                   <View style={styles.paymentIcon}>{method.icon}</View>
                   <View style={{ flex: 1 }}>
@@ -436,6 +593,75 @@ export default function FundingSupportScreen() {
               );
             })}
           </View>
+          <FieldError message={validationErrors.payment} />
+          {selectedPaymentMethod === 'card' && (
+            <View style={styles.paymentDetailBox}>
+              <Text style={styles.paymentDetailTitle}>카드 결제 설정</Text>
+              <View style={styles.chipGroup}>
+                {cardCompanies.map((company) => (
+                  <TouchableOpacity
+                    key={company}
+                    disabled={isProcessing}
+                    style={[styles.detailChip, cardCompany === company && styles.detailChipSelected]}
+                    onPress={() => setCardCompany(company)}
+                  >
+                    <Text style={[styles.detailChipText, cardCompany === company && styles.detailChipTextSelected]}>{company}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.chipGroup}>
+                {installmentOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    disabled={isProcessing}
+                    style={[styles.detailChip, installment === option && styles.detailChipSelected]}
+                    onPress={() => setInstallment(option)}
+                  >
+                    <Text style={[styles.detailChipText, installment === option && styles.detailChipTextSelected]}>{option}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.paymentDetailGuide}>실제 카드번호 입력과 PG 결제는 백엔드 연동 이후 연결됩니다.</Text>
+            </View>
+          )}
+          {selectedPaymentMethod === 'npay' && (
+            <View style={styles.paymentDetailBox}>
+              <Text style={styles.paymentDetailTitle}>네이버페이 간편결제</Text>
+              <Text style={styles.paymentDetailGuide}>후원 확정 후 네이버페이 결제창으로 이동하는 흐름을 가정한 프론트 mock 안내입니다.</Text>
+            </View>
+          )}
+          {selectedPaymentMethod === 'account' && (
+            <View style={styles.paymentDetailBox}>
+              <Text style={styles.paymentDetailTitle}>계좌이체 정보</Text>
+              <View style={styles.chipGroup}>
+                {bankOptions.map((bank) => (
+                  <TouchableOpacity
+                    key={bank}
+                    disabled={isProcessing}
+                    style={[styles.detailChip, accountBank === bank && styles.detailChipSelected]}
+                    onPress={() => {
+                      setAccountBank(bank);
+                      clearValidationError('accountBank');
+                    }}
+                  >
+                    <Text style={[styles.detailChipText, accountBank === bank && styles.detailChipTextSelected]}>{bank}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <FieldError message={validationErrors.accountBank} />
+              <LabeledInput
+                label="입금자명"
+                value={depositorName}
+                placeholder="입금자명을 입력하세요"
+                error={validationErrors.depositorName}
+                editable={!isProcessing}
+                onChangeText={(value) => {
+                  setDepositorName(value);
+                  clearValidationError('depositorName');
+                }}
+              />
+            </View>
+          )}
         </Section>
 
         <Section title="최종 확인">
@@ -505,6 +731,21 @@ export default function FundingSupportScreen() {
           setAddressSearch('');
         }}
         onSelect={handleAddressSelect}
+      />
+
+      <ConfirmationModal
+        visible={showConfirmModal}
+        project={project}
+        primaryRewardItem={primaryRewardItem}
+        quantity={quantity}
+        rewardAmount={rewardAmount}
+        shippingFee={shippingFee}
+        extraAmount={extraAmount}
+        totalAmount={totalAmount}
+        paymentSummary={paymentSummary}
+        isProcessing={isProcessing}
+        onCancel={() => setShowConfirmModal(false)}
+        onConfirm={handleConfirmPayment}
       />
 
       <SuccessModal
@@ -604,12 +845,16 @@ function LabeledInput({
   value,
   placeholder,
   keyboardType,
+  error,
+  editable = true,
   onChangeText,
 }: {
   label: string;
   value: string;
   placeholder: string;
   keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'number-pad';
+  error?: string;
+  editable?: boolean;
   onChangeText: (text: string) => void;
 }) {
   return (
@@ -621,10 +866,17 @@ function LabeledInput({
         placeholder={placeholder}
         placeholderTextColor="#9CA3AF"
         keyboardType={keyboardType}
+        editable={editable}
         onChangeText={onChangeText}
       />
+      <FieldError message={error} />
     </View>
   );
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <Text style={styles.fieldError}>{message}</Text>;
 }
 
 function SummaryRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
@@ -758,6 +1010,71 @@ function AddressModal({
   );
 }
 
+function ConfirmationModal({
+  visible,
+  project,
+  primaryRewardItem,
+  quantity,
+  rewardAmount,
+  shippingFee,
+  extraAmount,
+  totalAmount,
+  paymentSummary,
+  isProcessing,
+  onCancel,
+  onConfirm,
+}: {
+  visible: boolean;
+  project: FundingProject;
+  primaryRewardItem: string;
+  quantity: number;
+  rewardAmount: number;
+  shippingFee: number;
+  extraAmount: number;
+  totalAmount: number;
+  paymentSummary: string;
+  isProcessing: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.confirmCard}>
+          <View style={styles.confirmIcon}>
+            <ShieldCheck size={28} color="#FFF" />
+          </View>
+          <Text style={styles.confirmTitle}>후원 내용을 확인해주세요</Text>
+          <Text style={styles.confirmBody}>{project.brewery}의 프로젝트에 아래 금액으로 후원합니다.</Text>
+          <View style={styles.confirmProjectBox}>
+            <Text style={styles.confirmProjectTitle} numberOfLines={2}>{project.title}</Text>
+            <Text style={styles.confirmReward}>{primaryRewardItem} · {quantity}병</Text>
+          </View>
+          <View style={styles.confirmSummaryBox}>
+            <SummaryRow label="리워드" value={`${rewardAmount.toLocaleString()}원`} />
+            <SummaryRow label="배송비" value={`${shippingFee.toLocaleString()}원`} />
+            <SummaryRow label="추가 후원금" value={`${extraAmount.toLocaleString()}원`} />
+            <SummaryRow label="결제수단" value={paymentSummary} />
+            <View style={styles.finalDivider} />
+            <View style={styles.finalTotalRow}>
+              <Text style={styles.finalTotalLabel}>최종 후원 금액</Text>
+              <Text style={styles.finalTotalValue}>{totalAmount.toLocaleString()}원</Text>
+            </View>
+          </View>
+          <View style={styles.confirmButtonRow}>
+            <TouchableOpacity disabled={isProcessing} style={styles.confirmCancelBtn} onPress={onCancel}>
+              <Text style={styles.confirmCancelText}>다시 확인</Text>
+            </TouchableOpacity>
+            <TouchableOpacity disabled={isProcessing} style={[styles.confirmPayBtn, isProcessing && styles.payButtonDisabled]} onPress={onConfirm}>
+              <Text style={styles.confirmPayText}>{isProcessing ? '처리 중...' : '후원 확정'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 function SuccessModal({
   visible,
   project,
@@ -780,6 +1097,7 @@ function SuccessModal({
           </View>
           <Text style={styles.successTitle}>후원 성공했어요!</Text>
           <Text style={styles.successBody}>{project.brewery}의 프로젝트를 후원해주셔서 감사합니다.</Text>
+          <Text style={styles.successGuide}>후원 내역은 추후 마이페이지에서 확인할 수 있도록 연결할 예정입니다.</Text>
           <View style={styles.successAmountBox}>
             <Text style={styles.successAmountLabel}>후원 금액</Text>
             <Text style={styles.successAmountValue}>{totalAmount.toLocaleString()}원</Text>
@@ -854,6 +1172,10 @@ const styles = StyleSheet.create({
   rewardItemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#111', marginTop: 8 },
   rewardItemText: { flex: 1, fontSize: 14, color: '#374151', lineHeight: 22, fontWeight: '700' },
+  rewardSpecGrid: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  rewardSpecBox: { flex: 1, minHeight: 58, borderRadius: 14, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 10, paddingVertical: 9, justifyContent: 'center' },
+  rewardSpecLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '800', marginBottom: 4 },
+  rewardSpecValue: { fontSize: 12, color: '#111', fontWeight: '900' },
   deliveryRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   deliveryText: { fontSize: 13, color: '#6B7280', fontWeight: '700' },
   deliveryDate: { color: '#EF4444', fontWeight: '900' },
@@ -867,9 +1189,9 @@ const styles = StyleSheet.create({
   quantityValue: { fontSize: 27, color: '#111', fontWeight: '900' },
   quantityUnit: { fontSize: 12, color: '#6B7280', fontWeight: '800' },
   calculationBox: { backgroundColor: '#F9FAFB', borderRadius: 14, padding: 14, gap: 8 },
-  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  summaryLabel: { fontSize: 14, color: '#6B7280', fontWeight: '700' },
-  summaryValue: { fontSize: 14, color: '#111', fontWeight: '800' },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  summaryLabel: { flex: 1, fontSize: 14, color: '#6B7280', fontWeight: '700' },
+  summaryValue: { flex: 1.2, fontSize: 14, color: '#111', fontWeight: '800', textAlign: 'right' },
   moneyInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   moneyInput: { flex: 1, height: 50, borderRadius: 14, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#FFF', paddingHorizontal: 16, fontSize: 16, color: '#111', fontWeight: '900' },
   moneyUnit: { fontSize: 15, color: '#374151', fontWeight: '800' },
@@ -877,10 +1199,17 @@ const styles = StyleSheet.create({
   fieldBlock: { gap: 8 },
   inputLabel: { fontSize: 13, color: '#111', fontWeight: '900' },
   input: { height: 50, borderRadius: 14, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#FFF', paddingHorizontal: 14, fontSize: 15, color: '#111', fontWeight: '700' },
+  fieldError: { marginTop: -4, fontSize: 12, lineHeight: 17, color: '#DC2626', fontWeight: '800' },
+  disabledControl: { opacity: 0.55 },
   infoBox: { backgroundColor: '#F9FAFB', borderRadius: 14, padding: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   infoText: { flex: 1, fontSize: 12, color: '#6B7280', lineHeight: 18, fontWeight: '700' },
   adultBadge: { backgroundColor: '#FEF2F2', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   adultBadgeText: { fontSize: 11, color: '#B91C1C', fontWeight: '900' },
+  recentAddressBox: { backgroundColor: '#F9FAFB', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  recentAddressTitle: { fontSize: 12, color: '#111', fontWeight: '900', marginBottom: 3 },
+  recentAddressText: { fontSize: 12, color: '#6B7280', lineHeight: 18, fontWeight: '700' },
+  recentAddressBtn: { height: 36, borderRadius: 12, backgroundColor: '#111', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+  recentAddressBtnText: { fontSize: 12, color: '#FFF', fontWeight: '900' },
   addressRow: { flexDirection: 'row', gap: 8 },
   addressInput: { flex: 1 },
   addressBtn: { width: 72, height: 50, borderRadius: 14, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
@@ -892,12 +1221,21 @@ const styles = StyleSheet.create({
   messageOptions: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, overflow: 'hidden' },
   messageOption: { minHeight: 46, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   messageOptionText: { flex: 1, fontSize: 13, color: '#374151', fontWeight: '700' },
+  customMessageInput: { minHeight: 92, borderRadius: 14, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#FFF', paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: '#111', fontWeight: '700', lineHeight: 20 },
   paymentList: { gap: 10 },
   paymentOption: { minHeight: 64, borderWidth: 2, borderColor: '#E5E7EB', borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   paymentOptionSelected: { borderColor: '#111', backgroundColor: '#F9FAFB' },
   paymentIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E5E7EB' },
   paymentTitle: { fontSize: 14, color: '#111', fontWeight: '900', marginBottom: 2 },
   paymentDesc: { fontSize: 12, color: '#6B7280', fontWeight: '700' },
+  paymentDetailBox: { borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', padding: 14, gap: 10 },
+  paymentDetailTitle: { fontSize: 13, color: '#111', fontWeight: '900' },
+  paymentDetailGuide: { fontSize: 12, color: '#6B7280', lineHeight: 18, fontWeight: '700' },
+  chipGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  detailChip: { minHeight: 36, borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+  detailChipSelected: { backgroundColor: '#111', borderColor: '#111' },
+  detailChipText: { fontSize: 12, color: '#6B7280', fontWeight: '900' },
+  detailChipTextSelected: { color: '#FFF' },
   radio: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center' },
   radioSelected: { backgroundColor: '#111', borderColor: '#111' },
   finalAmountBox: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 14, gap: 9 },
@@ -956,6 +1294,7 @@ const styles = StyleSheet.create({
   successIcon: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   successTitle: { fontSize: 22, color: '#111', fontWeight: '900', marginBottom: 8 },
   successBody: { fontSize: 14, color: '#6B7280', lineHeight: 22, fontWeight: '700', textAlign: 'center', marginBottom: 16 },
+  successGuide: { fontSize: 12, color: '#9CA3AF', lineHeight: 18, fontWeight: '800', textAlign: 'center', marginBottom: 16 },
   successAmountBox: { width: '100%', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 14, alignItems: 'center', marginBottom: 16 },
   successAmountLabel: { fontSize: 12, color: '#6B7280', fontWeight: '800', marginBottom: 4 },
   successAmountValue: { fontSize: 22, color: '#111', fontWeight: '900' },
@@ -969,4 +1308,17 @@ const styles = StyleSheet.create({
   infoModalBody: { fontSize: 14, color: '#4B5563', lineHeight: 22, fontWeight: '700', marginBottom: 18 },
   infoModalBtn: { height: 48, borderRadius: 14, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   infoModalBtnText: { color: '#FFF', fontSize: 15, fontWeight: '900' },
+  confirmCard: { width: '100%', maxWidth: 380, backgroundColor: '#FFF', borderRadius: 24, padding: 22, alignItems: 'center' },
+  confirmIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  confirmTitle: { fontSize: 20, color: '#111', fontWeight: '900', marginBottom: 8, textAlign: 'center' },
+  confirmBody: { fontSize: 13, color: '#6B7280', lineHeight: 20, fontWeight: '700', textAlign: 'center', marginBottom: 14 },
+  confirmProjectBox: { width: '100%', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 14, marginBottom: 12, gap: 5 },
+  confirmProjectTitle: { fontSize: 14, color: '#111', fontWeight: '900', lineHeight: 20 },
+  confirmReward: { fontSize: 12, color: '#6B7280', fontWeight: '800' },
+  confirmSummaryBox: { width: '100%', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 14, gap: 9, marginBottom: 14 },
+  confirmButtonRow: { width: '100%', flexDirection: 'row', gap: 10 },
+  confirmCancelBtn: { flex: 1, height: 48, borderRadius: 14, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
+  confirmCancelText: { color: '#4B5563', fontSize: 14, fontWeight: '900' },
+  confirmPayBtn: { flex: 1, height: 48, borderRadius: 14, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+  confirmPayText: { color: '#FFF', fontSize: 14, fontWeight: '900' },
 });

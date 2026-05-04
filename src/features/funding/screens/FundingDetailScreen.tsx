@@ -53,12 +53,6 @@ import type { BrewingStage, JournalComment } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { showLoginRequired } from '@/utils/authPrompt';
 
-const reviewsData = [
-  { id: 1, projectId: 5, userName: "전통주러버", rating: 5, date: "2026. 03. 25", comment: "정말 기대 이상이었어요! 벚꽃의 은은한 향이 정말 좋았습니다." },
-  { id: 2, projectId: 5, userName: "막걸리매니아", rating: 5, date: "2026. 03. 23", comment: "펀딩에 참여해서 받아본 첫 전통주인데 너무 만족스럽습니다. 다음 프로젝트도 기대할게요!" },
-  { id: 3, projectId: 6, userName: "술BTI_약주", rating: 4, date: "2026. 03. 22", comment: "향은 좋은데 조금 더 달았으면 좋겠어요. 그래도 전반적으로 만족합니다." },
-];
-
 const initialComments = [
   {
     id: 1,
@@ -81,15 +75,23 @@ function todayText() {
   return `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, '0')}. ${String(today.getDate()).padStart(2, '0')}`;
 }
 
+function getInitialTab(tab?: string | string[]) {
+  const targetTab = Array.isArray(tab) ? tab[0] : tab;
+  if (targetTab === "journal") return "양조일지";
+  if (targetTab === "qna") return "Q&A";
+  if (targetTab === "review") return "후기";
+  return "소개";
+}
+
 export default function FundingDetailScreen() {
   const { id, tab } = useLocalSearchParams<{ id?: string; tab?: string }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
-  const { projects, updateProjectJournals } = useFunding();
+  const { projects, updateProjectJournals, fundingReviews } = useFunding();
   const rawProjectId = Array.isArray(id) ? id[0] : id;
   const projectId = Number(rawProjectId);
-  const initialTab = tab === "journal" ? "양조일지" : "소개";
+  const initialTab = getInitialTab(tab);
   const project = useMemo(() => projects.find((p) => p.id === projectId) || null, [projectId, projects]);
   
   const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">(initialTab);
@@ -117,7 +119,7 @@ export default function FundingDetailScreen() {
   const [likedJournalComments, setLikedJournalComments] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    if (tab === "journal") setActiveTab("양조일지");
+    setActiveTab(getInitialTab(tab));
   }, [tab]);
 
   if (!project) {
@@ -177,7 +179,7 @@ export default function FundingDetailScreen() {
 
   const recommendedProjects = projects.filter(p => p.id !== project.id).slice(0, 4);
   const journals = project.journals || [];
-  const projectReviews = reviewsData.filter(r => r.projectId === project.id);
+  const projectReviews = fundingReviews.filter(r => r.projectId === project.id);
 
   const handleSupportClick = () => {
     if (!user) {
@@ -409,17 +411,11 @@ export default function FundingDetailScreen() {
       showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.');
       return;
     }
-    setFeedbackModal({
-      title: '후기 작성',
-      body: '후기 작성 화면은 아직 프론트 mock 준비 중입니다.',
-    });
+    router.push(`/archive/review/${project.id}` as any);
   };
 
-  const handleReviewPress = (reviewUserName: string) => {
-    setFeedbackModal({
-      title: '후원자 후기',
-      body: `${reviewUserName}님의 후기 상세 화면은 아직 프론트 mock 준비 중입니다.`,
-    });
+  const handleReviewPress = (reviewId: number) => {
+    router.push(`/funding/${project.id}/review/${reviewId}` as any);
   };
 
   const handleShareProject = async () => {
@@ -1074,17 +1070,27 @@ export default function FundingDetailScreen() {
                    ) : (
                      <View style={styles.reviewList}>
                         {projectReviews.map((r) => (
-                          <TouchableOpacity key={r.id} style={styles.reviewCard} activeOpacity={0.85} onPress={() => handleReviewPress(r.userName)}>
+                          <TouchableOpacity key={r.id} style={styles.reviewCard} activeOpacity={0.85} onPress={() => handleReviewPress(r.id)}>
                              <View style={styles.rowBetween}>
                                 <View>
                                    <Text style={styles.reviewUser}>{r.userName}</Text>
                                    <View style={styles.starRow}>
                                       {[1,2,3,4,5].map(s => <Star key={s} size={14} color={s <= r.rating ? "#F59E0B" : "#E5E7EB"} fill={s <= r.rating ? "#F59E0B" : "transparent"} />)}
                                    </View>
+                                   <Text style={styles.reviewReward} numberOfLines={1}>{r.rewardName}</Text>
                                 </View>
                                 <Text style={styles.reviewDate}>{r.date}</Text>
                              </View>
                              <Text style={styles.reviewTxt} numberOfLines={3}>{r.comment}</Text>
+                             {r.tags.length > 0 && (
+                               <View style={styles.reviewTagRow}>
+                                 {r.tags.slice(0, 3).map((tag) => (
+                                   <View key={tag} style={styles.reviewTagChip}>
+                                     <Text style={styles.reviewTagText}>#{tag}</Text>
+                                   </View>
+                                 ))}
+                               </View>
+                             )}
                           </TouchableOpacity>
                         ))}
                         <TouchableOpacity style={styles.writeReviewOutline} onPress={handleReviewWrite}>
@@ -1590,7 +1596,11 @@ const styles = StyleSheet.create({
   reviewUser: { fontSize: 14, fontWeight: '800', color: '#111' },
   reviewDate: { fontSize: 12, color: '#6B7280' },
   starRow: { flexDirection: 'row', gap: 2, marginTop: 4, marginBottom: 8 },
+  reviewReward: { fontSize: 11, fontWeight: '800', color: '#6B7280', backgroundColor: '#F3F4F6', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, alignSelf: 'flex-start', maxWidth: 180 },
   reviewTxt: { fontSize: 14, color: '#374151', lineHeight: 22 },
+  reviewTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  reviewTagChip: { alignSelf: 'flex-start', justifyContent: 'center', backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
+  reviewTagText: { fontSize: 11, lineHeight: 12, fontWeight: '800', color: '#4B5563', includeFontPadding: false },
   writeReviewOutline: { width: '100%', padding: 16, borderWidth: 2, borderStyle: 'dashed', borderColor: '#E5E7EB', borderRadius: 16, alignItems: 'center' },
   writeReviewOutlineTxt: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
   recommendArea: { paddingHorizontal: 16, marginBottom: 40 },

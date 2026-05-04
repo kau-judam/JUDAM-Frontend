@@ -48,8 +48,9 @@ import {
   getFundingStatusLabel,
   isCompletedFundingStatus,
   isSupportableFundingStatus,
+  sortFundingProjectsByPopularity,
 } from '@/constants/data';
-import type { BrewingStage, JournalComment } from '@/constants/data';
+import type { BrewingStage, JournalComment, JournalReply } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { showLoginRequired } from '@/utils/authPrompt';
 
@@ -68,7 +69,7 @@ const initialComments = [
   { id: 2, userName: "이술사", content: "알코올 도수가 궁금합니다. 혹시 알려주실 수 있나요?", date: "2026. 03. 24", likes: 5, isBrewery: false, replies: [] },
 ];
 
-const JOURNALS_PER_STAGE = 3;
+const JOURNALS_PER_STAGE = 1;
 
 function todayText() {
   const today = new Date();
@@ -81,6 +82,13 @@ function getInitialTab(tab?: string | string[]) {
   if (targetTab === "qna") return "Q&A";
   if (targetTab === "review") return "후기";
   return "소개";
+}
+
+function getTabParam(tab: "소개" | "양조일지" | "Q&A" | "후기") {
+  if (tab === "양조일지") return "journal";
+  if (tab === "Q&A") return "qna";
+  if (tab === "후기") return "review";
+  return "intro";
 }
 
 export default function FundingDetailScreen() {
@@ -115,13 +123,36 @@ export default function FundingDetailScreen() {
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set([1]));
   const [expandedJournalStages, setExpandedJournalStages] = useState<Set<BrewingStage>>(new Set());
   const [expandedJournalComments, setExpandedJournalComments] = useState<Set<number>>(new Set());
+  const [expandedJournalReplies, setExpandedJournalReplies] = useState<Set<string>>(new Set());
+  const [replyingToJournalComment, setReplyingToJournalComment] = useState<string | null>(null);
   const [journalCommentDrafts, setJournalCommentDrafts] = useState<Record<number, string>>({});
+  const [journalReplyDrafts, setJournalReplyDrafts] = useState<Record<string, string>>({});
   const [likedJournals, setLikedJournals] = useState<Set<number>>(new Set());
   const [likedJournalComments, setLikedJournalComments] = useState<Set<string>>(new Set());
+  const [likedJournalReplies, setLikedJournalReplies] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setActiveTab(getInitialTab(tab));
   }, [tab]);
+
+  useEffect(() => {
+    setComments(initialComments);
+    setNewComment("");
+    setReplyingTo(null);
+    setReplyContent("");
+    setLikedComments(new Set());
+    setLikedReplies(new Set());
+    setExpandedComments(new Set([1]));
+    setExpandedJournalStages(new Set());
+    setExpandedJournalComments(new Set());
+    setExpandedJournalReplies(new Set());
+    setReplyingToJournalComment(null);
+    setJournalCommentDrafts({});
+    setJournalReplyDrafts({});
+    setLikedJournals(new Set());
+    setLikedJournalComments(new Set());
+    setLikedJournalReplies(new Set());
+  }, [projectId]);
 
   if (!project) {
     return (
@@ -178,7 +209,7 @@ export default function FundingDetailScreen() {
         : "펀딩 종료"
       : "프로젝트 후원하기";
 
-  const recommendedProjects = projects.filter(p => p.id !== project.id).slice(0, 4);
+  const recommendedProjects = sortFundingProjectsByPopularity(projects.filter(p => p.id !== project.id)).slice(0, 4);
   const journals = project.journals || [];
   const projectReviews = fundingReviews.filter(r => r.projectId === project.id);
 
@@ -210,6 +241,11 @@ export default function FundingDetailScreen() {
   const handleConfirmFundingOption = () => {
     setShowFundingOptionModal(false);
     router.push(`/funding/support?id=${project.id}&quantity=${selectedQuantity}` as any);
+  };
+
+  const handleTabChange = (nextTab: "소개" | "양조일지" | "Q&A" | "후기") => {
+    setActiveTab(nextTab);
+    router.setParams({ tab: getTabParam(nextTab) } as any);
   };
 
   const handleAddComment = () => {
@@ -419,6 +455,92 @@ export default function FundingDetailScreen() {
     });
   };
 
+  const handleJournalReplyOpen = (journalId: number, commentId: number) => {
+    if (!user) {
+      showLoginRequired('양조일지 댓글 답글은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+
+    const replyKey = `${journalId}:${commentId}`;
+    setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
+    setReplyingToJournalComment(replyingToJournalComment === replyKey ? null : replyKey);
+  };
+
+  const handleAddJournalReply = (journalId: number, commentId: number) => {
+    const replyKey = `${journalId}:${commentId}`;
+    const content = journalReplyDrafts[replyKey]?.trim();
+    if (!content) return;
+    if (!user) {
+      showLoginRequired('양조일지 댓글 답글은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+
+    const replyIds = journals.flatMap((entry) =>
+      (entry.comments || []).flatMap((comment) => (comment.replies || []).map((reply) => reply.id))
+    );
+    const nextReply: JournalReply = {
+      id: Math.max(0, ...replyIds) + 1,
+      commentId,
+      userName: user.name || "사용자",
+      isBrewery: user.type === "brewery",
+      content,
+      date: todayText(),
+      likes: 0,
+    };
+
+    updateProjectJournals(
+      project.id,
+      journals.map((entry) => {
+        if (entry.id !== journalId) return entry;
+        return {
+          ...entry,
+          comments: (entry.comments || []).map((comment) =>
+            comment.id === commentId ? { ...comment, replies: [...(comment.replies || []), nextReply] } : comment
+          ),
+        };
+      })
+    );
+    setJournalReplyDrafts((prev) => ({ ...prev, [replyKey]: "" }));
+    setReplyingToJournalComment(null);
+    setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
+  };
+
+  const handleJournalReplyLike = (journalId: number, commentId: number, replyId: number) => {
+    if (!user) {
+      showLoginRequired('양조일지 댓글 답글 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
+
+    const likeKey = `${journalId}:${commentId}:${replyId}`;
+    const isLiked = likedJournalReplies.has(likeKey);
+    updateProjectJournals(
+      project.id,
+      journals.map((entry) => {
+        if (entry.id !== journalId) return entry;
+        return {
+          ...entry,
+          comments: (entry.comments || []).map((comment) => {
+            if (comment.id !== commentId) return comment;
+            return {
+              ...comment,
+              replies: (comment.replies || []).map((reply) =>
+                reply.id === replyId
+                  ? { ...reply, likes: Math.max(0, (reply.likes || 0) + (isLiked ? -1 : 1)) }
+                  : reply
+              ),
+            };
+          }),
+        };
+      })
+    );
+    setLikedJournalReplies((prev) => {
+      const next = new Set(prev);
+      if (next.has(likeKey)) next.delete(likeKey);
+      else next.add(likeKey);
+      return next;
+    });
+  };
+
   const handleReviewWrite = () => {
     if (!user) {
       showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.');
@@ -579,7 +701,7 @@ export default function FundingDetailScreen() {
                <TouchableOpacity 
                  key={tab} 
                  style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]} 
-                 onPress={() => setActiveTab(tab)}
+                 onPress={() => handleTabChange(tab)}
                >
                   <Text style={[styles.tabBtnTxt, activeTab === tab && styles.tabBtnTxtActive]}>{tab}</Text>
                </TouchableOpacity>
@@ -895,7 +1017,10 @@ export default function FundingDetailScreen() {
                                                 <View style={styles.journalCommentList}>
                                                   {entryComments.map((comment) => {
                                                     const commentLikeKey = `${entry.id}:${comment.id}`;
+                                                    const replyKey = `${entry.id}:${comment.id}`;
                                                     const isCommentLiked = likedJournalComments.has(commentLikeKey);
+                                                    const commentReplies = comment.replies || [];
+                                                    const repliesOpen = expandedJournalReplies.has(replyKey);
                                                     return (
                                                       <View key={comment.id} style={styles.journalCommentCard}>
                                                         <View style={styles.journalCommentMeta}>
@@ -904,10 +1029,73 @@ export default function FundingDetailScreen() {
                                                           <Text style={styles.commentDate}>{comment.date}</Text>
                                                         </View>
                                                         <Text style={styles.journalCommentText}>{comment.content}</Text>
-                                                        <TouchableOpacity style={styles.journalCommentLike} onPress={() => handleJournalCommentLike(entry.id, comment.id)}>
-                                                          <Heart size={13} color={isCommentLiked ? "#EF4444" : "#9CA3AF"} fill={isCommentLiked ? "#EF4444" : "transparent"} />
-                                                          <Text style={[styles.journalCommentLikeText, isCommentLiked && styles.journalActionTextActive]}>{comment.likes || 0}</Text>
-                                                        </TouchableOpacity>
+                                                        <View style={styles.journalCommentActions}>
+                                                          <TouchableOpacity style={styles.journalCommentAction} onPress={() => handleJournalCommentLike(entry.id, comment.id)}>
+                                                            <Heart size={13} color={isCommentLiked ? "#EF4444" : "#9CA3AF"} fill={isCommentLiked ? "#EF4444" : "transparent"} />
+                                                            <Text style={[styles.journalCommentLikeText, isCommentLiked && styles.journalActionTextActive]}>{comment.likes || 0}</Text>
+                                                          </TouchableOpacity>
+                                                          <TouchableOpacity style={styles.journalCommentAction} onPress={() => handleJournalReplyOpen(entry.id, comment.id)}>
+                                                            <MessageCircle size={13} color="#9CA3AF" />
+                                                            <Text style={styles.journalCommentLikeText}>답글</Text>
+                                                          </TouchableOpacity>
+                                                          {commentReplies.length > 0 && (
+                                                            <TouchableOpacity
+                                                              style={styles.journalCommentAction}
+                                                              onPress={() =>
+                                                                setExpandedJournalReplies((prev) => {
+                                                                  const next = new Set(prev);
+                                                                  if (next.has(replyKey)) next.delete(replyKey);
+                                                                  else next.add(replyKey);
+                                                                  return next;
+                                                                })
+                                                              }
+                                                            >
+                                                              {repliesOpen ? <ChevronUp size={13} color="#9CA3AF" /> : <ChevronDown size={13} color="#9CA3AF" />}
+                                                              <Text style={styles.journalCommentLikeText}>{commentReplies.length}개 답글</Text>
+                                                            </TouchableOpacity>
+                                                          )}
+                                                        </View>
+
+                                                        {repliesOpen && commentReplies.length > 0 && (
+                                                          <View style={styles.journalReplyList}>
+                                                            {commentReplies.map((reply) => {
+                                                              const replyLikeKey = `${entry.id}:${comment.id}:${reply.id}`;
+                                                              const isReplyLiked = likedJournalReplies.has(replyLikeKey);
+                                                              return (
+                                                                <View key={reply.id} style={styles.journalReplyCard}>
+                                                                  <View style={styles.journalCommentMeta}>
+                                                                    <Text style={styles.commentUser}>{reply.userName}</Text>
+                                                                    {reply.isBrewery && <View style={styles.brewBadge}><Text style={styles.brewBadgeTxt}>양조장</Text></View>}
+                                                                    <Text style={styles.commentDate}>{reply.date}</Text>
+                                                                  </View>
+                                                                  <Text style={styles.journalCommentText}>{reply.content}</Text>
+                                                                  <TouchableOpacity style={styles.journalCommentAction} onPress={() => handleJournalReplyLike(entry.id, comment.id, reply.id)}>
+                                                                    <Heart size={12} color={isReplyLiked ? "#EF4444" : "#9CA3AF"} fill={isReplyLiked ? "#EF4444" : "transparent"} />
+                                                                    <Text style={[styles.journalCommentLikeText, isReplyLiked && styles.journalActionTextActive]}>{reply.likes || 0}</Text>
+                                                                  </TouchableOpacity>
+                                                                </View>
+                                                              );
+                                                            })}
+                                                          </View>
+                                                        )}
+
+                                                        {replyingToJournalComment === replyKey && (
+                                                          <View style={styles.journalReplyInputRow}>
+                                                            <TextInput
+                                                              style={styles.journalReplyInput}
+                                                              value={journalReplyDrafts[replyKey] || ""}
+                                                              onChangeText={(text) => setJournalReplyDrafts((prev) => ({ ...prev, [replyKey]: text }))}
+                                                              placeholder="답글을 입력하세요..."
+                                                              placeholderTextColor="#9CA3AF"
+                                                              returnKeyType="send"
+                                                              onSubmitEditing={() => handleAddJournalReply(entry.id, comment.id)}
+                                                              autoFocus
+                                                            />
+                                                            <TouchableOpacity style={styles.journalReplySend} onPress={() => handleAddJournalReply(entry.id, comment.id)}>
+                                                              <Send size={14} color="#FFF" />
+                                                            </TouchableOpacity>
+                                                          </View>
+                                                        )}
                                                       </View>
                                                     );
                                                   })}
@@ -954,6 +1142,8 @@ export default function FundingDetailScreen() {
                           placeholderTextColor="#9CA3AF"
                           value={newComment}
                           onChangeText={setNewComment}
+                          returnKeyType="send"
+                          onSubmitEditing={handleAddComment}
                         />
                         <TouchableOpacity style={styles.qaSend} onPress={handleAddComment}>
                            <Send size={20} color="#FFF" />
@@ -1031,6 +1221,8 @@ export default function FundingDetailScreen() {
                                   placeholderTextColor="#9CA3AF"
                                   value={replyContent} 
                                   onChangeText={setReplyContent} 
+                                  returnKeyType="send"
+                                  onSubmitEditing={() => handleAddReply(c.id)}
                                   autoFocus
                                 />
                                 <TouchableOpacity style={styles.replySend} onPress={() => handleAddReply(c.id)}>
@@ -1139,8 +1331,14 @@ export default function FundingDetailScreen() {
              {recommendedProjects.map(p => (
                <TouchableOpacity key={p.id} style={styles.recCard} onPress={() => router.push(`/funding/${p.id}`)}>
                   <View style={styles.recThumbBox}>
-                     <Image source={{ uri: p.image }} style={styles.recImg} />
-                     <TouchableOpacity style={styles.recHeart} onPress={() => handleFavoritePress(p.id)}>
+                     <Image source={getFundingProjectImageSource(p)} style={styles.recImg} />
+                     <TouchableOpacity
+                       style={styles.recHeart}
+                       onPress={(event) => {
+                         event.stopPropagation();
+                         handleFavoritePress(p.id);
+                       }}
+                     >
                         <Heart size={16} color={isFavoriteFunding(p.id) ? "#EF4444" : "#FFF"} fill={isFavoriteFunding(p.id) ? "#EF4444" : "transparent"} />
                      </TouchableOpacity>
                   </View>
@@ -1556,8 +1754,14 @@ const styles = StyleSheet.create({
   journalCommentCard: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12 },
   journalCommentMeta: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 5 },
   journalCommentText: { fontSize: 13, color: '#374151', lineHeight: 20 },
-  journalCommentLike: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, marginTop: 8 },
+  journalCommentActions: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 8 },
+  journalCommentAction: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5 },
   journalCommentLikeText: { fontSize: 12, fontWeight: '700', color: '#6B7280' },
+  journalReplyList: { marginTop: 10, marginLeft: 10, gap: 8, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: '#E5E7EB' },
+  journalReplyCard: { backgroundColor: '#FFF', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: '#F3F4F6' },
+  journalReplyInputRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  journalReplyInput: { flex: 1, height: 38, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 12, fontSize: 12, color: '#111' },
+  journalReplySend: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   journalEmptyCommentText: { fontSize: 12, color: '#9CA3AF', fontWeight: '700' },
   journalMoreButton: { minHeight: 40, borderRadius: 12, backgroundColor: '#F9FAFB', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   journalMoreText: { fontSize: 13, fontWeight: '800', color: '#6B7280' },

@@ -147,7 +147,7 @@ export default function FundingSupportScreen() {
   };
 
   const handleAddressSelect = (zipCode: string, address: string) => {
-    setShippingInfo((prev) => ({ ...prev, address: `[${zipCode}] ${address}` }));
+    setShippingInfo((prev) => ({ ...prev, address: zipCode ? `[${zipCode}] ${address}` : address }));
     setShowAddressModal(false);
     setAddressSearch('');
   };
@@ -511,7 +511,11 @@ export default function FundingSupportScreen() {
         visible={showSuccessModal}
         project={project}
         totalAmount={totalAmount}
-        onClose={() => {
+        onProjectPress={() => {
+          setShowSuccessModal(false);
+          router.replace(`/funding/${project.id}` as any);
+        }}
+        onListPress={() => {
           setShowSuccessModal(false);
           router.replace('/funding' as any);
         }}
@@ -677,6 +681,8 @@ function AddressModal({
   onClose: () => void;
   onSelect: (zipCode: string, address: string) => void;
 }) {
+  const typedAddress = search.trim();
+
   return (
     <Modal visible={visible} animationType="slide">
       <View style={styles.addressModal}>
@@ -725,10 +731,20 @@ function AddressModal({
                   <Text style={styles.addressResultText}>{item.address}</Text>
                 </TouchableOpacity>
               ))}
+              {typedAddress && (
+                <TouchableOpacity
+                  style={styles.addressResultCard}
+                  onPress={() => onSelect('', typedAddress)}
+                >
+                  <Text style={styles.zipCode}>직접 입력</Text>
+                  <Text style={styles.addressResultText}>{typedAddress}</Text>
+                  <Text style={styles.useTypedAddressText}>입력한 주소 사용</Text>
+                </TouchableOpacity>
+              )}
               {results.length === 0 && (
                 <View style={styles.noResult}>
-                  <Text style={styles.noResultTitle}>검색 결과가 없습니다</Text>
-                  <Text style={styles.noResultText}>다른 검색어로 시도해보세요.</Text>
+                  <Text style={styles.noResultTitle}>일치하는 주소가 없습니다</Text>
+                  <Text style={styles.noResultText}>입력한 주소를 그대로 사용하거나 다른 검색어로 시도해보세요.</Text>
                 </View>
               )}
             </>
@@ -746,12 +762,14 @@ function SuccessModal({
   visible,
   project,
   totalAmount,
-  onClose,
+  onProjectPress,
+  onListPress,
 }: {
   visible: boolean;
   project: FundingProject;
   totalAmount: number;
-  onClose: () => void;
+  onProjectPress: () => void;
+  onListPress: () => void;
 }) {
   return (
     <Modal visible={visible} animationType="fade" transparent>
@@ -766,8 +784,11 @@ function SuccessModal({
             <Text style={styles.successAmountLabel}>후원 금액</Text>
             <Text style={styles.successAmountValue}>{totalAmount.toLocaleString()}원</Text>
           </View>
-          <TouchableOpacity style={styles.successBtn} onPress={onClose}>
-            <Text style={styles.successBtnText}>펀딩 목록 보기</Text>
+          <TouchableOpacity style={styles.successBtn} onPress={onProjectPress}>
+            <Text style={styles.successBtnText}>프로젝트로 돌아가기</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.successSecondaryBtn} onPress={onListPress}>
+            <Text style={styles.successSecondaryText}>펀딩 목록 보기</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -924,6 +945,7 @@ const styles = StyleSheet.create({
   addressResultCard: { backgroundColor: '#FFF', borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', padding: 14, gap: 8 },
   zipCode: { alignSelf: 'flex-start', backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, fontSize: 11, color: '#6B7280', fontWeight: '900' },
   addressResultText: { fontSize: 14, color: '#111', lineHeight: 21, fontWeight: '800' },
+  useTypedAddressText: { fontSize: 12, color: '#6B7280', fontWeight: '800' },
   noResult: { alignItems: 'center', paddingVertical: 44 },
   noResultTitle: { fontSize: 15, color: '#6B7280', fontWeight: '900', marginBottom: 6 },
   noResultText: { fontSize: 12, color: '#9CA3AF', fontWeight: '700' },
@@ -939,6 +961,8 @@ const styles = StyleSheet.create({
   successAmountValue: { fontSize: 22, color: '#111', fontWeight: '900' },
   successBtn: { width: '100%', height: 50, borderRadius: 16, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   successBtnText: { color: '#FFF', fontSize: 15, fontWeight: '900' },
+  successSecondaryBtn: { width: '100%', height: 46, borderRadius: 16, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  successSecondaryText: { color: '#4B5563', fontSize: 14, fontWeight: '900' },
   infoModalCard: { width: '100%', maxWidth: 360, backgroundColor: '#FFF', borderRadius: 22, padding: 20 },
   infoModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
   infoModalTitle: { fontSize: 18, color: '#111', fontWeight: '900' },

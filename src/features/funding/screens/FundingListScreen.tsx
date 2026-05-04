@@ -133,7 +133,7 @@ export default function FundingListScreen() {
               <Text style={styles.heroTitle}>당신의 선택으로{'\n'}완성되는 전통주</Text>
               {isBreweryAccount ? (
                 <TouchableOpacity 
-                  style={styles.createBtn} 
+                  style={[styles.createBtn, isVerifiedBrewery ? styles.createBtnCompact : styles.createBtnWide]}
                   onPress={handleHeroAction}
                   activeOpacity={0.9}
                 >
@@ -355,8 +355,10 @@ const styles = StyleSheet.create({
   heroPillText: { color: '#FFF', fontSize: 12, fontWeight: '900' },
   heroTitle: { color: '#FFF', fontSize: 44, fontWeight: '800', textAlign: 'center', lineHeight: 54, marginBottom: 24, letterSpacing: -1 },
   heroDesc: { color: 'rgba(255,255,255,0.85)', fontSize: 14, textAlign: 'center', lineHeight: 24, fontWeight: '500' },
-  createBtn: { backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 32, paddingVertical: 18, borderRadius: 20, elevation: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 },
-  createBtnTxt: { fontSize: 18, fontWeight: '800', color: '#000' },
+  createBtn: { height: 52, backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', gap: 8, paddingHorizontal: 16, borderRadius: 16, elevation: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20 },
+  createBtnCompact: { width: 170 },
+  createBtnWide: { width: 220 },
+  createBtnTxt: { fontSize: 15, fontWeight: '800', color: '#000', textAlign: 'center' },
   searchSection: { paddingHorizontal: 20, marginTop: -45, zIndex: 20 },
   searchCard: { backgroundColor: '#FFF', borderRadius: 28, padding: 12, flexDirection: 'row', gap: 10, elevation: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 25, borderWidth: 1, borderColor: '#F3F4F6' },
   searchBar: { flex: 1, height: 56, backgroundColor: '#F9FAFB', borderRadius: 20, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },

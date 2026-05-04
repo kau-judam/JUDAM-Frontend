@@ -84,7 +84,7 @@ function getInitialTab(tab?: string | string[]) {
 }
 
 export default function FundingDetailScreen() {
-  const { id, tab } = useLocalSearchParams<{ id?: string; tab?: string }>();
+  const { id, tab, fromReview } = useLocalSearchParams<{ id?: string; tab?: string; fromReview?: string }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
@@ -93,6 +93,7 @@ export default function FundingDetailScreen() {
   const projectId = Number(rawProjectId);
   const initialTab = getInitialTab(tab);
   const project = useMemo(() => projects.find((p) => p.id === projectId) || null, [projectId, projects]);
+  const cameFromReviewDetail = Array.isArray(fromReview) ? fromReview[0] === "1" : fromReview === "1";
   
   const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">(initialTab);
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
@@ -192,6 +193,18 @@ export default function FundingDetailScreen() {
     }
     if (!isSupportableFundingStatus(project.status)) return;
     setShowFundingOptionModal(true);
+  };
+
+  const handleHeaderBack = () => {
+    if (cameFromReviewDetail) {
+      router.replace('/funding' as any);
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace('/funding' as any);
   };
 
   const handleConfirmFundingOption = () => {
@@ -462,7 +475,7 @@ export default function FundingDetailScreen() {
       {/* ── Fixed White Header ── */}
       <View style={[styles.header, { paddingTop: insets.top, height: insets.top + 52 }]}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.headerIconBtn}>
+          <TouchableOpacity onPress={handleHeaderBack} style={styles.headerIconBtn}>
             <ChevronLeft size={24} color="#111" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>펀딩</Text>

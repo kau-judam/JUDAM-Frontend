@@ -17,6 +17,8 @@ export interface FundingReview {
 
 export interface FundingReviewComment {
   id: number;
+  projectId: number;
+  reviewId: number;
   author: string;
   authorType: "user" | "brewery";
   content: string;
@@ -84,6 +86,8 @@ export const fundingReviews: FundingReview[] = [
 export const fundingReviewComments: FundingReviewComment[] = [
   {
     id: 1,
+    projectId: 5,
+    reviewId: 1,
     author: "청사초롱 양조장",
     authorType: "brewery",
     content: "소중한 후기 남겨주셔서 정말 감사드립니다! 앞으로도 더 좋은 술로 보답하겠습니다.",
@@ -93,6 +97,8 @@ export const fundingReviewComments: FundingReviewComment[] = [
   },
   {
     id: 2,
+    projectId: 5,
+    reviewId: 1,
     author: "막걸리마스터",
     authorType: "user",
     content: "저도 참여했는데 너무 만족스러웠어요! 다음 프로젝트도 꼭 참여할 예정입니다.",

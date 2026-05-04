@@ -334,7 +334,7 @@ export default function FundingReviewWriteScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#F7F7F5' },
+  screen: { flex: 1, backgroundColor: '#F4F5F7' },
   header: { minHeight: 56, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingBottom: 8 },
   headerButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '900', color: '#111' },

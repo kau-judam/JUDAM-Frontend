@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -31,10 +31,21 @@ export default function FundingReviewDetailScreen() {
     () => fundingReviews.find((item) => item.projectId === projectId && item.id === targetReviewId) || null,
     [fundingReviews, projectId, targetReviewId]
   );
+  const initialReviewComments = useMemo(
+    () => fundingReviewComments.filter((comment) => comment.projectId === projectId && comment.reviewId === targetReviewId),
+    [projectId, targetReviewId]
+  );
   const [commentInput, setCommentInput] = useState('');
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(review?.likes || 0);
-  const [comments, setComments] = useState<FundingReviewComment[]>(fundingReviewComments);
+  const [comments, setComments] = useState<FundingReviewComment[]>(initialReviewComments);
+
+  useEffect(() => {
+    setComments(initialReviewComments);
+    setCommentInput('');
+    setLiked(false);
+    setLikeCount(review?.likes || 0);
+  }, [initialReviewComments, review?.likes]);
 
   const handleBackToFundingReviews = () => {
     if (!project) {
@@ -62,6 +73,8 @@ export default function FundingReviewDetailScreen() {
 
     const nextComment: FundingReviewComment = {
       id: Math.max(0, ...comments.map((comment) => comment.id)) + 1,
+      projectId,
+      reviewId: targetReviewId,
       author: user.name || '사용자',
       authorType: user.type === 'brewery' ? 'brewery' : 'user',
       content: commentInput.trim(),

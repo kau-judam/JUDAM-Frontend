@@ -36,6 +36,14 @@ export default function FundingReviewDetailScreen() {
   const [likeCount, setLikeCount] = useState(review?.likes || 0);
   const [comments, setComments] = useState<FundingReviewComment[]>(fundingReviewComments);
 
+  const handleBackToFundingReviews = () => {
+    if (!project) {
+      router.back();
+      return;
+    }
+    router.replace(`/funding/${project.id}?tab=review&fromReview=1` as any);
+  };
+
   const handleLike = () => {
     if (!user) {
       showLoginRequired('후기 좋아요는 로그인 후 이용할 수 있어요.');
@@ -95,7 +103,7 @@ export default function FundingReviewDetailScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.screen}>
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity style={styles.headerButton} onPress={() => router.push(`/funding/${project.id}?tab=review` as any)}>
+        <TouchableOpacity style={styles.headerButton} onPress={handleBackToFundingReviews}>
           <ChevronLeft size={24} color="#111" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>후기</Text>

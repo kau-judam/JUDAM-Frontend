@@ -25,50 +25,28 @@ import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCommunity } from '@/contexts/CommunityContext';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const POSTS_PER_PAGE = 6;
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
-interface Post {
-  id: number;
-  author: string;
-  authorType: "user" | "brewery";
-  avatar: string;
-  content: string;
-  image?: string;
-  likes: number;
-  comments: number;
-  timestamp: string;
-  liked: boolean;
-  category: string;
-}
-
-const initialPosts: Post[] = [
-  { id: 1, author: "전통주러버", authorType: "user", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100", content: "오늘 처음으로 막걸리 담가봤어요! 국내산 쌀로 만들었는데 생각보다 쉽더라구요. 다들 한번 도전해보세요! 🍶", likes: 42, comments: 8, timestamp: "2시간 전", liked: false, category: "자유게시판" },
-  { id: 2, author: "술샘양조장", authorType: "brewery", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100", content: "이번 주말에 양조장 투어 진행합니다! 전통 누룩 만드는 과정을 직접 보실 수 있어요. 댓글로 신청해주세요!", likes: 127, comments: 23, timestamp: "5시간 전", liked: true, category: "정보게시판" },
-  { id: 3, author: "막걸리마스터", authorType: "user", avatar: "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100", content: "장미 막걸리 만들기 성공! 꽃향기가 정말 좋네요. 레시피 공유할게요:\n\n1. 국내산 쌀 2kg\n2. 누룩 200g\n3. 장미꽃잎 100g\n\n발효는 3일 정도 걸렸어요 🌹", likes: 89, comments: 15, timestamp: "어제", liked: false, category: "정보게시판" },
-  { id: 4, author: "청주러버", authorType: "user", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100", content: "청주 빚을 때 온도 관리가 제일 중요한 것 같아요. 18-20도를 유지하니 훨씬 깔끔한 맛이 나더라구요!", likes: 56, comments: 12, timestamp: "2일 전", liked: false, category: "정보게시판" },
-  { id: 5, author: "소주마니아", authorType: "user", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100", content: "집에서 증류식 소주 만드는 법 궁금하신 분 계신가요? 초보자도 할 수 있는 간단한 방법 알려드려요!", likes: 73, comments: 19, timestamp: "3일 전", liked: false, category: "정보게시판" },
-  { id: 6, author: "한산양조장", authorType: "brewery", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100", content: "한산소곡주 체험 프로그램 오픈합니다! 전통주 빚기부터 시음까지 알찬 3시간 코스예요. 많은 관심 부탁드립니다 🙏", likes: 145, comments: 31, timestamp: "4일 전", liked: true, category: "정보게시판" },
-];
-
 export default function CommunityScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { posts, likePost } = useCommunity();
   const [searchQuery, setSearchQuery] = useState("");
   const [communityFilter, setCommunityFilter] = useState("전체");
   const [sortOption, setSortOption] = useState<"인기순" | "최신순">("인기순");
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [posts, setPosts] = useState<Post[]>(initialPosts);
 
   const handlePostLike = (postId: number) => {
     if (!user) {
       showLoginRequired('커뮤니티 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
-    setPosts(prev => prev.map(p => p.id === postId ? { ...p, liked: !p.liked, likes: p.liked ? p.likes - 1 : p.likes + 1 } : p));
+    likePost(postId);
   };
 
   const handleCreatePost = () => {
@@ -82,7 +60,7 @@ export default function CommunityScreen() {
   const filteredPosts = posts.filter(p => {
     const catMatch = communityFilter === "전체" || p.category === communityFilter;
     const query = searchQuery.toLowerCase();
-    const searchMatch = !query || p.content.toLowerCase().includes(query) || p.author.toLowerCase().includes(query);
+    const searchMatch = !query || p.title.toLowerCase().includes(query) || p.content.toLowerCase().includes(query) || p.author.toLowerCase().includes(query);
     return catMatch && searchMatch;
   });
 
@@ -117,45 +95,44 @@ export default function CommunityScreen() {
             )}
          </View>
 
-         {/* Category Filter */}
-         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catScroll}>
-            {["전체", "자유게시판", "정보게시판"].map(cat => (
-              <TouchableOpacity 
-                key={cat} 
-                style={[styles.catChip, communityFilter === cat && styles.catChipActive]}
-                onPress={() => { setCommunityFilter(cat); setCurrentPage(1); }}
+         <View style={styles.filterControlsRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll} contentContainerStyle={styles.catScroll}>
+              {["전체", "자유게시판", "정보게시판"].map(cat => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.catChip, communityFilter === cat && styles.catChipActive]}
+                  onPress={() => { setCommunityFilter(cat); setCurrentPage(1); }}
+                >
+                   <Text style={[styles.catChipTxt, communityFilter === cat && styles.catChipTxtActive]}>{cat}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.sortWrap}>
+              <TouchableOpacity
+                style={styles.sortBtn}
+                onPress={() => setShowSortDropdown(!showSortDropdown)}
               >
-                 <Text style={[styles.catChipTxt, communityFilter === cat && styles.catChipTxtActive]}>{cat}</Text>
+                 <Text style={styles.sortBtnTxt}>{sortOption}</Text>
+                 <ChevronDown size={14} color="#6B7280" />
               </TouchableOpacity>
-            ))}
-         </ScrollView>
+              {showSortDropdown && (
+                <View style={styles.sortDropdown}>
+                   <TouchableOpacity style={styles.dropItem} onPress={() => { setSortOption("인기순"); setShowSortDropdown(false); }}>
+                      <Text style={styles.dropItemTxt}>인기순</Text>
+                      {sortOption === "인기순" && <Check size={14} color="#111" />}
+                   </TouchableOpacity>
+                   <TouchableOpacity style={styles.dropItem} onPress={() => { setSortOption("최신순"); setShowSortDropdown(false); }}>
+                      <Text style={styles.dropItemTxt}>최신순</Text>
+                      {sortOption === "최신순" && <Check size={14} color="#111" />}
+                   </TouchableOpacity>
+                </View>
+              )}
+            </View>
+         </View>
       </View>
 
       {/* 2. Feed Section */}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.feedContent}>
-         {/* Sort Toggle */}
-         <View style={styles.sortRow}>
-            <TouchableOpacity 
-              style={styles.sortBtn} 
-              onPress={() => setShowSortDropdown(!showSortDropdown)}
-            >
-               <Text style={styles.sortBtnTxt}>{sortOption}</Text>
-               <ChevronDown size={14} color="#6B7280" />
-            </TouchableOpacity>
-            {showSortDropdown && (
-              <View style={styles.sortDropdown}>
-                 <TouchableOpacity style={styles.dropItem} onPress={() => { setSortOption("인기순"); setShowSortDropdown(false); }}>
-                    <Text style={styles.dropItemTxt}>인기순</Text>
-                    {sortOption === "인기순" && <Check size={14} color="#111" />}
-                 </TouchableOpacity>
-                 <TouchableOpacity style={styles.dropItem} onPress={() => { setSortOption("최신순"); setShowSortDropdown(false); }}>
-                    <Text style={styles.dropItemTxt}>최신순</Text>
-                    {sortOption === "최신순" && <Check size={14} color="#111" />}
-                 </TouchableOpacity>
-              </View>
-            )}
-         </View>
-
          {/* Post Cards */}
          {pagedPosts.length === 0 ? (
            <View style={styles.emptyState}>
@@ -183,6 +160,7 @@ export default function CommunityScreen() {
                    </View>
                 </View>
 
+                <Text style={styles.postTitle} numberOfLines={1} ellipsizeMode="tail">{post.title}</Text>
                 <Text style={styles.postContent} numberOfLines={2} ellipsizeMode="tail">{post.content}</Text>
 
                 <View style={styles.postFooter}>
@@ -247,20 +225,22 @@ export default function CommunityScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
-  filterSection: { paddingHorizontal: 20, paddingTop: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  filterSection: { paddingHorizontal: 20, paddingTop: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', zIndex: 100 },
   searchBar: { height: 52, backgroundColor: '#F3F4F6', borderRadius: 26, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 16 },
   searchIcon: { marginRight: 12 },
   searchInput: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111' },
-  catScroll: { gap: 8, paddingBottom: 16 },
-  catChip: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 25, backgroundColor: '#F3F4F6' },
+  filterControlsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 16 },
+  categoryScroll: { flex: 1 },
+  catScroll: { gap: 8 },
+  catChip: { height: 40, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   catChipActive: { backgroundColor: '#111' },
   catChipTxt: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
   catChipTxtActive: { color: '#FFF' },
   feedContent: { paddingHorizontal: 20, paddingTop: 20 },
-  sortRow: { flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 20, zIndex: 100 },
-  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
-  sortBtnTxt: { fontSize: 12, fontWeight: '700', color: '#4B5563' },
-  sortDropdown: { position: 'absolute', top: 40, right: 0, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, minWidth: 110, overflow: 'hidden' },
+  sortWrap: { position: 'relative', zIndex: 200 },
+  sortBtn: { height: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#F3F4F6', paddingHorizontal: 14, borderRadius: 20 },
+  sortBtnTxt: { fontSize: 13, fontWeight: '700', color: '#4B5563' },
+  sortDropdown: { position: 'absolute', top: 46, right: 0, backgroundColor: '#FFF', borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, minWidth: 110, overflow: 'hidden' },
   dropItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
   dropItemTxt: { fontSize: 13, fontWeight: '700', color: '#111' },
   postCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#F3F4F6', elevation: 2 },
@@ -273,6 +253,7 @@ const styles = StyleSheet.create({
   postCatBadge: { marginLeft: 'auto', backgroundColor: '#F9FAFB', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   postCatTxt: { fontSize: 10, fontWeight: '700', color: '#9CA3AF' },
   timeTxt: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
+  postTitle: { fontSize: 16, lineHeight: 22, color: '#111', fontWeight: '900', marginBottom: 8 },
   postContent: { height: 44, fontSize: 14, lineHeight: 22, color: '#374151', fontWeight: '500' },
   postFooter: { flexDirection: 'row', gap: 20, marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F9FAFB' },
   statBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },

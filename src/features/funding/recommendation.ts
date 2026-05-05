@@ -5,10 +5,10 @@ import {
 import type { FundingProject, ProjectStatus, TasteProfile } from '@/constants/data';
 
 export type FundingStatusFilter = "전체 프로젝트" | "진행중인 프로젝트" | "성사된 프로젝트";
-export type FundingSortOption = "내 술BTI 추천순" | "인기순" | "마감임박" | "최신순";
+export type FundingSortOption = "추천순" | "인기순" | "마감임박" | "최신순";
 
 export const statusOptions: FundingStatusFilter[] = ["전체 프로젝트", "진행중인 프로젝트", "성사된 프로젝트"];
-export const sortOptions: FundingSortOption[] = ["내 술BTI 추천순", "인기순", "마감임박", "최신순"];
+export const sortOptions: FundingSortOption[] = ["추천순", "인기순", "마감임박", "최신순"];
 
 const btiTasteProfiles: Record<string, TasteProfile> = {
   HCSA: { sweetness: 40, aroma: 60, acidity: 80, body: 40, carbonation: 55 },

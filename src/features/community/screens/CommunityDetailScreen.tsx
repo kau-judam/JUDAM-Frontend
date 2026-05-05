@@ -16,6 +16,7 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useCommunity } from '@/contexts/CommunityContext';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const INITIAL_COMMENT_COUNT = 3;
@@ -25,6 +26,7 @@ interface CommunityPostDetail {
   author: string;
   authorType: 'user' | 'brewery';
   avatar: string;
+  title: string;
   content: string;
   image?: string;
   likes: number;
@@ -50,6 +52,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     author: '전통주러버',
     authorType: 'user',
     avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop',
+    title: '처음 만든 막걸리, 생각보다 쉬웠어요',
     content:
       '처음으로 막걸리 담그기에 도전해봤는데요! 생각보다 어렵지 않았어요.\n\n국내산 쌀과 전통 누룩을 사용했고, 발효 과정에서 은은한 쌀 향이 정말 좋았습니다. 10일 정도 발효시킨 후 처음 맛봤을 때의 그 감동이란... 직접 만든 술이라 더 맛있게 느껴지는 것 같아요!\n\n다음에는 감귤을 넣어서 만들어볼 생각입니다. 혹시 과일 막걸리 만들어보신 분 계신가요?',
     image: 'https://images.unsplash.com/photo-1567697242574-e0c68f5e9b0e?w=800&h=600&fit=crop',
@@ -63,6 +66,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     author: '술샘양조장',
     authorType: 'brewery',
     avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop',
+    title: '이번 주말 전통 누룩 양조장 투어 안내',
     content: '이번 주말에 양조장 투어 진행합니다! 전통 누룩 만드는 과정을 직접 보실 수 있어요. 댓글로 신청해주세요!',
     likes: 127,
     comments: 23,
@@ -74,6 +78,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     author: '막걸리마스터',
     authorType: 'user',
     avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop',
+    title: '딸기 막걸리 레시피 공유',
     content:
       '딸기 막걸리 만들기 성공! 꽃향기가 정말 좋네요. 레시피 공유할게요.\n\n1. 국내산 쌀 2kg\n2. 전통 누룩 200g\n3. 딸기청 100g\n\n발효는 3일 정도 걸렸어요.',
     likes: 89,
@@ -86,6 +91,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     author: '청주러버',
     authorType: 'user',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop',
+    title: '청주 빚을 때 온도 관리 팁',
     content: '청주 빚을 때 온도 관리가 제일 중요한 것 같아요. 18~20도를 유지하니 훨씬 깔끔한 맛이 나더라고요.',
     likes: 56,
     comments: 12,
@@ -97,6 +103,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     author: '소주마니아',
     authorType: 'user',
     avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop',
+    title: '집에서 증류식 소주 만드는 법 정리 예정',
     content: '집에서 증류식 소주 만드는 법 궁금하신 분 계신가요? 초보자도 따라할 수 있는 간단한 방법을 정리해보려고 합니다.',
     likes: 73,
     comments: 19,
@@ -108,6 +115,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     author: '제산양조장',
     authorType: 'brewery',
     avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop',
+    title: '제산 약주 체험 프로그램 오픈',
     content: '제산 약주 체험 프로그램을 시작합니다. 전통주 빚기부터 시음까지 꽉 찬 3시간 코스예요. 많은 관심 부탁드립니다.',
     likes: 145,
     comments: 31,
@@ -173,8 +181,10 @@ export default function CommunityDetailScreen() {
   const { id } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { posts } = useCommunity();
   const numericId = Number(Array.isArray(id) ? id[0] : id) || 1;
-  const post = mockPosts[numericId] || mockPosts[1];
+  const contextPost = posts.find((item) => item.id === numericId);
+  const post = mockPosts[numericId] || contextPost || mockPosts[1];
   const isAuthor = !!user && user.name === post.author;
 
   const [commentInput, setCommentInput] = useState('');
@@ -297,6 +307,7 @@ export default function CommunityDetailScreen() {
         </View>
 
         <View style={styles.postBody}>
+          <Text style={styles.postTitle}>{post.title}</Text>
           <Text style={styles.postContent}>{post.content}</Text>
           {post.image && <Image source={{ uri: post.image }} style={styles.postImage} />}
         </View>
@@ -444,6 +455,7 @@ const styles = StyleSheet.create({
   likeText: { fontSize: 13, fontWeight: '800', color: '#4B5563' },
   likeTextActive: { color: '#FFF' },
   postBody: { paddingHorizontal: 16, paddingVertical: 18 },
+  postTitle: { fontSize: 22, lineHeight: 30, fontWeight: '900', color: '#111', marginBottom: 12 },
   postContent: { fontSize: 16, lineHeight: 26, fontWeight: '500', color: '#111', marginBottom: 16 },
   postImage: { width: '100%', height: 240, borderRadius: 14, resizeMode: 'cover', backgroundColor: '#F3F4F6' },
   commentsSection: { borderTopWidth: 8, borderTopColor: '#F3F4F6', paddingHorizontal: 16, paddingVertical: 18 },

@@ -117,6 +117,37 @@ export default function BreweryProjectTermsScreen() {
     );
   }
 
+  if (user.type !== 'brewery' || !user.isBreweryVerified) {
+    const isBreweryAccount = user.type === 'brewery';
+    return (
+      <View style={styles.root}>
+        <View style={styles.screen}>
+          <View style={[styles.header, { paddingTop: insets.top }]}>
+            <TouchableOpacity style={styles.headerButton} activeOpacity={0.75} onPress={() => router.push('/funding' as any)}>
+              <X size={24} color="#111827" strokeWidth={2.25} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>펀딩 프로젝트 약관</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+          <View style={styles.lockedContainer}>
+            <Text style={styles.lockedTitle}>{isBreweryAccount ? '양조장 인증이 필요합니다' : '양조장 계정이 필요합니다'}</Text>
+            <Text style={styles.lockedDesc}>
+              {isBreweryAccount
+                ? '펀딩 프로젝트 등록은 양조장 인증을 완료한 뒤 이용할 수 있어요.'
+                : '펀딩 프로젝트 등록은 인증된 양조장 계정으로만 이용할 수 있어요.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.lockedButton}
+              onPress={() => router.push(isBreweryAccount ? '/brewery/verification' as any : '/funding' as any)}
+            >
+              <Text style={styles.lockedButtonText}>{isBreweryAccount ? '양조장 인증하기' : '펀딩으로 돌아가기'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
       <View style={styles.screen}>

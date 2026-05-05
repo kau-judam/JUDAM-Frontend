@@ -8,6 +8,8 @@ interface ParticipatedFunding {
   date: string;
 }
 
+type FundingReviewInput = Omit<FundingReview, "id" | "date" | "timestamp" | "likes">;
+
 interface FundingContextType {
   projects: FundingProject[];
   participatedFundings: ParticipatedFunding[];
@@ -15,7 +17,8 @@ interface FundingContextType {
   addParticipation: (fundingId: number, amount: number) => void;
   addProject: (project: Omit<FundingProject, "id">) => FundingProject;
   updateProject: (projectId: number, project: Partial<Omit<FundingProject, "id">>) => FundingProject | null;
-  addFundingReview: (review: Omit<FundingReview, "id" | "date" | "timestamp" | "likes">) => FundingReview;
+  addFundingReview: (review: FundingReviewInput) => FundingReview;
+  updateFundingReview: (reviewId: number, review: Partial<FundingReviewInput>) => FundingReview | null;
   updateProjectJournals: (projectId: number, journals: JournalEntry[]) => void;
   updateProjectStatus: (projectId: number, status: ProjectStatus) => void;
   updateProjectFunding: (projectId: number, amount: number) => void;
@@ -87,7 +90,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     return updatedProject;
   };
 
-  const addFundingReview = (review: Omit<FundingReview, "id" | "date" | "timestamp" | "likes">) => {
+  const addFundingReview = (review: FundingReviewInput) => {
     const today = new Date();
     const date = `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, "0")}. ${String(
       today.getDate()
@@ -101,6 +104,21 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     };
     setFundingReviews((prev) => [nextReview, ...prev]);
     return nextReview;
+  };
+
+  const updateFundingReview = (reviewId: number, review: Partial<FundingReviewInput>) => {
+    const currentReview = fundingReviews.find((item) => item.id === reviewId);
+    if (!currentReview) return null;
+    const updatedReview: FundingReview = {
+      ...currentReview,
+      ...review,
+      id: reviewId,
+      date: currentReview.date,
+      timestamp: "방금 수정",
+      likes: currentReview.likes,
+    };
+    setFundingReviews((prev) => prev.map((item) => (item.id === reviewId ? updatedReview : item)));
+    return updatedReview;
   };
 
   const updateProjectJournals = (projectId: number, journals: JournalEntry[]) => {
@@ -151,6 +169,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
         addProject,
         updateProject,
         addFundingReview,
+        updateFundingReview,
         updateProjectJournals,
         updateProjectStatus,
         updateProjectFunding,

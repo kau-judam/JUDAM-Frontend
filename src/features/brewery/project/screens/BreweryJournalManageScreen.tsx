@@ -41,7 +41,7 @@ export default function BreweryJournalManageScreen() {
   const [message, setMessage] = useState('');
 
   const journals = project?.journals || [];
-  const canManage = isFundingProjectOwnedByBrewery(user, project);
+  const canManage = Boolean(user?.isBreweryVerified && isFundingProjectOwnedByBrewery(user, project));
 
   const resetForm = () => {
     setEditingEntry(null);

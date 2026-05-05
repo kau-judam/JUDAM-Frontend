@@ -69,7 +69,7 @@ export default function FundingListScreen() {
   const isBreweryAccount = user?.type === "brewery";
   const isVerifiedBrewery = isBreweryAccount && user?.isBreweryVerified;
   const userTasteProfile = useMemo(() => getTasteProfileFromSulbti(user?.sulbti), [user?.sulbti]);
-  const isTasteSortActive = selectedSort === "내 술BTI 추천순" && Boolean(userTasteProfile);
+  const isTasteSortActive = selectedSort === "추천순" && Boolean(userTasteProfile);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -105,7 +105,7 @@ export default function FundingListScreen() {
   }, [projects, searchTerm, selectedStatus]);
 
   const sortedProjects = useMemo(() => {
-    if (selectedSort === "내 술BTI 추천순" && userTasteProfile) {
+    if (selectedSort === "추천순" && userTasteProfile) {
       return [...filteredProjects].sort((a, b) => {
         const statusDiff = getRecommendationStatusPriority(a.status) - getRecommendationStatusPriority(b.status);
         if (statusDiff !== 0) return statusDiff;
@@ -151,7 +151,7 @@ export default function FundingListScreen() {
   };
 
   const handleSortPress = (option: FundingSortOption) => {
-    if (option === "내 술BTI 추천순") {
+    if (option === "추천순") {
       if (!user) {
         showLoginRequired('술BTI 맞춤 추천은 로그인 후 이용할 수 있어요.');
         return;
@@ -254,7 +254,7 @@ export default function FundingListScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortChipRow}>
               {sortOptions.map((option) => {
                 const selected = selectedSort === option;
-                const needsBti = option === "내 술BTI 추천순" && !userTasteProfile;
+                const needsBti = option === "추천순" && !userTasteProfile;
                 return (
                   <TouchableOpacity
                     key={option}
@@ -262,7 +262,7 @@ export default function FundingListScreen() {
                     onPress={() => handleSortPress(option)}
                     activeOpacity={0.75}
                   >
-                    {option === "내 술BTI 추천순" && <Sparkles size={13} color={selected ? "#FFF" : "#6B7280"} />}
+                    {option === "추천순" && <Sparkles size={13} color={selected ? "#FFF" : "#6B7280"} />}
                     <Text style={[styles.sortChipTxt, selected && styles.sortChipTxtActive]}>{option}</Text>
                   </TouchableOpacity>
                 );

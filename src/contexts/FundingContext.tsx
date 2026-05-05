@@ -14,6 +14,7 @@ interface FundingContextType {
   fundingReviews: FundingReview[];
   addParticipation: (fundingId: number, amount: number) => void;
   addProject: (project: Omit<FundingProject, "id">) => FundingProject;
+  updateProject: (projectId: number, project: Partial<Omit<FundingProject, "id">>) => FundingProject | null;
   addFundingReview: (review: Omit<FundingReview, "id" | "date" | "timestamp" | "likes">) => FundingReview;
   updateProjectJournals: (projectId: number, journals: JournalEntry[]) => void;
   updateProjectStatus: (projectId: number, status: ProjectStatus) => void;
@@ -58,6 +59,32 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     };
     setProjects((prev) => [nextProject, ...prev]);
     return nextProject;
+  };
+
+  const updateProject = (projectId: number, project: Partial<Omit<FundingProject, "id">>) => {
+    const currentProject = projects.find((item) => item.id === projectId);
+    if (!currentProject) return null;
+    const updatedProject: FundingProject = {
+      ...currentProject,
+      ...project,
+      id: projectId,
+      createdAt: currentProject.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
+    setProjects((prev) =>
+      prev.map((item) =>
+        item.id === projectId
+          ? {
+              ...item,
+              ...project,
+              id: projectId,
+              createdAt: item.createdAt,
+              updatedAt: updatedProject.updatedAt,
+            }
+          : item
+      )
+    );
+    return updatedProject;
   };
 
   const addFundingReview = (review: Omit<FundingReview, "id" | "date" | "timestamp" | "likes">) => {
@@ -122,6 +149,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
         fundingReviews,
         addParticipation,
         addProject,
+        updateProject,
         addFundingReview,
         updateProjectJournals,
         updateProjectStatus,

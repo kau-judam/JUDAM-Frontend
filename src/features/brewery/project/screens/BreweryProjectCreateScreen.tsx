@@ -361,7 +361,7 @@ export default function BreweryProjectCreateScreen() {
   const [tagDraft, setTagDraft] = useState('');
   const [isImageReordering, setIsImageReordering] = useState(false);
   const [basicInfo, setBasicInfo] = useState({
-    category: '',
+    category: '막걸리',
     title: '',
     shortTitle: '',
     mainIngredient: '',
@@ -406,13 +406,13 @@ export default function BreweryProjectCreateScreen() {
     accountNumber: '',
   });
   const [taxInfo, setTaxInfo] = useState({
-    businessType: 'corporation',
+    businessType: '',
     businessName: '',
     businessNumber: '',
     ceoName: '',
     address: '',
-    businessCategory: '제조업',
-    businessItem: '탁주 제조',
+    businessCategory: '',
+    businessItem: '',
     email: '',
   });
   const [trustInfo, setTrustInfo] = useState({
@@ -474,23 +474,6 @@ export default function BreweryProjectCreateScreen() {
     void loadTempSaveMeta();
   }, [tempSaveKey]);
 
-  useEffect(() => {
-    if (!user || user.type !== 'brewery') return;
-    setCreatorInfo((prev) => ({
-      ...prev,
-      name: prev.name || user.breweryName || '',
-      phone: prev.phone || user.phone || '',
-    }));
-    setTaxInfo((prev) => ({
-      ...prev,
-      businessName: prev.businessName || user.breweryName || '',
-      businessNumber: prev.businessNumber || user.businessNumber || '',
-      ceoName: prev.ceoName || user.name || '',
-      address: prev.address || user.breweryLocation || '',
-      email: prev.email || user.email || '',
-    }));
-  }, [user]);
-
   const today = useMemo(() => {
     const value = new Date();
     value.setHours(0, 0, 0, 0);
@@ -550,6 +533,7 @@ export default function BreweryProjectCreateScreen() {
       taxInfo.email,
       trustInfo.projectPolicy,
       trustInfo.expectedDifficulties,
+      uploadedFiles.idCard,
       uploadedFiles.businessLicense,
       uploadedFiles.salesPermit,
       uploadedFiles.alcoholPermit,
@@ -581,7 +565,6 @@ export default function BreweryProjectCreateScreen() {
   const hasUnsavedChanges = () => {
     return Boolean(
       basicInfo.title ||
-        basicInfo.category ||
         basicInfo.summary ||
         basicInfo.images.length > 0 ||
         fundingInfo.goalAmount ||
@@ -593,11 +576,14 @@ export default function BreweryProjectCreateScreen() {
         projectPlan.budget ||
         projectPlan.schedule ||
         creatorInfo.name ||
+        creatorInfo.profileImage ||
         creatorInfo.phone ||
         creatorInfo.accountBank ||
         creatorInfo.accountNumber ||
         taxInfo.businessName ||
         taxInfo.address ||
+        uploadedFiles.profileImage ||
+        uploadedFiles.idCard ||
         uploadedFiles.businessLicense ||
         uploadedFiles.salesPermit ||
         uploadedFiles.alcoholPermit ||
@@ -747,8 +733,8 @@ export default function BreweryProjectCreateScreen() {
     setCreatorInfo((prev) => ({
       ...prev,
       name: loadedBreweryName,
-      profileImage: prev.profileImage || aiImages[0],
-      bio: prev.bio || '지역 농산물과 전통 누룩을 바탕으로 계절의 향을 담은 전통주를 빚는 소규모 양조장입니다.',
+      profileImage: aiImages[0],
+      bio: '지역 농산물과 전통 누룩을 바탕으로 계절의 향을 담은 막걸리를 빚는 소규모 양조장입니다.',
       phone: '',
       accountBank: '',
       accountNumber: '',
@@ -761,12 +747,12 @@ export default function BreweryProjectCreateScreen() {
       ceoName: loadedCeoName,
       address: loadedAddress,
       businessCategory: '제조업',
-      businessItem: '탁주 및 약주 제조',
+      businessItem: '탁주 제조',
       email: user.email || 'brewery@judam.co.kr',
     }));
     setUploadedFiles((prev) => ({
       ...prev,
-      profileImage: prev.profileImage || 'brewery_profile_sample.jpg',
+      profileImage: 'brewery_profile_sample.jpg',
       idCard: '',
     }));
     setPhoneVerified(false);
@@ -1192,13 +1178,10 @@ export default function BreweryProjectCreateScreen() {
             label="프로젝트 카테고리"
             required
             value={basicInfo.category}
-            onChangeText={(value) => {
-              if (isEditMode) return;
-              setBasicInfo((prev) => ({ ...prev, category: value }));
-            }}
-            placeholder="예: 과일 복숭아"
-            editable={!isEditMode}
-            helper={isEditMode ? '기존 펀딩 게시글의 카테고리는 수정 화면에서 변경하지 않습니다.' : undefined}
+            onChangeText={() => undefined}
+            placeholder="막걸리"
+            editable={false}
+            helper={isEditMode ? '기존 펀딩 게시글의 카테고리는 수정 화면에서 변경하지 않습니다.' : '현재 주담 펀딩은 막걸리 프로젝트만 등록합니다.'}
           />
           <Field
             label="프로젝트 제목"
@@ -1666,7 +1649,7 @@ export default function BreweryProjectCreateScreen() {
               </View>
             )}
             <View style={styles.formGroup}>
-              <Text style={styles.smallSubLabel}>신분증/사업자등록증 <Text style={styles.optionalText}>(선택)</Text></Text>
+              <Text style={styles.smallSubLabel}>신분증/사업자등록증 <Text style={styles.required}>*</Text></Text>
               <UploadButton fileName={uploadedFiles.idCard} onPress={() => { void handleDocumentUpload('idCard'); }} />
             </View>
           </View>
@@ -2730,6 +2713,8 @@ function PreviewModal({
           <TouchableOpacity style={styles.headerIcon} onPress={onClose}>
             <ChevronLeft size={24} color="#111" />
           </TouchableOpacity>
+          <Text style={styles.previewHeaderTitle}>게시글 미리보기</Text>
+          <View style={styles.headerIcon} />
         </View>
         <ScrollView contentContainerStyle={styles.previewContent}>
           <View style={styles.previewHeroImage}>
@@ -3117,7 +3102,8 @@ const styles = StyleSheet.create({
   guardButton: { width: '100%', height: 52, borderRadius: 14, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   guardButtonText: { fontSize: 15, fontWeight: '900', color: '#FFF' },
   previewScreen: { flex: 1, backgroundColor: '#F9FAFB' },
-  previewHeader: { backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', height: 96, justifyContent: 'flex-end' },
+  previewHeader: { backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', height: 96, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', paddingHorizontal: 8, paddingBottom: 0 },
+  previewHeaderTitle: { flex: 1, textAlign: 'center', paddingBottom: 12, fontSize: 16, fontWeight: '900', color: '#111' },
   previewContent: { paddingBottom: 60 },
   previewHeroImage: { height: 256, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
   previewImageFill: { width: '100%', height: '100%' },

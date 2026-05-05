@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BackHandler,
   View,
   Text,
   StyleSheet,
@@ -11,6 +12,7 @@ import {
   Share as NativeShare,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Heart,
   ChevronLeft,
@@ -103,12 +105,9 @@ function getTabParam(tab: "소개" | "양조일지" | "Q&A" | "후기") {
 }
 
 export default function FundingDetailScreen() {
-  const { id, tab, fromReview, fromProjectForm, fromSupport } = useLocalSearchParams<{
+  const { id, tab } = useLocalSearchParams<{
     id?: string;
     tab?: string;
-    fromReview?: string;
-    fromProjectForm?: string;
-    fromSupport?: string;
   }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -118,9 +117,6 @@ export default function FundingDetailScreen() {
   const projectId = Number(rawProjectId);
   const initialTab = getInitialTab(tab);
   const project = useMemo(() => projects.find((p) => p.id === projectId) || null, [projectId, projects]);
-  const cameFromReviewDetail = Array.isArray(fromReview) ? fromReview[0] === "1" : fromReview === "1";
-  const cameFromProjectForm = Array.isArray(fromProjectForm) ? fromProjectForm[0] === "1" : fromProjectForm === "1";
-  const cameFromSupport = Array.isArray(fromSupport) ? fromSupport[0] === "1" : fromSupport === "1";
   
   const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">(initialTab);
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
@@ -155,6 +151,17 @@ export default function FundingDetailScreen() {
     setActiveTab(getInitialTab(tab));
   }, [tab]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        router.replace('/funding' as any);
+        return true;
+      });
+
+      return () => subscription.remove();
+    }, [])
+  );
+
   useEffect(() => {
     setComments(initialComments);
     setNewComment("");
@@ -178,7 +185,7 @@ export default function FundingDetailScreen() {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <Text style={{ fontSize: 18, color: '#6B7280', marginBottom: 16 }}>프로젝트를 찾을 수 없습니다.</Text>
-        <Button label="목록으로 돌아가기" onPress={() => router.back()} />
+        <Button label="목록으로 돌아가기" onPress={() => router.replace('/funding' as any)} />
       </View>
     );
   }
@@ -255,14 +262,6 @@ export default function FundingDetailScreen() {
   };
 
   const handleHeaderBack = () => {
-    if (cameFromReviewDetail || cameFromProjectForm || cameFromSupport) {
-      router.replace('/funding' as any);
-      return;
-    }
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
     router.replace('/funding' as any);
   };
 
@@ -718,7 +717,13 @@ export default function FundingDetailScreen() {
         {/* 4. Brewery Info */}
         <Animated.View entering={FadeInUp.delay(200)} style={{ paddingHorizontal: 16, marginBottom: 24 }}>
           <TouchableOpacity style={styles.breweryCard} activeOpacity={0.8} onPress={() => router.push(`/brewery/${project.id}` as any)}>
-             <View style={styles.breweryLogo}><Text style={{ fontSize: 24 }}>{project.breweryLogo}</Text></View>
+             <View style={styles.breweryLogo}>
+               {project.breweryProfileImage ? (
+                 <Image source={{ uri: project.breweryProfileImage }} style={styles.breweryLogoImage} />
+               ) : (
+                 <Text style={{ fontSize: 24 }}>{project.breweryLogo}</Text>
+               )}
+             </View>
              <View style={{ flex: 1 }}>
                 <Text style={styles.breweryName}>{project.brewery}</Text>
                 <Text style={styles.breweryLoc}>{project.location}</Text>
@@ -1387,10 +1392,10 @@ export default function FundingDetailScreen() {
                   <View style={styles.recContent}>
                      <View style={styles.recTopRow}>
                         <Text style={styles.recBrewery}>{p.brewery}</Text>
-                        <View style={styles.catBadge}><Text style={styles.catTxt}>{p.category}</Text></View>
-                        {isCompletedFundingStatus(p.status) && (
-                          <View style={styles.recSuccessBadge}><Text style={styles.recSuccessTxt}>성사됨</Text></View>
-                        )}
+                        <View style={styles.recCategoryBadge}><Text style={styles.recCategoryTxt}>{p.category}</Text></View>
+                        <View style={[styles.recStatusBadge, isCompletedFundingStatus(p.status) ? styles.recStatusBadgeSuccess : styles.recStatusBadgeActive]}>
+                          <Text style={[styles.recStatusTxt, isCompletedFundingStatus(p.status) && styles.recStatusTxtSuccess]}>{getFundingStatusLabel(p.status)}</Text>
+                        </View>
                      </View>
                      <Text style={styles.recTitle} numberOfLines={2}>{p.title}</Text>
                      <View style={styles.recFooter}>
@@ -1400,6 +1405,11 @@ export default function FundingDetailScreen() {
                         </View>
                         <Text style={styles.recDays}>{isCompletedFundingStatus(p.status) ? "종료" : `${p.daysLeft}일 남음`}</Text>
                      </View>
+                     <Progress
+                       value={Math.min((p.currentAmount / p.goalAmount) * 100, 100)}
+                       style={styles.recProgressBar}
+                       indicatorStyle={{ backgroundColor: '#111' }}
+                     />
                   </View>
                </TouchableOpacity>
              ))}
@@ -1725,7 +1735,8 @@ const styles = StyleSheet.create({
   dateTxt: { fontSize: 14, fontWeight: '600', color: '#111' },
   periodTxt: { fontSize: 12, color: '#9CA3AF', marginLeft: 22 },
   breweryCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, backgroundColor: '#FFF', borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB' },
-  breweryLogo: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' },
+  breweryLogo: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  breweryLogoImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   breweryName: { fontSize: 16, fontWeight: '700', color: '#111' },
   breweryLoc: { fontSize: 12, color: '#6B7280' },
   catBadge: { paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#F3F4F6', borderRadius: 16, marginLeft: 'auto' },
@@ -1894,22 +1905,28 @@ const styles = StyleSheet.create({
   shareReportButton: { flex: 1, minHeight: 48, backgroundColor: '#FFF', borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   shareReportText: { fontSize: 14, fontWeight: '800', color: '#4B5563' },
   recList: { gap: 16 },
-  recCard: { flexDirection: 'row', gap: 16, backgroundColor: '#FFF', padding: 16, borderRadius: 24, borderWidth: 1, borderColor: '#E5E7EB' },
-  recGrid: { gap: 12 },
-  recThumbBox: { width: 96, height: 96, borderRadius: 16, overflow: 'hidden' },
+  recCard: { flexDirection: 'row', gap: 16, backgroundColor: '#FFF', padding: 16, borderRadius: 28, borderWidth: 1, borderColor: '#F3F4F6', elevation: 3, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10 },
+  recGrid: { gap: 16 },
+  recThumbBox: { width: 100, height: 100, borderRadius: 20, overflow: 'hidden', backgroundColor: '#F3F4F6' },
   recImg: { width: '100%', height: '100%', resizeMode: 'cover' },
-  recHeart: { position: 'absolute', bottom: 8, left: 8, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'center', alignItems: 'center' },
-  recContent: { flex: 1, paddingVertical: 4 },
-  recTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  recBrewery: { fontSize: 12, fontWeight: '700', color: '#6B7280' },
-  recSuccessBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 2, backgroundColor: '#EFF6FF', borderRadius: 9999 },
-  recSuccessTxt: { fontSize: 10, fontWeight: '700', color: '#2563EB' },
-  recTitle: { fontSize: 14, fontWeight: '700', color: '#111', marginBottom: 8, lineHeight: 20 },
+  recHeart: { position: 'absolute', bottom: 8, left: 8, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  recContent: { flex: 1, minWidth: 0, justifyContent: 'space-between' },
+  recTopRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  recBrewery: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
+  recCategoryBadge: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  recCategoryTxt: { fontSize: 10, fontWeight: '800', color: '#4B5563' },
+  recStatusBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  recStatusBadgeActive: { backgroundColor: '#ECFDF5' },
+  recStatusBadgeSuccess: { backgroundColor: '#EFF6FF' },
+  recStatusTxt: { fontSize: 10, fontWeight: '900', color: '#059669' },
+  recStatusTxtSuccess: { color: '#2563EB' },
+  recTitle: { fontSize: 16, fontWeight: '800', color: '#111', marginBottom: 8, lineHeight: 22 },
   recFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 'auto' },
   recFooterLeft: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  recPct: { fontSize: 18, fontWeight: '700', color: '#111' },
-  recAmt: { fontSize: 12, color: '#6B7280' },
-  recDays: { fontSize: 12, fontWeight: '600', color: '#111' },
+  recPct: { fontSize: 22, fontWeight: '900', color: '#111' },
+  recAmt: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
+  recDays: { fontSize: 12, fontWeight: '800', color: '#111' },
+  recProgressBar: { height: 6, borderRadius: 3, marginTop: 6 },
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, gap: 12, zIndex: 40 },
   heartBtn: { width: 56, height: 56, borderRadius: 16, borderWidth: 2, borderColor: '#E5E7EB', backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
   mainSupportBtn: { flex: 1, height: 56, backgroundColor: '#111', borderRadius: 16, justifyContent: 'center', alignItems: 'center' },

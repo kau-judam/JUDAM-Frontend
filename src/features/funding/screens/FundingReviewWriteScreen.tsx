@@ -369,7 +369,9 @@ export default function FundingReviewWriteScreen() {
           {allTags.length > 0 && (
             <View style={styles.selectedTagWrap}>
               {allTags.map((tag) => (
-                <Text key={tag} style={styles.selectedTagText}>#{tag}</Text>
+                <View key={tag} style={styles.selectedTagChip}>
+                  <Text style={styles.selectedTagText}>#{tag}</Text>
+                </View>
               ))}
             </View>
           )}
@@ -447,9 +449,10 @@ const styles = StyleSheet.create({
   customTagAddDisabled: { opacity: 0.35 },
   customTagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 },
   customTagPill: { minHeight: 30, borderRadius: 999, backgroundColor: '#111', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10 },
-  customTagPillText: { color: '#FFF', fontSize: 12, fontWeight: '900' },
+  customTagPillText: { color: '#FFF', fontSize: 12, lineHeight: 14, fontWeight: '900', includeFontPadding: false },
   selectedTagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
-  selectedTagText: { fontSize: 12, fontWeight: '800', color: '#6B7280', backgroundColor: '#F3F4F6', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
+  selectedTagChip: { height: 24, borderRadius: 999, paddingHorizontal: 9, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start' },
+  selectedTagText: { fontSize: 12, lineHeight: 14, fontWeight: '800', color: '#6B7280', includeFontPadding: false },
   submitButton: { height: 56, borderRadius: 18, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   submitButtonDisabled: { opacity: 0.65 },
   submitButtonText: { color: '#FFF', fontSize: 16, fontWeight: '900' },

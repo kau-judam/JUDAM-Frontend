@@ -282,8 +282,8 @@ export default function FundingListScreen() {
                       >
                         <Heart 
                           size={14} 
-                          color="#FFF" 
-                          fill={isFavoriteFunding(project.id) ? "#FFF" : "transparent"} 
+                          color={isFavoriteFunding(project.id) ? "#EF4444" : "#FFF"}
+                          fill={isFavoriteFunding(project.id) ? "#EF4444" : "transparent"}
                         />
                       </TouchableOpacity>
                     </View>

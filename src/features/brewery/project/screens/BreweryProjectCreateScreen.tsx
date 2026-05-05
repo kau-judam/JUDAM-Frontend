@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Animated,
@@ -19,7 +20,7 @@ import {
   type GestureResponderEvent,
   type KeyboardTypeOptions,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import {
   AlertCircle,
   Calendar,
@@ -41,8 +42,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 
 import { Progress } from '@/components/ui/progress';
-import { useAuth } from '@/contexts/AuthContext';
+import type { FundingProject, BudgetItem, ScheduleItem } from '@/constants/data';
+import { useAuth, type User as AuthUser } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import SafeStorage from '@/utils/storage';
 
 type TabId = 'basic' | 'funding' | 'rewards' | 'taste' | 'plan' | 'creator' | 'trust' | 'verification';
@@ -88,6 +91,7 @@ const mockAddresses: AddressItem[] = [
 
 const BANK_OPTIONS = ['KB국민', '신한', '우리', '하나', '농협은행', 'IBK기업', '카카오뱅크', '토스뱅크', '케이뱅크', 'SC제일', '부산', '대구', '광주', '전북', '경남', '수협', '새마을금고', '신협'];
 const TEMP_SAVE_KEY = 'judam_project_temp_save';
+const DOCUMENT_PICKER_TYPES = ['application/pdf', 'image/*'];
 const IMAGE_THUMB_SIZE = 128;
 const IMAGE_THUMB_GAP = 12;
 const IMAGE_REORDER_STEP = IMAGE_THUMB_SIZE + IMAGE_THUMB_GAP;
@@ -152,10 +156,184 @@ function parseTextLines(value: string) {
     .filter(Boolean);
 }
 
+function getParamValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function normalizeProjectDate(value?: string) {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const match = value.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!match) return value;
+  return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+}
+
+function getDurationFromProject(project: FundingProject) {
+  const start = parseDate(normalizeProjectDate(project.startDate));
+  const end = parseDate(normalizeProjectDate(project.endDate));
+  if (start && end) {
+    const diff = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    if (diff > 0) return String(diff);
+  }
+  return String(Math.max(1, project.daysLeft || 30));
+}
+
+function stripVolumeUnit(value?: string) {
+  return digitsOnly(value || '');
+}
+
+function stripAlcoholUnit(value?: string) {
+  return decimalOnly(value || '');
+}
+
+function getProjectImageUris(project: FundingProject) {
+  const localUri = project.localImage ? Image.resolveAssetSource(project.localImage)?.uri : '';
+  const images = project.images?.length ? project.images : [];
+  return [localUri, ...images, project.image].filter((image): image is string => Boolean(image));
+}
+
+function formatBudgetItems(items?: BudgetItem[]) {
+  if (!items?.length) return '';
+  return items.map((item) => `- ${item.item}: ${item.amount}만원`).join('\n');
+}
+
+function formatScheduleItems(items?: ScheduleItem[]) {
+  if (!items?.length) return '';
+  return items.map((item) => `- ${item.date}: ${item.description}`).join('\n');
+}
+
+function parseBudgetItems(value: string) {
+  return parseTextLines(value).map((line) => {
+    const match = line.match(/^(.*?)[\s:：-]+([0-9,]+)\s*만원?$/);
+    if (!match) return { item: line, amount: 0 };
+    return { item: match[1].trim(), amount: Number(match[2].replace(/,/g, '')) || 0 };
+  });
+}
+
+function parseScheduleItems(value: string) {
+  return parseTextLines(value).map((line) => {
+    const [date, ...description] = line.split(':');
+    return {
+      date: date?.trim() || '일정',
+      description: description.length > 0 ? description.join(':').trim() : line,
+    };
+  });
+}
+
+function getProjectIngredients(project: FundingProject) {
+  if (project.ingredients?.length) {
+    return project.ingredients.map((item, index) => ({
+      id: index + 1,
+      ingredient: item.ingredient,
+      origin: item.origin,
+    }));
+  }
+  return [
+    {
+      id: 1,
+      ingredient: project.mainIngredients || '국내산 쌀',
+      origin: project.location || '국내',
+    },
+    ...(project.subIngredients
+      ? [
+          {
+            id: 2,
+            ingredient: project.subIngredients,
+            origin: project.location || '국내',
+          },
+        ]
+      : []),
+  ];
+}
+
+function createProjectEditDraft(project: FundingProject, user: AuthUser | null) {
+  const imageUris = getProjectImageUris(project);
+  const alcoholContent = stripAlcoholUnit(project.alcoholContent);
+  const volume = stripVolumeUnit(project.bottleSize || project.volume);
+  const breweryName = project.brewery || user?.breweryName || '양조장';
+
+  return {
+    basicInfo: {
+      category: project.category || project.productType || '',
+      title: project.title || '',
+      shortTitle: project.title || '',
+      mainIngredient: project.mainIngredients || '',
+      subIngredient: project.subIngredients || '',
+      alcoholContent,
+      summary: project.projectSummary || project.shortDescription || '',
+      images: imageUris.slice(0, 5),
+      tags: [] as string[],
+    },
+    fundingInfo: {
+      pricePerBottle: project.pricePerBottle ? String(project.pricePerBottle) : '',
+      bottleQuantity: project.targetQuantity || project.totalQuantity ? String(project.targetQuantity || project.totalQuantity) : '',
+      goalAmount: project.goalAmount ? String(project.goalAmount) : '',
+      startDate: normalizeProjectDate(project.startDate),
+      duration: getDurationFromProject(project),
+      expectedDeliveryDate: normalizeProjectDate(project.estimatedDelivery),
+    },
+    productInfo: {
+      productType: project.productType || project.category || '막걸리',
+      volume,
+      alcoholContent,
+      ingredients: getProjectIngredients(project),
+    },
+    tasteProfile: project.tasteProfile || {
+      sweetness: 50,
+      aroma: 50,
+      acidity: 50,
+      body: 60,
+      carbonation: 50,
+    },
+    projectPlan: {
+      introduction: project.introduction || project.story || project.projectSummary || '',
+      budget: formatBudgetItems(project.budget),
+      schedule: formatScheduleItems(project.schedule),
+    },
+    creatorInfo: {
+      name: breweryName,
+      profileImage: project.breweryProfileImage || imageUris[0] || '',
+      bio: project.breweryBio || `${breweryName}의 전통주 프로젝트입니다.`,
+      phone: user?.phone || '010-1234-5678',
+      accountBank: '신한',
+      accountNumber: '12345678901234',
+    },
+    taxInfo: {
+      businessType: 'corporation',
+      businessName: breweryName,
+      businessNumber: user?.businessNumber || '123-45-67890',
+      ceoName: user?.name && user.name !== breweryName ? user.name : '이주담',
+      address: project.location || user?.breweryLocation || '지역 미정',
+      businessCategory: '제조업',
+      businessItem: `${project.category || '전통주'} 제조`,
+      email: user?.email || 'brewery@judam.co.kr',
+    },
+    uploadedFiles: {
+      profileImage: (project.breweryProfileImage || imageUris[0]) ? '기존 프로필 이미지' : '',
+      idCard: '기존 제출 서류',
+      businessLicense: '기존 사업자등록증 사본',
+      salesPermit: '기존 통신판매신고증',
+      alcoholPermit: '기존 주류 통신판매 승인서',
+      manufacturingLicense: '기존 전통주 제조면허증',
+    },
+  };
+}
+
 export default function BreweryProjectCreateScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams();
   const { user } = useAuth();
-  const { addProject } = useFunding();
+  const { projects, addProject, updateProject } = useFunding();
+  const editProjectIdParam = getParamValue(params.projectId) || getParamValue(params.editId);
+  const editProjectId = editProjectIdParam ? Number(editProjectIdParam) : null;
+  const editProject = useMemo(
+    () => (editProjectId ? projects.find((project) => project.id === editProjectId) || null : null),
+    [editProjectId, projects]
+  );
+  const isEditMode = Boolean(editProjectId);
+  const canEditProject = editProject ? isFundingProjectOwnedByBrewery(user, editProject) : false;
+  const tempSaveKey = isEditMode && editProjectId ? `${TEMP_SAVE_KEY}:edit:${editProjectId}` : TEMP_SAVE_KEY;
+  const appliedEditProjectIdRef = useRef<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('basic');
   const [showPreview, setShowPreview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -173,6 +351,7 @@ export default function BreweryProjectCreateScreen() {
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [showBankModal, setShowBankModal] = useState(false);
   const [datePickerTarget, setDatePickerTarget] = useState<DatePickerTarget | null>(null);
+  const [createdProjectId, setCreatedProjectId] = useState<number | null>(null);
   const [addressSearch, setAddressSearch] = useState('');
   const [phoneVerificationSent, setPhoneVerificationSent] = useState(false);
   const [phoneVerificationCode, setPhoneVerificationCode] = useState('');
@@ -256,6 +435,25 @@ export default function BreweryProjectCreateScreen() {
   });
 
   useEffect(() => {
+    if (!editProject || !canEditProject || appliedEditProjectIdRef.current === editProject.id) return;
+    const draft = createProjectEditDraft(editProject, user);
+    setBasicInfo(draft.basicInfo);
+    setFundingInfo(draft.fundingInfo);
+    setProductInfo(draft.productInfo);
+    setTasteProfile(draft.tasteProfile);
+    setProjectPlan(draft.projectPlan);
+    setCreatorInfo(draft.creatorInfo);
+    setTaxInfo(draft.taxInfo);
+    setUploadedFiles(draft.uploadedFiles);
+    setPhoneVerified(true);
+    setPhoneVerificationSent(false);
+    setPhoneVerificationCode('');
+    setPhoneTimer(0);
+    setAccountVerified(true);
+    appliedEditProjectIdRef.current = editProject.id;
+  }, [canEditProject, editProject, user]);
+
+  useEffect(() => {
     if (phoneTimer <= 0) return;
     const id = setInterval(() => setPhoneTimer((prev) => Math.max(prev - 1, 0)), 1000);
     return () => clearInterval(id);
@@ -263,18 +461,18 @@ export default function BreweryProjectCreateScreen() {
 
   useEffect(() => {
     const loadTempSaveMeta = async () => {
-      const saved = await SafeStorage.getItem(TEMP_SAVE_KEY);
+      const saved = await SafeStorage.getItem(tempSaveKey);
       if (!saved) return;
       try {
         const parsed = JSON.parse(saved);
         setTempSaveTimestamp(parsed.timestamp || '');
         setHasTempSave(true);
       } catch {
-        await SafeStorage.removeItem(TEMP_SAVE_KEY);
+        await SafeStorage.removeItem(tempSaveKey);
       }
     };
     void loadTempSaveMeta();
-  }, []);
+  }, [tempSaveKey]);
 
   useEffect(() => {
     if (!user || user.type !== 'brewery') return;
@@ -314,7 +512,7 @@ export default function BreweryProjectCreateScreen() {
     let completed = 0;
     const add = (value: unknown) => {
       total += 1;
-      if (value) completed += 1;
+      if (typeof value === 'string' ? value.trim().length > 0 : Boolean(value)) completed += 1;
     };
 
     [
@@ -326,8 +524,10 @@ export default function BreweryProjectCreateScreen() {
       basicInfo.images.length > 0,
       fundingInfo.pricePerBottle,
       fundingInfo.bottleQuantity,
-      fundingInfo.startDate && !startDateWarning,
-      fundingInfo.expectedDeliveryDate && !deliveryDateWarning,
+      fundingInfo.goalAmount,
+      fundingInfo.startDate,
+      fundingInfo.expectedDeliveryDate,
+      productInfo.productType,
       productInfo.volume,
       productInfo.alcoholContent,
     ].forEach(add);
@@ -361,12 +561,10 @@ export default function BreweryProjectCreateScreen() {
     accountVerified,
     basicInfo,
     creatorInfo.name,
-    deliveryDateWarning,
     fundingInfo,
     phoneVerified,
     productInfo,
     projectPlan.introduction,
-    startDateWarning,
     taxInfo,
     trustInfo,
     uploadedFiles,
@@ -437,12 +635,12 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const getSavedDraft = async () => {
-    const saved = await SafeStorage.getItem(TEMP_SAVE_KEY);
+    const saved = await SafeStorage.getItem(tempSaveKey);
     if (!saved) return null;
     try {
       return JSON.parse(saved);
     } catch {
-      await SafeStorage.removeItem(TEMP_SAVE_KEY);
+      await SafeStorage.removeItem(tempSaveKey);
       setHasTempSave(false);
       setTempSaveTimestamp('');
       return null;
@@ -452,12 +650,12 @@ export default function BreweryProjectCreateScreen() {
   const saveDraft = async ({ showSavedModal = true, exitAfter = false }: { showSavedModal?: boolean; exitAfter?: boolean } = {}) => {
     setIsSaving(true);
     const draft = createDraftPayload();
-    await SafeStorage.setItem(TEMP_SAVE_KEY, JSON.stringify(draft));
+    await SafeStorage.setItem(tempSaveKey, JSON.stringify(draft));
     setIsSaving(false);
     setHasTempSave(true);
     setTempSaveTimestamp(draft.timestamp);
     if (exitAfter) {
-      router.back();
+      router.replace('/funding' as any);
       return;
     }
     if (showSavedModal) {
@@ -481,7 +679,7 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const deleteSavedDraft = async () => {
-    await SafeStorage.removeItem(TEMP_SAVE_KEY);
+    await SafeStorage.removeItem(tempSaveKey);
     setHasTempSave(false);
     setTempSaveTimestamp('');
     setShowTempSaveModal(false);
@@ -514,7 +712,7 @@ export default function BreweryProjectCreateScreen() {
       setShowExitConfirm(true);
       return;
     }
-    router.back();
+    router.replace('/funding' as any);
   };
 
   const handleSave = async () => {
@@ -537,25 +735,46 @@ export default function BreweryProjectCreateScreen() {
   const handleExitWithoutSave = () => {
     setShowExitConfirm(false);
     setShowTempSaveModal(false);
-    router.back();
+    router.replace('/funding' as any);
   };
 
   const loadBreweryInfo = () => {
     if (!user || user.type !== 'brewery') return;
+    const loadedBreweryName = user.breweryName || '술샘양조장';
+    const loadedAddress = [user.breweryLocation || '경기도 양평군 용문면 누룩길 12', user.breweryLocationDetail].filter(Boolean).join(' ');
+    const loadedCeoName = user.name && user.name !== loadedBreweryName ? user.name : '이주담';
+
     setCreatorInfo((prev) => ({
       ...prev,
-      name: user.breweryName || prev.name,
-      phone: user.phone || prev.phone,
+      name: loadedBreweryName,
+      profileImage: prev.profileImage || aiImages[0],
+      bio: prev.bio || '지역 농산물과 전통 누룩을 바탕으로 계절의 향을 담은 전통주를 빚는 소규모 양조장입니다.',
+      phone: '',
+      accountBank: '',
+      accountNumber: '',
     }));
     setTaxInfo((prev) => ({
       ...prev,
-      businessName: user.breweryName || prev.businessName,
-      businessNumber: user.businessNumber || prev.businessNumber,
-      ceoName: user.name || prev.ceoName,
-      address: user.breweryLocation || prev.address,
-      email: user.email || prev.email,
+      businessType: 'corporation',
+      businessName: loadedBreweryName,
+      businessNumber: user.businessNumber || '123-45-67890',
+      ceoName: loadedCeoName,
+      address: loadedAddress,
+      businessCategory: '제조업',
+      businessItem: '탁주 및 약주 제조',
+      email: user.email || 'brewery@judam.co.kr',
     }));
-    showAlert('양조장 정보를 불러왔습니다.');
+    setUploadedFiles((prev) => ({
+      ...prev,
+      profileImage: prev.profileImage || 'brewery_profile_sample.jpg',
+      idCard: '',
+    }));
+    setPhoneVerified(false);
+    setPhoneVerificationSent(false);
+    setPhoneVerificationCode('');
+    setPhoneTimer(0);
+    setAccountVerified(false);
+    showAlert('양조장 정보를 불러왔습니다. 본인 인증과 입금 계좌는 직접 입력해주세요.');
   };
 
   const handleImageFileUpload = async () => {
@@ -765,10 +984,20 @@ export default function BreweryProjectCreateScreen() {
     ]);
   };
 
-  const handleFileUpload = (key: FileKey, name: string) => {
-    setUploadedFiles((prev) => ({ ...prev, [key]: name }));
-    if (key === 'profileImage') {
-      setCreatorInfo((prev) => ({ ...prev, profileImage: aiImages[0] }));
+  const handleDocumentUpload = async (key: FileKey) => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: DOCUMENT_PICKER_TYPES,
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const selectedFile = result.assets[0];
+      setUploadedFiles((prev) => ({ ...prev, [key]: selectedFile.name || '선택한 파일' }));
+    } catch {
+      showAlert('파일을 불러오지 못했습니다. 다시 시도해주세요.');
     }
   };
 
@@ -801,6 +1030,60 @@ export default function BreweryProjectCreateScreen() {
     }
   };
 
+  const buildProjectPayload = (mode: 'create' | 'edit'): Omit<FundingProject, 'id'> => {
+    const budgetItems = parseBudgetItems(projectPlan.budget);
+    const scheduleItems = parseScheduleItems(projectPlan.schedule);
+    const image = basicInfo.images[0] || editProject?.image || aiImages[0];
+    const quantity = Number(fundingInfo.bottleQuantity) || editProject?.targetQuantity || editProject?.totalQuantity || 0;
+    const goalAmount = Number(fundingInfo.goalAmount) || editProject?.goalAmount || 0;
+
+    return {
+      title: basicInfo.title,
+      brewery: creatorInfo.name || user?.breweryName || editProject?.brewery || '양조장',
+      breweryLogo: editProject?.breweryLogo || '🍶',
+      location: taxInfo.address || editProject?.location || user?.breweryLocation || '지역 미정',
+      category: basicInfo.category,
+      shortDescription: basicInfo.summary,
+      image,
+      images: basicInfo.images,
+      localImage: mode === 'edit' ? undefined : editProject?.localImage,
+      popularRank: editProject?.popularRank,
+      goalAmount,
+      currentAmount: mode === 'edit' ? editProject?.currentAmount || 0 : 0,
+      backers: mode === 'edit' ? editProject?.backers || 0 : 0,
+      daysLeft: Number(fundingInfo.duration) || editProject?.daysLeft || 30,
+      status: mode === 'edit' ? editProject?.status || '심사 중' : '심사 중',
+      startDate: fundingInfo.startDate,
+      endDate: endDateText,
+      pricePerBottle: Number(fundingInfo.pricePerBottle) || 0,
+      bottleSize: volumeText(productInfo.volume),
+      volume: volumeText(productInfo.volume),
+      alcoholContent: alcoholText(productInfo.alcoholContent || basicInfo.alcoholContent),
+      totalQuantity: quantity,
+      targetQuantity: quantity,
+      estimatedDelivery: fundingInfo.expectedDeliveryDate,
+      rewardItems: [`${basicInfo.title} ${volumeText(productInfo.volume)} x 1`.trim()],
+      shippingFee: editProject?.shippingFee ?? 3000,
+      mainIngredients: basicInfo.mainIngredient,
+      subIngredients: basicInfo.subIngredient,
+      projectSummary: basicInfo.summary,
+      introduction: projectPlan.introduction,
+      story: projectPlan.introduction,
+      rewardDetails: editProject?.rewardDetails,
+      budget: budgetItems,
+      schedule: scheduleItems,
+      tasteProfile,
+      team: editProject?.team,
+      breweryBio: creatorInfo.bio,
+      breweryProfileImage: creatorInfo.profileImage,
+      productType: productInfo.productType,
+      ingredients: productInfo.ingredients,
+      journals: mode === 'edit' ? editProject?.journals || [] : [],
+      createdAt: mode === 'edit' ? editProject?.createdAt : undefined,
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
   const handleSubmit = () => {
     if (!canSubmit) return;
     setShowSubmitConfirm(true);
@@ -810,49 +1093,16 @@ export default function BreweryProjectCreateScreen() {
     setShowSubmitConfirm(false);
     setIsSubmitting(true);
     setTimeout(() => {
-      const budgetLines = parseTextLines(projectPlan.budget);
-      const scheduleLines = parseTextLines(projectPlan.schedule);
-      addProject({
-        title: basicInfo.title,
-        brewery: creatorInfo.name || user?.breweryName || '양조장',
-        breweryLogo: '🍶',
-        location: taxInfo.address || user?.breweryLocation || '지역 미정',
-        category: basicInfo.category,
-        shortDescription: basicInfo.summary,
-        image: basicInfo.images[0] || aiImages[0],
-        images: basicInfo.images,
-        goalAmount: Number(fundingInfo.goalAmount) || 0,
-        currentAmount: 0,
-        backers: 0,
-        daysLeft: Number(fundingInfo.duration) || 30,
-        status: '심사 중',
-        startDate: fundingInfo.startDate,
-        endDate: endDateText,
-        pricePerBottle: Number(fundingInfo.pricePerBottle) || 0,
-        bottleSize: volumeText(productInfo.volume),
-        volume: volumeText(productInfo.volume),
-        alcoholContent: alcoholText(productInfo.alcoholContent || basicInfo.alcoholContent),
-        totalQuantity: Number(fundingInfo.bottleQuantity) || 0,
-        targetQuantity: Number(fundingInfo.bottleQuantity) || 0,
-        estimatedDelivery: fundingInfo.expectedDeliveryDate,
-        rewardItems: [`${basicInfo.title} ${volumeText(productInfo.volume)} x 1`.trim()],
-        shippingFee: 3000,
-        mainIngredients: basicInfo.mainIngredient,
-        subIngredients: basicInfo.subIngredient,
-        projectSummary: basicInfo.summary,
-        introduction: projectPlan.introduction,
-        story: projectPlan.introduction,
-        budget: budgetLines.length > 0 ? budgetLines.map((line, index) => ({ item: line, amount: index === 0 ? Math.round((Number(fundingInfo.goalAmount) || 0) / 10000) : 0 })) : [],
-        schedule: scheduleLines.length > 0 ? scheduleLines.map((line) => ({ date: line.split(':')[0] || '일정', description: line.includes(':') ? line.split(':').slice(1).join(':').trim() : line })) : [],
-        tasteProfile,
-        breweryBio: creatorInfo.bio,
-        breweryProfileImage: creatorInfo.profileImage,
-        productType: productInfo.productType,
-        ingredients: productInfo.ingredients,
-        journals: [],
-      });
+      const payload = buildProjectPayload(isEditMode ? 'edit' : 'create');
+      const submittedProject = isEditMode && editProjectId ? updateProject(editProjectId, payload) : addProject(payload);
+      if (!submittedProject) {
+        setIsSubmitting(false);
+        showAlert('수정할 펀딩 게시글을 찾을 수 없습니다.');
+        return;
+      }
+      setCreatedProjectId(submittedProject.id);
       setIsSubmitting(false);
-      void SafeStorage.removeItem(TEMP_SAVE_KEY);
+      void SafeStorage.removeItem(tempSaveKey);
       setHasTempSave(false);
       setTempSaveTimestamp('');
       setShowSubmitSuccess(true);
@@ -861,7 +1111,11 @@ export default function BreweryProjectCreateScreen() {
 
   const handleSubmitSuccessClose = () => {
     setShowSubmitSuccess(false);
-    router.replace('/brewery/dashboard' as any);
+    if (createdProjectId) {
+      router.replace(`/funding/${createdProjectId}` as any);
+      return;
+    }
+    router.replace('/funding' as any);
   };
 
   if (!user || user.type !== 'brewery') {
@@ -884,6 +1138,30 @@ export default function BreweryProjectCreateScreen() {
         description="프로젝트를 생성하려면 사업자 정보와 연락처 인증을 먼저 완료해주세요."
         primaryLabel="양조장 인증하기"
         onPrimaryPress={() => router.push('/brewery/verification' as any)}
+      />
+    );
+  }
+
+  if (isEditMode && !editProject) {
+    return (
+      <GuardNotice
+        insetsTop={insets.top}
+        title="프로젝트를 찾을 수 없습니다"
+        description="수정하려는 펀딩 게시글 정보를 찾을 수 없어요."
+        primaryLabel="펀딩으로 이동"
+        onPrimaryPress={() => router.replace('/funding' as any)}
+      />
+    );
+  }
+
+  if (isEditMode && editProject && !canEditProject) {
+    return (
+      <GuardNotice
+        insetsTop={insets.top}
+        title="수정 권한이 없습니다"
+        description="본인이 만든 펀딩 프로젝트만 수정할 수 있어요."
+        primaryLabel="펀딩으로 이동"
+        onPrimaryPress={() => router.replace('/funding' as any)}
       />
     );
   }
@@ -1377,7 +1655,7 @@ export default function BreweryProjectCreateScreen() {
             )}
             <View style={styles.formGroup}>
               <Text style={styles.smallSubLabel}>신분증/사업자등록증 <Text style={styles.optionalText}>(선택)</Text></Text>
-              <UploadButton fileName={uploadedFiles.idCard} onPress={() => handleFileUpload('idCard', 'identity_document_sample.pdf')} />
+              <UploadButton fileName={uploadedFiles.idCard} onPress={() => { void handleDocumentUpload('idCard'); }} />
             </View>
           </View>
           <View style={styles.formGroup}>
@@ -1469,7 +1747,7 @@ export default function BreweryProjectCreateScreen() {
             <Field label="이메일 주소" required helper="전자세금계산서를 수령할 담당자 이메일" value={taxInfo.email} onChangeText={(value) => setTaxInfo((prev) => ({ ...prev, email: value }))} placeholder="example@company.com" keyboardType="email-address" />
             <View style={styles.formGroup}>
               <RequiredLabel label="사업자 등록증 사본" required />
-              <UploadButton fileName={uploadedFiles.businessLicense} onPress={() => handleFileUpload('businessLicense', 'business_license_sample.pdf')} />
+              <UploadButton fileName={uploadedFiles.businessLicense} onPress={() => { void handleDocumentUpload('businessLicense'); }} />
             </View>
           </View>
         </View>
@@ -1524,9 +1802,9 @@ export default function BreweryProjectCreateScreen() {
     return (
       <View style={styles.tabContent}>
         <InfoBox tone="red" title="전통주 필수 서류" body="주류의 통신판매에 관한 명령위임 고시에 의거하여 아래 서류를 반드시 제출해주셔야 합니다." compact />
-        <FileCard title="통신판매신고증" desc="사업자의 통신판매신고증" fileName={uploadedFiles.salesPermit} onPress={() => handleFileUpload('salesPermit', 'sales_permit_sample.pdf')} />
-        <FileCard title="주류 통신판매 승인(신청)서" desc="주류 통신판매 승인서" fileName={uploadedFiles.alcoholPermit} onPress={() => handleFileUpload('alcoholPermit', 'alcohol_permit_sample.pdf')} />
-        <FileCard title="전통주 제조면허증" desc="전통주 제조 면허증" fileName={uploadedFiles.manufacturingLicense} onPress={() => handleFileUpload('manufacturingLicense', 'manufacturing_license_sample.pdf')} />
+        <FileCard title="통신판매신고증" desc="사업자의 통신판매신고증" fileName={uploadedFiles.salesPermit} onPress={() => { void handleDocumentUpload('salesPermit'); }} />
+        <FileCard title="주류 통신판매 승인(신청)서" desc="주류 통신판매 승인서" fileName={uploadedFiles.alcoholPermit} onPress={() => { void handleDocumentUpload('alcoholPermit'); }} />
+        <FileCard title="전통주 제조면허증" desc="전통주 제조 면허증" fileName={uploadedFiles.manufacturingLicense} onPress={() => { void handleDocumentUpload('manufacturingLicense'); }} />
         <View style={styles.blueHint}>
           <Text style={styles.blueHintText}>📌 서류 심사는 3-5일 소요됩니다.</Text>
         </View>
@@ -1543,13 +1821,13 @@ export default function BreweryProjectCreateScreen() {
             <TouchableOpacity style={styles.headerIcon} onPress={handleExit}>
               <X size={24} color="#111" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>펀딩 프로젝트 만들기</Text>
+            <Text style={styles.headerTitle}>{isEditMode ? '펀딩 프로젝트 수정' : '펀딩 프로젝트 만들기'}</Text>
             <TouchableOpacity style={styles.headerIcon} onPress={() => setShowPreview(true)}>
               <Eye size={20} color="#111" />
             </TouchableOpacity>
           </View>
           <View style={styles.progressStrip}>
-            <Text style={styles.progressStatus}>기획중 · 필수 항목 기준</Text>
+            <Text style={styles.progressStatus}>{isEditMode ? '수정중' : '기획중'} · 필수 항목 기준</Text>
             <Text style={styles.progressText}>{progress}% 완료</Text>
           </View>
           <View style={styles.projectMini}>
@@ -1581,13 +1859,13 @@ export default function BreweryProjectCreateScreen() {
             <Text style={styles.saveButtonText}>{isSaving ? '저장 중...' : '임시저장'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.submitButton, !canSubmit && styles.disabledButton]} onPress={handleSubmit} disabled={!canSubmit || isSubmitting}>
-            <Text style={styles.submitButtonText}>{isSubmitting ? '제출 중...' : '제출'}</Text>
+            <Text style={styles.submitButtonText}>{isSubmitting ? (isEditMode ? '수정 중...' : '제출 중...') : (isEditMode ? '수정 제출' : '제출')}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
       <SimpleModal visible={showAlertModal} icon="alert" title="알림" body={alertMessage} primaryLabel="확인" onPrimary={() => setShowAlertModal(false)} />
-      <ConfirmModal visible={showSubmitConfirm} title="제출 하시겠습니까?" body="제출 후에는 수정이 불가능합니다." onCancel={() => setShowSubmitConfirm(false)} onConfirm={confirmSubmit} />
-      <SimpleModal visible={showSubmitSuccess} icon="success" title="성공적으로 업로드 되었습니다" body="심사는 3-5영업일이 소요됩니다." primaryLabel="확인" onPrimary={handleSubmitSuccessClose} />
+      <ConfirmModal visible={showSubmitConfirm} title={isEditMode ? '수정 내용을 반영하시겠습니까?' : '제출 하시겠습니까?'} body={isEditMode ? '수정한 내용이 기존 펀딩 게시글에 바로 반영됩니다.' : '제출하면 펀딩 게시글이 생성되고 심사 중 상태로 등록됩니다.'} onCancel={() => setShowSubmitConfirm(false)} onConfirm={confirmSubmit} />
+      <SimpleModal visible={showSubmitSuccess} icon="success" title={isEditMode ? '수정이 완료되었습니다' : '성공적으로 업로드 되었습니다'} body={isEditMode ? '수정한 내용이 펀딩 게시글에 반영되었습니다.' : '펀딩 게시글이 생성되었습니다. 심사는 3-5영업일이 소요됩니다.'} primaryLabel="게시글 확인" onPrimary={handleSubmitSuccessClose} />
       <TempSaveModal
         visible={showTempSaveModal}
         mode={tempSaveMode}

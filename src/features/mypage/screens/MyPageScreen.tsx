@@ -155,7 +155,11 @@ export default function MyPageScreen() {
            </View>
 
            {isBrewery && (
-             <TouchableOpacity style={styles.dashboardLink} activeOpacity={0.8}>
+             <TouchableOpacity
+               style={styles.dashboardLink}
+               activeOpacity={0.8}
+               onPress={() => router.push('/brewery/dashboard' as any)}
+             >
                 <LinearGradient colors={['#111', '#333']} style={styles.dashboardInner}>
                    <View style={styles.dashboardTxtBox}>
                       <LayoutDashboard size={16} color="rgba(255,255,255,0.7)" />

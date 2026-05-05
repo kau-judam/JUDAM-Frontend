@@ -9,6 +9,7 @@ import {
   Dimensions,
   Alert,
   StatusBar,
+  TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
 import { 
@@ -26,7 +27,9 @@ import {
   Factory, 
   FileCheck, 
   Target, 
-  X 
+  X,
+  Camera,
+  Send,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -41,6 +44,7 @@ import {
   getFundingStatusLabel,
   isCompletedFundingStatus,
   isSupportableFundingStatus,
+  type ProjectStatus,
 } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 
@@ -86,15 +90,45 @@ const recentNotifications = [
   { id: 4, type: "system", message: "제조 진행 현황이 업데이트되었습니다", time: "5시간 전", unread: false },
 ];
 
-const stages = ["원료 투입", "발효", "증류", "숙성", "병입", "출고 준비"];
+const manufacturingStages = ["원료준비", "원료 가공", "발효", "제성", "병입"];
+
+type JournalEntryState = {
+  content: string;
+  images: string[];
+  isCompleted: boolean;
+};
+
+const statusOptions: ProjectStatus[] = [
+  "작성 중",
+  "심사 중",
+  "심사 반려",
+  "펀딩 예정",
+  "진행 중",
+  "목표 달성",
+  "펀딩 성공",
+  "펀딩 실패",
+  "제작 중",
+  "배송 중",
+  "완료",
+];
 
 export default function BreweryDashboardScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { projects } = useFunding();
+  const { projects, updateProjectStatus } = useFunding();
   const [fundingFilter, setFundingFilter] = useState<"active" | "completed">("active");
   const [selectedProject, setSelectedProject] = useState<any>(null);
+  const [selectedStatusProject, setSelectedStatusProject] = useState<number | null>(null);
   const [currentStageIndex, setCurrentStageIndex] = useState(0);
+  const [selectedJournalStage, setSelectedJournalStage] = useState(manufacturingStages[0]);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [journalData, setJournalData] = useState<Record<string, JournalEntryState>>({
+    원료준비: { content: "신선한 쌀 100kg 입고 완료\n품질 검수 이상 없음", images: [], isCompleted: true },
+    "원료 가공": { content: "쌀 세척 및 침지 완료\n12시간 침지 후 수분 함량 확인", images: [], isCompleted: true },
+    발효: { content: "", images: [], isCompleted: false },
+    제성: { content: "", images: [], isCompleted: false },
+    병입: { content: "", images: [], isCompleted: false },
+  });
 
   const ownProjects = projects.filter((project) => isFundingProjectOwnedByBrewery(user, project));
   const fallbackProjects = ownProjects.length > 0 ? ownProjects : projects.filter((project) => project.brewery === "술샘양조장");
@@ -105,6 +139,74 @@ export default function BreweryDashboardScreen() {
   const averageProgress = fallbackProjects.length
     ? Math.round(fallbackProjects.reduce((sum, project) => sum + Math.min((project.currentAmount / project.goalAmount) * 100, 100), 0) / fallbackProjects.length)
     : 0;
+  const selectedStatusFunding = selectedStatusProject
+    ? projects.find((project) => project.id === selectedStatusProject)
+    : null;
+  const currentJournalEntry = journalData[selectedJournalStage];
+
+  const handleOpenJournal = (stage: (typeof productionStages)[number]) => {
+    setSelectedProject(stage);
+    setSelectedJournalStage(manufacturingStages[0]);
+    setIsEditMode(false);
+  };
+
+  const handleJournalContentChange = (content: string) => {
+    setJournalData((prev) => ({
+      ...prev,
+      [selectedJournalStage]: {
+        ...prev[selectedJournalStage],
+        content,
+      },
+    }));
+  };
+
+  const handleJournalSubmit = () => {
+    if (!currentJournalEntry.content.trim()) {
+      Alert.alert("알림", "내용을 입력해주세요.");
+      return;
+    }
+
+    setJournalData((prev) => ({
+      ...prev,
+      [selectedJournalStage]: {
+        ...prev[selectedJournalStage],
+        isCompleted: true,
+      },
+    }));
+    setIsEditMode(false);
+    Alert.alert("완료", `${selectedJournalStage} 단계의 양조일지가 저장되었습니다.`);
+  };
+
+  const handleMockImageAdd = () => {
+    if (currentJournalEntry.images.length >= 3) {
+      Alert.alert("알림", "사진은 최대 3장까지 첨부할 수 있습니다.");
+      return;
+    }
+
+    setJournalData((prev) => ({
+      ...prev,
+      [selectedJournalStage]: {
+        ...prev[selectedJournalStage],
+        images: [...prev[selectedJournalStage].images, `mock-image-${Date.now()}`],
+      },
+    }));
+  };
+
+  const handleImageRemove = (index: number) => {
+    setJournalData((prev) => ({
+      ...prev,
+      [selectedJournalStage]: {
+        ...prev[selectedJournalStage],
+        images: prev[selectedJournalStage].images.filter((_, imageIndex) => imageIndex !== index),
+      },
+    }));
+  };
+
+  const handleStatusChange = (projectId: number, status: ProjectStatus) => {
+    updateProjectStatus(projectId, status);
+    setSelectedStatusProject(null);
+    Alert.alert("완료", `프로젝트 상태가 '${status}'로 변경되었습니다.`);
+  };
 
   if (!user || user.type !== "brewery") {
     return (
@@ -230,9 +332,13 @@ export default function BreweryDashboardScreen() {
                       <View style={{ flex: 1 }}>
                          <View style={styles.rowBetween}>
                             <Text style={styles.fundingBrewery}>{funding.brewery}</Text>
-                            <View style={[styles.statusBadge, isCompletedFundingStatus(funding.status) ? styles.statusBadgeSuccess : styles.statusBadgeActive]}>
+                            <TouchableOpacity
+                              style={[styles.statusBadge, isCompletedFundingStatus(funding.status) ? styles.statusBadgeSuccess : styles.statusBadgeActive]}
+                              activeOpacity={0.85}
+                              onPress={() => setSelectedStatusProject(funding.id)}
+                            >
                                <Text style={styles.statusBadgeTxt}>{status}</Text>
-                            </View>
+                            </TouchableOpacity>
                          </View>
                          <Text style={styles.fundingTitle} numberOfLines={1}>{funding.title}</Text>
                          <View style={styles.rowBetweenBottom}>
@@ -287,7 +393,7 @@ export default function BreweryDashboardScreen() {
                   <View style={styles.stageBarBg}>
                      <View style={[styles.stageBarFill, { width: `${stage.progress}%` }]} />
                   </View>
-                  <TouchableOpacity style={styles.stageUpdateBtn} onPress={() => setSelectedProject(stage)}>
+                  <TouchableOpacity style={styles.stageUpdateBtn} onPress={() => handleOpenJournal(stage)}>
                      <FileCheck size={16} color="#FFF" />
                      <Text style={styles.stageUpdateTxt}>진행 상황 업데이트</Text>
                   </TouchableOpacity>
@@ -349,7 +455,7 @@ export default function BreweryDashboardScreen() {
         </View>
       </ScrollView>
 
-      {/* Modal - Stage Update */}
+      {/* Modal - Brewing Journal */}
       {selectedProject && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setSelectedProject(null)} />
@@ -357,45 +463,131 @@ export default function BreweryDashboardScreen() {
              <View style={styles.modalHandle} />
              <View style={styles.modalHeader}>
                 <View>
-                   <Text style={styles.modalTitle}>{selectedProject.project}</Text>
-                   <Text style={styles.modalSub}>현재: {selectedProject.stage}</Text>
+                   <Text style={styles.modalTitle}>양조일지</Text>
+                   <Text style={styles.modalSub}>{selectedProject.project} - {selectedProject.stage}</Text>
                 </View>
-                <TouchableOpacity onPress={() => setSelectedProject(null)}><X size={24} color="#6B7280" /></TouchableOpacity>
+                <TouchableOpacity onPress={() => { setSelectedProject(null); setIsEditMode(false); }}><X size={24} color="#6B7280" /></TouchableOpacity>
              </View>
 
-             <ScrollView style={styles.modalList}>
-                <Text style={styles.listLab}>제조 단계 선택</Text>
-                {stages.map((s, i) => {
-                  const isCurrent = s === selectedProject.stage;
-                  const curIdx = stages.indexOf(selectedProject.stage);
-                  const isPassed = i < curIdx;
-
+             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.journalStageTabs}>
+                {manufacturingStages.map((stage) => {
+                  const isSelected = stage === selectedJournalStage;
+                  const isCompleted = journalData[stage].isCompleted;
                   return (
-                    <TouchableOpacity 
-                      key={s} 
-                      style={[styles.stageItem, isCurrent && styles.stageItemActive]}
+                    <TouchableOpacity
+                      key={stage}
+                      style={[styles.journalStageTab, isSelected && styles.journalStageTabActive, isCompleted && !isSelected && styles.journalStageTabDone]}
+                      activeOpacity={0.85}
                       onPress={() => {
-                        Alert.alert('알림', `'${s}' 단계로 업데이트 하시겠습니까?`, [
-                          { text: '취소', style: 'cancel' },
-                          { text: '확인', onPress: () => {
-                              Alert.alert('완료', '단계가 성공적으로 업데이트되었습니다.');
-                              setSelectedProject(null);
-                          }}
-                        ]);
+                        setSelectedJournalStage(stage);
+                        setIsEditMode(false);
                       }}
                     >
-                       <View style={styles.rowAlign}>
-                          <View style={[styles.stageNum, isCurrent && styles.stageNumActive, isPassed && styles.stageNumPassed]}>
-                             <Text style={[styles.stageNumTxt, (isCurrent || isPassed) && {color: '#FFF'}]}>{i+1}</Text>
-                          </View>
-                          <Text style={[styles.stageItemName, isCurrent && styles.stageItemNameActive]}>{s}</Text>
-                       </View>
-                       {isCurrent && <View style={styles.curBadge}><Text style={styles.curBadgeTxt}>현재</Text></View>}
-                       {isPassed && <CheckCircle size={20} color="#059669" />}
+                      <Text style={[styles.journalStageTabText, isSelected && styles.journalStageTabTextActive]}>{stage}</Text>
+                      {isCompleted && !isSelected && <CheckCircle size={12} color="#6B7280" />}
                     </TouchableOpacity>
                   );
                 })}
              </ScrollView>
+
+             <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+                {currentJournalEntry.isCompleted && !isEditMode ? (
+                  <View style={styles.journalForm}>
+                    <Text style={styles.listLab}>기록 내용</Text>
+                    <View style={styles.journalReadBox}>
+                      <Text style={styles.journalReadText}>{currentJournalEntry.content}</Text>
+                    </View>
+                    {currentJournalEntry.images.length > 0 && (
+                      <>
+                        <Text style={styles.listLab}>첨부 사진</Text>
+                        <View style={styles.journalImageGrid}>
+                          {currentJournalEntry.images.map((image, index) => (
+                            <View key={`${image}-${index}`} style={styles.journalImageBox}>
+                              <Camera size={20} color="#9CA3AF" />
+                            </View>
+                          ))}
+                        </View>
+                      </>
+                    )}
+                    <TouchableOpacity style={styles.journalSubmitButton} onPress={() => setIsEditMode(true)}>
+                      <Send size={16} color="#FFF" />
+                      <Text style={styles.journalSubmitText}>양조일지 수정</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.journalForm}>
+                    <Text style={styles.listLab}>양조일지 내용</Text>
+                    <TextInput
+                      style={styles.journalInput}
+                      value={currentJournalEntry.content}
+                      onChangeText={handleJournalContentChange}
+                      placeholder="오늘의 양조 과정을 기록해주세요..."
+                      placeholderTextColor="#9CA3AF"
+                      multiline
+                      textAlignVertical="top"
+                    />
+                    <Text style={styles.listLab}>사진 첨부 (최대 3장)</Text>
+                    {currentJournalEntry.images.length < 3 && (
+                      <TouchableOpacity style={styles.journalImageAdd} onPress={handleMockImageAdd}>
+                        <Camera size={18} color="#6B7280" />
+                        <Text style={styles.journalImageAddText}>사진 추가 ({currentJournalEntry.images.length}/3)</Text>
+                      </TouchableOpacity>
+                    )}
+                    {currentJournalEntry.images.length > 0 && (
+                      <View style={styles.journalImageGrid}>
+                        {currentJournalEntry.images.map((image, index) => (
+                          <View key={`${image}-${index}`} style={styles.journalImageBox}>
+                            <Camera size={20} color="#9CA3AF" />
+                            <TouchableOpacity style={styles.journalImageRemove} onPress={() => handleImageRemove(index)}>
+                              <X size={12} color="#FFF" />
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                    <TouchableOpacity style={styles.journalSubmitButton} onPress={handleJournalSubmit}>
+                      <Send size={16} color="#FFF" />
+                      <Text style={styles.journalSubmitText}>{currentJournalEntry.isCompleted ? "양조일지 수정 완료" : "양조일지 작성 완료"}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+             </ScrollView>
+          </Animated.View>
+        </View>
+      )}
+
+      {/* Modal - Funding Status */}
+      {selectedStatusFunding && (
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setSelectedStatusProject(null)} />
+          <Animated.View entering={SlideInRight} style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>프로젝트 상태 변경</Text>
+                <Text style={styles.modalSub}>현재: {selectedStatusFunding.status}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSelectedStatusProject(null)}>
+                <X size={24} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+              <Text style={styles.listLab}>상태 선택</Text>
+              {statusOptions.map((status) => {
+                const isCurrent = status === selectedStatusFunding.status;
+                return (
+                  <TouchableOpacity
+                    key={status}
+                    style={[styles.statusOptionItem, isCurrent && styles.statusOptionItemActive]}
+                    activeOpacity={0.85}
+                    onPress={() => handleStatusChange(selectedStatusFunding.id, status)}
+                  >
+                    <Text style={[styles.statusOptionText, isCurrent && styles.statusOptionTextActive]}>{status}</Text>
+                    {isCurrent && <Text style={styles.currentStatusLabel}>현재</Text>}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </Animated.View>
         </View>
       )}
@@ -503,4 +695,114 @@ const styles = StyleSheet.create({
   stageItemNameActive: { color: '#111' },
   curBadge: { backgroundColor: '#E5E7EB', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999 },
   curBadgeTxt: { fontSize: 10, fontWeight: '700', color: '#111' },
+  journalStageTabs: { paddingHorizontal: 24, paddingVertical: 14, gap: 8 },
+  journalStageTab: {
+    minHeight: 38,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  journalStageTabActive: { backgroundColor: '#111827', borderColor: '#111827' },
+  journalStageTabDone: { backgroundColor: '#F3F4F6', borderColor: '#F3F4F6' },
+  journalStageTabText: { fontSize: 13, fontWeight: '700', color: '#4B5563' },
+  journalStageTabTextActive: { color: '#FFF' },
+  journalForm: { gap: 14, paddingBottom: 12 },
+  journalReadBox: {
+    minHeight: 128,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  journalReadText: { fontSize: 14, lineHeight: 21, color: '#374151' },
+  journalInput: {
+    minHeight: 132,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFF',
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#111827',
+  },
+  journalImageAdd: {
+    height: 46,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#D1D5DB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  journalImageAddText: { fontSize: 13, fontWeight: '700', color: '#4B5563' },
+  journalImageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  journalImageBox: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  journalImageRemove: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  journalSubmitButton: {
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#111827',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  journalSubmitText: { fontSize: 14, fontWeight: '800', color: '#FFF' },
+  statusOptionItem: {
+    minHeight: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  statusOptionItemActive: { backgroundColor: '#111827', borderColor: '#111827' },
+  statusOptionText: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  statusOptionTextActive: { color: '#FFF' },
+  currentStatusLabel: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '800',
+  },
 });

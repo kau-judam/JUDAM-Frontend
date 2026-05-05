@@ -37,7 +37,7 @@ const FLAVOR_TAG_POOL = [
   '구수함',
 ];
 
-const ALCOHOL_RANGES = ['1도 미만', '1%~2%', '3%~5%', '6%~8%', '9%~12%', '13%~15%', '15% 이상'];
+const ALCOHOL_RANGES = ['3%~5%', '6%~8%', '9%~12%', '13%~15%', '15% 이상'];
 const DUMMY_IMAGE = 'https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?w=800&h=600&fit=crop';
 const AI_SUB_INGREDIENTS = ['딸기', '바나나', '복숭아', '사과'];
 

@@ -49,6 +49,7 @@ import {
   type FundingSortOption,
   type FundingStatusFilter,
 } from '@/features/funding/recommendation';
+import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -291,7 +292,7 @@ export default function FundingListScreen() {
                       <View style={styles.tagRow}>
                         <Text style={styles.breweryName}>{project.brewery}</Text>
                         <View style={styles.categoryBadge}>
-                          <Text style={styles.categoryTxt}>{project.category}</Text>
+                          <Text style={styles.categoryTxt} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text>
                         </View>
                         <View style={[styles.statusBadge, isCompletedFundingStatus(project.status) ? styles.statusBadgeSuccess : styles.statusBadgeActive]}>
                           <Text style={[styles.statusTxt, isCompletedFundingStatus(project.status) && { color: '#2563EB' }]}>{getFundingStatusLabel(project.status)}</Text>
@@ -461,7 +462,7 @@ const styles = StyleSheet.create({
   infoBox: { flex: 1, justifyContent: 'space-between' },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   breweryName: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
-  categoryBadge: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  categoryBadge: { maxWidth: 104, backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   categoryTxt: { fontSize: 10, fontWeight: '800', color: '#4B5563' },
   statusBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   statusBadgeActive: { backgroundColor: '#ECFDF5' },

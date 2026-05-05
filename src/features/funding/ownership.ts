@@ -1,7 +1,7 @@
 import type { User } from '@/contexts/AuthContext';
 import type { FundingProject } from '@/constants/data';
 
-const DEMO_BREWERY_PROJECT_IDS = new Set([1]);
+const DEMO_BREWERY_PROJECT_IDS = new Set([1, 5]);
 
 export function isFundingProjectOwnedByBrewery(user: User | null | undefined, project: FundingProject | null | undefined) {
   if (!user || !project || user.type !== 'brewery') return false;

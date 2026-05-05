@@ -6,24 +6,21 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
-  Dimensions,
   Alert,
   StatusBar,
   TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
 import { 
-  Plus, 
   TrendingUp, 
   Users, 
   Bell, 
   AlertCircle, 
   Clock, 
   CheckCircle, 
+  ChevronLeft,
   ChevronRight, 
-  Heart, 
   MessageCircle, 
-  Wine, 
   Factory, 
   FileCheck, 
   Target, 
@@ -32,7 +29,6 @@ import {
   Send,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { SlideInRight } from 'react-native-reanimated';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -47,41 +43,6 @@ import {
   type ProjectStatus,
 } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-const productionStages = [
-  {
-    id: 1,
-    project: "벚꽃 막걸리",
-    stage: "발효",
-    progress: 60,
-    status: "진행중",
-    nextUpdate: "2일 후",
-    daysElapsed: 12,
-    totalDays: 20,
-  },
-  {
-    id: 2,
-    project: "한라봉 소주",
-    stage: "증류",
-    progress: 80,
-    status: "진행중",
-    nextUpdate: "내일",
-    daysElapsed: 16,
-    totalDays: 20,
-  },
-  {
-    id: 3,
-    project: "전통 누룩 막걸리",
-    stage: "숙성",
-    progress: 30,
-    status: "진행중",
-    nextUpdate: "5일 후",
-    daysElapsed: 6,
-    totalDays: 20,
-  },
-];
 
 const recentNotifications = [
   { id: 1, type: "recipe", message: "새로운 레시피 제안이 도착했습니다", time: "10분 전", unread: true },
@@ -119,7 +80,6 @@ export default function BreweryDashboardScreen() {
   const [fundingFilter, setFundingFilter] = useState<"active" | "completed">("active");
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [selectedStatusProject, setSelectedStatusProject] = useState<number | null>(null);
-  const [currentStageIndex, setCurrentStageIndex] = useState(0);
   const [selectedJournalStage, setSelectedJournalStage] = useState(manufacturingStages[0]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [journalData, setJournalData] = useState<Record<string, JournalEntryState>>({
@@ -132,23 +92,24 @@ export default function BreweryDashboardScreen() {
 
   const ownProjects = projects.filter((project) => isFundingProjectOwnedByBrewery(user, project));
   const fallbackProjects = ownProjects.length > 0 ? ownProjects : projects.filter((project) => project.brewery === "술샘양조장");
+  const completedShowcaseProject = projects.find(
+    (project) =>
+      isCompletedFundingStatus(project.status) &&
+      !fallbackProjects.some((fallbackProject) => fallbackProject.id === project.id),
+  );
+  const dashboardProjects = completedShowcaseProject
+    ? [...fallbackProjects, completedShowcaseProject]
+    : fallbackProjects;
   const filteredFundings = fundingFilter === "active"
-    ? fallbackProjects.filter((project) => isSupportableFundingStatus(project.status) || project.status === "심사 중" || project.status === "펀딩 예정")
-    : fallbackProjects.filter((project) => isCompletedFundingStatus(project.status));
-  const totalBackers = fallbackProjects.reduce((sum, project) => sum + project.backers, 0);
-  const averageProgress = fallbackProjects.length
-    ? Math.round(fallbackProjects.reduce((sum, project) => sum + Math.min((project.currentAmount / project.goalAmount) * 100, 100), 0) / fallbackProjects.length)
-    : 0;
+    ? dashboardProjects.filter((project) => isSupportableFundingStatus(project.status) || project.status === "심사 중" || project.status === "펀딩 예정")
+    : dashboardProjects.filter((project) => isCompletedFundingStatus(project.status));
+  const activeFundingCount = dashboardProjects.filter((project) => isSupportableFundingStatus(project.status)).length;
+  const totalFundingCount = dashboardProjects.length;
+  const totalBackers = dashboardProjects.reduce((sum, project) => sum + project.backers, 0);
   const selectedStatusFunding = selectedStatusProject
     ? projects.find((project) => project.id === selectedStatusProject)
     : null;
   const currentJournalEntry = journalData[selectedJournalStage];
-
-  const handleOpenJournal = (stage: (typeof productionStages)[number]) => {
-    setSelectedProject(stage);
-    setSelectedJournalStage(manufacturingStages[0]);
-    setIsEditMode(false);
-  };
 
   const handleJournalContentChange = (content: string) => {
     setJournalData((prev) => ({
@@ -240,7 +201,17 @@ export default function BreweryDashboardScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerInner}>
-          <Text style={styles.headerTitle}>양조장 대시보드</Text>
+          <View style={styles.headerTitleRow}>
+            <TouchableOpacity
+              onPress={() => router.replace('/(tabs)/mypage' as any)}
+              style={styles.backButton}
+              accessibilityRole="button"
+              accessibilityLabel="마이페이지로 돌아가기"
+            >
+              <ChevronLeft size={24} color="#111" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>양조장 대시보드</Text>
+          </View>
           <TouchableOpacity onPress={() => router.push('/notifications' as any)} style={styles.headerIcon}>
             <Bell size={22} color="#000" />
             <View style={styles.notifBadge} />
@@ -293,10 +264,6 @@ export default function BreweryDashboardScreen() {
               >
                 <Text style={[styles.filterBtnTxt, fundingFilter === 'completed' && styles.filterBtnTxtActive]}>종료됨</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.addBtn} onPress={() => router.push('/brewery/project/terms' as any)}>
-                 <Plus size={16} color="#FFF" />
-                 <Text style={styles.addBtnTxt}>새펀딩</Text>
-              </TouchableOpacity>
             </View>
           </View>
 
@@ -304,18 +271,18 @@ export default function BreweryDashboardScreen() {
           <View style={styles.statsGrid}>
             <View style={styles.statsCard}>
                <View style={styles.statsIconCircle}><TrendingUp size={16} color="#FFF" /></View>
-               <Text style={styles.statsVal}>{fallbackProjects.filter((project) => isSupportableFundingStatus(project.status)).length}</Text>
+               <Text style={styles.statsVal}>{activeFundingCount}</Text>
                <Text style={styles.statsLab}>진행 중</Text>
             </View>
-            <View style={[styles.statsCard, {backgroundColor: '#F3F4F6'}]}>
-               <View style={[styles.statsIconCircle, {backgroundColor: '#4B5563'}]}><Users size={16} color="#FFF" /></View>
+            <View style={styles.statsCard}>
+               <View style={styles.statsIconCircle}><Target size={16} color="#FFF" /></View>
+               <Text style={styles.statsVal}>{totalFundingCount}</Text>
+               <Text style={styles.statsLab}>전체 펀딩 수</Text>
+            </View>
+            <View style={styles.statsCard}>
+               <View style={styles.statsIconCircle}><Users size={16} color="#FFF" /></View>
                <Text style={styles.statsVal}>{totalBackers.toLocaleString()}</Text>
                <Text style={styles.statsLab}>총 참여자</Text>
-            </View>
-            <View style={[styles.statsCard, {backgroundColor: '#F3F4F6'}]}>
-               <View style={[styles.statsIconCircle, {backgroundColor: '#1F2937'}]}><Target size={16} color="#FFF" /></View>
-               <Text style={styles.statsVal}>{averageProgress}%</Text>
-               <Text style={styles.statsLab}>평균 달성률</Text>
             </View>
           </View>
 
@@ -360,55 +327,6 @@ export default function BreweryDashboardScreen() {
           </View>
         </View>
 
-        {/* Section 2: 내 제조 진행 현황 관리 */}
-        <View style={styles.sectionGray}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>제조 진행 현황</Text>
-            <Text style={styles.sectionSubtitle}>실시간으로 제조 과정을 관리하세요</Text>
-          </View>
-
-          <ScrollView 
-            horizontal 
-            pagingEnabled 
-            showsHorizontalScrollIndicator={false}
-            onScroll={(e) => {
-              const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-              setCurrentStageIndex(index);
-            }}
-            scrollEventThrottle={16}
-          >
-            {productionStages.map((stage) => (
-              <View key={stage.id} style={styles.stageCardContainer}>
-                <LinearGradient colors={['#2B1810', '#3D2416']} style={styles.stageCard}>
-                  <Text style={styles.stageProj}>{stage.project}</Text>
-                  <Text style={styles.stageDays}>{stage.daysElapsed}일 / {stage.totalDays}일</Text>
-                  <View style={styles.stageRow}>
-                     <Wine size={20} color="#FFF" />
-                     <Text style={styles.stageName}>{stage.stage}</Text>
-                  </View>
-                  <View style={styles.stageProgressRow}>
-                     <Text style={styles.stageLab}>진행률</Text>
-                     <Text style={styles.stageVal}>{stage.progress}%</Text>
-                  </View>
-                  <View style={styles.stageBarBg}>
-                     <View style={[styles.stageBarFill, { width: `${stage.progress}%` }]} />
-                  </View>
-                  <TouchableOpacity style={styles.stageUpdateBtn} onPress={() => handleOpenJournal(stage)}>
-                     <FileCheck size={16} color="#FFF" />
-                     <Text style={styles.stageUpdateTxt}>진행 상황 업데이트</Text>
-                  </TouchableOpacity>
-                </LinearGradient>
-              </View>
-            ))}
-          </ScrollView>
-
-          <View style={styles.pagination}>
-             {productionStages.map((_, i) => (
-               <View key={i} style={[styles.dot, currentStageIndex === i && styles.dotActive]} />
-             ))}
-          </View>
-        </View>
-
         {/* Section 3: 알림 및 정보 */}
         <View style={styles.sectionGray}>
            <View style={styles.rowBetween}>
@@ -417,7 +335,10 @@ export default function BreweryDashboardScreen() {
                  <Text style={styles.sectionSubtitle}>최근 활동과 중요한 알림</Text>
               </View>
               <TouchableOpacity onPress={() => router.push('/notifications' as any)}>
-                 <Text style={styles.moreTxt}>전체보기 <ChevronRight size={14} color="#8B5A3C" /></Text>
+                 <View style={styles.moreLink}>
+                   <Text style={styles.moreTxt}>전체보기</Text>
+                   <ChevronRight size={14} color="#111" />
+                 </View>
               </TouchableOpacity>
            </View>
 
@@ -434,23 +355,6 @@ export default function BreweryDashboardScreen() {
                    {n.unread && <View style={styles.notifDot} />}
                 </View>
               ))}
-           </View>
-
-           <View style={styles.row}>
-              <View style={styles.quickStat}>
-                 <View style={[styles.qsIcon, {backgroundColor: '#F3E8FF'}]}><MessageCircle size={20} color="#9333EA" /></View>
-                 <View>
-                    <Text style={styles.qsVal}>24</Text>
-                    <Text style={styles.qsLab}>새 댓글</Text>
-                 </View>
-              </View>
-              <View style={[styles.quickStat, {marginLeft: 12}]}>
-                 <View style={[styles.qsIcon, {backgroundColor: '#FCE7F3'}]}><Heart size={20} color="#DB2777" /></View>
-                 <View>
-                    <Text style={styles.qsVal}>156</Text>
-                    <Text style={styles.qsLab}>새 좋아요</Text>
-                 </View>
-              </View>
            </View>
         </View>
       </ScrollView>
@@ -603,6 +507,8 @@ const styles = StyleSheet.create({
   errorDesc: { fontSize: 15, color: '#6B7280', textAlign: 'center', marginBottom: 20 },
   header: { backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   headerInner: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  backButton: { width: 36, height: 36, justifyContent: 'center', alignItems: 'center', marginLeft: -8 },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#000' },
   headerIcon: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   notifBadge: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, backgroundColor: '#EF4444', borderRadius: 4, borderWidth: 1.5, borderColor: '#FFF' },
@@ -622,8 +528,6 @@ const styles = StyleSheet.create({
   filterBtnActive: { backgroundColor: '#111' },
   filterBtnTxt: { fontSize: 11, fontWeight: '700', color: '#6B7280' },
   filterBtnTxtActive: { color: '#FFF' },
-  addBtn: { width: 52, height: 40, backgroundColor: '#111', borderRadius: 8, justifyContent: 'center', alignItems: 'center', gap: 2 },
-  addBtnTxt: { fontSize: 9, fontWeight: '800', color: '#FFF' },
   statsGrid: { flexDirection: 'row', gap: 10, marginBottom: 24 },
   statsCard: { flex: 1, backgroundColor: '#111', borderRadius: 16, padding: 12 },
   statsIconCircle: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
@@ -648,23 +552,8 @@ const styles = StyleSheet.create({
   progressBar: { height: 4 },
   stageUpdateBtnMini: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#111' },
   stageUpdateBtnMiniText: { fontSize: 11, fontWeight: '800', color: '#FFF' },
-  stageCardContainer: { width: SCREEN_WIDTH, paddingHorizontal: 20 },
-  stageCard: { flex: 1, borderRadius: 24, padding: 20 },
-  stageProj: { fontSize: 16, fontWeight: '700', color: '#FFF', marginBottom: 4 },
-  stageDays: { fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 16 },
-  stageRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
-  stageName: { fontSize: 15, fontWeight: '600', color: '#FFF' },
-  stageProgressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  stageLab: { fontSize: 12, color: 'rgba(255,255,255,0.7)' },
-  stageVal: { fontSize: 18, fontWeight: '800', color: '#FFF' },
-  stageBarBg: { height: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 5, overflow: 'hidden', marginBottom: 20 },
-  stageBarFill: { height: '100%', backgroundColor: '#FFF', borderRadius: 5 },
-  stageUpdateBtn: { height: 48, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
-  stageUpdateTxt: { color: '#FFF', fontSize: 14, fontWeight: '600' },
-  pagination: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 16 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#D1D5DB' },
-  dotActive: { width: 18, backgroundColor: '#111' },
-  moreTxt: { fontSize: 13, color: '#8B5A3C', fontWeight: '600' },
+  moreLink: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  moreTxt: { fontSize: 13, color: '#111', fontWeight: '600' },
   notifBox: { backgroundColor: '#FFF', borderRadius: 20, overflow: 'hidden', marginVertical: 16 },
   notifItem: { flexDirection: 'row', padding: 16, gap: 12, alignItems: 'center' },
   notifBorder: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },

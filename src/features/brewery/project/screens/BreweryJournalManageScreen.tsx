@@ -106,7 +106,7 @@ export default function BreweryJournalManageScreen() {
     updateProjectJournals(project.id, nextJournals);
     resetForm();
     setSelectedStage(null);
-    router.replace(`/funding/${project.id}?tab=journal` as any);
+    setMessage(editingEntry ? '양조일지가 수정되었습니다.' : '양조일지가 저장되었습니다.');
   };
 
   const deleteJournal = (entryId: number) => {

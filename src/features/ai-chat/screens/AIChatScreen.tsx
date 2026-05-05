@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import {
   ChevronLeft, 
   Wine, 
   UtensilsCrossed, 
-  Factory, 
   Sparkles, 
   Plus, 
   MessageCircle 
@@ -21,8 +20,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeOut } from 'react-native-reanimated';
 
 import { useAuth } from '@/contexts/AuthContext';
+import SafeStorage from '@/utils/storage';
 
-type ChatCategory = "recommend" | "pairing" | "brewery" | "general";
+type ChatCategory = "recommend" | "pairing" | "general";
 
 interface ChatRoom {
   id: string;
@@ -36,15 +36,32 @@ interface ChatRoom {
 const categories = [
   { id: "recommend" as ChatCategory, title: "술 추천", icon: Wine },
   { id: "pairing" as ChatCategory, title: "안주 추천", icon: UtensilsCrossed },
-  { id: "brewery" as ChatCategory, title: "양조장 요청", icon: Factory },
   { id: "general" as ChatCategory, title: "통합 AI", icon: Sparkles },
 ];
+
+const CHAT_ROOMS_STORAGE_KEY = 'judam.aiChat.rooms';
+
+const getCategoryTitle = (category: ChatCategory) => {
+  return categories.find((item) => item.id === category)?.title || 'AI';
+};
+
+const makeNewRoom = (category: ChatCategory): ChatRoom => {
+  const now = new Date();
+  return {
+    id: `${category}-${now.getTime()}`,
+    category,
+    title: `${getCategoryTitle(category)} 새 대화`,
+    lastMessage: '새 대화를 시작했어요.',
+    timestamp: now.toISOString(),
+    messages: [],
+  };
+};
 
 export default function AIChatScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<ChatCategory>("recommend");
-  const [chatRooms] = useState<ChatRoom[]>([
+  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([
     {
       id: "sample-1",
       category: "recommend",
@@ -63,6 +80,44 @@ export default function AIChatScreen() {
     }
   ]);
   const [isFloatingMenuOpen, setIsFloatingMenuOpen] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadRooms = async () => {
+      const savedRooms = await SafeStorage.getItem(CHAT_ROOMS_STORAGE_KEY);
+      if (!savedRooms || !mounted) return;
+
+      try {
+        const parsedRooms = JSON.parse(savedRooms) as ChatRoom[];
+        const availableRooms = parsedRooms.filter((room) =>
+          categories.some((category) => category.id === room.category),
+        );
+        setChatRooms(availableRooms);
+      } catch {
+        await SafeStorage.removeItem(CHAT_ROOMS_STORAGE_KEY);
+      }
+    };
+
+    loadRooms();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const persistRooms = async (rooms: ChatRoom[]) => {
+    await SafeStorage.setItem(CHAT_ROOMS_STORAGE_KEY, JSON.stringify(rooms));
+  };
+
+  const createRoom = (category: ChatCategory) => {
+    const nextRoom = makeNewRoom(category);
+    const nextRooms = [nextRoom, ...chatRooms];
+    setChatRooms(nextRooms);
+    persistRooms(nextRooms);
+    setSelectedCategory(category);
+    setIsFloatingMenuOpen(false);
+    router.push(`/ai-chat/${nextRoom.category}/${nextRoom.id}` as any);
+  };
 
   const filteredChatRooms = chatRooms
     .filter((room) => room.category === selectedCategory)
@@ -147,7 +202,7 @@ export default function AIChatScreen() {
             <MessageCircle size={64} color="#E5E7EB" />
             <Text style={styles.emptyTitle}>아직 대화가 없습니다.</Text>
             <Text style={styles.emptySub}>새로운 질문을 시작해보세요.</Text>
-            <TouchableOpacity style={styles.newChatBtn} onPress={() => setIsFloatingMenuOpen(true)}>
+            <TouchableOpacity style={styles.newChatBtn} onPress={() => createRoom(selectedCategory)}>
                <Text style={styles.newChatBtnTxt}>새 대화 시작하기</Text>
             </TouchableOpacity>
           </View>
@@ -182,10 +237,7 @@ export default function AIChatScreen() {
                 <TouchableOpacity 
                   key={c.id} 
                   style={styles.menuItem} 
-                  onPress={() => {
-                    setSelectedCategory(c.id);
-                    setIsFloatingMenuOpen(false);
-                  }}
+                  onPress={() => createRoom(c.id)}
                 >
                    <c.icon size={18} color="#8B5A3C" />
                    <Text style={styles.menuTxt}>{c.title}</Text>

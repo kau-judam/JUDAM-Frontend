@@ -726,7 +726,7 @@ export default function FundingSupportScreen() {
         totalAmount={totalAmount}
         onProjectPress={() => {
           setShowSuccessModal(false);
-          router.replace(`/funding/${project.id}` as any);
+          router.replace(`/funding/${project.id}?fromSupport=1` as any);
         }}
         onListPress={() => {
           setShowSuccessModal(false);
@@ -973,9 +973,6 @@ function AddressModal({
               )}
             </>
           )}
-          <View style={styles.addressGuideBox}>
-            <Text style={styles.addressGuideText}>실제 서비스에서는 주소 검색 API를 연결할 수 있지만, 현재는 프론트 mock 주소 목록만 사용합니다.</Text>
-          </View>
         </ScrollView>
       </View>
     </Modal>
@@ -1089,7 +1086,7 @@ function InfoModal({ type, onClose }: { type: InfoModalType; onClose: () => void
   const title = type === 'privacy' ? '개인정보 처리방침' : '이용약관';
   const body =
     type === 'privacy'
-      ? '후원 진행을 위해 이름, 연락처, 이메일, 배송지 주소를 수집하며, 결제와 배송 안내 목적으로만 사용합니다. 실제 서버 연동 전까지는 화면 내 mock 데이터로만 처리됩니다.'
+      ? '후원 진행을 위해 이름, 연락처, 이메일, 배송지 주소를 수집하며, 결제와 배송 안내 목적으로만 사용합니다.'
       : '주담은 전통주 크라우드 펀딩 플랫폼입니다. 후원은 프로젝트 제작을 지원하는 행위이며, 프로젝트 진행 상황에 따라 일정과 세부 내용이 변경될 수 있습니다.';
 
   return (
@@ -1257,8 +1254,6 @@ const styles = StyleSheet.create({
   noResult: { alignItems: 'center', paddingVertical: 44 },
   noResultTitle: { fontSize: 15, color: '#6B7280', fontWeight: '900', marginBottom: 6 },
   noResultText: { fontSize: 12, color: '#9CA3AF', fontWeight: '700' },
-  addressGuideBox: { backgroundColor: '#EFF6FF', borderRadius: 14, borderWidth: 1, borderColor: '#DBEAFE', padding: 14, marginTop: 8 },
-  addressGuideText: { fontSize: 12, color: '#1D4ED8', lineHeight: 18, fontWeight: '700' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   successCard: { width: '100%', maxWidth: 360, backgroundColor: '#FFF', borderRadius: 24, padding: 24, alignItems: 'center' },
   successIcon: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },

@@ -1,6 +1,7 @@
 export interface FundingReview {
   id: number;
   projectId: number;
+  userId?: string;
   userName: string;
   rating: number;
   date: string;
@@ -13,6 +14,15 @@ export interface FundingReview {
   tags: string[];
   likes: number;
   timestamp: string;
+}
+
+export function isFundingReviewOwnedByUser(
+  review: FundingReview,
+  user: { id?: string; name?: string } | null | undefined
+) {
+  if (!user) return false;
+  if (review.userId) return review.userId === user.id;
+  return Boolean(user.name) && review.userName === user.name;
 }
 
 export interface FundingReviewComment {

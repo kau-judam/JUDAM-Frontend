@@ -78,7 +78,7 @@ export const fundingReviews: FundingReview[] = [
   {
     id: 3,
     projectId: 6,
-    userName: "술BTI_약주",
+    userName: "술BTI_막걸리",
     rating: 4,
     date: "2026. 03. 22",
     rewardName: "시음 리워드 1병",

@@ -1,13 +1,21 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, MapPin } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { getFundingProjectImageSource } from '@/constants/data';
+import { useFunding } from '@/contexts/FundingContext';
+
 export default function BreweryProfileScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams();
+  const { projects } = useFunding();
   const breweryId = Array.isArray(id) ? id[0] : id;
+  const projectId = Number(breweryId);
+  const project = useMemo(() => projects.find((item) => item.id === projectId) || null, [projectId, projects]);
+  const fallbackHeroSource = { uri: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=900' };
+  const heroSource = project?.breweryProfileImage ? { uri: project.breweryProfileImage } : project ? getFundingProjectImageSource(project) || fallbackHeroSource : fallbackHeroSource;
 
   return (
     <View style={styles.container}>
@@ -20,13 +28,13 @@ export default function BreweryProfileScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Image source={{ uri: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=900' }} style={styles.hero} />
-        <Text style={styles.name}>술샘양조장</Text>
+        <Image source={heroSource} style={styles.hero} />
+        <Text style={styles.name}>{project?.brewery || '술샘양조장'}</Text>
         <View style={styles.locRow}>
           <MapPin size={16} color="#6B7280" />
-          <Text style={styles.locTxt}>경기 양평</Text>
+          <Text style={styles.locTxt}>{project?.location || '경기 양평'}</Text>
         </View>
-        <Text style={styles.body}>전통 누룩과 지역 농산물을 기반으로 현대적인 전통주를 만드는 양조장입니다.</Text>
+        <Text style={styles.body}>{project?.breweryBio || '전통 누룩과 지역 농산물을 기반으로 현대적인 전통주를 만드는 양조장입니다.'}</Text>
         <Text style={styles.meta}>프로젝트 ID {breweryId || '정보 없음'}</Text>
       </ScrollView>
     </View>

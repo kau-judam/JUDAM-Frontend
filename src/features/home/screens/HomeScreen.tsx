@@ -210,7 +210,7 @@ export default function HomeScreen() {
             </View>
             <TouchableOpacity onPress={() => pushTabToTop('/recipe')}>
               <View style={styles.moreBtn}>
-                <Text style={styles.moreBtnTxt}>더보기</Text>
+                <Text style={styles.moreBtnTxt}>전체보기</Text>
                 <ChevronRight size={16} color={colors.primary} />
               </View>
             </TouchableOpacity>

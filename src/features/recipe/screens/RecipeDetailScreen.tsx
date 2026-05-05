@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  ImageSourcePropType,
   TouchableOpacity,
   TextInput,
   KeyboardAvoidingView,
@@ -14,7 +15,6 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { 
   ChevronLeft, 
   Heart, 
-  User, 
   Sparkles, 
   Rocket, 
   ChevronDown, 
@@ -29,6 +29,16 @@ import { getImageSource, recipesData } from '@/constants/data';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const INITIAL_COMMENT_COUNT = 3;
+const personImages = [
+  require('../../../../newpicutre/person1.png'),
+  require('../../../../newpicutre/person2.png'),
+  require('../../../../newpicutre/person3.png'),
+  require('../../../../newpicutre/person4.png'),
+  require('../../../../newpicutre/person5.png'),
+  require('../../../../newpicutre/person6.png'),
+];
+const getAvatarSource = (avatar: ImageSourcePropType | string) =>
+  typeof avatar === 'string' ? { uri: avatar } : avatar;
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -47,6 +57,7 @@ export default function RecipeDetailScreen() {
     id: selectedRecipe.id,
     title: selectedRecipe.title,
     author: selectedRecipe.author,
+    authorAvatar: personImages[(selectedRecipe.id - 1) % personImages.length],
     alcoholRange: "6%~8%",
     description: selectedRecipe.description,
     mainIngredients: selectedRecipe.ingredients?.slice(0, 3) || ["국내산 찹쌀", "전통 누룩", "천연 효모"],
@@ -58,12 +69,12 @@ export default function RecipeDetailScreen() {
   });
 
   const [comments, setComments] = useState([
-    { id: 1, author: "막걸리마스터", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100", content: "이 레시피 너무 좋아요! 저도 한번 도전해볼게요 🍶", timestamp: "1시간 전", likes: 5, liked: false, authorType: "user" },
-    { id: 2, author: "술샘양조장", avatar: "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100", content: "좋은 레시피네요. 전통 누룩 선택이 특히 마음에 듭니다. 저희 양조장에서도 검토해보겠습니다!", timestamp: "30분 전", likes: 12, liked: true, authorType: "brewery" },
-    { id: 3, author: "전통주초보", avatar: "https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100", content: "처음 도전해보려는데, 누룩은 어디서 구하면 좋을까요?", timestamp: "20분 전", likes: 2, liked: false, authorType: "user" },
-    { id: 4, author: "발효연구가", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100", content: "탄산감을 높이려면 발효 온도를 조금 낮게 유지해보세요. 18도 정도가 적당합니다!", timestamp: "15분 전", likes: 7, liked: false, authorType: "user" },
-    { id: 5, author: "청주러버", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100", content: "황설탕 대신 꿀을 써보셨나요? 향이 더 좋아진다는 이야기를 들었는데요.", timestamp: "10분 전", likes: 3, liked: false, authorType: "user" },
-    { id: 6, author: "한산양조장", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100", content: "훌륭한 레시피입니다. 감귤을 추가하면 더욱 상큼한 맛이 날 것 같네요! 저희도 비슷한 시도를 해본 적 있어요.", timestamp: "5분 전", likes: 9, liked: false, authorType: "brewery" },
+    { id: 1, author: "막걸리마스터", avatar: personImages[0], content: "이 레시피 너무 좋아요! 저도 한번 도전해볼게요 🍶", timestamp: "1시간 전", likes: 5, liked: false, authorType: "user" },
+    { id: 2, author: "술샘양조장", avatar: personImages[1], content: "좋은 레시피네요. 전통 누룩 선택이 특히 마음에 듭니다. 저희 양조장에서도 검토해보겠습니다!", timestamp: "30분 전", likes: 12, liked: true, authorType: "brewery" },
+    { id: 3, author: "전통주초보", avatar: personImages[2], content: "처음 도전해보려는데, 누룩은 어디서 구하면 좋을까요?", timestamp: "20분 전", likes: 2, liked: false, authorType: "user" },
+    { id: 4, author: "발효연구가", avatar: personImages[3], content: "탄산감을 높이려면 발효 온도를 조금 낮게 유지해보세요. 18도 정도가 적당합니다!", timestamp: "15분 전", likes: 7, liked: false, authorType: "user" },
+    { id: 5, author: "청주러버", avatar: personImages[4], content: "황설탕 대신 꿀을 써보셨나요? 향이 더 좋아진다는 이야기를 들었는데요.", timestamp: "10분 전", likes: 3, liked: false, authorType: "user" },
+    { id: 6, author: "한산양조장", avatar: personImages[5], content: "훌륭한 레시피입니다. 감귤을 추가하면 더욱 상큼한 맛이 날 것 같네요! 저희도 비슷한 시도를 해본 적 있어요.", timestamp: "5분 전", likes: 9, liked: false, authorType: "brewery" },
   ]);
 
   const handleLike = () => {
@@ -92,7 +103,7 @@ export default function RecipeDetailScreen() {
     const newComment = {
       id: comments.length + 1,
       author: user?.name || "익명",
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100",
+      avatar: personImages[comments.length % personImages.length],
       content: commentInput,
       timestamp: "방금 전",
       likes: 0,
@@ -134,7 +145,7 @@ export default function RecipeDetailScreen() {
            {/* Author & Like */}
            <View style={styles.authorRow}>
               <View style={styles.authorInfo}>
-                 <View style={styles.avatar}><User size={20} color="#9CA3AF" /></View>
+                 <Image source={getAvatarSource(recipe.authorAvatar)} style={styles.avatar} />
                  <View>
                     <Text style={styles.authorName}>{recipe.author}</Text>
                     <Text style={styles.timeTxt}>{recipe.timestamp}</Text>
@@ -200,7 +211,7 @@ export default function RecipeDetailScreen() {
            <Text style={styles.commentHeader}>댓글 {comments.length}</Text>
            {visibleComments.map((c, idx) => (
              <Animated.View key={c.id} entering={FadeInUp.delay(idx * 50)} style={styles.commentItem}>
-                <Image source={{ uri: c.avatar }} style={styles.commentAvatar} />
+                <Image source={getAvatarSource(c.avatar)} style={styles.commentAvatar} />
                 <View style={{ flex: 1 }}>
                    <View style={styles.commentBubble}>
                       <View style={styles.commentUserRow}>

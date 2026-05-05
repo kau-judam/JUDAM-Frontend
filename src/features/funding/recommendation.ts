@@ -52,3 +52,60 @@ export function getRecommendationStatusPriority(status: ProjectStatus) {
   if (isCompletedFundingStatus(status)) return 2;
   return 3;
 }
+
+export function matchesFundingStatusFilter(project: FundingProject, filter: FundingStatusFilter) {
+  if (filter === "진행중인 프로젝트") return isSupportableFundingStatus(project.status);
+  if (filter === "성사된 프로젝트") return isCompletedFundingStatus(project.status);
+  return true;
+}
+
+export function getProjectFavoriteCount(project: FundingProject, favoriteFundings: number[] = []) {
+  return (project.favoriteCount || 0) + (favoriteFundings.includes(project.id) ? 1 : 0);
+}
+
+export function getProjectCreatedTime(project: FundingProject) {
+  const date = project.createdAt || project.updatedAt;
+  const time = date ? new Date(date).getTime() : NaN;
+  return Number.isFinite(time) ? time : project.id;
+}
+
+export function sortFundingProjectsForDisplay(
+  projects: FundingProject[],
+  sort: FundingSortOption,
+  userTasteProfile: TasteProfile | null,
+  favoriteFundings: number[] = []
+) {
+  if (sort === "추천순" && userTasteProfile) {
+    return [...projects].sort((a, b) => {
+      const statusDiff = getRecommendationStatusPriority(a.status) - getRecommendationStatusPriority(b.status);
+      if (statusDiff !== 0) return statusDiff;
+      const matchDiff = getTasteMatchScore(b, userTasteProfile) - getTasteMatchScore(a, userTasteProfile);
+      if (matchDiff !== 0) return matchDiff;
+      return getProjectFavoriteCount(b, favoriteFundings) - getProjectFavoriteCount(a, favoriteFundings);
+    });
+  }
+  if (sort === "마감임박") {
+    return [...projects].sort((a, b) => {
+      const statusDiff = getRecommendationStatusPriority(a.status) - getRecommendationStatusPriority(b.status);
+      if (statusDiff !== 0) return statusDiff;
+      return a.daysLeft - b.daysLeft;
+    });
+  }
+  if (sort === "최신순") {
+    return [...projects].sort((a, b) => getProjectCreatedTime(b) - getProjectCreatedTime(a));
+  }
+  return [...projects].sort((a, b) => {
+    const favoriteDiff = getProjectFavoriteCount(b, favoriteFundings) - getProjectFavoriteCount(a, favoriteFundings);
+    if (favoriteDiff !== 0) return favoriteDiff;
+    return b.backers - a.backers;
+  });
+}
+
+export function getFundingListStats(projects: FundingProject[]) {
+  return {
+    supportableCount: projects.filter((project) => isSupportableFundingStatus(project.status)).length,
+    totalBackers: projects.reduce((sum, project) => sum + project.backers, 0),
+    completedCount: projects.filter((project) => isCompletedFundingStatus(project.status)).length,
+    totalRaised: projects.reduce((sum, project) => sum + project.currentAmount, 0),
+  };
+}

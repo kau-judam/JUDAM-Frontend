@@ -254,7 +254,7 @@ function createProjectEditDraft(project: FundingProject, user: AuthUser | null) 
 
   return {
     basicInfo: {
-      category: project.category || project.productType || '',
+      category: project.category || project.productType || '막걸리',
       title: project.title || '',
       shortTitle: project.title || '',
       mainIngredient: project.mainIngredients || '',
@@ -1036,13 +1036,20 @@ export default function BreweryProjectCreateScreen() {
     const image = basicInfo.images[0] || editProject?.image || aiImages[0];
     const quantity = Number(fundingInfo.bottleQuantity) || editProject?.targetQuantity || editProject?.totalQuantity || 0;
     const goalAmount = Number(fundingInfo.goalAmount) || editProject?.goalAmount || 0;
+    const projectCategory =
+      mode === 'edit' ? editProject?.category || editProject?.productType || basicInfo.category : basicInfo.category;
+    const projectProductType =
+      mode === 'edit' ? editProject?.productType || projectCategory || productInfo.productType : productInfo.productType;
 
     return {
       title: basicInfo.title,
       brewery: creatorInfo.name || user?.breweryName || editProject?.brewery || '양조장',
       breweryLogo: editProject?.breweryLogo || '🍶',
       location: taxInfo.address || editProject?.location || user?.breweryLocation || '지역 미정',
-      category: basicInfo.category,
+      category: projectCategory,
+      creatorId: editProject?.creatorId || user?.id,
+      breweryId: editProject?.breweryId || user?.uid,
+      favoriteCount: editProject?.favoriteCount || 0,
       shortDescription: basicInfo.summary,
       image,
       images: basicInfo.images,
@@ -1076,7 +1083,7 @@ export default function BreweryProjectCreateScreen() {
       team: editProject?.team,
       breweryBio: creatorInfo.bio,
       breweryProfileImage: creatorInfo.profileImage,
-      productType: productInfo.productType,
+      productType: projectProductType,
       ingredients: productInfo.ingredients,
       journals: mode === 'edit' ? editProject?.journals || [] : [],
       createdAt: mode === 'edit' ? editProject?.createdAt : undefined,
@@ -1112,7 +1119,7 @@ export default function BreweryProjectCreateScreen() {
   const handleSubmitSuccessClose = () => {
     setShowSubmitSuccess(false);
     if (createdProjectId) {
-      router.replace(`/funding/${createdProjectId}` as any);
+      router.replace(`/funding/${createdProjectId}?fromProjectForm=1` as any);
       return;
     }
     router.replace('/funding' as any);
@@ -1185,8 +1192,13 @@ export default function BreweryProjectCreateScreen() {
             label="프로젝트 카테고리"
             required
             value={basicInfo.category}
-            onChangeText={(value) => setBasicInfo((prev) => ({ ...prev, category: value }))}
+            onChangeText={(value) => {
+              if (isEditMode) return;
+              setBasicInfo((prev) => ({ ...prev, category: value }));
+            }}
             placeholder="예: 과일 복숭아"
+            editable={!isEditMode}
+            helper={isEditMode ? '기존 펀딩 게시글의 카테고리는 수정 화면에서 변경하지 않습니다.' : undefined}
           />
           <Field
             label="프로젝트 제목"

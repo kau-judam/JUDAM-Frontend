@@ -48,10 +48,13 @@ import {
   getFundingStatusLabel,
   isCompletedFundingStatus,
   isSupportableFundingStatus,
-  sortFundingProjectsByPopularity,
 } from '@/constants/data';
 import type { BrewingStage, JournalComment, JournalReply } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
+import {
+  getTasteProfileFromSulbti,
+  sortFundingProjectsForDisplay,
+} from '@/features/funding/recommendation';
 import {
   getProjectAlcoholContent,
   getProjectBottleSize,
@@ -99,16 +102,22 @@ function getTabParam(tab: "소개" | "양조일지" | "Q&A" | "후기") {
 }
 
 export default function FundingDetailScreen() {
-  const { id, tab, fromReview } = useLocalSearchParams<{ id?: string; tab?: string; fromReview?: string }>();
+  const { id, tab, fromReview, fromProjectForm } = useLocalSearchParams<{
+    id?: string;
+    tab?: string;
+    fromReview?: string;
+    fromProjectForm?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
-  const { projects, updateProjectJournals, fundingReviews } = useFunding();
+  const { favoriteFundings, isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
+  const { projects, participatedFundings, updateProjectJournals, fundingReviews } = useFunding();
   const rawProjectId = Array.isArray(id) ? id[0] : id;
   const projectId = Number(rawProjectId);
   const initialTab = getInitialTab(tab);
   const project = useMemo(() => projects.find((p) => p.id === projectId) || null, [projectId, projects]);
   const cameFromReviewDetail = Array.isArray(fromReview) ? fromReview[0] === "1" : fromReview === "1";
+  const cameFromProjectForm = Array.isArray(fromProjectForm) ? fromProjectForm[0] === "1" : fromProjectForm === "1";
   
   const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">(initialTab);
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
@@ -173,6 +182,7 @@ export default function FundingDetailScreen() {
   const progressPercentage = Math.min((project.currentAmount / project.goalAmount) * 100, 100);
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified;
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
+  const userTasteProfile = getTasteProfileFromSulbti(user?.sulbti);
   const unitPrice = getProjectUnitPrice(project);
   const shippingFee = getProjectShippingFee(project);
   const bottleSize = getProjectBottleSize(project);
@@ -219,7 +229,7 @@ export default function FundingDetailScreen() {
         : "펀딩 종료"
       : "프로젝트 후원하기";
 
-  const recommendedProjects = sortFundingProjectsByPopularity(projects.filter(p => p.id !== project.id)).slice(0, 4);
+  const recommendedProjects = sortFundingProjectsForDisplay(projects.filter(p => p.id !== project.id), "추천순", userTasteProfile, favoriteFundings).slice(0, 4);
   const journals = project.journals || [];
   const projectReviews = fundingReviews.filter(r => r.projectId === project.id);
 
@@ -237,7 +247,7 @@ export default function FundingDetailScreen() {
   };
 
   const handleHeaderBack = () => {
-    if (cameFromReviewDetail) {
+    if (cameFromReviewDetail || cameFromProjectForm) {
       router.replace('/funding' as any);
       return;
     }
@@ -556,6 +566,14 @@ export default function FundingDetailScreen() {
       showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.');
       return;
     }
+    const hasParticipated = participatedFundings.some((item) => item.fundingId === project.id);
+    if (!hasParticipated) {
+      setFeedbackModal({
+        title: '후기 작성 불가',
+        body: '해당 펀딩에 참여하지 않았습니다.',
+      });
+      return;
+    }
     router.push(`/archive/review/${project.id}` as any);
   };
 
@@ -564,10 +582,12 @@ export default function FundingDetailScreen() {
   };
 
   const handleShareProject = async () => {
+    const shareUrl = `https://judam.app/funding/${project.id}`;
     try {
       await NativeShare.share({
         title: project.title,
-        message: `${project.title}\n${project.shortDescription || project.projectSummary || ''}\n주담 펀딩 프로젝트를 확인해보세요.`,
+        message: `${project.title}\n${project.shortDescription || project.projectSummary || ''}\n${shareUrl}\n주담 펀딩 프로젝트를 확인해보세요.`,
+        url: shareUrl,
       });
       setShowShareModal(false);
     } catch {
@@ -1333,7 +1353,7 @@ export default function FundingDetailScreen() {
         <View style={styles.recommendArea}>
            <View style={styles.rowBetweenHeader}>
               <Text style={styles.sectionHeaderTitle}>다른 프로젝트 둘러보기</Text>
-              <TouchableOpacity onPress={() => router.push('/funding')}>
+              <TouchableOpacity onPress={() => router.push('/funding?sort=recommend&scrollToTop=1' as any)}>
                  <Text style={styles.guideLink}>더보기</Text>
               </TouchableOpacity>
            </View>

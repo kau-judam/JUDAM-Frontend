@@ -493,13 +493,17 @@ export default function BreweryProjectCreateScreen() {
   const progress = useMemo(() => {
     let total = 0;
     let completed = 0;
+    const filledIngredientRows = productInfo.ingredients.filter((item) => item.ingredient.trim() || item.origin.trim());
+    const ingredientsComplete =
+      filledIngredientRows.length > 0 &&
+      filledIngredientRows.every((item) => item.ingredient.trim().length > 0 && item.origin.trim().length > 0);
     const add = (value: unknown) => {
       total += 1;
       if (typeof value === 'string' ? value.trim().length > 0 : Boolean(value)) completed += 1;
     };
 
     [
-      basicInfo.category,
+      '막걸리',
       basicInfo.title,
       basicInfo.mainIngredient,
       basicInfo.alcoholContent,
@@ -510,14 +514,11 @@ export default function BreweryProjectCreateScreen() {
       fundingInfo.goalAmount,
       fundingInfo.startDate,
       fundingInfo.expectedDeliveryDate,
-      productInfo.productType,
+      '막걸리',
       productInfo.volume,
       productInfo.alcoholContent,
+      ingredientsComplete,
     ].forEach(add);
-    productInfo.ingredients.forEach((item) => {
-      add(item.ingredient);
-      add(item.origin);
-    });
     [
       projectPlan.introduction,
       creatorInfo.name,
@@ -607,9 +608,9 @@ export default function BreweryProjectCreateScreen() {
   });
 
   const applyDraftPayload = (draft: any) => {
-    if (draft.basicInfo) setBasicInfo(draft.basicInfo);
+    if (draft.basicInfo) setBasicInfo({ ...draft.basicInfo, category: '막걸리' });
     if (draft.fundingInfo) setFundingInfo(draft.fundingInfo);
-    if (draft.productInfo) setProductInfo(draft.productInfo);
+    if (draft.productInfo) setProductInfo({ ...draft.productInfo, productType: '막걸리' });
     if (draft.tasteProfile) setTasteProfile(draft.tasteProfile);
     if (draft.projectPlan) setProjectPlan(draft.projectPlan);
     if (draft.creatorInfo) setCreatorInfo(draft.creatorInfo);
@@ -1022,10 +1023,8 @@ export default function BreweryProjectCreateScreen() {
     const image = basicInfo.images[0] || editProject?.image || aiImages[0];
     const quantity = Number(fundingInfo.bottleQuantity) || editProject?.targetQuantity || editProject?.totalQuantity || 0;
     const goalAmount = Number(fundingInfo.goalAmount) || editProject?.goalAmount || 0;
-    const projectCategory =
-      mode === 'edit' ? editProject?.category || editProject?.productType || basicInfo.category : basicInfo.category;
-    const projectProductType =
-      mode === 'edit' ? editProject?.productType || projectCategory || productInfo.productType : productInfo.productType;
+    const projectCategory = '막걸리';
+    const projectProductType = '막걸리';
 
     return {
       title: basicInfo.title,

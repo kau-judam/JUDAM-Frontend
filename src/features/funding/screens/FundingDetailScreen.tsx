@@ -65,6 +65,7 @@ import {
   getProjectUnitPrice,
 } from '@/features/funding/supportConfig';
 import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/funding/reviews';
+import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const initialComments = [
@@ -1392,7 +1393,7 @@ export default function FundingDetailScreen() {
                   <View style={styles.recContent}>
                      <View style={styles.recTopRow}>
                         <Text style={styles.recBrewery}>{p.brewery}</Text>
-                        <View style={styles.recCategoryBadge}><Text style={styles.recCategoryTxt}>{p.category}</Text></View>
+                        <View style={styles.recCategoryBadge}><Text style={styles.recCategoryTxt} numberOfLines={1}>{getFundingMainIngredientLabel(p)}</Text></View>
                         <View style={[styles.recStatusBadge, isCompletedFundingStatus(p.status) ? styles.recStatusBadgeSuccess : styles.recStatusBadgeActive]}>
                           <Text style={[styles.recStatusTxt, isCompletedFundingStatus(p.status) && styles.recStatusTxtSuccess]}>{getFundingStatusLabel(p.status)}</Text>
                         </View>
@@ -1913,7 +1914,7 @@ const styles = StyleSheet.create({
   recContent: { flex: 1, minWidth: 0, justifyContent: 'space-between' },
   recTopRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   recBrewery: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
-  recCategoryBadge: { backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  recCategoryBadge: { maxWidth: 104, backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   recCategoryTxt: { fontSize: 10, fontWeight: '800', color: '#4B5563' },
   recStatusBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   recStatusBadgeActive: { backgroundColor: '#ECFDF5' },

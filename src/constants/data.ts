@@ -87,6 +87,9 @@ export interface FundingProject {
   localImage?: ImageSourcePropType;
   videoUrl?: string;
   popularRank?: number;
+  creatorId?: string;
+  breweryId?: string;
+  favoriteCount?: number;
   goalAmount: number;
   currentAmount: number;
   backers: number;
@@ -134,6 +137,9 @@ export const fundingProjects: FundingProject[] = [
     image: "https://images.unsplash.com/photo-1582204964885-7bc2d62b6917?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     localImage: require('../../newpicutre/funding1.jpg'),
     popularRank: 1,
+    creatorId: "1",
+    breweryId: "JD-DEMO0001",
+    favoriteCount: 42,
     goalAmount: 5000000,
     currentAmount: 4350000,
     backers: 156,
@@ -183,6 +189,7 @@ export const fundingProjects: FundingProject[] = [
     image: "https://images.unsplash.com/photo-1694763893369-f7affaa9155d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     localImage: require('../../newpicutre/funding2.jpg'),
     popularRank: 2,
+    favoriteCount: 37,
     goalAmount: 5000000,
     currentAmount: 3750000,
     backers: 127,
@@ -232,6 +239,7 @@ export const fundingProjects: FundingProject[] = [
     image: "https://images.unsplash.com/photo-1770734331757-f40d64eafbc2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     localImage: require('../../newpicutre/funding3.jpg'),
     popularRank: 3,
+    favoriteCount: 58,
     goalAmount: 8000000,
     currentAmount: 6400000,
     backers: 203,
@@ -279,6 +287,7 @@ export const fundingProjects: FundingProject[] = [
     category: "소주",
     shortDescription: "전통 증류식 소주의 진정한 맛을 경험해보세요.",
     image: "https://images.unsplash.com/photo-1766399654235-a6793895422d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    favoriteCount: 21,
     goalAmount: 10000000,
     currentAmount: 4500000,
     backers: 89,
@@ -326,6 +335,7 @@ export const fundingProjects: FundingProject[] = [
     category: "막걸리",
     shortDescription: "깨끗한 산의 기운을 담은 막걸리입니다.",
     image: "https://images.unsplash.com/photo-1760920193193-91dd96af7862?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    favoriteCount: 29,
     goalAmount: 4000000,
     currentAmount: 4500000,
     backers: 178,
@@ -373,6 +383,7 @@ export const fundingProjects: FundingProject[] = [
     category: "소주",
     shortDescription: "제주 한라봉의 상큼함을 담은 프리미엄 소주입니다.",
     image: "https://images.unsplash.com/photo-1598191392914-c6b3616f6369?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
+    favoriteCount: 34,
     goalAmount: 7000000,
     currentAmount: 8200000,
     backers: 234,
@@ -503,6 +514,8 @@ export function getFundingStatusLabel(status: ProjectStatus) {
 
 export function sortFundingProjectsByPopularity(projects: FundingProject[]) {
   return [...projects].sort((a, b) => {
+    const favoriteDiff = (b.favoriteCount || 0) - (a.favoriteCount || 0);
+    if (favoriteDiff !== 0) return favoriteDiff;
     const aRank = a.popularRank ?? Number.MAX_SAFE_INTEGER;
     const bRank = b.popularRank ?? Number.MAX_SAFE_INTEGER;
     if (aRank !== bRank) return aRank - bRank;

@@ -62,6 +62,7 @@ import {
   getProjectShippingFee,
   getProjectUnitPrice,
 } from '@/features/funding/supportConfig';
+import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/funding/reviews';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const initialComments = [
@@ -102,11 +103,12 @@ function getTabParam(tab: "소개" | "양조일지" | "Q&A" | "후기") {
 }
 
 export default function FundingDetailScreen() {
-  const { id, tab, fromReview, fromProjectForm } = useLocalSearchParams<{
+  const { id, tab, fromReview, fromProjectForm, fromSupport } = useLocalSearchParams<{
     id?: string;
     tab?: string;
     fromReview?: string;
     fromProjectForm?: string;
+    fromSupport?: string;
   }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -118,6 +120,7 @@ export default function FundingDetailScreen() {
   const project = useMemo(() => projects.find((p) => p.id === projectId) || null, [projectId, projects]);
   const cameFromReviewDetail = Array.isArray(fromReview) ? fromReview[0] === "1" : fromReview === "1";
   const cameFromProjectForm = Array.isArray(fromProjectForm) ? fromProjectForm[0] === "1" : fromProjectForm === "1";
+  const cameFromSupport = Array.isArray(fromSupport) ? fromSupport[0] === "1" : fromSupport === "1";
   
   const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">(initialTab);
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
@@ -126,6 +129,7 @@ export default function FundingDetailScreen() {
   const [reportReason, setReportReason] = useState("");
   const [reportDetail, setReportDetail] = useState("");
   const [feedbackModal, setFeedbackModal] = useState<{ title: string; body: string } | null>(null);
+  const [reviewEditPrompt, setReviewEditPrompt] = useState<FundingReview | null>(null);
   const [showFundingOptionModal, setShowFundingOptionModal] = useState(false);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
 
@@ -182,6 +186,7 @@ export default function FundingDetailScreen() {
   const progressPercentage = Math.min((project.currentAmount / project.goalAmount) * 100, 100);
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified;
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
+  const canManageOwnBreweryProject = Boolean(isBrewery && isOwnBreweryProject);
   const userTasteProfile = getTasteProfileFromSulbti(user?.sulbti);
   const unitPrice = getProjectUnitPrice(project);
   const shippingFee = getProjectShippingFee(project);
@@ -222,7 +227,9 @@ export default function FundingDetailScreen() {
   const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
   const supportButtonLabel =
     isOwnBreweryProject
-      ? "프로젝트 관리하기"
+      ? user?.isBreweryVerified
+        ? "프로젝트 관리하기"
+        : "양조장 인증하기"
       : !isSupportableFundingStatus(project.status)
       ? project.status === "심사 중" || project.status === "펀딩 예정"
         ? "후원 준비중"
@@ -232,6 +239,7 @@ export default function FundingDetailScreen() {
   const recommendedProjects = sortFundingProjectsForDisplay(projects.filter(p => p.id !== project.id), "추천순", userTasteProfile, favoriteFundings).slice(0, 4);
   const journals = project.journals || [];
   const projectReviews = fundingReviews.filter(r => r.projectId === project.id);
+  const myReview = user ? projectReviews.find((review) => isFundingReviewOwnedByUser(review, user)) || null : null;
 
   const handleSupportClick = () => {
     if (!user) {
@@ -247,7 +255,7 @@ export default function FundingDetailScreen() {
   };
 
   const handleHeaderBack = () => {
-    if (cameFromReviewDetail || cameFromProjectForm) {
+    if (cameFromReviewDetail || cameFromProjectForm || cameFromSupport) {
       router.replace('/funding' as any);
       return;
     }
@@ -574,6 +582,10 @@ export default function FundingDetailScreen() {
       });
       return;
     }
+    if (myReview) {
+      setReviewEditPrompt(myReview);
+      return;
+    }
     router.push(`/archive/review/${project.id}` as any);
   };
 
@@ -663,7 +675,7 @@ export default function FundingDetailScreen() {
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false} 
         keyboardShouldPersistTaps="handled"
-        stickyHeaderIndices={[isOwnBreweryProject ? 5 : 4]}
+        stickyHeaderIndices={[canManageOwnBreweryProject ? 5 : 4]}
         contentContainerStyle={{ paddingBottom: 120 }}
       >
         {/* 1. Hero Visual */}
@@ -715,7 +727,7 @@ export default function FundingDetailScreen() {
           </TouchableOpacity>
         </Animated.View>
 
-        {isOwnBreweryProject && (
+        {canManageOwnBreweryProject && (
           <Animated.View entering={FadeInUp.delay(250)} style={styles.ownerJournalActionWrap}>
             <TouchableOpacity style={styles.ownerJournalAction} onPress={() => router.push(`/brewery/project/${project.id}/journal` as any)}>
               <Plus size={16} color="#FFF" />
@@ -1562,6 +1574,33 @@ export default function FundingDetailScreen() {
             <TouchableOpacity style={styles.actionPrimaryButton} onPress={() => setFeedbackModal(null)}>
               <Text style={styles.actionPrimaryText}>확인</Text>
             </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      <Modal visible={Boolean(reviewEditPrompt)} animationType="fade" transparent>
+        <View style={styles.actionModalOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setReviewEditPrompt(null)} />
+          <Animated.View entering={SlideInDown} style={styles.actionModal}>
+            <Text style={styles.actionModalTitle}>이미 작성한 후기입니다</Text>
+            <Text style={styles.actionModalBody}>이 펀딩에는 후기를 한 번만 작성할 수 있어요. 기존 후기를 수정하시겠습니까?</Text>
+            <View style={styles.reportFooter}>
+              <TouchableOpacity style={styles.reportCancelButton} onPress={() => setReviewEditPrompt(null)}>
+                <Text style={styles.reportCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reportSubmitButton, { backgroundColor: '#111' }]}
+                onPress={() => {
+                  const targetReview = reviewEditPrompt;
+                  setReviewEditPrompt(null);
+                  if (targetReview) {
+                    router.push(`/archive/review/${project.id}?reviewId=${targetReview.id}` as any);
+                  }
+                }}
+              >
+                <Text style={styles.reportSubmitText}>수정하기</Text>
+              </TouchableOpacity>
+            </View>
           </Animated.View>
         </View>
       </Modal>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
-import { reviewPresetTags } from '@/features/funding/reviews';
+import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 function RatingStars({ value, onChange }: { value: number; onChange: (value: number) => void }) {
@@ -54,12 +54,29 @@ function RatingStars({ value, onChange }: { value: number; onChange: (value: num
 
 export default function FundingReviewWriteScreen() {
   const insets = useSafeAreaInsets();
-  const { fundingId } = useLocalSearchParams<{ fundingId?: string }>();
+  const { fundingId, reviewId } = useLocalSearchParams<{ fundingId?: string; reviewId?: string }>();
   const { user } = useAuth();
-  const { projects, participatedFundings, addFundingReview } = useFunding();
+  const { projects, participatedFundings, fundingReviews, addFundingReview, updateFundingReview } = useFunding();
   const projectId = Number(Array.isArray(fundingId) ? fundingId[0] : fundingId);
+  const targetReviewId = Number(Array.isArray(reviewId) ? reviewId[0] : reviewId);
+  const hasReviewIdParam = Number.isFinite(targetReviewId) && targetReviewId > 0;
   const project = useMemo(() => projects.find((item) => item.id === projectId) || null, [projectId, projects]);
   const hasParticipated = Boolean(user) && participatedFundings.some((item) => item.fundingId === projectId);
+  const requestedReview = useMemo(
+    () => (hasReviewIdParam ? fundingReviews.find((item) => item.projectId === projectId && item.id === targetReviewId) || null : null),
+    [fundingReviews, hasReviewIdParam, projectId, targetReviewId]
+  );
+  const ownExistingReview = useMemo(
+    () => fundingReviews.find((item) => item.projectId === projectId && isFundingReviewOwnedByUser(item, user)) || null,
+    [fundingReviews, projectId, user]
+  );
+  const editableReview = hasReviewIdParam ? requestedReview : ownExistingReview;
+  const isEditMode = Boolean(editableReview && isFundingReviewOwnedByUser(editableReview, user));
+  const reviewParamBlocked = hasReviewIdParam && (!requestedReview || !isFundingReviewOwnedByUser(requestedReview, user));
+  const presetTagValues = useMemo(
+    () => new Set(Object.values(reviewPresetTags).reduce<string[]>((all, tags) => [...all, ...tags], [])),
+    []
+  );
   const [isLoading, setIsLoading] = useState(false);
   const [rating, setRating] = useState(0);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
@@ -74,6 +91,26 @@ export default function FundingReviewWriteScreen() {
 
   const allTags = [...selectedTags, ...customTags];
   const rewardName = project?.rewardItems?.[0] || `${project?.bottleSize || '375ml'} 1병`;
+
+  useEffect(() => {
+    if (!editableReview || !isEditMode) return;
+    const presetTags = editableReview.tags.filter((tag) => presetTagValues.has(tag));
+    const extraTags = editableReview.tags.filter((tag) => !presetTagValues.has(tag));
+    const firstOpenSection = Object.entries(reviewPresetTags).find(([, tags]) =>
+      tags.some((tag) => presetTags.includes(tag))
+    )?.[0];
+
+    setRating(editableReview.rating);
+    setUploadedImages(editableReview.images || []);
+    setSelectedTags(presetTags);
+    setCustomTags(extraTags);
+    setCustomInput('');
+    setOpenSection(firstOpenSection || '맛·향');
+    setReviewText(editableReview.comment || '');
+    setMood(editableReview.mood || '');
+    setPairing(editableReview.pairing || '');
+    setShowRecordInReview(Boolean(editableReview.showRecordInReview));
+  }, [editableReview, isEditMode, presetTagValues]);
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]));
@@ -123,8 +160,9 @@ export default function FundingReviewWriteScreen() {
 
     setIsLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 900));
-    const createdReview = addFundingReview({
+    const reviewPayload = {
       projectId,
+      userId: user.id,
       userName: user.name || '사용자',
       rating,
       comment: reviewText.trim(),
@@ -134,10 +172,18 @@ export default function FundingReviewWriteScreen() {
       pairing: pairing.trim(),
       showRecordInReview,
       tags: allTags,
-    });
+    };
+    const savedReview =
+      isEditMode && editableReview
+        ? updateFundingReview(editableReview.id, reviewPayload)
+        : addFundingReview(reviewPayload);
     setIsLoading(false);
-    Alert.alert('후기가 등록되었습니다!', '소중한 후기를 남겨주셔서 감사합니다.', [
-      { text: '확인', onPress: () => router.replace(`/funding/${projectId}/review/${createdReview.id}` as any) },
+    if (!savedReview) {
+      Alert.alert('알림', '후기를 저장하지 못했습니다. 다시 시도해주세요.');
+      return;
+    }
+    Alert.alert(isEditMode ? '후기가 수정되었습니다!' : '후기가 등록되었습니다!', isEditMode ? '수정한 내용이 후기 게시글에 반영되었습니다.' : '소중한 후기를 남겨주셔서 감사합니다.', [
+      { text: '확인', onPress: () => router.replace(`/funding/${projectId}/review/${savedReview.id}` as any) },
     ]);
   };
 
@@ -154,13 +200,17 @@ export default function FundingReviewWriteScreen() {
     );
   }
 
-  if (!user || !hasParticipated) {
+  if (!user || !hasParticipated || reviewParamBlocked) {
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
         <AlertCircle size={48} color="#F59E0B" />
         <Text style={styles.noticeTitle}>{user ? '리뷰 작성 권한이 없습니다' : '로그인이 필요합니다'}</Text>
         <Text style={styles.noticeBody}>
-          {user ? '이 펀딩 프로젝트에 참여한 사용자만 리뷰를 작성할 수 있습니다.' : '후기 작성은 로그인 후 이용할 수 있습니다.'}
+          {reviewParamBlocked
+            ? '본인이 작성한 후기만 수정할 수 있습니다.'
+            : user
+              ? '이 펀딩 프로젝트에 참여한 사용자만 리뷰를 작성할 수 있습니다.'
+              : '후기 작성은 로그인 후 이용할 수 있습니다.'}
         </Text>
         <TouchableOpacity style={styles.noticeButton} onPress={() => (user ? router.back() : showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.'))}>
           <Text style={styles.noticeButtonText}>{user ? '돌아가기' : '로그인 안내 보기'}</Text>
@@ -175,7 +225,7 @@ export default function FundingReviewWriteScreen() {
         <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
           <ChevronLeft size={24} color="#111" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>펀딩 술 후기 작성</Text>
+        <Text style={styles.headerTitle}>{isEditMode ? '펀딩 술 후기 수정' : '펀딩 술 후기 작성'}</Text>
         <View style={styles.headerButton} />
       </View>
 
@@ -326,7 +376,7 @@ export default function FundingReviewWriteScreen() {
         </View>
 
         <TouchableOpacity style={[styles.submitButton, isLoading && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={isLoading}>
-          {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>후기 등록하기</Text>}
+          {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>{isEditMode ? '후기 수정하기' : '후기 등록하기'}</Text>}
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

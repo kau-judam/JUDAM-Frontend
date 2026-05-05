@@ -52,6 +52,13 @@ import {
 } from '@/constants/data';
 import type { BrewingStage, JournalComment, JournalReply } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
+import {
+  getProjectAlcoholContent,
+  getProjectBottleSize,
+  getProjectEstimatedDelivery,
+  getProjectShippingFee,
+  getProjectUnitPrice,
+} from '@/features/funding/supportConfig';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const initialComments = [
@@ -166,8 +173,11 @@ export default function FundingDetailScreen() {
   const progressPercentage = Math.min((project.currentAmount / project.goalAmount) * 100, 100);
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified;
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
-  const unitPrice = project.pricePerBottle || 20000;
-  const shippingFee = project.shippingFee ?? 2000;
+  const unitPrice = getProjectUnitPrice(project);
+  const shippingFee = getProjectShippingFee(project);
+  const bottleSize = getProjectBottleSize(project);
+  const alcoholContent = getProjectAlcoholContent(project);
+  const estimatedDelivery = getProjectEstimatedDelivery(project);
   const optionTotalAmount = unitPrice * selectedQuantity + shippingFee;
   const projectBudget = project.budget || [
     { item: "원료비", amount: 180 },
@@ -219,7 +229,7 @@ export default function FundingDetailScreen() {
       return;
     }
     if (isOwnBreweryProject) {
-      router.push(user.isBreweryVerified ? '/brewery/dashboard' as any : '/brewery/verification' as any);
+      router.push(user.isBreweryVerified ? `/brewery/project/create?mode=edit&projectId=${project.id}` as any : '/brewery/verification' as any);
       return;
     }
     if (!isSupportableFundingStatus(project.status)) return;
@@ -734,11 +744,11 @@ export default function FundingDetailScreen() {
                          <View style={styles.ingRow}>
                             <View style={{ flex: 1 }}>
                                <Text style={styles.ingLab}>도수</Text>
-                               <Text style={styles.ingVal}>{project.alcoholContent || "6%"}</Text>
+                               <Text style={styles.ingVal}>{alcoholContent}</Text>
                             </View>
                             <View style={{ flex: 1 }}>
                                <Text style={styles.ingLab}>예상 배송일</Text>
-                               <Text style={styles.ingVal}>{project.estimatedDelivery || "펀딩 종료 후 순차 배송"}</Text>
+                               <Text style={styles.ingVal}>{estimatedDelivery}</Text>
                             </View>
                          </View>
                       </View>
@@ -765,7 +775,7 @@ export default function FundingDetailScreen() {
                             <Text style={styles.priceLab}>병당 단가</Text>
                             <Text style={styles.priceVal}>{unitPrice.toLocaleString()}<Text style={{ fontSize: 20, fontWeight: 'normal' }}>원</Text></Text>
                          </View>
-                         <Text style={styles.priceSub}>{project.bottleSize || "375ml"}</Text>
+                         <Text style={styles.priceSub}>{bottleSize}</Text>
                       </View>
                    </View>
 
@@ -1402,11 +1412,11 @@ export default function FundingDetailScreen() {
               <View style={styles.optionSpecGrid}>
                 <View style={styles.optionSpecCard}>
                   <Text style={styles.optionSpecLabel}>용량</Text>
-                  <Text style={styles.optionSpecValue}>{project.bottleSize || "375ml"}</Text>
+                  <Text style={styles.optionSpecValue}>{bottleSize}</Text>
                 </View>
                 <View style={styles.optionSpecCard}>
                   <Text style={styles.optionSpecLabel}>도수</Text>
-                  <Text style={styles.optionSpecValue}>{project.alcoholContent || "6%"}</Text>
+                  <Text style={styles.optionSpecValue}>{alcoholContent}</Text>
                 </View>
               </View>
 
@@ -1443,7 +1453,7 @@ export default function FundingDetailScreen() {
                 <Package size={16} color="#1D4ED8" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.deliveryNoticeTitle}>예상 배송일</Text>
-                  <Text style={styles.deliveryNoticeTxt}>{project.estimatedDelivery || "펀딩 종료 후 순차 발송"} 순차 발송 예정</Text>
+                  <Text style={styles.deliveryNoticeTxt}>{estimatedDelivery}</Text>
                 </View>
               </View>
 

@@ -37,14 +37,17 @@ import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import {
   MAX_ADDITIONAL_SUPPORT,
   bankOptions,
-  cardCompanies,
   digitsOnly,
   getFundingId,
   getInitialQuantity,
   getPaymentSummary,
+  getProjectAlcoholContent,
+  getProjectBottleSize,
+  getProjectEstimatedDelivery,
+  getProjectShippingFee,
+  getProjectUnitPrice,
   getPrimaryRewardItem,
   getRecentShippingKey,
-  installmentOptions,
   messageOptions,
   mockAddresses,
   paymentMethods,
@@ -81,8 +84,6 @@ export default function FundingSupportScreen() {
   const [infoModal, setInfoModal] = useState<InfoModalType>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  const [cardCompany, setCardCompany] = useState(cardCompanies[0]);
-  const [installment, setInstallment] = useState(installmentOptions[0]);
   const [accountBank, setAccountBank] = useState('');
   const [depositorName, setDepositorName] = useState(user?.name || '');
   const [recentShippingInfo, setRecentShippingInfo] = useState<ShippingInfo | null>(null);
@@ -146,8 +147,6 @@ export default function FundingSupportScreen() {
     setShowMessageOptions(false);
     setShowCustomMessageInput(false);
     setSelectedPaymentMethod(null);
-    setCardCompany(cardCompanies[0]);
-    setInstallment(installmentOptions[0]);
     setAccountBank('');
     setDepositorName(user?.name || '');
     setAgreeTerms(false);
@@ -157,11 +156,15 @@ export default function FundingSupportScreen() {
     setShowConfirmModal(false);
   }, [project?.id, quantityParam, user?.name]);
 
-  const unitPrice = project?.pricePerBottle || 35000;
-  const shippingFee = project?.shippingFee ?? 2000;
+  const unitPrice = project ? getProjectUnitPrice(project) : 0;
+  const shippingFee = project ? getProjectShippingFee(project) : 0;
   const primaryRewardItem = project ? getPrimaryRewardItem(project) : '';
+  const bottleSize = project ? getProjectBottleSize(project) : '';
+  const alcoholContent = project ? getProjectAlcoholContent(project) : '';
+  const estimatedDelivery = project ? getProjectEstimatedDelivery(project) : '';
   const rewardAmount = unitPrice * quantity;
   const extraAmount = Number(additionalSupport) || 0;
+  const fundingAmount = rewardAmount + extraAmount;
   const totalAmount = rewardAmount + shippingFee + extraAmount;
   const progressPercentage = project ? Math.min((project.currentAmount / project.goalAmount) * 100, 100) : 0;
   const filteredAddresses = mockAddresses.filter(
@@ -169,7 +172,7 @@ export default function FundingSupportScreen() {
   );
   const canSubmit = Boolean(selectedPaymentMethod && agreeTerms && agreeRefund && !isProcessing);
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
-  const paymentSummary = getPaymentSummary(selectedPaymentMethod, cardCompany, installment, accountBank, depositorName);
+  const paymentSummary = getPaymentSummary(selectedPaymentMethod, accountBank, depositorName);
 
   const handleAdditionalSupportChange = (value: string) => {
     const next = digitsOnly(value);
@@ -233,8 +236,8 @@ export default function FundingSupportScreen() {
       await SafeStorage.setItem(getRecentShippingKey(user.id), JSON.stringify(shippingInfo));
       setRecentShippingInfo(shippingInfo);
       await new Promise((resolve) => setTimeout(resolve, 700));
-      addParticipation(project.id, totalAmount);
-      updateProjectFunding(project.id, totalAmount);
+      addParticipation(project.id, fundingAmount);
+      updateProjectFunding(project.id, fundingAmount);
       setShowSuccessModal(true);
     } catch {
       Alert.alert('알림', '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.');
@@ -280,7 +283,7 @@ export default function FundingSupportScreen() {
             : '직접 만든 프로젝트를 관리하려면 양조장 인증을 먼저 진행해주세요.'
         }
         primaryLabel={user.isBreweryVerified ? '프로젝트 관리하기' : '양조장 인증하기'}
-        onPrimaryPress={() => router.replace(user.isBreweryVerified ? '/brewery/dashboard' as any : '/brewery/verification' as any)}
+        onPrimaryPress={() => router.replace(user.isBreweryVerified ? `/brewery/project/create?mode=edit&projectId=${project.id}` as any : '/brewery/verification' as any)}
         secondaryLabel="펀딩으로 돌아가기"
         onSecondaryPress={() => router.replace('/funding' as any)}
       />
@@ -288,11 +291,16 @@ export default function FundingSupportScreen() {
   }
 
   if (!isSupportableFundingStatus(project.status)) {
+    const isPreparingFunding = project.status === '심사 중' || project.status === '펀딩 예정';
     return (
       <AccessNotice
         insetsTop={insets.top}
-        title="종료된 펀딩입니다"
-        body="이미 종료된 프로젝트는 새 후원을 받을 수 없어요. 진행 중인 다른 프로젝트를 둘러보세요."
+        title={isPreparingFunding ? '후원 준비중입니다' : '종료된 펀딩입니다'}
+        body={
+          isPreparingFunding
+            ? '아직 후원을 받을 수 없는 프로젝트입니다. 프로젝트 상세에서 진행 상태를 확인해주세요.'
+            : '이미 종료된 프로젝트는 새 후원을 받을 수 없어요. 진행 중인 다른 프로젝트를 둘러보세요.'
+        }
         primaryLabel="진행 펀딩 보기"
         onPrimaryPress={() => router.replace('/funding' as any)}
       />
@@ -351,11 +359,11 @@ export default function FundingSupportScreen() {
             <View style={styles.rewardSpecGrid}>
               <View style={styles.rewardSpecBox}>
                 <Text style={styles.rewardSpecLabel}>용량</Text>
-                <Text style={styles.rewardSpecValue}>{project.bottleSize || project.volume || '375ml'}</Text>
+                <Text style={styles.rewardSpecValue}>{bottleSize}</Text>
               </View>
               <View style={styles.rewardSpecBox}>
                 <Text style={styles.rewardSpecLabel}>도수</Text>
-                <Text style={styles.rewardSpecValue}>{project.alcoholContent || '별도 안내'}</Text>
+                <Text style={styles.rewardSpecValue}>{alcoholContent}</Text>
               </View>
               <View style={styles.rewardSpecBox}>
                 <Text style={styles.rewardSpecLabel}>1병 가격</Text>
@@ -365,7 +373,7 @@ export default function FundingSupportScreen() {
           </View>
           <View style={styles.deliveryRow}>
             <Package size={16} color="#EF4444" />
-            <Text style={styles.deliveryText}>예상 전달일 <Text style={styles.deliveryDate}>{project.estimatedDelivery || '펀딩 종료 후 순차 안내'}</Text></Text>
+            <Text style={styles.deliveryText}>예상 전달일 <Text style={styles.deliveryDate}>{estimatedDelivery}</Text></Text>
           </View>
           <View style={styles.amountRow}>
             <Text style={styles.amountLabel}>리워드 금액</Text>
@@ -594,42 +602,6 @@ export default function FundingSupportScreen() {
             })}
           </View>
           <FieldError message={validationErrors.payment} />
-          {selectedPaymentMethod === 'card' && (
-            <View style={styles.paymentDetailBox}>
-              <Text style={styles.paymentDetailTitle}>카드 결제 설정</Text>
-              <View style={styles.chipGroup}>
-                {cardCompanies.map((company) => (
-                  <TouchableOpacity
-                    key={company}
-                    disabled={isProcessing}
-                    style={[styles.detailChip, cardCompany === company && styles.detailChipSelected]}
-                    onPress={() => setCardCompany(company)}
-                  >
-                    <Text style={[styles.detailChipText, cardCompany === company && styles.detailChipTextSelected]}>{company}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={styles.chipGroup}>
-                {installmentOptions.map((option) => (
-                  <TouchableOpacity
-                    key={option}
-                    disabled={isProcessing}
-                    style={[styles.detailChip, installment === option && styles.detailChipSelected]}
-                    onPress={() => setInstallment(option)}
-                  >
-                    <Text style={[styles.detailChipText, installment === option && styles.detailChipTextSelected]}>{option}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={styles.paymentDetailGuide}>실제 카드번호 입력과 PG 결제는 백엔드 연동 이후 연결됩니다.</Text>
-            </View>
-          )}
-          {selectedPaymentMethod === 'npay' && (
-            <View style={styles.paymentDetailBox}>
-              <Text style={styles.paymentDetailTitle}>네이버페이 간편결제</Text>
-              <Text style={styles.paymentDetailGuide}>후원 확정 후 네이버페이 결제창으로 이동하는 흐름을 가정한 프론트 mock 안내입니다.</Text>
-            </View>
-          )}
           {selectedPaymentMethod === 'account' && (
             <View style={styles.paymentDetailBox}>
               <Text style={styles.paymentDetailTitle}>계좌이체 정보</Text>
@@ -1097,7 +1069,6 @@ function SuccessModal({
           </View>
           <Text style={styles.successTitle}>후원 성공했어요!</Text>
           <Text style={styles.successBody}>{project.brewery}의 프로젝트를 후원해주셔서 감사합니다.</Text>
-          <Text style={styles.successGuide}>후원 내역은 추후 마이페이지에서 확인할 수 있도록 연결할 예정입니다.</Text>
           <View style={styles.successAmountBox}>
             <Text style={styles.successAmountLabel}>후원 금액</Text>
             <Text style={styles.successAmountValue}>{totalAmount.toLocaleString()}원</Text>
@@ -1230,7 +1201,6 @@ const styles = StyleSheet.create({
   paymentDesc: { fontSize: 12, color: '#6B7280', fontWeight: '700' },
   paymentDetailBox: { borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', padding: 14, gap: 10 },
   paymentDetailTitle: { fontSize: 13, color: '#111', fontWeight: '900' },
-  paymentDetailGuide: { fontSize: 12, color: '#6B7280', lineHeight: 18, fontWeight: '700' },
   chipGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   detailChip: { minHeight: 36, borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
   detailChipSelected: { backgroundColor: '#111', borderColor: '#111' },
@@ -1294,7 +1264,6 @@ const styles = StyleSheet.create({
   successIcon: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   successTitle: { fontSize: 22, color: '#111', fontWeight: '900', marginBottom: 8 },
   successBody: { fontSize: 14, color: '#6B7280', lineHeight: 22, fontWeight: '700', textAlign: 'center', marginBottom: 16 },
-  successGuide: { fontSize: 12, color: '#9CA3AF', lineHeight: 18, fontWeight: '800', textAlign: 'center', marginBottom: 16 },
   successAmountBox: { width: '100%', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 14, alignItems: 'center', marginBottom: 16 },
   successAmountLabel: { fontSize: 12, color: '#6B7280', fontWeight: '800', marginBottom: 4 },
   successAmountValue: { fontSize: 22, color: '#111', fontWeight: '900' },

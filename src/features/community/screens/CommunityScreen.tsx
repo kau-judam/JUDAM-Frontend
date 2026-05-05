@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
+  ImageSourcePropType,
 } from 'react-native';
 import { router } from 'expo-router';
 import {
@@ -30,6 +31,8 @@ import { showLoginRequired } from '@/utils/authPrompt';
 
 const POSTS_PER_PAGE = 6;
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
+const getAvatarSource = (avatar: ImageSourcePropType | string) =>
+  typeof avatar === 'string' ? { uri: avatar } : avatar;
 
 export default function CommunityScreen() {
   const insets = useSafeAreaInsets();
@@ -149,7 +152,7 @@ export default function CommunityScreen() {
                onPress={() => router.push(`/community/${post.id}` as any)}
              >
                 <View style={styles.postHeader}>
-                   <Image source={{ uri: post.avatar }} style={styles.avatar} />
+                   <Image source={getAvatarSource(post.avatar)} style={styles.avatar} />
                    <View style={{ flex: 1 }}>
                       <View style={styles.authorRow}>
                          <Text style={styles.authorName}>{post.author}</Text>

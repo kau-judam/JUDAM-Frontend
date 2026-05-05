@@ -9,6 +9,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ImageSourcePropType,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronDown, ChevronLeft, Heart, MoreVertical, Send } from 'lucide-react-native';
@@ -20,12 +21,20 @@ import { useCommunity } from '@/contexts/CommunityContext';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const INITIAL_COMMENT_COUNT = 3;
+const person1 = require('../../../../newpicutre/person1.png');
+const person2 = require('../../../../newpicutre/person2.png');
+const person3 = require('../../../../newpicutre/person3.png');
+const person4 = require('../../../../newpicutre/person4.png');
+const person5 = require('../../../../newpicutre/person5.png');
+const person6 = require('../../../../newpicutre/person6.png');
+const getAvatarSource = (avatar: ImageSourcePropType | string) =>
+  typeof avatar === 'string' ? { uri: avatar } : avatar;
 
 interface CommunityPostDetail {
   id: number;
   author: string;
   authorType: 'user' | 'brewery';
-  avatar: string;
+  avatar: ImageSourcePropType | string;
   title: string;
   content: string;
   image?: string;
@@ -39,7 +48,7 @@ interface Comment {
   id: number;
   author: string;
   authorType: 'user' | 'brewery';
-  avatar: string;
+  avatar: ImageSourcePropType | string;
   content: string;
   timestamp: string;
   likes: number;
@@ -51,7 +60,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     id: 1,
     author: '전통주러버',
     authorType: 'user',
-    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop',
+    avatar: person1,
     title: '처음 만든 막걸리, 생각보다 쉬웠어요',
     content:
       '처음으로 막걸리 담그기에 도전해봤는데요! 생각보다 어렵지 않았어요.\n\n국내산 쌀과 전통 누룩을 사용했고, 발효 과정에서 은은한 쌀 향이 정말 좋았습니다. 10일 정도 발효시킨 후 처음 맛봤을 때의 그 감동이란... 직접 만든 술이라 더 맛있게 느껴지는 것 같아요!\n\n다음에는 감귤을 넣어서 만들어볼 생각입니다. 혹시 과일 막걸리 만들어보신 분 계신가요?',
@@ -65,7 +74,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     id: 2,
     author: '술샘양조장',
     authorType: 'brewery',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop',
+    avatar: person2,
     title: '이번 주말 전통 누룩 양조장 투어 안내',
     content: '이번 주말에 양조장 투어 진행합니다! 전통 누룩 만드는 과정을 직접 보실 수 있어요. 댓글로 신청해주세요!',
     likes: 127,
@@ -77,7 +86,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     id: 3,
     author: '막걸리마스터',
     authorType: 'user',
-    avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop',
+    avatar: person3,
     title: '딸기 막걸리 레시피 공유',
     content:
       '딸기 막걸리 만들기 성공! 꽃향기가 정말 좋네요. 레시피 공유할게요.\n\n1. 국내산 쌀 2kg\n2. 전통 누룩 200g\n3. 딸기청 100g\n\n발효는 3일 정도 걸렸어요.',
@@ -90,7 +99,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     id: 4,
     author: '청주러버',
     authorType: 'user',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop',
+    avatar: person4,
     title: '청주 빚을 때 온도 관리 팁',
     content: '청주 빚을 때 온도 관리가 제일 중요한 것 같아요. 18~20도를 유지하니 훨씬 깔끔한 맛이 나더라고요.',
     likes: 56,
@@ -102,7 +111,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     id: 5,
     author: '소주마니아',
     authorType: 'user',
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop',
+    avatar: person5,
     title: '집에서 증류식 소주 만드는 법 정리 예정',
     content: '집에서 증류식 소주 만드는 법 궁금하신 분 계신가요? 초보자도 따라할 수 있는 간단한 방법을 정리해보려고 합니다.',
     likes: 73,
@@ -114,7 +123,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     id: 6,
     author: '제산양조장',
     authorType: 'brewery',
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop',
+    avatar: person6,
     title: '제산 약주 체험 프로그램 오픈',
     content: '제산 약주 체험 프로그램을 시작합니다. 전통주 빚기부터 시음까지 꽉 찬 3시간 코스예요. 많은 관심 부탁드립니다.',
     likes: 145,
@@ -129,7 +138,7 @@ const initialComments: Comment[] = [
     id: 1,
     author: '양조장지기',
     authorType: 'brewery',
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop',
+    avatar: person4,
     content: '첫 도전치고 정말 잘 만드셨네요! 감귤 막걸리는 감귤을 너무 많이 넣으면 쓴맛이 날 수 있으니 조금씩 넣어보시는 걸 추천드려요.',
     timestamp: '1시간 전',
     likes: 8,
@@ -139,7 +148,7 @@ const initialComments: Comment[] = [
     id: 2,
     author: '막걸리마스터',
     authorType: 'user',
-    avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop',
+    avatar: person5,
     content: '저도 과일 막걸리 여러 번 만들어봤는데 딸기가 제일 맛있더라구요! 다음 시즌에 도전해보세요.',
     timestamp: '45분 전',
     likes: 3,
@@ -149,7 +158,7 @@ const initialComments: Comment[] = [
     id: 3,
     author: '술BTI초보',
     authorType: 'user',
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop',
+    avatar: person6,
     content: '우와 대단하세요! 저도 도전해보고 싶은데 어디서 누룩을 구매하셨나요?',
     timestamp: '30분 전',
     likes: 1,
@@ -159,7 +168,7 @@ const initialComments: Comment[] = [
     id: 4,
     author: '전통주팬',
     authorType: 'user',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop',
+    avatar: person1,
     content: '발효 온도 관리가 핵심이죠! 저는 20도 유지했더니 정말 깔끔하게 나왔어요.',
     timestamp: '20분 전',
     likes: 5,
@@ -169,7 +178,7 @@ const initialComments: Comment[] = [
     id: 5,
     author: '청주러버',
     authorType: 'user',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop',
+    avatar: person2,
     content: '감귤 막걸리 만들어봤는데 껍질째 넣으면 향이 훨씬 풍부해요! 한번 시도해보세요.',
     timestamp: '10분 전',
     likes: 2,
@@ -184,7 +193,7 @@ export default function CommunityDetailScreen() {
   const { posts } = useCommunity();
   const numericId = Number(Array.isArray(id) ? id[0] : id) || 1;
   const contextPost = posts.find((item) => item.id === numericId);
-  const post = mockPosts[numericId] || contextPost || mockPosts[1];
+  const post = contextPost || mockPosts[numericId] || mockPosts[1];
   const isAuthor = !!user && user.name === post.author;
 
   const [commentInput, setCommentInput] = useState('');
@@ -231,7 +240,7 @@ export default function CommunityDetailScreen() {
       id: comments.length + 1,
       author: user.name,
       authorType: 'user',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop',
+      avatar: person3,
       content: commentInput.trim(),
       timestamp: '방금 전',
       likes: 0,
@@ -282,7 +291,7 @@ export default function CommunityDetailScreen() {
         onScrollBeginDrag={() => setShowMenu(false)}
       >
         <View style={styles.postHeader}>
-          <Image source={{ uri: post.avatar }} style={styles.avatar} />
+          <Image source={getAvatarSource(post.avatar)} style={styles.avatar} />
           <View style={styles.postMeta}>
             <View style={styles.authorRow}>
               <Text style={styles.authorName}>{post.author}</Text>
@@ -316,7 +325,7 @@ export default function CommunityDetailScreen() {
           <Text style={styles.commentHeader}>댓글 {comments.length}</Text>
           {visibleComments.map((comment, index) => (
             <Animated.View key={comment.id} entering={FadeInUp.delay(index * 45)} style={styles.commentItem}>
-              <Image source={{ uri: comment.avatar }} style={styles.commentAvatar} />
+              <Image source={getAvatarSource(comment.avatar)} style={styles.commentAvatar} />
               <View style={styles.commentContentWrap}>
                 <View style={styles.commentBubble}>
                   <View style={styles.commentAuthorRow}>

@@ -36,14 +36,14 @@ import {
   getFundingProjectImageSource,
   getFundingStatusLabel,
   isCompletedFundingStatus,
-  isSupportableFundingStatus,
-  sortFundingProjectsByPopularity,
 } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import {
-  getRecommendationStatusPriority,
+  getFundingListStats,
   getTasteMatchScore,
   getTasteProfileFromSulbti,
+  matchesFundingStatusFilter,
+  sortFundingProjectsForDisplay,
   sortOptions,
   statusOptions,
   type FundingSortOption,
@@ -55,9 +55,9 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function FundingListScreen() {
   const { user } = useAuth();
-  const { scrollToTop } = useLocalSearchParams<{ scrollToTop?: string }>();
+  const { scrollToTop, sort } = useLocalSearchParams<{ scrollToTop?: string; sort?: string }>();
   const scrollRef = useRef<ScrollView>(null);
-  const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
+  const { favoriteFundings, isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
   const { projects } = useFunding();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<FundingStatusFilter>("전체 프로젝트");
@@ -74,6 +74,12 @@ export default function FundingListScreen() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, selectedStatus, selectedSort]);
+
+  useEffect(() => {
+    if (sort === "recommend" && userTasteProfile) {
+      setSelectedSort("추천순");
+    }
+  }, [sort, userTasteProfile]);
 
   useFocusEffect(
     useCallback(() => {
@@ -93,42 +99,18 @@ export default function FundingListScreen() {
         project.category.toLowerCase().includes(normalizedSearch) ||
         project.location.toLowerCase().includes(normalizedSearch);
 
-      let matchesStatus = true;
-      if (selectedStatus === "진행중인 프로젝트") {
-        matchesStatus = isSupportableFundingStatus(project.status);
-      } else if (selectedStatus === "성사된 프로젝트") {
-        matchesStatus = isCompletedFundingStatus(project.status);
-      }
+      const matchesStatus = matchesFundingStatusFilter(project, selectedStatus);
 
       return matchesSearch && matchesStatus;
     });
   }, [projects, searchTerm, selectedStatus]);
 
   const sortedProjects = useMemo(() => {
-    if (selectedSort === "추천순" && userTasteProfile) {
-      return [...filteredProjects].sort((a, b) => {
-        const statusDiff = getRecommendationStatusPriority(a.status) - getRecommendationStatusPriority(b.status);
-        if (statusDiff !== 0) return statusDiff;
-        const matchDiff = getTasteMatchScore(b, userTasteProfile) - getTasteMatchScore(a, userTasteProfile);
-        if (matchDiff !== 0) return matchDiff;
-        return b.backers - a.backers;
-      });
-    }
-    if (selectedSort === "마감임박") {
-      return [...filteredProjects].sort((a, b) => {
-        const statusDiff = getRecommendationStatusPriority(a.status) - getRecommendationStatusPriority(b.status);
-        if (statusDiff !== 0) return statusDiff;
-        return a.daysLeft - b.daysLeft;
-      });
-    }
-    if (selectedSort === "최신순") {
-      return [...filteredProjects].sort((a, b) => b.id - a.id);
-    }
-    return sortFundingProjectsByPopularity(filteredProjects);
-  }, [filteredProjects, selectedSort, userTasteProfile]);
+    return sortFundingProjectsForDisplay(filteredProjects, selectedSort, userTasteProfile, favoriteFundings);
+  }, [favoriteFundings, filteredProjects, selectedSort, userTasteProfile]);
   const totalPages = Math.max(1, Math.ceil(sortedProjects.length / itemsPerPage));
   const pagedProjects = sortedProjects.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  const totalBackers = projects.reduce((sum, p) => sum + p.backers, 0);
+  const fundingStats = useMemo(() => getFundingListStats(projects), [projects]);
 
   const handleHeroAction = () => {
     if (!user) {
@@ -349,7 +331,7 @@ export default function FundingListScreen() {
           )}
 
           {/* Pagination */}
-          {filteredProjects.length > itemsPerPage && (
+          {sortedProjects.length > itemsPerPage && (
             <View style={styles.pagination}>
               <TouchableOpacity 
                 disabled={currentPage === 1} 
@@ -394,19 +376,19 @@ export default function FundingListScreen() {
           <View style={styles.statsGrid}>
             <StatCard 
               icon={<TrendingUp size={22} color="#FFF" />} 
-              val={projects.filter(p => isSupportableFundingStatus(p.status)).length.toString()} 
-              label="진행중인 펀딩" 
-              sub="지금 참여 가능"
+              val={fundingStats.supportableCount.toString()}
+              label="참여 가능 펀딩"
+              sub="지금 후원 가능"
             />
             <StatCard 
               icon={<Users size={22} color="#FFF" />} 
-              val={totalBackers.toLocaleString()}
+              val={fundingStats.totalBackers.toLocaleString()}
               label="총 참여자" 
               sub="함께한 사람들"
             />
             <StatCard 
               icon={<Text style={{ fontSize: 18, color: '#FFF' }}>✓</Text>} 
-              val={projects.filter(p => isCompletedFundingStatus(p.status)).length.toString()} 
+              val={fundingStats.completedCount.toString()}
               label="성공 프로젝트" 
               sub="여러분의 선택"
             />
@@ -415,7 +397,7 @@ export default function FundingListScreen() {
           <View style={styles.milestoneContainer}>
             <View style={styles.milestoneBox}>
               <Text style={styles.milestoneTxt}>
-                총 <Text style={styles.milestoneVal}>{(projects.reduce((sum, p) => sum + p.currentAmount, 0) / 100000000).toFixed(1)}억원</Text> 이상 모금 달성
+                총 <Text style={styles.milestoneVal}>{(fundingStats.totalRaised / 100000000).toFixed(1)}억원</Text> 이상 모금 달성
               </Text>
             </View>
           </View>

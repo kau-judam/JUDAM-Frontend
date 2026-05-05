@@ -16,6 +16,7 @@ import {
   TrendingUp,
   BookOpen,
   PenSquare,
+  Heart,
   Hash,
   Mail,
   Phone,
@@ -38,6 +39,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useFavorites } from '@/contexts/FavoritesContext';
+import { useFunding } from '@/contexts/FundingContext';
 import { Button } from '@/components/ui/button';
 import { showLoginRequired } from '@/utils/authPrompt';
 
@@ -54,6 +57,8 @@ const FAQ_ITEMS = [
 export default function MyPageScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
+  const { favoriteFundings } = useFavorites();
+  const { participatedFundings } = useFunding();
   const [supportVisible, setSupportVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
@@ -188,7 +193,8 @@ export default function MyPageScreen() {
 
         {/* 3. Stats Grid */}
         <View style={styles.statsGrid}>
-           <StatItem icon={<TrendingUp size={18} color="#4B5563" />} label="참여 펀딩" val="6" />
+           <StatItem icon={<TrendingUp size={18} color="#4B5563" />} label="참여 펀딩" val={participatedFundings.length.toString()} />
+           <StatItem icon={<Heart size={18} color="#4B5563" />} label="찜한 펀딩" val={favoriteFundings.length.toString()} />
            <StatItem icon={<BookOpen size={18} color="#4B5563" />} label="내 아카이브" val="12" />
            <StatItem icon={<PenSquare size={18} color="#4B5563" />} label="작성 게시글" val="5" />
         </View>

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,38 +9,121 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { 
-  Sparkles, 
-  Search, 
-  X, 
-  ChevronDown, 
-  Check, 
+import {
+  Sparkles,
+  Search,
+  X,
+  ChevronDown,
+  Check,
 } from 'lucide-react-native';
 
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { RecipeCard } from '@/components/recipe-card';
 import { recipesData, sortRecipesByPopularity } from '@/constants/data';
+import {
+  deleteRecipeInterest,
+  fetchRecipes,
+  getRecipeAccessToken,
+  registerRecipeInterest,
+} from '@/features/recipe/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const ACTION_CONTROL_HEIGHT = 40;
 const SORT_BUTTON_WIDTH = 104;
 
+type SortOption = 'popular' | 'newest' | 'recommended';
+
+const SORT_LABELS: Record<SortOption, string> = {
+  popular: '인기순',
+  newest: '최신순',
+  recommended: '내 추천순',
+};
+
+const SORT_OPTIONS: SortOption[] = ['popular', 'newest', 'recommended'];
+
 export default function RecipeScreen() {
   const { user } = useAuth();
   const { scrollToTop } = useLocalSearchParams<{ scrollToTop?: string }>();
   const scrollRef = useRef<ScrollView>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortOption, setSortOption] = useState<"인기순" | "최신순" | "내 추천순">("인기순");
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('popular');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [recipes, setRecipes] = useState(recipesData);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
-  const handleRecipeLike = (recipeId: number) => {
-    if (!user) {
-      showLoginRequired('레시피 좋아요는 로그인 후 이용할 수 있어요.');
+  const loadRecipes = useCallback(async () => {
+    if (sortOption === 'recommended') {
+      setRecipes(sortRecipesByPopularity(recipesData));
+      setLoadError(false);
       return;
     }
-    setRecipes(prev => prev.map(r => r.id === recipeId ? { ...r, liked: !r.liked, likes: r.liked ? r.likes - 1 : r.likes + 1 } : r));
+
+    setIsLoading(true);
+    setLoadError(false);
+    try {
+      const response = await fetchRecipes({
+        sort: sortOption === 'newest' ? 'newest' : 'popular',
+      });
+      setRecipes(response.recipes);
+    } catch (error) {
+      console.warn('Failed to load recipes from API', error);
+      setLoadError(true);
+      setRecipes(recipesData);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [sortOption]);
+
+  useEffect(() => {
+    loadRecipes();
+  }, [loadRecipes]);
+
+  const handleRecipeLike = async (recipeId: number) => {
+    if (!user) {
+      showLoginRequired('레시피 관심은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+
+    const token = await getRecipeAccessToken();
+    if (!token) {
+      showLoginRequired('실제 로그인 API 연결 후 이용할 수 있어요.');
+      return;
+    }
+
+    const target = recipes.find((recipe) => recipe.id === recipeId);
+    if (!target) return;
+
+    const nextLiked = !target.liked;
+    setRecipes((prev) =>
+      prev.map((recipe) =>
+        recipe.id === recipeId
+          ? { ...recipe, liked: nextLiked, likes: nextLiked ? recipe.likes + 1 : Math.max(0, recipe.likes - 1) }
+          : recipe
+      )
+    );
+
+    try {
+      const response = nextLiked
+        ? await registerRecipeInterest(recipeId)
+        : await deleteRecipeInterest(recipeId);
+      setRecipes((prev) =>
+        prev.map((recipe) =>
+          recipe.id === recipeId
+            ? {
+                ...recipe,
+                liked: nextLiked,
+                likes: response.data.interest_count,
+                isFundable: response.data.is_fundable,
+              }
+            : recipe
+        )
+      );
+    } catch (error) {
+      console.warn('Failed to update recipe interest', error);
+      setRecipes((prev) => prev.map((recipe) => (recipe.id === recipeId ? target : recipe)));
+    }
   };
 
   const handleRecipeComment = (recipeId: number) => {
@@ -51,14 +134,23 @@ export default function RecipeScreen() {
     router.push(`/recipe/${recipeId}` as any);
   };
 
-  const filteredRecipes = recipes.filter(r => {
+  const filteredRecipes = recipes.filter((recipe) => {
     const query = searchQuery.toLowerCase();
-    return !query || r.title.toLowerCase().includes(query) || r.description.toLowerCase().includes(query) || r.author.toLowerCase().includes(query);
+    return (
+      !query ||
+      recipe.title.toLowerCase().includes(query) ||
+      recipe.description.toLowerCase().includes(query) ||
+      recipe.author.toLowerCase().includes(query)
+    );
   });
 
   const sortedRecipes =
-    sortOption === "최신순"
-      ? [...filteredRecipes].sort((a, b) => b.id - a.id)
+    sortOption === 'newest'
+      ? [...filteredRecipes].sort((a, b) => {
+          const aTime = a.createdAt ? new Date(a.createdAt).getTime() : a.id;
+          const bTime = b.createdAt ? new Date(b.createdAt).getTime() : b.id;
+          return bTime - aTime;
+        })
       : sortRecipesByPopularity(filteredRecipes);
 
   useFocusEffect(
@@ -74,72 +166,96 @@ export default function RecipeScreen() {
     <View style={styles.container}>
       <PageHeader title="주담" />
       <View style={styles.searchSection}>
-         <View style={styles.searchBar}>
-            <Search size={20} color="#9CA3AF" />
-            <TextInput 
-              style={styles.searchInput}
-              placeholder="레시피, 재료, 작성자로 검색..."
-              placeholderTextColor="#9CA3AF"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery !== "" && (
-              <TouchableOpacity onPress={() => setSearchQuery("")}>
-                 <X size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-         </View>
+        <View style={styles.searchBar}>
+          <Search size={20} color="#9CA3AF" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="레시피, 재료, 작성자로 검색..."
+            placeholderTextColor="#9CA3AF"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery !== '' && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <X size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-         <View style={styles.actionRow}>
-            {user ? (
-              <TouchableOpacity style={styles.proposeBtn} onPress={() => router.push('/recipe/create' as any)}>
-                 <Sparkles size={16} color="#FFF" />
-                 <Text style={styles.proposeBtnTxt}>레시피 제안하기</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.loginReqBtn} onPress={() => showLoginRequired('레시피 제안은 로그인 후 이용할 수 있어요.')}>
-                 <Text style={styles.loginReqBtnTxt}>로그인하고 제안하기</Text>
-              </TouchableOpacity>
-            )}
+        <View style={styles.actionRow}>
+          {user ? (
+            <TouchableOpacity style={styles.proposeBtn} onPress={() => router.push('/recipe/create' as any)}>
+              <Sparkles size={16} color="#FFF" />
+              <Text style={styles.proposeBtnTxt}>레시피 제안하기</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.loginReqBtn}
+              onPress={() => showLoginRequired('레시피 제안은 로그인 후 이용할 수 있어요.')}
+            >
+              <Text style={styles.loginReqBtnTxt}>로그인하고 제안하기</Text>
+            </TouchableOpacity>
+          )}
 
-            <View style={styles.sortContainer}>
-               <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSortDropdown(!showSortDropdown)}>
-                  <Text style={styles.sortBtnTxt}>{sortOption}</Text>
-                  <ChevronDown size={14} color="#6B7280" />
-               </TouchableOpacity>
-               {showSortDropdown && (
-                 <View style={styles.sortDropdown}>
-                    {(["인기순", "최신순", "내 추천순"] as const).map(opt => (
-                      <TouchableOpacity key={opt} style={styles.dropItem} onPress={() => { setSortOption(opt); setShowSortDropdown(false); }}>
-                         <Text style={[styles.dropTxt, sortOption === opt && { fontWeight: '800' }]}>{opt}</Text>
-                         {sortOption === opt && <Check size={14} color="#111" />}
-                      </TouchableOpacity>
-                    ))}
-                 </View>
-               )}
-            </View>
-         </View>
-
-         <View style={styles.recipeList}>
-            {sortedRecipes.map((item, index) => (
-              <RecipeCard 
-                key={item.id} 
-                recipe={item} 
-                index={index}
-                onLike={handleRecipeLike}
-                onComment={handleRecipeComment}
-                showLikeButton={true}
-              />
-            ))}
-            {sortedRecipes.length === 0 && (
-              <View style={styles.emptyState}>
-                 <Text style={styles.emptyTxt}>검색 결과가 없습니다.</Text>
+          <View style={styles.sortContainer}>
+            <TouchableOpacity style={styles.sortBtn} onPress={() => setShowSortDropdown(!showSortDropdown)}>
+              <Text style={styles.sortBtnTxt}>{SORT_LABELS[sortOption]}</Text>
+              <ChevronDown size={14} color="#6B7280" />
+            </TouchableOpacity>
+            {showSortDropdown && (
+              <View style={styles.sortDropdown}>
+                {SORT_OPTIONS.map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={styles.dropItem}
+                    onPress={() => {
+                      setSortOption(option);
+                      setShowSortDropdown(false);
+                    }}
+                  >
+                    <Text style={[styles.dropTxt, sortOption === option && { fontWeight: '800' }]}>
+                      {SORT_LABELS[option]}
+                    </Text>
+                    {sortOption === option && <Check size={14} color="#111" />}
+                  </TouchableOpacity>
+                ))}
               </View>
             )}
-         </View>
-         <View style={{ height: 100 }} />
+          </View>
+        </View>
+
+        <View style={styles.recipeList}>
+          {isLoading && (
+            <View style={styles.stateBox}>
+              <Text style={styles.stateTxt}>레시피 목록을 불러오고 있어요.</Text>
+            </View>
+          )}
+          {loadError && !isLoading && (
+            <TouchableOpacity style={styles.stateBox} onPress={loadRecipes} activeOpacity={0.8}>
+              <Text style={styles.stateTxt}>
+                서버 목록을 잠시 불러오지 못했어요. 다시 시도
+              </Text>
+            </TouchableOpacity>
+          )}
+          {sortedRecipes.map((item, index) => (
+            <RecipeCard
+              key={item.id}
+              recipe={item}
+              index={index}
+              onLike={handleRecipeLike}
+              onComment={handleRecipeComment}
+              showLikeButton={true}
+            />
+          ))}
+          {sortedRecipes.length === 0 && !isLoading && (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTxt}>검색 결과가 없습니다.</Text>
+            </View>
+          )}
+        </View>
+        <View style={{ height: 100 }} />
       </ScrollView>
     </View>
   );
@@ -163,6 +279,8 @@ const styles = StyleSheet.create({
   dropItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
   dropTxt: { fontSize: 13, color: '#374151' },
   recipeList: { gap: 12 },
+  stateBox: { paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#F3F4F6', alignItems: 'center' },
+  stateTxt: { fontSize: 13, color: '#6B7280', fontWeight: '700' },
   emptyState: { paddingVertical: 80, alignItems: 'center' },
   emptyTxt: { fontSize: 14, color: '#9CA3AF', fontWeight: '600' },
 });

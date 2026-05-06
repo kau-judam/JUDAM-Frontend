@@ -721,6 +721,21 @@ Notes:
 - `RecipeDetailScreen` now shows a loading state while `GET /api/recipes/{recipeId}` is pending, instead of briefly showing mock/previous recipe content before the API response arrives.
 - No backend code was changed and no new API endpoint was connected.
 
+2026-05-07 temporary auth test note:
+- A temporary Kakao JWT from the user's test account is saved into `SafeStorage` as `judam_access_token` when the current mock login/signup succeeds.
+- This is only to test `[주담]` auth-required APIs before login/signup API integration.
+- Remove `TEMP_JUDAM_ACCESS_TOKEN`, `saveTemporaryAccessToken`, and mock-auth token persistence from `src/contexts/AuthContext.tsx` when real login/signup APIs store the backend-issued token.
+- Do not keep this temporary token structure for production.
+- The first temporary Kakao token used `userId` in the JWT payload and caused `POST /api/recipes` to return backend `500`.
+- On 2026-05-07, a backend test token with payload field `id: "2"` was verified by one direct `POST /api/recipes` call and returned `201` with `recipe_id: 14`.
+- `TEMP_JUDAM_ACCESS_TOKEN` now uses that verified test token. On app start, if `judam_user` exists and the saved `judam_access_token` differs from the current temporary token, the frontend overwrites it so old bad tokens do not remain in storage.
+- This direct server call was intentionally limited to one request because the server is usage-billed.
+
+2026-05-07 error handling note:
+- `POST /api/recipes` and some recipe detail comment APIs can still return backend `500 서버 내부 오류`.
+- Frontend now catches recipe detail comment submit/delete failures so they do not surface as uncaught promise errors.
+- Backend still needs to inspect server logs for the root cause of `500`, especially request body validation, null handling, JWT user mapping, and DB constraints.
+
 ## PDF Sources Read On 2026-05-06
 
 - `f47c346e-85ca-4408-b59e-d66cf4c0e431_레시피_목록_조회.pdf`

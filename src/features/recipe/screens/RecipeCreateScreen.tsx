@@ -169,12 +169,12 @@ export default function RecipeCreateScreen() {
 
   const handleSubmit = async () => {
     if (!title.trim() || !hasMainIngredient) {
-      showNotice('필수항목을 모두 입력해 주세요.');
+      showNotice('필수 항목을 모두 입력해 주세요.');
       return;
     }
     const token = await getRecipeAccessToken();
     if (!token) {
-      showNotice('API \uB85C\uADF8\uC778 \uC5F0\uACB0 \uD6C4 \uC774\uC6A9\uD560 \uC218 \uC788\uC5B4\uC694.');
+      showNotice('API 로그인 연결 후 이용할 수 있어요.');
       return;
     }
     try {
@@ -190,7 +190,7 @@ export default function RecipeCreateScreen() {
       });
     } catch (error) {
       console.warn('Failed to create recipe through API', error);
-      showNotice('API \uB808\uC2DC\uD53C \uC81C\uC548\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.');
+      showNotice('API 레시피 제안에 실패했습니다.');
       return;
     }
     showNotice(

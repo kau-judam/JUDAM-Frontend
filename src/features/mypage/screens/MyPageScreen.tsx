@@ -43,6 +43,7 @@ import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
 import { Button } from '@/components/ui/button';
 import { showLoginRequired } from '@/utils/authPrompt';
+import { getBtiResult } from '@/features/bti/data';
 
 const MY_ACTIVITIES = [
   { id: 1, type: "post", label: "게시글 작성", content: "오늘 드디어 벚꽃 막걸리 도착했어요! 첫 모금부터 꽃향기가 확 퍼지는 게 정말 감동이에요. 🌸", category: "자유게시판", likes: 42, comments: 8, time: "2시간 전" },
@@ -137,6 +138,13 @@ export default function MyPageScreen() {
 
   const initial = user.name?.[0] || 'U';
   const isBrewery = user.type === 'brewery';
+  const btiResult = user.sulbti ? getBtiResult(user.sulbti) : null;
+  const openBtiResultOrTest = () => {
+    router.push((user.sulbti ? `/bti-result/${user.sulbti}` : '/bti-test') as any);
+  };
+  const startBtiTest = () => {
+    router.push('/bti-test' as any);
+  };
 
   return (
     <View style={styles.container}>
@@ -178,16 +186,16 @@ export default function MyPageScreen() {
 
         {/* 2. BTI Card */}
         <View style={styles.btiContainer}>
-           <TouchableOpacity style={styles.btiCard} activeOpacity={0.9}>
+           <TouchableOpacity style={styles.btiCard} activeOpacity={0.9} onPress={openBtiResultOrTest}>
               <View style={styles.btiIconBox}><Text style={{fontSize: 24}}>🍶</Text></View>
               <View style={styles.btiTxtBox}>
-                 <Text style={styles.btiTitle}>나의 술BTI 확인하기</Text>
-                 <Text style={styles.btiDesc}>아직 테스트를 진행하지 않으셨어요</Text>
+                 <Text style={styles.btiTitle}>{btiResult ? `나의 술BTI ${btiResult.type}` : '나의 술BTI 확인하기'}</Text>
+                 <Text style={styles.btiDesc}>{btiResult ? btiResult.name : '아직 테스트를 진행하지 않으셨어요'}</Text>
               </View>
               <ArrowRight size={20} color="#9CA3AF" />
            </TouchableOpacity>
-           <TouchableOpacity style={styles.btiLinkBtn}>
-              <Text style={styles.btiLinkTxt}>🍶 술BTI 검사하러 가기</Text>
+           <TouchableOpacity style={styles.btiLinkBtn} onPress={startBtiTest}>
+              <Text style={styles.btiLinkTxt}>{btiResult ? '🍶 술BTI 다시 검사하기' : '🍶 술BTI 검사하러 가기'}</Text>
            </TouchableOpacity>
         </View>
 

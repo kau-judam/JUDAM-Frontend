@@ -442,7 +442,7 @@ export const recipesData: Recipe[] = [
   {
     id: 1,
     title: "전통 누룩의 재발견 - 현대적 막걸리",
-    author: "전통주러버",
+    author: "김주담",
     description: "전통 누룩과 국내산 쌀을 사용한 현대적인 막걸리 레시피입니다. 부드러운 단맛과 은은한 탄산이 특징이에요.",
     ingredients: ["국내산 유기농 쌀", "전통 누룩", "천연 효모", "생수"],
     likes: 89,

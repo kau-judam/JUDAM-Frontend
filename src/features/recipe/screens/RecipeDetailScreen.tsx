@@ -10,6 +10,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
@@ -262,32 +263,37 @@ export default function RecipeDetailScreen() {
       showLoginRequired('실제 로그인 API 연결 후 이용할 수 있어요.');
       return;
     }
-    if (editingCommentId !== null) {
-      await updateRecipeComment(recipe.id, editingCommentId, commentInput.trim());
-      setComments((prev) =>
-        prev.map((comment) =>
-          comment.id === editingCommentId ? { ...comment, content: commentInput.trim(), timestamp: '방금 전' } : comment
-        )
-      );
-      setEditingCommentId(null);
+    try {
+      if (editingCommentId !== null) {
+        await updateRecipeComment(recipe.id, editingCommentId, commentInput.trim());
+        setComments((prev) =>
+          prev.map((comment) =>
+            comment.id === editingCommentId ? { ...comment, content: commentInput.trim(), timestamp: '방금 전' } : comment
+          )
+        );
+        setEditingCommentId(null);
+        setCommentInput('');
+        return;
+      }
+      const response = await createRecipeComment(recipe.id, commentInput.trim());
+      setComments((prev) => [
+        ...prev,
+        {
+          id: response.comment.comment_id,
+          author: user.name,
+          avatar: personImages[prev.length % personImages.length],
+          content: response.comment.content,
+          timestamp: '방금 전',
+          likes: 0,
+          liked: false,
+          authorType: user.type === 'brewery' ? 'brewery' : 'user',
+        },
+      ]);
       setCommentInput('');
-      return;
+    } catch (error) {
+      console.warn('Failed to submit recipe comment', error);
+      Alert.alert('요청 실패', '댓글 요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요.');
     }
-    const response = await createRecipeComment(recipe.id, commentInput.trim());
-    setComments((prev) => [
-      ...prev,
-      {
-        id: response.comment.comment_id,
-        author: user.name,
-        avatar: personImages[prev.length % personImages.length],
-        content: response.comment.content,
-        timestamp: '방금 전',
-        likes: 0,
-        liked: false,
-        authorType: user.type === 'brewery' ? 'brewery' : 'user',
-      },
-    ]);
-    setCommentInput('');
   };
 
   const handleReplyOpen = (commentId: number) => {
@@ -380,13 +386,18 @@ export default function RecipeDetailScreen() {
       showLoginRequired('실제 로그인 API 연결 후 이용할 수 있어요.');
       return;
     }
-    await deleteRecipeComment(recipe.id, commentMenuTarget);
-    setComments((prev) => prev.filter((comment) => comment.id !== commentMenuTarget));
-    if (editingCommentId === commentMenuTarget) {
-      setEditingCommentId(null);
-      setCommentInput('');
+    try {
+      await deleteRecipeComment(recipe.id, commentMenuTarget);
+      setComments((prev) => prev.filter((comment) => comment.id !== commentMenuTarget));
+      if (editingCommentId === commentMenuTarget) {
+        setEditingCommentId(null);
+        setCommentInput('');
+      }
+      setCommentMenuTarget(null);
+    } catch (error) {
+      console.warn('Failed to delete recipe comment', error);
+      Alert.alert('요청 실패', '댓글 삭제를 처리하지 못했어요. 잠시 후 다시 시도해주세요.');
     }
-    setCommentMenuTarget(null);
   };
 
   const handleFundingProposal = () => {

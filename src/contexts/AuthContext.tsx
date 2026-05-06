@@ -57,6 +57,16 @@ function generateUID(): string {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const TEMP_JUDAM_ACCESS_TOKEN =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIiLCJlbWFpbCI6InRlc3QtY29uc3VtZXJAanVkYW0uY29tIiwicm9sZSI6IlVTRVIiLCJpYXQiOjE3NzgwODc4NjYsImV4cCI6MTc3ODY5MjY2Nn0.BtGpz_7jGpN0ePz3LXxFhuQ22CkKm2Etr8cKh-6OPm8";
+
+async function saveTemporaryAccessToken() {
+  await SafeStorage.setItem("judam_access_token", TEMP_JUDAM_ACCESS_TOKEN);
+}
+
+async function removeTemporaryAccessToken() {
+  await SafeStorage.removeItem("judam_access_token");
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -67,6 +77,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const savedUser = await SafeStorage.getItem("judam_user");
         if (savedUser) {
           setUser(JSON.parse(savedUser));
+          const savedToken = await SafeStorage.getItem("judam_access_token");
+          if (savedToken !== TEMP_JUDAM_ACCESS_TOKEN) {
+            await saveTemporaryAccessToken();
+          }
         }
       } catch (e) {
         console.error("Failed to load user from SafeStorage", e);
@@ -95,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(mockUser);
     try {
       await SafeStorage.setItem("judam_user", JSON.stringify(mockUser));
+      await saveTemporaryAccessToken();
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
     }
@@ -104,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     try {
       await SafeStorage.removeItem("judam_user");
+      await removeTemporaryAccessToken();
     } catch (e) {
       console.error("Failed to remove user from SafeStorage", e);
     }
@@ -128,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(mockUser);
     try {
       await SafeStorage.setItem("judam_user", JSON.stringify(mockUser));
+      await saveTemporaryAccessToken();
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
     }

@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { ChevronLeft, Image as ImageIcon, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,12 +29,18 @@ type NoticeState = {
 
 export default function CommunityCreateScreen() {
   const insets = useSafeAreaInsets();
+  const { editPostId } = useLocalSearchParams();
   const { user } = useAuth();
-  const { addPost } = useCommunity();
-  const [selectedBoard, setSelectedBoard] = useState<Board>('자유');
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [imageUris, setImageUris] = useState<string[]>([]);
+  const { posts, addPost, updatePost } = useCommunity();
+  const rawEditPostId = Array.isArray(editPostId) ? editPostId[0] : editPostId;
+  const editingPost = posts.find((post) => post.id === Number(rawEditPostId));
+  const initialBoard = editingPost?.tags?.[0] && BOARDS.includes(editingPost.tags[0] as Board)
+    ? (editingPost.tags[0] as Board)
+    : BOARDS[0];
+  const [selectedBoard, setSelectedBoard] = useState<Board>(initialBoard);
+  const [title, setTitle] = useState(editingPost?.title || '');
+  const [content, setContent] = useState(editingPost?.content || '');
+  const [imageUris, setImageUris] = useState<string[]>(editingPost?.image ? [editingPost.image] : []);
   const [notice, setNotice] = useState<NoticeState>(null);
   const imageCountLabel = `사진 추가 (${imageUris.length}/5)`;
 
@@ -100,20 +106,30 @@ export default function CommunityCreateScreen() {
       return;
     }
 
-    addPost({
-      id: Date.now(),
+    const postPayload = {
       author: user?.name || '나',
       authorType: user?.type || 'user',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop',
+      avatar: editingPost?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop',
       title: title.trim(),
       content: content.trim(),
-      likes: 0,
-      comments: 0,
-      timestamp: '방금',
-      liked: false,
+      likes: editingPost?.likes || 0,
+      comments: editingPost?.comments || 0,
+      timestamp: editingPost?.timestamp || '방금',
+      liked: editingPost?.liked || false,
       category: selectedBoard === '자유' ? '자유게시판' : '정보게시판',
       image: imageUris[0],
       tags: [selectedBoard],
+    };
+
+    if (editingPost) {
+      updatePost(editingPost.id, postPayload);
+      showNotice('게시글이 수정되었습니다.', undefined, () => router.replace(`/community/${editingPost.id}` as any));
+      return;
+    }
+
+    addPost({
+      id: Date.now(),
+      ...postPayload,
     });
 
     showNotice('게시글이 등록되었습니다!', undefined, () => router.replace('/community' as any));

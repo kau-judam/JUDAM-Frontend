@@ -18,6 +18,7 @@ import {
   Sparkles, 
   Rocket, 
   ChevronDown, 
+  MoreVertical,
   Send,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,6 +53,9 @@ export default function RecipeDetailScreen() {
   const [commentInput, setCommentInput] = useState("");
   const [liked, setLiked] = useState(Boolean(selectedRecipe.liked));
   const [likesCount, setLikesCount] = useState(selectedRecipe.likes);
+  const [recipeMenuVisible, setRecipeMenuVisible] = useState(false);
+  const [commentMenuTarget, setCommentMenuTarget] = useState<number | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
 
   const [recipe] = useState({
     id: selectedRecipe.id,
@@ -69,13 +73,18 @@ export default function RecipeDetailScreen() {
   });
 
   const [comments, setComments] = useState([
-    { id: 1, author: "막걸리마스터", avatar: personImages[0], content: "이 레시피 너무 좋아요! 저도 한번 도전해볼게요 🍶", timestamp: "1시간 전", likes: 5, liked: false, authorType: "user" },
+    { id: 1, author: selectedRecipe.id === 1 ? (user?.name || "김주담") : "막걸리마스터", avatar: personImages[0], content: "이 레시피 너무 좋아요! 저도 한번 도전해볼게요 🍶", timestamp: "1시간 전", likes: 5, liked: false, authorType: "user" },
     { id: 2, author: "술샘양조장", avatar: personImages[1], content: "좋은 레시피네요. 전통 누룩 선택이 특히 마음에 듭니다. 저희 양조장에서도 검토해보겠습니다!", timestamp: "30분 전", likes: 12, liked: true, authorType: "brewery" },
     { id: 3, author: "전통주초보", avatar: personImages[2], content: "처음 도전해보려는데, 누룩은 어디서 구하면 좋을까요?", timestamp: "20분 전", likes: 2, liked: false, authorType: "user" },
     { id: 4, author: "발효연구가", avatar: personImages[3], content: "탄산감을 높이려면 발효 온도를 조금 낮게 유지해보세요. 18도 정도가 적당합니다!", timestamp: "15분 전", likes: 7, liked: false, authorType: "user" },
     { id: 5, author: "청주러버", avatar: personImages[4], content: "황설탕 대신 꿀을 써보셨나요? 향이 더 좋아진다는 이야기를 들었는데요.", timestamp: "10분 전", likes: 3, liked: false, authorType: "user" },
     { id: 6, author: "한산양조장", avatar: personImages[5], content: "훌륭한 레시피입니다. 감귤을 추가하면 더욱 상큼한 맛이 날 것 같네요! 저희도 비슷한 시도를 해본 적 있어요.", timestamp: "5분 전", likes: 9, liked: false, authorType: "brewery" },
   ]);
+
+  const isBreweryUser = user?.type === 'brewery';
+  const isRecipeAuthor = Boolean(user && user.name === recipe.author);
+  const selectedComment = comments.find((comment) => comment.id === commentMenuTarget);
+  const canManageSelectedComment = Boolean(user && selectedComment?.author === user.name);
 
   const handleLike = () => {
     if (!user) {
@@ -100,6 +109,20 @@ export default function RecipeDetailScreen() {
       showLoginRequired('댓글 작성은 로그인 후 이용할 수 있어요.');
       return;
     }
+
+    if (editingCommentId !== null) {
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === editingCommentId
+            ? { ...comment, content: commentInput.trim(), timestamp: "방금 전" }
+            : comment
+        )
+      );
+      setEditingCommentId(null);
+      setCommentInput("");
+      return;
+    }
+
     const newComment = {
       id: comments.length + 1,
       author: user?.name || "익명",
@@ -114,10 +137,37 @@ export default function RecipeDetailScreen() {
     setCommentInput("");
   };
 
+  const handleRecipeEdit = () => {
+    setRecipeMenuVisible(false);
+    router.push(`/recipe/create?editRecipeId=${recipe.id}` as any);
+  };
+
+  const handleRecipeDelete = () => {
+    setRecipeMenuVisible(false);
+    router.replace('/recipe' as any);
+  };
+
+  const handleCommentEdit = () => {
+    if (!selectedComment) return;
+    setCommentInput(selectedComment.content);
+    setEditingCommentId(selectedComment.id);
+    setCommentMenuTarget(null);
+  };
+
+  const handleCommentDelete = () => {
+    if (commentMenuTarget === null) return;
+    setComments((prev) => prev.filter((comment) => comment.id !== commentMenuTarget));
+    if (editingCommentId === commentMenuTarget) {
+      setEditingCommentId(null);
+      setCommentInput("");
+    }
+    setCommentMenuTarget(null);
+  };
+
   const visibleComments = showAllComments ? comments : comments.slice(0, INITIAL_COMMENT_COUNT);
 
   const handleFundingProposal = () => {
-    if (!user) {
+    if (!user || user.type !== 'brewery') {
       showLoginRequired('펀딩 제안은 로그인 후 이용할 수 있어요.');
       return;
     }
@@ -131,10 +181,35 @@ export default function RecipeDetailScreen() {
          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <ChevronLeft size={24} color="#111" />
          </TouchableOpacity>
-         <View style={{ width: 44 }} />
+         {isRecipeAuthor ? (
+           <View style={styles.menuWrap}>
+             <TouchableOpacity style={styles.headerMenuBtn} onPress={() => setRecipeMenuVisible((prev) => !prev)}>
+               <MoreVertical size={24} color="#111" />
+             </TouchableOpacity>
+             {recipeMenuVisible && (
+               <View style={styles.menuBox}>
+                 <TouchableOpacity style={styles.menuItem} onPress={handleRecipeEdit}>
+                   <Text style={styles.menuText}>수정</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={handleRecipeDelete}>
+                   <Text style={styles.menuText}>삭제</Text>
+                 </TouchableOpacity>
+               </View>
+             )}
+           </View>
+         ) : (
+           <View style={styles.headerMenuBtn} />
+         )}
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 120 }}
+        onScrollBeginDrag={() => {
+          setRecipeMenuVisible(false);
+          setCommentMenuTarget(null);
+        }}
+      >
         {/* Banner Image */}
         <View style={styles.imageBox}>
           <Image source={getImageSource(recipe.image)!} style={styles.mainImg} />
@@ -197,13 +272,17 @@ export default function RecipeDetailScreen() {
            )}
 
            {/* Propose Action */}
-           <TouchableOpacity style={styles.proposeBtn} onPress={handleFundingProposal}>
-              <LinearGradient colors={['#111', '#333']} start={{x:0, y:0}} end={{x:1, y:0}} style={styles.proposeInner}>
-                 <Rocket size={20} color="#FFF" />
-                 <Text style={styles.proposeTxt}>이 레시피로 펀딩 제안하기</Text>
-              </LinearGradient>
-           </TouchableOpacity>
-           <Text style={styles.proposeDesc}>이 레시피를 기반으로 크라우드펀딩 프로젝트를 시작할 수 있습니다</Text>
+           {isBreweryUser && (
+             <>
+               <TouchableOpacity style={styles.proposeBtn} onPress={handleFundingProposal}>
+                  <LinearGradient colors={['#111', '#333']} start={{x:0, y:0}} end={{x:1, y:0}} style={styles.proposeInner}>
+                     <Rocket size={20} color="#FFF" />
+                     <Text style={styles.proposeTxt}>이 레시피로 펀딩 제안하기</Text>
+                  </LinearGradient>
+               </TouchableOpacity>
+               <Text style={styles.proposeDesc}>이 레시피를 기반으로 크라우드펀딩 프로젝트를 시작할 수 있습니다</Text>
+             </>
+           )}
         </View>
 
         {/* Comments Section */}
@@ -217,6 +296,27 @@ export default function RecipeDetailScreen() {
                       <View style={styles.commentUserRow}>
                          <Text style={styles.commentAuthor}>{c.author}</Text>
                          {c.authorType === 'brewery' && <View style={styles.breweryBadge}><Text style={styles.breweryBadgeTxt}>양조장</Text></View>}
+                         {user?.name === c.author && (
+                           <View style={styles.commentMenuWrap}>
+                             <TouchableOpacity
+                               style={styles.commentMoreBtn}
+                               onPress={() => setCommentMenuTarget((prev) => (prev === c.id ? null : c.id))}
+                               activeOpacity={0.8}
+                             >
+                               <MoreVertical size={16} color="#6B7280" />
+                             </TouchableOpacity>
+                             {commentMenuTarget === c.id && canManageSelectedComment && (
+                               <View style={[styles.menuBox, styles.commentMenuBox]}>
+                                 <TouchableOpacity style={styles.menuItem} onPress={handleCommentEdit}>
+                                   <Text style={styles.menuText}>수정</Text>
+                                 </TouchableOpacity>
+                                 <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={handleCommentDelete}>
+                                   <Text style={styles.menuText}>삭제</Text>
+                                 </TouchableOpacity>
+                               </View>
+                             )}
+                           </View>
+                         )}
                       </View>
                       <Text style={styles.commentContent}>{c.content}</Text>
                    </View>
@@ -273,8 +373,30 @@ export default function RecipeDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
-  header: { backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  header: { backgroundColor: '#FFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', zIndex: 20 },
   backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  headerMenuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  menuWrap: { position: 'relative' },
+  menuBox: {
+    position: 'absolute',
+    top: 42,
+    right: 4,
+    minWidth: 120,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFF',
+    overflow: 'hidden',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    zIndex: 30,
+  },
+  menuItem: { paddingHorizontal: 16, paddingVertical: 13 },
+  menuItemBorder: { borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  menuText: { fontSize: 14, fontWeight: '700', color: '#111' },
   imageBox: { width: '100%', height: 300, backgroundColor: '#F9FAFB' },
   mainImg: { width: '100%', height: '100%', resizeMode: 'cover' },
   content: { padding: 24 },
@@ -312,6 +434,9 @@ const styles = StyleSheet.create({
   commentBubble: { flex: 1, backgroundColor: '#F9FAFB', padding: 16, borderRadius: 20, borderTopLeftRadius: 4 },
   commentUserRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   commentAuthor: { fontSize: 13, fontWeight: '700', color: '#111' },
+  commentMoreBtn: { marginLeft: 'auto', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  commentMenuWrap: { marginLeft: 'auto', position: 'relative' },
+  commentMenuBox: { top: 28, right: 0 },
   breweryBadge: { backgroundColor: '#111', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   breweryBadgeTxt: { color: '#FFF', fontSize: 9, fontWeight: '900' },
   commentContent: { fontSize: 14, color: '#374151', lineHeight: 20, fontWeight: '500' },

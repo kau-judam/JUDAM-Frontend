@@ -20,6 +20,7 @@ export interface Post {
 interface CommunityContextType {
   posts: Post[];
   addPost: (post: Post) => void;
+  updatePost: (id: number, patch: Partial<Omit<Post, "id">>) => void;
   deletePost: (id: number) => void;
   likePost: (id: number) => void;
 }
@@ -27,7 +28,7 @@ interface CommunityContextType {
 const initialPosts: Post[] = [
   {
     id: 1,
-    author: "전통주러버",
+    author: "김주담",
     authorType: "user",
     avatar: require("../../newpicutre/person1.png"),
     title: "첫 막걸리 도전 성공기!",
@@ -82,6 +83,10 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
     setPosts((prev) => [post, ...prev]);
   };
 
+  const updatePost = (id: number, patch: Partial<Omit<Post, "id">>) => {
+    setPosts((prev) => prev.map((post) => (post.id === id ? { ...post, ...patch } : post)));
+  };
+
   const deletePost = (id: number) => {
     setPosts((prev) => prev.filter((p) => p.id !== id));
   };
@@ -97,7 +102,7 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <CommunityContext.Provider value={{ posts, addPost, deletePost, likePost }}>
+    <CommunityContext.Provider value={{ posts, addPost, updatePost, deletePost, likePost }}>
       {children}
     </CommunityContext.Provider>
   );

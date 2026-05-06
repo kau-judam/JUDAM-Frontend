@@ -34,6 +34,7 @@ import type { FundingProject } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
+import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import {
   MAX_ADDITIONAL_SUPPORT,
   bankOptions,
@@ -330,7 +331,7 @@ export default function FundingSupportScreen() {
             <View style={styles.metaRow}>
               <Text style={styles.breweryText}>{project.brewery}</Text>
               <View style={styles.categoryBadge}>
-                <Text style={styles.categoryText}>{project.category}</Text>
+                <Text style={styles.categoryText} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text>
               </View>
             </View>
             <Text style={styles.projectTitle} numberOfLines={2}>{project.title}</Text>
@@ -1120,7 +1121,7 @@ const styles = StyleSheet.create({
   projectInfo: { flex: 1, justifyContent: 'center' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   breweryText: { fontSize: 12, color: '#6B7280', fontWeight: '800' },
-  categoryBadge: { backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  categoryBadge: { maxWidth: 116, backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   categoryText: { fontSize: 11, color: '#374151', fontWeight: '800' },
   projectTitle: { fontSize: 15, lineHeight: 21, color: '#111', fontWeight: '900', marginBottom: 8 },
   priceLine: { flexDirection: 'row', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' },

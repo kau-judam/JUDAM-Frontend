@@ -18,7 +18,6 @@ import {
   TrendingUp,
   Users,
   ChevronDown,
-  Heart,
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
@@ -31,17 +30,12 @@ import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
-import { Progress } from '@/components/ui/progress';
-import {
-  getFundingProjectImageSource,
-  getFundingStatusLabel,
-  isCompletedFundingStatus,
-} from '@/constants/data';
+import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import {
   getFundingListStats,
-  getTasteMatchScore,
   getTasteProfileFromSulbti,
+  matchesFundingSearch,
   matchesFundingStatusFilter,
   sortFundingProjectsForDisplay,
   sortOptions,
@@ -49,7 +43,6 @@ import {
   type FundingSortOption,
   type FundingStatusFilter,
 } from '@/features/funding/recommendation';
-import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -92,20 +85,8 @@ export default function FundingListScreen() {
   );
 
   const filteredProjects = useMemo(() => {
-    const normalizedSearch = searchTerm.toLowerCase();
     return projects.filter((project) => {
-      const matchesSearch =
-        project.title.toLowerCase().includes(normalizedSearch) ||
-        project.brewery.toLowerCase().includes(normalizedSearch) ||
-        project.category.toLowerCase().includes(normalizedSearch) ||
-        project.location.toLowerCase().includes(normalizedSearch) ||
-        (project.mainIngredients || '').toLowerCase().includes(normalizedSearch) ||
-        (project.subIngredients || '').toLowerCase().includes(normalizedSearch) ||
-        (project.tags || []).some((tag) => tag.toLowerCase().includes(normalizedSearch));
-
-      const matchesStatus = matchesFundingStatusFilter(project, selectedStatus);
-
-      return matchesSearch && matchesStatus;
+      return matchesFundingSearch(project, searchTerm) && matchesFundingStatusFilter(project, selectedStatus);
     });
   }, [projects, searchTerm, selectedStatus]);
 
@@ -266,69 +247,18 @@ export default function FundingListScreen() {
             </View>
           ) : (
             pagedProjects.map((project, index) => {
-              const progressPercentage = Math.min((project.currentAmount / project.goalAmount) * 100, 100);
               const isOwnProject = isFundingProjectOwnedByBrewery(user, project);
               return (
-                <Animated.View key={project.id} entering={FadeInUp.delay(index * 50)} style={styles.fundingCard}>
-                  <TouchableOpacity 
-                    style={styles.cardInner} 
-                    activeOpacity={0.9}
+                <Animated.View key={project.id} entering={FadeInUp.delay(index * 50)} style={styles.projectCardSpacing}>
+                  <FundingProjectCard
+                    project={project}
+                    favorite={isFavoriteFunding(project.id)}
+                    ownProject={isOwnProject}
+                    showTasteMatch={isTasteSortActive}
+                    tasteProfile={userTasteProfile}
                     onPress={() => router.push(`/funding/${project.id}`)}
-                  >
-                    <View style={styles.thumbBox}>
-                      <Image source={getFundingProjectImageSource(project)} style={styles.thumb} />
-                      <TouchableOpacity 
-                        style={styles.heartBtn} 
-                        onPress={(event) => {
-                          event.stopPropagation();
-                          handleFavoritePress(project.id);
-                        }}
-                      >
-                        <Heart 
-                          size={14} 
-                          color={isFavoriteFunding(project.id) ? "#EF4444" : "#FFF"}
-                          fill={isFavoriteFunding(project.id) ? "#EF4444" : "transparent"}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                    <View style={styles.infoBox}>
-                      <View style={styles.tagRow}>
-                        <Text style={styles.breweryName}>{project.brewery}</Text>
-                        <View style={styles.categoryBadge}>
-                          <Text style={styles.categoryTxt} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text>
-                        </View>
-                        <View style={[styles.statusBadge, isCompletedFundingStatus(project.status) ? styles.statusBadgeSuccess : styles.statusBadgeActive]}>
-                          <Text style={[styles.statusTxt, isCompletedFundingStatus(project.status) && { color: '#2563EB' }]}>{getFundingStatusLabel(project.status)}</Text>
-                        </View>
-                      </View>
-                      {isOwnProject && (
-                        <View style={styles.ownProjectBadge}>
-                          <Text style={styles.ownProjectTxt}>내 프로젝트</Text>
-                        </View>
-                      )}
-                      <Text style={styles.projectTitle} numberOfLines={2}>{project.title}</Text>
-                      {isTasteSortActive && (
-                        <View style={styles.matchBadge}>
-                          <Sparkles size={12} color="#111" />
-                          <Text style={styles.matchBadgeTxt}>내 술BTI와 {getTasteMatchScore(project, userTasteProfile)}% 매칭</Text>
-                        </View>
-                      )}
-                      <View style={styles.progressRow}>
-                        <View style={styles.progressTextRow}>
-                           <Text style={styles.progressPct}>{progressPercentage.toFixed(0)}%</Text>
-                           <Text style={styles.amountTxt}>{(project.currentAmount / 10000).toLocaleString()}만원</Text>
-                        </View>
-                        <Text style={styles.daysLeft}>
-                          {isCompletedFundingStatus(project.status) ? '펀딩 종료' : `${project.daysLeft}일 남음`}
-                        </Text>
-                      </View>
-                      <Progress 
-                        value={progressPercentage} 
-                        style={styles.progressBar} 
-                        indicatorStyle={{ backgroundColor: '#111' }}
-                      />
-                    </View>
-                  </TouchableOpacity>
+                    onFavoritePress={handleFavoritePress}
+                  />
                 </Animated.View>
               );
             })
@@ -457,31 +387,7 @@ const styles = StyleSheet.create({
   listSection: { padding: 20, paddingTop: 40 },
   emptyBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
   emptyTxt: { fontSize: 16, color: '#9CA3AF', marginTop: 16, fontWeight: '500' },
-  fundingCard: { backgroundColor: '#FFF', borderRadius: 28, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#F3F4F6', elevation: 3, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10 },
-  cardInner: { flexDirection: 'row', gap: 16 },
-  thumbBox: { width: 100, height: 100, borderRadius: 20, overflow: 'hidden', backgroundColor: '#F3F4F6' },
-  thumb: { width: '100%', height: '100%', resizeMode: 'cover' },
-  heartBtn: { position: 'absolute', bottom: 8, left: 8, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  infoBox: { flex: 1, justifyContent: 'space-between' },
-  tagRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  breweryName: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
-  categoryBadge: { maxWidth: 104, backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  categoryTxt: { fontSize: 10, fontWeight: '800', color: '#4B5563' },
-  statusBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  statusBadgeActive: { backgroundColor: '#ECFDF5' },
-  statusBadgeSuccess: { backgroundColor: '#EFF6FF' },
-  statusTxt: { fontSize: 10, fontWeight: '900', color: '#059669' },
-  ownProjectBadge: { alignSelf: 'flex-start', backgroundColor: '#111', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6 },
-  ownProjectTxt: { color: '#FFF', fontSize: 10, fontWeight: '900' },
-  projectTitle: { fontSize: 16, fontWeight: '800', color: '#111', lineHeight: 22, marginBottom: 8 },
-  matchBadge: { alignSelf: 'flex-start', minHeight: 28, borderRadius: 999, paddingHorizontal: 10, backgroundColor: '#F3F4F6', flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8 },
-  matchBadgeTxt: { fontSize: 11, fontWeight: '900', color: '#111' },
-  progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6 },
-  progressTextRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  progressPct: { fontSize: 22, fontWeight: '900', color: '#111' },
-  amountTxt: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
-  daysLeft: { fontSize: 12, fontWeight: '800', color: '#111' },
-  progressBar: { height: 6, borderRadius: 3 },
+  projectCardSpacing: { marginBottom: 16 },
   pagination: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 40 },
   pageNumbers: { flexDirection: 'row', gap: 8 },
   pageArrow: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB' },

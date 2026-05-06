@@ -59,6 +59,21 @@ export function matchesFundingStatusFilter(project: FundingProject, filter: Fund
   return true;
 }
 
+export function matchesFundingSearch(project: FundingProject, searchTerm: string) {
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  if (!normalizedSearch) return true;
+
+  return (
+    project.title.toLowerCase().includes(normalizedSearch) ||
+    project.brewery.toLowerCase().includes(normalizedSearch) ||
+    project.category.toLowerCase().includes(normalizedSearch) ||
+    project.location.toLowerCase().includes(normalizedSearch) ||
+    (project.mainIngredients || '').toLowerCase().includes(normalizedSearch) ||
+    (project.subIngredients || '').toLowerCase().includes(normalizedSearch) ||
+    (project.tags || []).some((tag) => tag.toLowerCase().includes(normalizedSearch))
+  );
+}
+
 export function getProjectFavoriteCount(project: FundingProject, favoriteFundings: number[] = []) {
   return (project.favoriteCount || 0) + (favoriteFundings.includes(project.id) ? 1 : 0);
 }

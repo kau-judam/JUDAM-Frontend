@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
 import { showLoginRequired } from '@/utils/authPrompt';
 
@@ -235,7 +236,7 @@ export default function FundingReviewWriteScreen() {
           <View style={styles.projectInfo}>
             <View style={styles.projectMetaRow}>
               <Text style={styles.projectBadge}>펀딩 술</Text>
-              <Text style={styles.projectCategory}>{project.category}</Text>
+              <Text style={styles.projectCategory} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text>
             </View>
             <Text style={styles.projectTitle} numberOfLines={2}>{project.title}</Text>
             <Text style={styles.projectBrewery}>{project.brewery}</Text>
@@ -396,7 +397,7 @@ const styles = StyleSheet.create({
   projectInfo: { flex: 1, minWidth: 0, justifyContent: 'center' },
   projectMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
   projectBadge: { fontSize: 10, fontWeight: '900', color: '#FFF', backgroundColor: '#111', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
-  projectCategory: { fontSize: 11, fontWeight: '800', color: '#9CA3AF' },
+  projectCategory: { maxWidth: 128, fontSize: 11, fontWeight: '800', color: '#9CA3AF' },
   projectTitle: { fontSize: 14, lineHeight: 20, fontWeight: '900', color: '#111' },
   projectBrewery: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', marginTop: 3 },
   projectReward: { alignSelf: 'flex-start', fontSize: 11, fontWeight: '900', color: '#4B5563', backgroundColor: '#F3F4F6', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, marginTop: 7, maxWidth: '100%' },

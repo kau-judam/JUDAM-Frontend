@@ -95,6 +95,14 @@ const DOCUMENT_PICKER_TYPES = ['application/pdf', 'image/*'];
 const IMAGE_THUMB_SIZE = 128;
 const IMAGE_THUMB_GAP = 12;
 const IMAGE_REORDER_STEP = IMAGE_THUMB_SIZE + IMAGE_THUMB_GAP;
+const DEFAULT_PROJECT_POLICY = `환불: 프로젝트 마감 후 즉시 양조 공정이 시작되므로 단순 변심 환불은 불가합니다. 단, 양조장의 사정으로 생산이 불가능해질 경우 100% 환불을 보장합니다.
+
+교환/AS: 주류 배송 특성상 파손된 상태로 수령 시, 사진과 함께 접수해주시면 즉시 새 제품으로 교환해 드립니다.
+
+성인인증: 본 프로젝트는 성인인증을 완료한 후원자만 참여 가능하며, 배송 시 대리 수령이 제한될 수 있습니다.`;
+const DEFAULT_EXPECTED_DIFFICULTIES = `품질 변동: AI 검토와 전문가의 관리를 거치나, 기온 변화에 따라 도수나 당도가 기획안과 ±1~2% 정도 차이가 날 수 있습니다.
+
+일정 지연: 술이 충분히 익지 않았을 경우, 최상의 맛을 위해 출고가 최대 10일 정도 지연될 수 있으며 이 경우 커뮤니티를 통해 즉시 공지하겠습니다.`;
 
 function digitsOnly(value: string) {
   return value.replace(/[^0-9]/g, '');
@@ -147,6 +155,11 @@ function volumeText(value: string) {
 
 function alcoholText(value: string) {
   return value ? `${value}%` : '';
+}
+
+function normalizeProjectTags(tags?: string[]) {
+  if (!tags?.length) return [];
+  return Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean))).slice(0, 10);
 }
 
 function parseTextLines(value: string) {
@@ -256,13 +269,13 @@ function createProjectEditDraft(project: FundingProject, user: AuthUser | null) 
     basicInfo: {
       category: project.category || project.productType || '막걸리',
       title: project.title || '',
-      shortTitle: project.title || '',
+      shortTitle: project.shortTitle || project.title || '',
       mainIngredient: project.mainIngredients || '',
       subIngredient: project.subIngredients || '',
       alcoholContent,
       summary: project.projectSummary || project.shortDescription || '',
       images: imageUris.slice(0, 5),
-      tags: [] as string[],
+      tags: normalizeProjectTags(project.tags),
     },
     fundingInfo: {
       pricePerBottle: project.pricePerBottle ? String(project.pricePerBottle) : '',
@@ -287,8 +300,13 @@ function createProjectEditDraft(project: FundingProject, user: AuthUser | null) 
     },
     projectPlan: {
       introduction: project.introduction || project.story || project.projectSummary || '',
+      videoUrl: project.videoUrl || '',
       budget: formatBudgetItems(project.budget),
       schedule: formatScheduleItems(project.schedule),
+    },
+    trustInfo: {
+      projectPolicy: project.projectPolicy || DEFAULT_PROJECT_POLICY,
+      expectedDifficulties: project.expectedDifficulties || DEFAULT_EXPECTED_DIFFICULTIES,
     },
     creatorInfo: {
       name: breweryName,
@@ -394,6 +412,7 @@ export default function BreweryProjectCreateScreen() {
   });
   const [projectPlan, setProjectPlan] = useState({
     introduction: '',
+    videoUrl: '',
     budget: '',
     schedule: '',
   });
@@ -416,14 +435,8 @@ export default function BreweryProjectCreateScreen() {
     email: '',
   });
   const [trustInfo, setTrustInfo] = useState({
-    projectPolicy: `환불: 프로젝트 마감 후 즉시 양조 공정이 시작되므로 단순 변심 환불은 불가합니다. 단, 양조장의 사정으로 생산이 불가능해질 경우 100% 환불을 보장합니다.
-
-교환/AS: 주류 배송 특성상 파손된 상태로 수령 시, 사진과 함께 접수해주시면 즉시 새 제품으로 교환해 드립니다.
-
-성인인증: 본 프로젝트는 성인인증을 완료한 후원자만 참여 가능하며, 배송 시 대리 수령이 제한될 수 있습니다.`,
-    expectedDifficulties: `품질 변동: AI 검토와 전문가의 관리를 거치나, 기온 변화에 따라 도수나 당도가 기획안과 ±1~2% 정도 차이가 날 수 있습니다.
-
-일정 지연: 술이 충분히 익지 않았을 경우, 최상의 맛을 위해 출고가 최대 10일 정도 지연될 수 있으며 이 경우 커뮤니티를 통해 즉시 공지하겠습니다.`,
+    projectPolicy: DEFAULT_PROJECT_POLICY,
+    expectedDifficulties: DEFAULT_EXPECTED_DIFFICULTIES,
   });
   const [uploadedFiles, setUploadedFiles] = useState<Record<FileKey, string>>({
     profileImage: '',
@@ -442,6 +455,7 @@ export default function BreweryProjectCreateScreen() {
     setProductInfo(draft.productInfo);
     setTasteProfile(draft.tasteProfile);
     setProjectPlan(draft.projectPlan);
+    setTrustInfo(draft.trustInfo);
     setCreatorInfo(draft.creatorInfo);
     setTaxInfo(draft.taxInfo);
     setUploadedFiles(draft.uploadedFiles);
@@ -574,6 +588,7 @@ export default function BreweryProjectCreateScreen() {
         productInfo.alcoholContent ||
         productInfo.ingredients.some((item) => item.ingredient || item.origin) ||
         projectPlan.introduction ||
+        projectPlan.videoUrl ||
         projectPlan.budget ||
         projectPlan.schedule ||
         creatorInfo.name ||
@@ -608,11 +623,18 @@ export default function BreweryProjectCreateScreen() {
   });
 
   const applyDraftPayload = (draft: any) => {
-    if (draft.basicInfo) setBasicInfo({ ...draft.basicInfo, category: '막걸리' });
+    if (draft.basicInfo) {
+      setBasicInfo({
+        ...draft.basicInfo,
+        category: '막걸리',
+        shortTitle: draft.basicInfo.shortTitle || '',
+        tags: normalizeProjectTags(draft.basicInfo.tags),
+      });
+    }
     if (draft.fundingInfo) setFundingInfo(draft.fundingInfo);
     if (draft.productInfo) setProductInfo({ ...draft.productInfo, productType: '막걸리' });
     if (draft.tasteProfile) setTasteProfile(draft.tasteProfile);
-    if (draft.projectPlan) setProjectPlan(draft.projectPlan);
+    if (draft.projectPlan) setProjectPlan({ ...draft.projectPlan, videoUrl: draft.projectPlan.videoUrl || '' });
     if (draft.creatorInfo) setCreatorInfo(draft.creatorInfo);
     if (draft.taxInfo) setTaxInfo(draft.taxInfo);
     if (draft.trustInfo) setTrustInfo(draft.trustInfo);
@@ -1028,6 +1050,7 @@ export default function BreweryProjectCreateScreen() {
 
     return {
       title: basicInfo.title,
+      shortTitle: basicInfo.shortTitle,
       brewery: creatorInfo.name || user?.breweryName || editProject?.brewery || '양조장',
       breweryLogo: editProject?.breweryLogo || '🍶',
       location: taxInfo.address || editProject?.location || user?.breweryLocation || '지역 미정',
@@ -1058,9 +1081,13 @@ export default function BreweryProjectCreateScreen() {
       shippingFee: editProject?.shippingFee ?? 3000,
       mainIngredients: basicInfo.mainIngredient,
       subIngredients: basicInfo.subIngredient,
+      tags: normalizeProjectTags(basicInfo.tags),
       projectSummary: basicInfo.summary,
       introduction: projectPlan.introduction,
       story: projectPlan.introduction,
+      videoUrl: projectPlan.videoUrl.trim() || undefined,
+      projectPolicy: trustInfo.projectPolicy,
+      expectedDifficulties: trustInfo.expectedDifficulties,
       rewardDetails: editProject?.rewardDetails,
       budget: budgetItems,
       schedule: scheduleItems,
@@ -1530,6 +1557,14 @@ export default function BreweryProjectCreateScreen() {
             minHeight={150}
             helper="목표 금액을 어디에 사용할지 구체적으로 작성해주세요."
             mono
+          />
+          <Field
+            label="프로젝트 영상 URL (선택)"
+            value={projectPlan.videoUrl}
+            onChangeText={(value) => setProjectPlan((prev) => ({ ...prev, videoUrl: value }))}
+            placeholder="영상 링크를 입력해주세요."
+            helper="동영상 플레이어를 넣지 않고 URL만 게시글에 표시합니다."
+            keyboardType="url"
           />
           <TextArea
             label="프로젝트 일정 (선택)"
@@ -2697,7 +2732,7 @@ function PreviewModal({
   basicInfo: { category: string; title: string; summary: string; mainIngredient: string; subIngredient: string; alcoholContent: string; images: string[] };
   fundingInfo: { duration: string; startDate: string; pricePerBottle: string; bottleQuantity: string; goalAmount: string };
   productInfo: { volume: string; alcoholContent: string };
-  projectPlan: { introduction: string; budget: string; schedule: string };
+  projectPlan: { introduction: string; videoUrl: string; budget: string; schedule: string };
   creatorInfo: { name: string; profileImage: string };
   taxInfo: { address: string };
   trustInfo: { projectPolicy: string; expectedDifficulties: string };
@@ -2771,6 +2806,12 @@ function PreviewModal({
                 </View>
               )}
               {projectPlan.introduction && <Text style={styles.previewParagraph}>{projectPlan.introduction}</Text>}
+              {projectPlan.videoUrl && (
+                <View style={styles.previewUrlBox}>
+                  <Text style={styles.previewUrlLabel}>프로젝트 영상 URL</Text>
+                  <Text style={styles.previewUrlText} numberOfLines={2}>{projectPlan.videoUrl}</Text>
+                </View>
+              )}
             </PreviewSection>
             {(fundingInfo.pricePerBottle || fundingInfo.bottleQuantity || fundingInfo.goalAmount) && (
               <PreviewSection title="가격 안내">
@@ -3138,6 +3179,9 @@ const styles = StyleSheet.create({
   previewBlueNoteTitle: { fontSize: 14, fontWeight: '900', color: '#1E3A8A' },
   previewBlueNoteText: { fontSize: 14, lineHeight: 21, fontWeight: '700', color: '#1E3A8A' },
   previewParagraph: { fontSize: 14, lineHeight: 22, fontWeight: '700', color: '#374151' },
+  previewUrlBox: { borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', padding: 12, gap: 4 },
+  previewUrlLabel: { fontSize: 12, fontWeight: '900', color: '#6B7280' },
+  previewUrlText: { fontSize: 13, lineHeight: 19, fontWeight: '800', color: '#111' },
   previewPriceBlock: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 16, overflow: 'hidden', flexDirection: 'row' },
   previewPriceAccent: { width: 4 },
   previewPriceAccentDark: { backgroundColor: '#111' },

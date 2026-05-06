@@ -81,6 +81,7 @@ export interface FundingProject {
   breweryLogo?: string;
   location: string;
   category: string;
+  shortTitle?: string;
   shortDescription?: string;
   image: string;
   images?: string[];
@@ -108,9 +109,12 @@ export interface FundingProject {
   shippingFee?: number;
   mainIngredients?: string;
   subIngredients?: string;
+  tags?: string[];
   projectSummary?: string;
   introduction?: string;
   story?: string;
+  projectPolicy?: string;
+  expectedDifficulties?: string;
   rewardDetails?: string;
   budget?: BudgetItem[];
   schedule?: ScheduleItem[];
@@ -133,6 +137,7 @@ export const fundingProjects: FundingProject[] = [
     breweryLogo: "🌸",
     location: "경기 양평",
     category: "막걸리",
+    shortTitle: "벚꽃 막걸리",
     shortDescription: "우리나라 전통의 맛을 현대적으로 재해석한 막걸리입니다.",
     image: "https://images.unsplash.com/photo-1582204964885-7bc2d62b6917?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     localImage: require('../../newpicutre/funding1.jpg'),
@@ -157,6 +162,7 @@ export const fundingProjects: FundingProject[] = [
     shippingFee: 2000,
     mainIngredients: "국내산 쌀, 전통 누룩",
     subIngredients: "식용 벚꽃잎, 봄꽃 발효액",
+    tags: ["벚꽃", "봄술", "국내산쌀", "전통누룩"],
     projectSummary: "봄철 벚꽃이 만개할 때 수확한 식용 벚꽃잎을 활용하여 전통 누룩 발효 방식으로 빚어내는 계절 한정 막걸리입니다.",
     story: "3대째 이어온 전통 누룩 제조 기술을 바탕으로 봄의 청량한 기운과 벚꽃의 은은한 향을 한 병에 담는 프로젝트입니다. 후원자는 양조 일지를 통해 원료 준비부터 병입까지의 과정을 함께 지켜볼 수 있습니다.",
     budget: [
@@ -185,6 +191,7 @@ export const fundingProjects: FundingProject[] = [
     breweryLogo: "🍶",
     location: "경기 양평",
     category: "막걸리",
+    shortTitle: "현대적 막걸리",
     shortDescription: "전통 누룩을 사용한 현대적인 막걸리를 함께 만들어요.",
     image: "https://images.unsplash.com/photo-1694763893369-f7affaa9155d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     localImage: require('../../newpicutre/funding2.jpg'),
@@ -207,6 +214,7 @@ export const fundingProjects: FundingProject[] = [
     shippingFee: 2000,
     mainIngredients: "경기 쌀, 수제 누룩",
     subIngredients: "천연 효모, 정제수",
+    tags: ["수제누룩", "깔끔한목넘김", "경기쌀", "산뜻함"],
     projectSummary: "전통 누룩의 깊은 풍미를 현대적인 산미와 깔끔한 목넘김으로 재해석한 막걸리 프로젝트입니다.",
     story: "술샘양조장은 오래된 누룩실의 발효 데이터를 바탕으로 전통의 묵직함은 살리고, 젊은 소비자가 부담 없이 즐길 수 있는 산뜻한 막걸리를 만들고자 합니다.",
     budget: [
@@ -235,6 +243,7 @@ export const fundingProjects: FundingProject[] = [
     breweryLogo: "🌺",
     location: "전북 전주",
     category: "막걸리",
+    shortTitle: "꽃향 생막걸리",
     shortDescription: "계절의 꽃향기를 담은 프리미엄 생막걸리입니다.",
     image: "https://images.unsplash.com/photo-1770734331757-f40d64eafbc2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     localImage: require('../../newpicutre/funding3.jpg'),
@@ -257,6 +266,7 @@ export const fundingProjects: FundingProject[] = [
     shippingFee: 2500,
     mainIngredients: "찹쌀, 전통 누룩",
     subIngredients: "계절 꽃잎, 천연 꿀",
+    tags: ["꽃향", "생막걸리", "찹쌀", "프리미엄"],
     projectSummary: "은은한 꽃향과 부드러운 생막걸리 질감을 살린 프리미엄 계절 막걸리 프로젝트입니다.",
     story: "꽃담양조는 전주 지역의 계절 꽃을 활용해 향은 풍부하지만 맛은 과하지 않은 막걸리를 목표로 합니다. 향미 밸런스 테스트를 여러 차례 거쳐 식전주와 선물용에 어울리는 술을 완성합니다.",
     budget: [
@@ -285,6 +295,7 @@ export const fundingProjects: FundingProject[] = [
     breweryLogo: "🌾",
     location: "경북 안동",
     category: "막걸리",
+    shortTitle: "안동쌀 막걸리",
     shortDescription: "안동쌀과 전통 누룩으로 빚는 깊은 맛의 막걸리입니다.",
     image: "https://images.unsplash.com/photo-1766399654235-a6793895422d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     favoriteCount: 21,
@@ -305,6 +316,7 @@ export const fundingProjects: FundingProject[] = [
     shippingFee: 3000,
     mainIngredients: "안동 쌀, 전통 누룩",
     subIngredients: "정제수, 천연 효모",
+    tags: ["안동쌀", "깊은맛", "묵직함", "저온숙성"],
     projectSummary: "안동쌀의 깊은 곡물 향과 현대적인 숙성 관리를 결합해 묵직하고 깨끗한 막걸리를 만드는 프로젝트입니다.",
     story: "안동양조는 지역 쌀과 누룩을 활용해 깊은 곡물 향을 지닌 막걸리를 빚습니다. 저온 발효와 숙성 과정을 통해 묵직하지만 거친 느낌은 줄인 프리미엄 막걸리를 목표로 합니다.",
     budget: [
@@ -333,6 +345,7 @@ export const fundingProjects: FundingProject[] = [
     breweryLogo: "🏔️",
     location: "강원 평창",
     category: "막걸리",
+    shortTitle: "산사 막걸리",
     shortDescription: "깨끗한 산의 기운을 담은 막걸리입니다.",
     image: "https://images.unsplash.com/photo-1760920193193-91dd96af7862?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     favoriteCount: 29,
@@ -353,6 +366,7 @@ export const fundingProjects: FundingProject[] = [
     shippingFee: 2000,
     mainIngredients: "강원 쌀, 산사 열매",
     subIngredients: "전통 누룩, 산사 농축액",
+    tags: ["산사", "강원쌀", "산뜻한산미", "성공펀딩"],
     projectSummary: "산사의 산뜻한 산미와 막걸리의 부드러운 질감을 함께 살린 완료형 프로젝트입니다.",
     story: "산사양조는 평창의 깨끗한 물과 산사 열매를 활용해 산뜻한 향을 가진 막걸리를 선보였습니다. 성공한 펀딩 이후 후원자들의 후기와 개선 의견을 수집하고 있습니다.",
     budget: [
@@ -381,6 +395,7 @@ export const fundingProjects: FundingProject[] = [
     breweryLogo: "🍊",
     location: "제주",
     category: "막걸리",
+    shortTitle: "한라봉 막걸리",
     shortDescription: "제주 한라봉의 상큼함을 담은 프리미엄 막걸리입니다.",
     image: "https://images.unsplash.com/photo-1598191392914-c6b3616f6369?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
     favoriteCount: 34,
@@ -401,6 +416,7 @@ export const fundingProjects: FundingProject[] = [
     shippingFee: 3000,
     mainIngredients: "제주 쌀, 전통 누룩",
     subIngredients: "한라봉 껍질, 감귤 발효액",
+    tags: ["한라봉", "제주쌀", "감귤향", "한정판"],
     projectSummary: "제주 한라봉의 상큼한 향을 담은 한정판 막걸리 프로젝트입니다.",
     story: "제주양조는 한라봉 껍질의 향을 섬세하게 추출해 막걸리 발효액과 조화롭게 빚었습니다. 과일 향은 선명하지만 단맛은 절제해 식사와 함께 즐기기 좋은 막걸리를 목표로 했습니다.",
     budget: [

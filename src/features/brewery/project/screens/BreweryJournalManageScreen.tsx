@@ -37,6 +37,7 @@ export default function BreweryJournalManageScreen() {
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
   const [images, setImages] = useState<string[]>([]);
   const [message, setMessage] = useState('');
 
@@ -47,6 +48,7 @@ export default function BreweryJournalManageScreen() {
     setEditingEntry(null);
     setTitle('');
     setContent('');
+    setVideoUrl('');
     setImages([]);
   };
 
@@ -55,6 +57,7 @@ export default function BreweryJournalManageScreen() {
     setEditingEntry(entry || null);
     setTitle(entry?.title || '');
     setContent(entry?.content || '');
+    setVideoUrl(entry?.videoUrl || '');
     setImages(entry?.images || []);
   };
 
@@ -95,6 +98,7 @@ export default function BreweryJournalManageScreen() {
       title: title.trim(),
       content: content.trim(),
       images: images.length > 0 ? images : undefined,
+      videoUrl: videoUrl.trim() || undefined,
       likes: editingEntry?.likes || 0,
       comments: editingEntry?.comments || [],
     };
@@ -188,6 +192,12 @@ export default function BreweryJournalManageScreen() {
                     </View>
                     <Text style={styles.entryBody} numberOfLines={3}>{entry.content}</Text>
                     {entry.images?.[0] && <Image source={{ uri: entry.images[0] }} style={styles.entryImage} />}
+                    {entry.videoUrl ? (
+                      <View style={styles.entryUrlBox}>
+                        <Text style={styles.entryUrlLabel}>영상 URL</Text>
+                        <Text style={styles.entryUrlText} numberOfLines={2}>{entry.videoUrl}</Text>
+                      </View>
+                    ) : null}
                   </View>
                 ))}
               </View>
@@ -224,6 +234,19 @@ export default function BreweryJournalManageScreen() {
                 multiline
                 textAlignVertical="top"
               />
+            </View>
+            <View style={styles.formGroup}>
+              <Text style={styles.label}>영상 URL <Text style={styles.optionalText}>(선택)</Text></Text>
+              <TextInput
+                style={styles.input}
+                value={videoUrl}
+                onChangeText={setVideoUrl}
+                placeholder="영상 링크를 입력해주세요."
+                placeholderTextColor="#9CA3AF"
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+              <Text style={styles.helper}>동영상 플레이어를 넣지 않고 URL만 후원자에게 표시합니다.</Text>
             </View>
             <View style={styles.formGroup}>
               <View style={styles.rowBetween}>
@@ -305,10 +328,14 @@ const styles = StyleSheet.create({
   entryDelete: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center' },
   entryBody: { fontSize: 13, fontWeight: '600', color: '#4B5563', lineHeight: 20 },
   entryImage: { width: '100%', height: 160, borderRadius: 12, backgroundColor: '#E5E7EB' },
+  entryUrlBox: { borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', padding: 10, gap: 4 },
+  entryUrlLabel: { fontSize: 11, fontWeight: '900', color: '#6B7280' },
+  entryUrlText: { fontSize: 12, fontWeight: '800', color: '#111', lineHeight: 18 },
   editorContent: { padding: 16, gap: 18 },
   formGroup: { gap: 8 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   label: { fontSize: 14, fontWeight: '900', color: '#111' },
+  optionalText: { fontSize: 12, fontWeight: '800', color: '#9CA3AF' },
   helper: { fontSize: 12, fontWeight: '700', color: '#6B7280' },
   input: { minHeight: 50, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 14, paddingHorizontal: 14, fontSize: 14, fontWeight: '700', color: '#111', backgroundColor: '#FFF' },
   textArea: { minHeight: 180, paddingTop: 14, paddingBottom: 14, lineHeight: 20 },

@@ -446,12 +446,22 @@ export interface Recipe {
   author: string;
   description: string;
   ingredients?: string[];
+  subIngredients?: string[];
+  flavorTags?: string[];
+  alcoholRange?: string;
+  concept?: string;
+  summary?: string;
   likes: number;
   comments: number;
   timestamp: string;
   liked?: boolean;
   image?: string | ImageSourcePropType;
   popularRank?: number;
+  status?: string;
+  isFundable?: boolean;
+  authorType?: string;
+  authorAvatar?: string | ImageSourcePropType;
+  createdAt?: string;
 }
 
 export const recipesData: Recipe[] = [

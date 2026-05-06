@@ -11,22 +11,22 @@ export const statusOptions: FundingStatusFilter[] = ["전체 프로젝트", "진
 export const sortOptions: FundingSortOption[] = ["추천순", "인기순", "마감임박", "최신순"];
 
 const btiTasteProfiles: Record<string, TasteProfile> = {
-  HCSA: { sweetness: 40, aroma: 60, acidity: 80, body: 40, carbonation: 55 },
-  HCSP: { sweetness: 80, aroma: 80, acidity: 40, body: 40, carbonation: 35 },
-  HTSA: { sweetness: 40, aroma: 60, acidity: 100, body: 100, carbonation: 18 },
-  HTSP: { sweetness: 100, aroma: 100, acidity: 40, body: 100, carbonation: 15 },
-  LCSA: { sweetness: 40, aroma: 60, acidity: 80, body: 40, carbonation: 90 },
-  LCSP: { sweetness: 80, aroma: 80, acidity: 40, body: 40, carbonation: 45 },
-  LTSA: { sweetness: 40, aroma: 40, acidity: 80, body: 80, carbonation: 25 },
-  LTSP: { sweetness: 100, aroma: 80, acidity: 40, body: 80, carbonation: 25 },
-  HSSA: { sweetness: 60, aroma: 100, acidity: 80, body: 60, carbonation: 90 },
-  HSSP: { sweetness: 100, aroma: 100, acidity: 40, body: 60, carbonation: 45 },
-  LSSA: { sweetness: 80, aroma: 80, acidity: 60, body: 40, carbonation: 90 },
-  LSSP: { sweetness: 100, aroma: 100, acidity: 20, body: 40, carbonation: 50 },
-  HCAP: { sweetness: 20, aroma: 40, acidity: 100, body: 40, carbonation: 35 },
-  HTAP: { sweetness: 20, aroma: 40, acidity: 100, body: 100, carbonation: 15 },
-  LCAP: { sweetness: 40, aroma: 40, acidity: 80, body: 40, carbonation: 50 },
-  LTAP: { sweetness: 40, aroma: 40, acidity: 60, body: 80, carbonation: 20 },
+  SHFC: { sweetness: 100, aroma: 85, acidity: 45, body: 95, carbonation: 90 },
+  SHFU: { sweetness: 95, aroma: 90, acidity: 70, body: 90, carbonation: 85 },
+  SHMC: { sweetness: 95, aroma: 80, acidity: 35, body: 95, carbonation: 10 },
+  SHMU: { sweetness: 85, aroma: 95, acidity: 65, body: 90, carbonation: 10 },
+  SLFC: { sweetness: 80, aroma: 65, acidity: 45, body: 35, carbonation: 90 },
+  SLFU: { sweetness: 75, aroma: 95, acidity: 80, body: 35, carbonation: 95 },
+  SLMC: { sweetness: 70, aroma: 65, acidity: 35, body: 30, carbonation: 10 },
+  SLMU: { sweetness: 70, aroma: 95, acidity: 75, body: 30, carbonation: 10 },
+  DHFC: { sweetness: 20, aroma: 70, acidity: 45, body: 95, carbonation: 90 },
+  DHFU: { sweetness: 20, aroma: 95, acidity: 90, body: 95, carbonation: 90 },
+  DHMC: { sweetness: 15, aroma: 80, acidity: 35, body: 95, carbonation: 10 },
+  DHMU: { sweetness: 15, aroma: 95, acidity: 85, body: 95, carbonation: 10 },
+  DLFC: { sweetness: 20, aroma: 70, acidity: 40, body: 30, carbonation: 90 },
+  DLFU: { sweetness: 20, aroma: 95, acidity: 85, body: 30, carbonation: 90 },
+  DLMC: { sweetness: 15, aroma: 65, acidity: 35, body: 30, carbonation: 10 },
+  DLMU: { sweetness: 15, aroma: 95, acidity: 80, body: 30, carbonation: 10 },
 };
 
 export function getTasteProfileFromSulbti(sulbti?: string): TasteProfile | null {

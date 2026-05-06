@@ -218,6 +218,14 @@ export default function FundingDetailScreen() {
     { date: "6월 1일", description: "병입 및 라벨링 작업" },
     { date: "6월 15일", description: "배송 시작" },
   ];
+  const projectPolicyText = project.projectPolicy || `환불: 프로젝트 마감 후 즉시 양조 공정이 시작되므로 단순 변심 환불은 불가합니다. 단, 양조장의 사정으로 생산이 불가능해질 경우 100% 환불을 보장합니다.
+
+교환/AS: 주류 배송 특성상 파손된 상태로 수령 시, 사진과 함께 접수해주시면 즉시 새 제품으로 교환해 드립니다.
+
+성인인증: 본 프로젝트는 성인인증을 완료한 후원자만 참여 가능하며, 배송 시 대리 수령이 제한될 수 있습니다.`;
+  const expectedDifficultiesText = project.expectedDifficulties || `품질 변동: AI 검토와 전문가의 관리를 거치나, 기온 변화에 따라 도수나 당도가 기획안과 ±1~2% 정도 차이가 날 수 있습니다.
+
+일정 지연: 술이 충분히 익지 않았을 경우, 최상의 맛을 위해 출고가 최대 10일 정도 지연될 수 있으며 이 경우 커뮤니티를 통해 즉시 공지하겠습니다.`;
   const tasteProfile = project.tasteProfile || {
     sweetness: 70,
     aroma: 55,
@@ -729,7 +737,7 @@ export default function FundingDetailScreen() {
                 <Text style={styles.breweryName}>{project.brewery}</Text>
                 <Text style={styles.breweryLoc}>{project.location}</Text>
              </View>
-             <View style={styles.catBadge}><Text style={styles.catTxt}>{project.category}</Text></View>
+             <View style={styles.catBadge}><Text style={styles.catTxt} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text></View>
           </TouchableOpacity>
         </Animated.View>
 
@@ -800,6 +808,12 @@ export default function FundingDetailScreen() {
                    <Text style={styles.bodyTxt}>
                      {project.story || `${project.title}는 전통 방식을 고수하면서도 현대적인 감각을 더한 특별한 프로젝트입니다.`}
                    </Text>
+                   {project.videoUrl ? (
+                     <View style={styles.journalUrlBox}>
+                       <Text style={styles.journalUrlLabel}>프로젝트 영상 URL</Text>
+                       <Text style={styles.journalUrlText} numberOfLines={2}>{project.videoUrl}</Text>
+                     </View>
+                   ) : null}
                 </View>
 
                 {/* Price Info Section */}
@@ -966,17 +980,14 @@ export default function FundingDetailScreen() {
                    <View style={{ marginBottom: 32, paddingTop: 24, borderTopWidth: 1, borderTopColor: '#E5E7EB' }}>
                      <Text style={styles.guideHeading}>📄 프로젝트 정책</Text>
                      <View style={styles.guideBoxPlain}>
-                        <Text style={styles.guideBoxTxt}><Text style={{fontWeight: '700', color: '#111'}}>환불:</Text> 프로젝트 마감 후 즉시 양조 공정이 시작되므로 단순 변심 환불은 불가합니다. 단, 양조장의 사정으로 생산이 불가능해질 경우 100% 환불을 보장합니다.</Text>
-                        <Text style={[styles.guideBoxTxt, { marginTop: 12 }]}><Text style={{fontWeight: '700', color: '#111'}}>교환/AS:</Text> 주류 배송 특성상 파손된 상태로 수령 시, 사진과 함께 접수해주시면 즉시 새 제품으로 교환해 드립니다.</Text>
-                        <Text style={[styles.guideBoxTxt, { marginTop: 12 }]}><Text style={{fontWeight: '700', color: '#111'}}>성인인증:</Text> 본 프로젝트는 성인인증을 완료한 후원자만 참여 가능하며, 배송 시 대리 수령이 제한될 수 있습니다.</Text>
+                        <Text style={styles.guideBoxTxt}>{projectPolicyText}</Text>
                      </View>
                    </View>
 
                    <View style={{ paddingTop: 24, borderTopWidth: 1, borderTopColor: '#E5E7EB' }}>
                      <Text style={styles.guideHeading}>⚠️ 예상되는 어려움</Text>
                      <View style={styles.guideBoxPlain}>
-                        <Text style={styles.guideBoxTxt}><Text style={{fontWeight: '700', color: '#111'}}>품질 변동:</Text> AI 검토와 전문가의 관리를 거치나, 기온 변화에 따라 도수나 당도가 기획안과 ±1~2% 정도 차이가 날 수 있습니다.</Text>
-                        <Text style={[styles.guideBoxTxt, { marginTop: 12 }]}><Text style={{fontWeight: '700', color: '#111'}}>일정 지연:</Text> 술이 충분히 익지 않았을 경우, 최상의 맛을 위해 출고가 최대 10일 정도 지연될 수 있으며 이 경우 커뮤니티를 통해 즉시 공지하겠습니다.</Text>
+                        <Text style={styles.guideBoxTxt}>{expectedDifficultiesText}</Text>
                      </View>
                    </View>
                 </View>
@@ -1025,6 +1036,13 @@ export default function FundingDetailScreen() {
                                               ))}
                                             </View>
                                           )}
+
+                                          {entry.videoUrl ? (
+                                            <View style={styles.journalUrlBox}>
+                                              <Text style={styles.journalUrlLabel}>영상 URL</Text>
+                                              <Text style={styles.journalUrlText} numberOfLines={2}>{entry.videoUrl}</Text>
+                                            </View>
+                                          ) : null}
 
                                           <View style={styles.journalActionRow}>
                                             <TouchableOpacity style={styles.journalActionButton} onPress={() => handleJournalLike(entry.id)}>
@@ -1740,7 +1758,7 @@ const styles = StyleSheet.create({
   breweryLogoImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   breweryName: { fontSize: 16, fontWeight: '700', color: '#111' },
   breweryLoc: { fontSize: 12, color: '#6B7280' },
-  catBadge: { paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#F3F4F6', borderRadius: 16, marginLeft: 'auto' },
+  catBadge: { maxWidth: 112, paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#F3F4F6', borderRadius: 16, marginLeft: 'auto' },
   catTxt: { fontSize: 12, fontWeight: '700', color: '#4B5563' },
   ownerJournalActionWrap: { paddingHorizontal: 16, marginBottom: 24 },
   ownerJournalAction: { width: '100%', minHeight: 48, borderRadius: 18, backgroundColor: '#111', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
@@ -1822,6 +1840,9 @@ const styles = StyleSheet.create({
   journalImageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   journalImageCell: { width: '48%', height: 128, borderRadius: 14, overflow: 'hidden', backgroundColor: '#F3F4F6' },
   journalImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  journalUrlBox: { marginTop: 12, borderRadius: 12, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', padding: 12, gap: 4 },
+  journalUrlLabel: { fontSize: 11, fontWeight: '900', color: '#6B7280' },
+  journalUrlText: { fontSize: 12, fontWeight: '800', color: '#111', lineHeight: 18 },
   journalActionRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 12 },
   journalActionButton: { minHeight: 32, borderRadius: 10, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 5 },
   journalActionText: { fontSize: 12, fontWeight: '700', color: '#6B7280' },

@@ -98,7 +98,10 @@ export default function FundingListScreen() {
         project.title.toLowerCase().includes(normalizedSearch) ||
         project.brewery.toLowerCase().includes(normalizedSearch) ||
         project.category.toLowerCase().includes(normalizedSearch) ||
-        project.location.toLowerCase().includes(normalizedSearch);
+        project.location.toLowerCase().includes(normalizedSearch) ||
+        (project.mainIngredients || '').toLowerCase().includes(normalizedSearch) ||
+        (project.subIngredients || '').toLowerCase().includes(normalizedSearch) ||
+        (project.tags || []).some((tag) => tag.toLowerCase().includes(normalizedSearch));
 
       const matchesStatus = matchesFundingStatusFilter(project, selectedStatus);
 

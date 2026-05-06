@@ -351,7 +351,7 @@ export default function BreweryProjectCreateScreen() {
   const isEditMode = Boolean(editProjectId);
   const canEditProject = editProject ? isFundingProjectOwnedByBrewery(user, editProject) : false;
   const tempSaveKey = isEditMode && editProjectId ? `${TEMP_SAVE_KEY}:edit:${editProjectId}` : TEMP_SAVE_KEY;
-  const appliedEditProjectIdRef = useRef<number | null>(null);
+  const appliedEditProjectKeyRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('basic');
   const [showPreview, setShowPreview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -448,9 +448,12 @@ export default function BreweryProjectCreateScreen() {
   });
 
   useEffect(() => {
-    if (!editProject || !canEditProject || appliedEditProjectIdRef.current === editProject.id) return;
+    if (!editProject || !canEditProject) return;
+    const editProjectKey = `${editProject.id}:${editProject.updatedAt || editProject.createdAt || ''}`;
+    if (appliedEditProjectKeyRef.current === editProjectKey) return;
     const draft = createProjectEditDraft(editProject, user);
     setBasicInfo(draft.basicInfo);
+    setTagDraft('');
     setFundingInfo(draft.fundingInfo);
     setProductInfo(draft.productInfo);
     setTasteProfile(draft.tasteProfile);
@@ -464,7 +467,7 @@ export default function BreweryProjectCreateScreen() {
     setPhoneVerificationCode('');
     setPhoneTimer(0);
     setAccountVerified(true);
-    appliedEditProjectIdRef.current = editProject.id;
+    appliedEditProjectKeyRef.current = editProjectKey;
   }, [canEditProject, editProject, user]);
 
   useEffect(() => {
@@ -580,6 +583,8 @@ export default function BreweryProjectCreateScreen() {
   const hasUnsavedChanges = () => {
     return Boolean(
       basicInfo.title ||
+        basicInfo.tags.length > 0 ||
+        tagDraft.trim() ||
         basicInfo.summary ||
         basicInfo.images.length > 0 ||
         fundingInfo.goalAmount ||
@@ -607,9 +612,14 @@ export default function BreweryProjectCreateScreen() {
     );
   };
 
+  const getReadyTags = () => normalizeProjectTags([...basicInfo.tags, tagDraft]);
+
   const createDraftPayload = () => ({
     timestamp: new Date().toISOString(),
-    basicInfo,
+    basicInfo: {
+      ...basicInfo,
+      tags: getReadyTags(),
+    },
     fundingInfo,
     productInfo,
     tasteProfile,
@@ -630,6 +640,7 @@ export default function BreweryProjectCreateScreen() {
         shortTitle: draft.basicInfo.shortTitle || '',
         tags: normalizeProjectTags(draft.basicInfo.tags),
       });
+      setTagDraft('');
     }
     if (draft.fundingInfo) setFundingInfo(draft.fundingInfo);
     if (draft.productInfo) setProductInfo({ ...draft.productInfo, productType: '막걸리' });
@@ -1081,7 +1092,7 @@ export default function BreweryProjectCreateScreen() {
       shippingFee: editProject?.shippingFee ?? 3000,
       mainIngredients: basicInfo.mainIngredient,
       subIngredients: basicInfo.subIngredient,
-      tags: normalizeProjectTags(basicInfo.tags),
+      tags: getReadyTags(),
       projectSummary: basicInfo.summary,
       introduction: projectPlan.introduction,
       story: projectPlan.introduction,
@@ -1322,6 +1333,7 @@ export default function BreweryProjectCreateScreen() {
               returnKeyType="done"
               blurOnSubmit={false}
               onSubmitEditing={submitTag}
+              onBlur={submitTag}
             />
           </View>
         </View>
@@ -1864,7 +1876,7 @@ export default function BreweryProjectCreateScreen() {
               {basicInfo.images[0] ? <Image source={{ uri: basicInfo.images[0] }} style={styles.miniImageFill} /> : <ImageIcon size={20} color="#9CA3AF" />}
             </View>
             <View style={styles.miniTextArea}>
-              <Text style={styles.miniCategory}>{basicInfo.category || '카테고리'}</Text>
+              <Text style={styles.miniCategory} numberOfLines={1}>{basicInfo.mainIngredient || '메인재료'}</Text>
               <Text style={styles.miniTitle} numberOfLines={1}>{basicInfo.title || '프로젝트 제목'}</Text>
             </View>
           </View>
@@ -2788,7 +2800,7 @@ function PreviewModal({
                 <Text style={styles.creatorPreviewCategory}>{taxInfo.address || '위치 미정'}</Text>
               </View>
               <View style={styles.creatorBadge}>
-                <Text style={styles.creatorBadgeText}>{basicInfo.category || '카테고리'}</Text>
+                <Text style={styles.creatorBadgeText} numberOfLines={1}>{basicInfo.mainIngredient || '메인재료'}</Text>
               </View>
             </View>
             <PreviewSection title="프로젝트 소개">

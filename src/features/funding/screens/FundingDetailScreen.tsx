@@ -44,11 +44,11 @@ import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import {
   BREWING_STAGES,
   getFundingProjectImageSource,
   getFundingStatusLabel,
-  isCompletedFundingStatus,
   isSupportableFundingStatus,
 } from '@/constants/data';
 import type { BrewingStage, JournalComment, JournalReply } from '@/constants/data';
@@ -66,6 +66,7 @@ import {
 } from '@/features/funding/supportConfig';
 import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/funding/reviews';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
+import { canAccessFundingReviews } from '@/features/funding/permissions';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const initialComments = [
@@ -256,6 +257,7 @@ export default function FundingDetailScreen() {
   const journals = project.journals || [];
   const projectReviews = fundingReviews.filter(r => r.projectId === project.id);
   const myReview = user ? projectReviews.find((review) => isFundingReviewOwnedByUser(review, user)) || null : null;
+  const canShowAndWriteReviews = canAccessFundingReviews(project);
 
   const handleSupportClick = () => {
     if (!user) {
@@ -580,6 +582,13 @@ export default function FundingDetailScreen() {
   const handleReviewWrite = () => {
     if (!user) {
       showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    if (!canShowAndWriteReviews) {
+      setFeedbackModal({
+        title: '후기 작성 불가',
+        body: '후기는 성사된 펀딩에서만 작성할 수 있습니다.',
+      });
       return;
     }
     const hasParticipated = participatedFundings.some((item) => item.fundingId === project.id);
@@ -1315,16 +1324,16 @@ export default function FundingDetailScreen() {
                 <View style={styles.sectionCard}>
                    <View style={styles.rowBetweenHeader}>
                       <Text style={styles.sectionHeaderTitle}>후원자 후기</Text>
-                      {!isSupportableFundingStatus(project.status) && <Text style={styles.countTxt}>{projectReviews.length}개</Text>}
+                      {canShowAndWriteReviews && <Text style={styles.countTxt}>{projectReviews.length}개</Text>}
                    </View>
                    
-                   {isSupportableFundingStatus(project.status) ? (
+                   {!canShowAndWriteReviews ? (
                      <View style={styles.emptyReviews}>
                         <View style={styles.emptyIconCircle}>
                            <Target size={32} color="#9CA3AF" />
                         </View>
-                        <Text style={styles.emptyTitle}>펀딩이 진행중입니다!</Text>
-                        <Text style={styles.emptySub}>펀딩이 완료되면 후기를 확인할 수 있어요</Text>
+                        <Text style={styles.emptyTitle}>후기 준비중입니다!</Text>
+                        <Text style={styles.emptySub}>펀딩이 성사되면 후기를 확인할 수 있어요</Text>
                      </View>
                    ) : projectReviews.length === 0 ? (
                      <View style={styles.emptyReviews}>
@@ -1395,42 +1404,13 @@ export default function FundingDetailScreen() {
            </View>
            <View style={styles.recGrid}>
              {recommendedProjects.map(p => (
-               <TouchableOpacity key={p.id} style={styles.recCard} onPress={() => router.push(`/funding/${p.id}`)}>
-                  <View style={styles.recThumbBox}>
-                     <Image source={getFundingProjectImageSource(p)} style={styles.recImg} />
-                     <TouchableOpacity
-                       style={styles.recHeart}
-                       onPress={(event) => {
-                         event.stopPropagation();
-                         handleFavoritePress(p.id);
-                       }}
-                     >
-                        <Heart size={16} color={isFavoriteFunding(p.id) ? "#EF4444" : "#FFF"} fill={isFavoriteFunding(p.id) ? "#EF4444" : "transparent"} />
-                     </TouchableOpacity>
-                  </View>
-                  <View style={styles.recContent}>
-                     <View style={styles.recTopRow}>
-                        <Text style={styles.recBrewery}>{p.brewery}</Text>
-                        <View style={styles.recCategoryBadge}><Text style={styles.recCategoryTxt} numberOfLines={1}>{getFundingMainIngredientLabel(p)}</Text></View>
-                        <View style={[styles.recStatusBadge, isCompletedFundingStatus(p.status) ? styles.recStatusBadgeSuccess : styles.recStatusBadgeActive]}>
-                          <Text style={[styles.recStatusTxt, isCompletedFundingStatus(p.status) && styles.recStatusTxtSuccess]}>{getFundingStatusLabel(p.status)}</Text>
-                        </View>
-                     </View>
-                     <Text style={styles.recTitle} numberOfLines={2}>{p.title}</Text>
-                     <View style={styles.recFooter}>
-                        <View style={styles.recFooterLeft}>
-                           <Text style={styles.recPct}>{Math.min((p.currentAmount/p.goalAmount)*100, 100).toFixed(0)}%</Text>
-                           <Text style={styles.recAmt}>{(p.currentAmount / 10000).toLocaleString()}만원</Text>
-                        </View>
-                        <Text style={styles.recDays}>{isCompletedFundingStatus(p.status) ? "종료" : `${p.daysLeft}일 남음`}</Text>
-                     </View>
-                     <Progress
-                       value={Math.min((p.currentAmount / p.goalAmount) * 100, 100)}
-                       style={styles.recProgressBar}
-                       indicatorStyle={{ backgroundColor: '#111' }}
-                     />
-                  </View>
-               </TouchableOpacity>
+               <FundingProjectCard
+                 key={p.id}
+                 project={p}
+                 favorite={isFavoriteFunding(p.id)}
+                 onPress={() => router.push(`/funding/${p.id}`)}
+                 onFavoritePress={handleFavoritePress}
+               />
              ))}
            </View>
         </View>
@@ -1926,29 +1906,7 @@ const styles = StyleSheet.create({
   shareReportArea: { flexDirection: 'row', gap: 12, paddingHorizontal: 16, marginBottom: 24 },
   shareReportButton: { flex: 1, minHeight: 48, backgroundColor: '#FFF', borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   shareReportText: { fontSize: 14, fontWeight: '800', color: '#4B5563' },
-  recList: { gap: 16 },
-  recCard: { flexDirection: 'row', gap: 16, backgroundColor: '#FFF', padding: 16, borderRadius: 28, borderWidth: 1, borderColor: '#F3F4F6', elevation: 3, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10 },
   recGrid: { gap: 16 },
-  recThumbBox: { width: 100, height: 100, borderRadius: 20, overflow: 'hidden', backgroundColor: '#F3F4F6' },
-  recImg: { width: '100%', height: '100%', resizeMode: 'cover' },
-  recHeart: { position: 'absolute', bottom: 8, left: 8, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  recContent: { flex: 1, minWidth: 0, justifyContent: 'space-between' },
-  recTopRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  recBrewery: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
-  recCategoryBadge: { maxWidth: 104, backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  recCategoryTxt: { fontSize: 10, fontWeight: '800', color: '#4B5563' },
-  recStatusBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  recStatusBadgeActive: { backgroundColor: '#ECFDF5' },
-  recStatusBadgeSuccess: { backgroundColor: '#EFF6FF' },
-  recStatusTxt: { fontSize: 10, fontWeight: '900', color: '#059669' },
-  recStatusTxtSuccess: { color: '#2563EB' },
-  recTitle: { fontSize: 16, fontWeight: '800', color: '#111', marginBottom: 8, lineHeight: 22 },
-  recFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 'auto' },
-  recFooterLeft: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  recPct: { fontSize: 22, fontWeight: '900', color: '#111' },
-  recAmt: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
-  recDays: { fontSize: 12, fontWeight: '800', color: '#111' },
-  recProgressBar: { height: 6, borderRadius: 3, marginTop: 6 },
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, gap: 12, zIndex: 40 },
   heartBtn: { width: 56, height: 56, borderRadius: 16, borderWidth: 2, borderColor: '#E5E7EB', backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
   mainSupportBtn: { flex: 1, height: 56, backgroundColor: '#111', borderRadius: 16, justifyContent: 'center', alignItems: 'center' },

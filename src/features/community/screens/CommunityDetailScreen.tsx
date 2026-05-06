@@ -58,7 +58,7 @@ interface Comment {
 const mockPosts: Record<number, CommunityPostDetail> = {
   1: {
     id: 1,
-    author: '전통주러버',
+    author: '김주담',
     authorType: 'user',
     avatar: person1,
     title: '처음 만든 막걸리, 생각보다 쉬웠어요',
@@ -190,18 +190,27 @@ export default function CommunityDetailScreen() {
   const { id } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { posts } = useCommunity();
+  const { posts, deletePost } = useCommunity();
   const numericId = Number(Array.isArray(id) ? id[0] : id) || 1;
   const contextPost = posts.find((item) => item.id === numericId);
   const post = contextPost || mockPosts[numericId] || mockPosts[1];
-  const isAuthor = !!user && user.name === post.author;
+  const isTemporaryUserPost = numericId === 1 && post.category === '자유게시판' && user?.type === 'user';
+  const isAuthor = !!user && (user.name === post.author || isTemporaryUserPost);
 
   const [commentInput, setCommentInput] = useState('');
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(post.likes);
   const [showMenu, setShowMenu] = useState(false);
   const [showAllComments, setShowAllComments] = useState(false);
-  const [comments, setComments] = useState<Comment[]>(initialComments);
+  const [commentMenuTarget, setCommentMenuTarget] = useState<number | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [comments, setComments] = useState<Comment[]>(() =>
+    initialComments.map((comment) =>
+      numericId === 1 && comment.id === 1 && user
+        ? { ...comment, author: user.name, authorType: 'user', avatar: person1 }
+        : comment
+    )
+  );
 
   const visibleComments = showAllComments ? comments : comments.slice(0, INITIAL_COMMENT_COUNT);
   const hasMoreComments = comments.length > INITIAL_COMMENT_COUNT;
@@ -236,6 +245,20 @@ export default function CommunityDetailScreen() {
       return;
     }
 
+    if (editingCommentId !== null) {
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === editingCommentId
+            ? { ...comment, content: commentInput.trim(), timestamp: '방금 전' }
+            : comment
+        )
+      );
+      setEditingCommentId(null);
+      setCommentMenuTarget(null);
+      setCommentInput('');
+      return;
+    }
+
     const newComment: Comment = {
       id: comments.length + 1,
       author: user.name,
@@ -251,8 +274,30 @@ export default function CommunityDetailScreen() {
     setCommentInput('');
   };
 
-  const handleMenuAction = () => {
+  const handlePostEdit = () => {
     setShowMenu(false);
+    router.push(`/community/create?editPostId=${post.id}` as any);
+  };
+
+  const handlePostDelete = () => {
+    setShowMenu(false);
+    deletePost(post.id);
+    router.replace('/community' as any);
+  };
+
+  const handleCommentEdit = (comment: Comment) => {
+    setCommentInput(comment.content);
+    setEditingCommentId(comment.id);
+    setCommentMenuTarget(null);
+  };
+
+  const handleCommentDelete = (commentId: number) => {
+    setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+    if (editingCommentId === commentId) {
+      setEditingCommentId(null);
+      setCommentInput('');
+    }
+    setCommentMenuTarget(null);
   };
 
   const handleReplyPress = () => {
@@ -268,27 +313,34 @@ export default function CommunityDetailScreen() {
           <ChevronLeft size={26} color="#111" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>게시글</Text>
-        <View style={styles.menuWrap}>
-          <TouchableOpacity onPress={() => setShowMenu((prev) => !prev)} style={styles.iconBtn}>
-            <MoreVertical size={22} color="#111" />
-          </TouchableOpacity>
-          {showMenu && (
-            <View style={styles.menuBox}>
-              <TouchableOpacity style={styles.menuItem} onPress={handleMenuAction} disabled={!isAuthor}>
-                <Text style={[styles.menuText, !isAuthor && styles.menuTextDisabled]}>수정</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={handleMenuAction} disabled={!isAuthor}>
-                <Text style={[styles.menuText, !isAuthor && styles.menuTextDisabled]}>삭제</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        {isAuthor ? (
+          <View style={styles.menuWrap}>
+            <TouchableOpacity onPress={() => setShowMenu((prev) => !prev)} style={styles.iconBtn}>
+              <MoreVertical size={22} color="#111" />
+            </TouchableOpacity>
+            {showMenu && (
+              <View style={styles.menuBox}>
+                <TouchableOpacity style={styles.menuItem} onPress={handlePostEdit}>
+                  <Text style={styles.menuText}>수정</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={handlePostDelete}>
+                  <Text style={styles.menuText}>삭제</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        ) : (
+          <View style={styles.iconBtn} />
+        )}
       </View>
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
-        onScrollBeginDrag={() => setShowMenu(false)}
+        onScrollBeginDrag={() => {
+          setShowMenu(false);
+          setCommentMenuTarget(null);
+        }}
       >
         <View style={styles.postHeader}>
           <Image source={getAvatarSource(post.avatar)} style={styles.avatar} />
@@ -333,6 +385,27 @@ export default function CommunityDetailScreen() {
                     {comment.authorType === 'brewery' && (
                       <View style={styles.commentBreweryBadge}>
                         <Text style={styles.commentBreweryBadgeText}>양조장</Text>
+                      </View>
+                    )}
+                    {user?.name === comment.author && (
+                      <View style={styles.commentMenuWrap}>
+                        <TouchableOpacity
+                          onPress={() => setCommentMenuTarget((prev) => (prev === comment.id ? null : comment.id))}
+                          style={styles.commentMoreButton}
+                          activeOpacity={0.8}
+                        >
+                          <MoreVertical size={16} color="#6B7280" />
+                        </TouchableOpacity>
+                        {commentMenuTarget === comment.id && (
+                          <View style={[styles.menuBox, styles.commentMenuBox]}>
+                            <TouchableOpacity style={styles.menuItem} onPress={() => handleCommentEdit(comment)}>
+                              <Text style={styles.menuText}>수정</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={() => handleCommentDelete(comment.id)}>
+                              <Text style={styles.menuText}>삭제</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
                       </View>
                     )}
                   </View>
@@ -428,7 +501,9 @@ const styles = StyleSheet.create({
   menuItem: { paddingHorizontal: 16, paddingVertical: 13 },
   menuItemBorder: { borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   menuText: { fontSize: 14, fontWeight: '700', color: '#111' },
-  menuTextDisabled: { color: '#9CA3AF' },
+  commentMenuWrap: { marginLeft: 'auto', position: 'relative' },
+  commentMoreButton: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  commentMenuBox: { top: 28, right: 0, zIndex: 30 },
   postHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',

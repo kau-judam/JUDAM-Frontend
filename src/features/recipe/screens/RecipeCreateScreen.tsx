@@ -11,12 +11,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { ChevronLeft, Image as ImageIcon, Plus, Wand2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { recipesData } from '@/constants/data';
 
 const FLAVOR_TAG_POOL = [
   '달콤함',
@@ -49,9 +50,14 @@ type NoticeState = {
 
 export default function RecipeCreateScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ editRecipeId?: string }>();
   const { user } = useAuth();
-  const [title, setTitle] = useState('');
-  const [mainIngredients, setMainIngredients] = useState(['']);
+  const editRecipeId = Number(Array.isArray(params.editRecipeId) ? params.editRecipeId[0] : params.editRecipeId);
+  const editRecipe = recipesData.find((recipe) => recipe.id === editRecipeId);
+  const [title, setTitle] = useState(editRecipe?.title || '');
+  const [mainIngredients, setMainIngredients] = useState(
+    editRecipe?.ingredients?.length ? editRecipe.ingredients.slice(0, 3) : ['']
+  );
   const [generatedSubIngredients, setGeneratedSubIngredients] = useState<string[]>([]);
   const [selectedSubIngredients, setSelectedSubIngredients] = useState<string[]>([]);
   const [alcoholRange, setAlcoholRange] = useState('');
@@ -60,7 +66,7 @@ export default function RecipeCreateScreen() {
   const [customFlavorInput, setCustomFlavorInput] = useState('');
   const [customFlavorTags, setCustomFlavorTags] = useState<string[]>([]);
   const [concept, setConcept] = useState('');
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(editRecipe?.description || '');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [notice, setNotice] = useState<NoticeState>(null);
   const hasMainIngredient = mainIngredients.some((ingredient) => ingredient.trim() !== '');

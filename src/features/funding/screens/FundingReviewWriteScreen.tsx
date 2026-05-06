@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { canAccessFundingReviews } from '@/features/funding/permissions';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
 import { showLoginRequired } from '@/utils/authPrompt';
@@ -63,6 +64,7 @@ export default function FundingReviewWriteScreen() {
   const hasReviewIdParam = Number.isFinite(targetReviewId) && targetReviewId > 0;
   const project = useMemo(() => projects.find((item) => item.id === projectId) || null, [projectId, projects]);
   const hasParticipated = Boolean(user) && participatedFundings.some((item) => item.fundingId === projectId);
+  const canWriteForProjectStatus = canAccessFundingReviews(project);
   const requestedReview = useMemo(
     () => (hasReviewIdParam ? fundingReviews.find((item) => item.projectId === projectId && item.id === targetReviewId) || null : null),
     [fundingReviews, hasReviewIdParam, projectId, targetReviewId]
@@ -150,6 +152,10 @@ export default function FundingReviewWriteScreen() {
       showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.');
       return;
     }
+    if (!canWriteForProjectStatus) {
+      Alert.alert('후기 작성 불가', '후기는 성사된 펀딩에서만 작성할 수 있습니다.');
+      return;
+    }
     if (rating === 0) {
       Alert.alert('별점 입력', '별점을 입력해주세요.');
       return;
@@ -201,7 +207,7 @@ export default function FundingReviewWriteScreen() {
     );
   }
 
-  if (!user || !hasParticipated || reviewParamBlocked) {
+  if (!user || !hasParticipated || !canWriteForProjectStatus || reviewParamBlocked) {
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
         <AlertCircle size={48} color="#F59E0B" />
@@ -209,6 +215,8 @@ export default function FundingReviewWriteScreen() {
         <Text style={styles.noticeBody}>
           {reviewParamBlocked
             ? '본인이 작성한 후기만 수정할 수 있습니다.'
+            : user && !canWriteForProjectStatus
+              ? '후기는 성사된 펀딩에서만 작성할 수 있습니다.'
             : user
               ? '이 펀딩 프로젝트에 참여한 사용자만 리뷰를 작성할 수 있습니다.'
               : '후기 작성은 로그인 후 이용할 수 있습니다.'}

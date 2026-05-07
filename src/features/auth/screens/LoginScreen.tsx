@@ -137,7 +137,7 @@ export default function LoginScreen() {
         router.replace('/brewery/verification' as any);
         return;
       }
-      router.replace(accountType === 'brewery' ? '/brewery/dashboard' as any : '/(tabs)');
+      router.replace('/(tabs)');
     } catch {
       setIsLoading(false);
       setNotice("로그인에 실패했습니다.");

@@ -57,6 +57,29 @@ function generateUID(): string {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const TEMP_USER_ACCESS_TOKEN =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIiLCJlbWFpbCI6InRlc3QtY29uc3VtZXJAanVkYW0uY29tIiwicm9sZSI6IlVTRVIiLCJpYXQiOjE3NzgwODc4NjYsImV4cCI6MTc3ODY5MjY2Nn0.BtGpz_7jGpN0ePz3LXxFhuQ22CkKm2Etr8cKh-6OPm8";
+const TEMP_BREWERY_ACCESS_TOKEN =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxIiwicHJvdmlkZXIiOiJrYWthbyIsInJvbGUiOiJCUkVXRVJZIiwiaWF0IjoxNzc4MTUzMTA1LCJleHAiOjE3Nzg3NTc5MDV9.Z5bfCtuy3JCZdIV-NYUsiQ0g8MOHH29LWNblO_v2jZo";
+
+function getTemporaryAccessToken(type: UserType) {
+  return type === "brewery" ? TEMP_BREWERY_ACCESS_TOKEN : TEMP_USER_ACCESS_TOKEN;
+}
+
+function getTemporaryLoginType(email: string, password: string, fallbackType: UserType) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (normalizedEmail === "user@judam.test" && password === "judam123") return "user";
+  if (normalizedEmail === "brewery@judam.test" && password === "judam123") return "brewery";
+  return fallbackType;
+}
+
+async function saveTemporaryAccessToken(type: UserType) {
+  await SafeStorage.setItem("judam_access_token", getTemporaryAccessToken(type));
+}
+
+async function removeTemporaryAccessToken() {
+  await SafeStorage.removeItem("judam_access_token");
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -66,7 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const savedUser = await SafeStorage.getItem("judam_user");
         if (savedUser) {
-          setUser(JSON.parse(savedUser));
+          const parsedUser = JSON.parse(savedUser) as User;
+          setUser(parsedUser);
+          const savedToken = await SafeStorage.getItem("judam_access_token");
+          const expectedToken = getTemporaryAccessToken(parsedUser.type);
+          if (savedToken !== expectedToken) {
+            await saveTemporaryAccessToken(parsedUser.type);
+          }
         }
       } catch (e) {
         console.error("Failed to load user from SafeStorage", e);
@@ -77,24 +106,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string, type: UserType) => {
     await new Promise((resolve) => setTimeout(resolve, 500));
+    const loginType = getTemporaryLoginType(email, password, type);
 
     const mockUser: User = {
-      id: "1",
-      uid: "JD-DEMO0001",
-      name: type === "brewery" ? "술샘양조장" : "김주담",
+      id: loginType === "brewery" ? "1" : "2",
+      uid: loginType === "brewery" ? "JD-BREW0001" : "JD-USER0002",
+      name: loginType === "brewery" ? "술샘양조장" : "테스트 사용자",
       email,
       phone: "010-1234-5678",
-      type,
-      isBreweryVerified: type === "brewery" ? true : undefined,
-      breweryName: type === "brewery" ? "술샘양조장" : undefined,
-      breweryLocation: type === "brewery" ? "경기 양평" : undefined,
-      breweryLocationDetail: type === "brewery" ? "누룩길 12" : undefined,
-      businessNumber: type === "brewery" ? "123-45-67890" : undefined,
+      type: loginType,
+      isBreweryVerified: loginType === "brewery" ? true : undefined,
+      breweryName: loginType === "brewery" ? "술샘양조장" : undefined,
+      breweryLocation: loginType === "brewery" ? "경기 양평" : undefined,
+      breweryLocationDetail: loginType === "brewery" ? "누룩길 12" : undefined,
+      businessNumber: loginType === "brewery" ? "123-45-67890" : undefined,
     };
 
     setUser(mockUser);
     try {
       await SafeStorage.setItem("judam_user", JSON.stringify(mockUser));
+      await saveTemporaryAccessToken(loginType);
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
     }
@@ -104,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     try {
       await SafeStorage.removeItem("judam_user");
+      await removeTemporaryAccessToken();
     } catch (e) {
       console.error("Failed to remove user from SafeStorage", e);
     }
@@ -128,6 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(mockUser);
     try {
       await SafeStorage.setItem("judam_user", JSON.stringify(mockUser));
+      await saveTemporaryAccessToken(data.type);
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
     }

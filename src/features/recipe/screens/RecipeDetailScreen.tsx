@@ -405,7 +405,7 @@ export default function RecipeDetailScreen() {
       showLoginRequired('펀딩 제안은 양조장 로그인 후 이용할 수 있어요.');
       return;
     }
-    router.push('/brewery/project/create' as any);
+    router.push('/brewery/project/terms' as any);
   };
 
   if (isDetailLoading) {

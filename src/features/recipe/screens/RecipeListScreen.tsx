@@ -20,7 +20,8 @@ import {
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { RecipeCard } from '@/components/recipe-card';
-import { recipesData, sortRecipesByPopularity } from '@/constants/data';
+import { sortRecipesByPopularity } from '@/constants/data';
+import type { Recipe } from '@/constants/data';
 import {
   deleteRecipeInterest,
   fetchRecipes,
@@ -46,35 +47,43 @@ export default function RecipeScreen() {
   const { user } = useAuth();
   const { scrollToTop } = useLocalSearchParams<{ scrollToTop?: string }>();
   const scrollRef = useRef<ScrollView>(null);
+  const likedRecipeIdsRef = useRef<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('popular');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
-  const [recipes, setRecipes] = useState(recipesData);
-  const [isLoading, setIsLoading] = useState(false);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+
+  const applyLocalInterestState = useCallback((items: Recipe[]) => {
+    const likedIds = likedRecipeIdsRef.current;
+    return items.map((item) => (likedIds.has(item.id) ? { ...item, liked: true } : item));
+  }, []);
 
   const loadRecipes = useCallback(async () => {
     if (sortOption === 'recommended') {
-      setRecipes(sortRecipesByPopularity(recipesData));
+      setRecipes([]);
       setLoadError(false);
+      setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
     setLoadError(false);
+    setRecipes([]);
     try {
       const response = await fetchRecipes({
         sort: sortOption === 'newest' ? 'newest' : 'popular',
       });
-      setRecipes(response.recipes);
+      setRecipes(applyLocalInterestState(response.recipes));
     } catch (error) {
       console.warn('Failed to load recipes from API', error);
       setLoadError(true);
-      setRecipes(recipesData);
+      setRecipes([]);
     } finally {
       setIsLoading(false);
     }
-  }, [sortOption]);
+  }, [applyLocalInterestState, sortOption]);
 
   useEffect(() => {
     loadRecipes();
@@ -96,6 +105,10 @@ export default function RecipeScreen() {
     if (!target) return;
 
     const nextLiked = !target.liked;
+    const previousLikedIds = new Set(likedRecipeIdsRef.current);
+    if (nextLiked) likedRecipeIdsRef.current.add(recipeId);
+    else likedRecipeIdsRef.current.delete(recipeId);
+
     setRecipes((prev) =>
       prev.map((recipe) =>
         recipe.id === recipeId
@@ -122,6 +135,7 @@ export default function RecipeScreen() {
       );
     } catch (error) {
       console.warn('Failed to update recipe interest', error);
+      likedRecipeIdsRef.current = previousLikedIds;
       setRecipes((prev) => prev.map((recipe) => (recipe.id === recipeId ? target : recipe)));
     }
   };
@@ -239,7 +253,12 @@ export default function RecipeScreen() {
               </Text>
             </TouchableOpacity>
           )}
-          {sortedRecipes.map((item, index) => (
+          {!isLoading && !loadError && sortOption === 'recommended' && (
+            <View style={styles.stateBox}>
+              <Text style={styles.stateTxt}>내 추천순 API가 아직 준비되지 않았어요.</Text>
+            </View>
+          )}
+          {!isLoading && sortedRecipes.map((item, index) => (
             <RecipeCard
               key={item.id}
               recipe={item}
@@ -249,7 +268,7 @@ export default function RecipeScreen() {
               showLikeButton={true}
             />
           ))}
-          {sortedRecipes.length === 0 && !isLoading && (
+          {sortedRecipes.length === 0 && !isLoading && !loadError && sortOption !== 'recommended' && (
             <View style={styles.emptyState}>
               <Text style={styles.emptyTxt}>검색 결과가 없습니다.</Text>
             </View>

@@ -12,7 +12,7 @@ import {
   ImageSourcePropType,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ChevronDown, ChevronLeft, Heart, MoreVertical, Send } from 'lucide-react-native';
+import { ChevronDown, ChevronLeft, ChevronUp, Heart, MessageCircle, MoreVertical, Send, ThumbsUp } from 'lucide-react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -44,6 +44,17 @@ interface CommunityPostDetail {
   category: string;
 }
 
+interface CommentReply {
+  id: number;
+  author: string;
+  authorType: 'user' | 'brewery';
+  avatar: ImageSourcePropType | string;
+  content: string;
+  timestamp: string;
+  likes: number;
+  liked: boolean;
+}
+
 interface Comment {
   id: number;
   author: string;
@@ -53,6 +64,7 @@ interface Comment {
   timestamp: string;
   likes: number;
   liked: boolean;
+  replies?: CommentReply[];
 }
 
 const mockPosts: Record<number, CommunityPostDetail> = {
@@ -204,6 +216,9 @@ export default function CommunityDetailScreen() {
   const [showAllComments, setShowAllComments] = useState(false);
   const [commentMenuTarget, setCommentMenuTarget] = useState<number | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [replyingTo, setReplyingTo] = useState<number | null>(null);
+  const [replyInput, setReplyInput] = useState('');
+  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set([1]));
   const [comments, setComments] = useState<Comment[]>(() =>
     initialComments.map((comment) =>
       numericId === 1 && comment.id === 1 && user
@@ -214,6 +229,7 @@ export default function CommunityDetailScreen() {
 
   const visibleComments = showAllComments ? comments : comments.slice(0, INITIAL_COMMENT_COUNT);
   const hasMoreComments = comments.length > INITIAL_COMMENT_COUNT;
+  const getCommentReplies = (comment: Comment) => comment.replies || [];
 
   const handleLike = () => {
     if (!user) {
@@ -300,10 +316,70 @@ export default function CommunityDetailScreen() {
     setCommentMenuTarget(null);
   };
 
-  const handleReplyPress = () => {
+  const handleReplyOpen = (commentId: number) => {
     if (!user) {
       showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
+      return;
     }
+    setReplyInput('');
+    setExpandedComments((prev) => new Set([...prev, commentId]));
+    setReplyingTo((prev) => (prev === commentId ? null : commentId));
+  };
+
+  const handleReplySubmit = (commentId: number) => {
+    if (!replyInput.trim()) return;
+    if (!user) {
+      showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    const newReply: CommentReply = {
+      id: Date.now(),
+      author: user.name,
+      authorType: user.type || 'user',
+      avatar: person3,
+      content: replyInput.trim(),
+      timestamp: '방금 전',
+      likes: 0,
+      liked: false,
+    };
+    setComments((prev) =>
+      prev.map((comment) =>
+        comment.id === commentId ? { ...comment, replies: [...getCommentReplies(comment), newReply] } : comment
+      )
+    );
+    setReplyInput('');
+    setReplyingTo(null);
+    setExpandedComments((prev) => new Set([...prev, commentId]));
+  };
+
+  const handleReplyLike = (commentId: number, replyId: number) => {
+    if (!user) {
+      showLoginRequired('답글 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    setComments((prev) =>
+      prev.map((comment) =>
+        comment.id === commentId
+          ? {
+              ...comment,
+              replies: getCommentReplies(comment).map((reply) =>
+                reply.id === replyId
+                  ? { ...reply, liked: !reply.liked, likes: reply.liked ? reply.likes - 1 : reply.likes + 1 }
+                  : reply
+              ),
+            }
+          : comment
+      )
+    );
+  };
+
+  const toggleExpandComment = (commentId: number) => {
+    setExpandedComments((prev) => {
+      const next = new Set(prev);
+      if (next.has(commentId)) next.delete(commentId);
+      else next.add(commentId);
+      return next;
+    });
   };
 
   return (
@@ -413,15 +489,63 @@ export default function CommunityDetailScreen() {
                 </View>
                 <View style={styles.commentFooter}>
                   <Text style={styles.commentTime}>{comment.timestamp}</Text>
-                  <TouchableOpacity onPress={() => handleCommentLike(comment.id)}>
-                    <Text style={[styles.commentAction, comment.liked && styles.commentActionActive]}>
-                      좋아요 {comment.likes > 0 ? comment.likes : ''}
-                    </Text>
+                  <TouchableOpacity style={styles.commentActionButton} onPress={() => handleCommentLike(comment.id)}>
+                    <ThumbsUp size={15} color={comment.liked ? '#111' : '#9CA3AF'} fill={comment.liked ? '#111' : 'transparent'} />
+                    <Text style={[styles.commentAction, comment.liked && styles.commentActionActive]}>{comment.likes}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={handleReplyPress}>
+                  <TouchableOpacity style={styles.commentActionButton} onPress={() => handleReplyOpen(comment.id)}>
+                    <MessageCircle size={15} color="#9CA3AF" />
                     <Text style={styles.commentAction}>답글</Text>
                   </TouchableOpacity>
+                  {getCommentReplies(comment).length > 0 && (
+                    <TouchableOpacity style={styles.commentActionButton} onPress={() => toggleExpandComment(comment.id)}>
+                      {expandedComments.has(comment.id) ? <ChevronUp size={15} color="#9CA3AF" /> : <ChevronDown size={15} color="#9CA3AF" />}
+                      <Text style={styles.commentAction}>{getCommentReplies(comment).length}개 답글</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
+                {expandedComments.has(comment.id) && getCommentReplies(comment).length > 0 && (
+                  <View style={styles.replyList}>
+                    {getCommentReplies(comment).map((reply) => (
+                      <View key={reply.id} style={styles.replyItem}>
+                        <Image source={getAvatarSource(reply.avatar)} style={styles.replyAvatar} />
+                        <View style={styles.replyContentWrap}>
+                          <View style={styles.commentAuthorRow}>
+                            <Text style={styles.commentAuthor}>{reply.author}</Text>
+                            {reply.authorType === 'brewery' && (
+                              <View style={styles.commentBreweryBadge}>
+                                <Text style={styles.commentBreweryBadgeText}>양조장</Text>
+                              </View>
+                            )}
+                            <Text style={styles.replyTime}>{reply.timestamp}</Text>
+                          </View>
+                          <Text style={styles.commentText}>{reply.content}</Text>
+                          <TouchableOpacity style={styles.replyLikeButton} onPress={() => handleReplyLike(comment.id, reply.id)}>
+                            <ThumbsUp size={12} color={reply.liked ? '#111' : '#9CA3AF'} fill={reply.liked ? '#111' : 'transparent'} />
+                            <Text style={[styles.replyLikeText, reply.liked && styles.commentActionActive]}>{reply.likes}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {replyingTo === comment.id && (
+                  <View style={styles.replyInputRow}>
+                    <TextInput
+                      style={styles.replyInput}
+                      value={replyInput}
+                      onChangeText={setReplyInput}
+                      placeholder="답글을 입력하세요..."
+                      placeholderTextColor="#9CA3AF"
+                      onSubmitEditing={() => handleReplySubmit(comment.id)}
+                      returnKeyType="send"
+                      autoFocus
+                    />
+                    <TouchableOpacity style={styles.replySubmitButton} onPress={() => handleReplySubmit(comment.id)}>
+                      <Send size={15} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             </Animated.View>
           ))}
@@ -555,8 +679,19 @@ const styles = StyleSheet.create({
   commentText: { fontSize: 14, lineHeight: 21, fontWeight: '500', color: '#111' },
   commentFooter: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 8, marginTop: 7 },
   commentTime: { fontSize: 11, fontWeight: '600', color: '#9CA3AF' },
+  commentActionButton: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   commentAction: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
   commentActionActive: { color: '#111' },
+  replyList: { marginTop: 12, marginLeft: 6, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: '#E5E7EB', gap: 10 },
+  replyItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  replyAvatar: { width: 32, height: 32, borderRadius: 16 },
+  replyContentWrap: { flex: 1, backgroundColor: '#FFF', borderRadius: 14, borderWidth: 1, borderColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 10 },
+  replyTime: { marginLeft: 'auto', fontSize: 11, fontWeight: '600', color: '#9CA3AF' },
+  replyLikeButton: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, marginTop: 8 },
+  replyLikeText: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
+  replyInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, marginLeft: 6 },
+  replyInput: { flex: 1, height: 40, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', paddingHorizontal: 14, fontSize: 13, fontWeight: '600', color: '#111' },
+  replySubmitButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   moreButton: {
     height: 44,
     borderRadius: 12,

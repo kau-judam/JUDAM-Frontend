@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,16 +10,20 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { 
-  ChevronLeft, 
-  Heart, 
-  Sparkles, 
-  Rocket, 
-  ChevronDown, 
+import {
+  ChevronLeft,
+  Heart,
+  MessageCircle,
+  Sparkles,
+  Rocket,
+  ChevronDown,
+  ChevronUp,
   MoreVertical,
   Send,
+  ThumbsUp,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,6 +31,19 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { getImageSource, recipesData } from '@/constants/data';
+import {
+  createRecipeComment,
+  deleteRecipeComment,
+  deleteRecipeCommentLike,
+  deleteRecipeInterest,
+  fetchRecipeComments,
+  fetchRecipeDetail,
+  getRecipeAccessToken,
+  mapRecipeComment,
+  registerRecipeCommentLike,
+  registerRecipeInterest,
+  updateRecipeComment,
+} from '@/features/recipe/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const INITIAL_COMMENT_COUNT = 3;
@@ -38,8 +55,34 @@ const personImages = [
   require('../../../../newpicutre/person5.png'),
   require('../../../../newpicutre/person6.png'),
 ];
-const getAvatarSource = (avatar: ImageSourcePropType | string) =>
-  typeof avatar === 'string' ? { uri: avatar } : avatar;
+
+const getAvatarSource = (avatar?: ImageSourcePropType | string) =>
+  typeof avatar === 'string' ? { uri: avatar } : avatar || personImages[0];
+
+interface RecipeCommentReply {
+  id: number;
+  author: string;
+  avatar: ImageSourcePropType | string;
+  content: string;
+  timestamp: string;
+  likes: number;
+  liked: boolean;
+  authorType: 'user' | 'brewery';
+}
+
+interface RecipeComment {
+  id: number;
+  author: string;
+  avatar: ImageSourcePropType | string;
+  content: string;
+  timestamp: string;
+  likes: number;
+  liked: boolean;
+  authorType: 'user' | 'brewery';
+  userId?: number;
+  isMine?: boolean;
+  replies?: RecipeCommentReply[];
+}
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -47,94 +90,276 @@ export default function RecipeDetailScreen() {
   const { user } = useAuth();
   const rawRecipeId = Array.isArray(id) ? id[0] : id;
   const recipeId = Number(rawRecipeId);
-  const selectedRecipe = recipesData.find((item) => item.id === recipeId) || recipesData[0];
-  
+  const fallbackRecipe = recipesData.find((item) => item.id === recipeId) || recipesData[0];
+
   const [showAllComments, setShowAllComments] = useState(false);
-  const [commentInput, setCommentInput] = useState("");
-  const [liked, setLiked] = useState(Boolean(selectedRecipe.liked));
-  const [likesCount, setLikesCount] = useState(selectedRecipe.likes);
+  const [commentInput, setCommentInput] = useState('');
+  const [liked, setLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
   const [recipeMenuVisible, setRecipeMenuVisible] = useState(false);
   const [commentMenuTarget, setCommentMenuTarget] = useState<number | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
-
-  const [recipe] = useState({
-    id: selectedRecipe.id,
-    title: selectedRecipe.title,
-    author: selectedRecipe.author,
-    authorAvatar: personImages[(selectedRecipe.id - 1) % personImages.length],
-    alcoholRange: "6%~8%",
-    description: selectedRecipe.description,
-    mainIngredients: selectedRecipe.ingredients?.slice(0, 3) || ["국내산 찹쌀", "전통 누룩", "천연 효모"],
-    subIngredients: ["생수", "황설탕"],
-    flavorTags: ["달콤함", "부드러움", "탄산감"],
-    commentsCount: selectedRecipe.comments,
-    timestamp: selectedRecipe.timestamp,
-    image: selectedRecipe.image,
+  const [replyingTo, setReplyingTo] = useState<number | null>(null);
+  const [replyInput, setReplyInput] = useState('');
+  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
+  const [isDetailLoading, setIsDetailLoading] = useState(true);
+  const [recipe, setRecipe] = useState({
+    id: fallbackRecipe.id,
+    title: fallbackRecipe.title,
+    author: fallbackRecipe.author,
+    authorAvatar: personImages[(fallbackRecipe.id - 1) % personImages.length],
+    alcoholRange: '6%~8%',
+    description: fallbackRecipe.description,
+    mainIngredients: fallbackRecipe.ingredients?.slice(0, 3) || ['쌀', '누룩', '물'],
+    subIngredients: ['생수', '꿀'],
+    flavorTags: ['달콤한', '부드러운', '은은한 산미'],
+    commentsCount: fallbackRecipe.comments,
+    timestamp: fallbackRecipe.timestamp,
+    image: fallbackRecipe.image,
+    isFundable: fallbackRecipe.isFundable,
   });
+  const [comments, setComments] = useState<RecipeComment[]>([]);
 
-  const [comments, setComments] = useState([
-    { id: 1, author: selectedRecipe.id === 1 ? (user?.name || "김주담") : "막걸리마스터", avatar: personImages[0], content: "이 레시피 너무 좋아요! 저도 한번 도전해볼게요 🍶", timestamp: "1시간 전", likes: 5, liked: false, authorType: "user" },
-    { id: 2, author: "술샘양조장", avatar: personImages[1], content: "좋은 레시피네요. 전통 누룩 선택이 특히 마음에 듭니다. 저희 양조장에서도 검토해보겠습니다!", timestamp: "30분 전", likes: 12, liked: true, authorType: "brewery" },
-    { id: 3, author: "전통주초보", avatar: personImages[2], content: "처음 도전해보려는데, 누룩은 어디서 구하면 좋을까요?", timestamp: "20분 전", likes: 2, liked: false, authorType: "user" },
-    { id: 4, author: "발효연구가", avatar: personImages[3], content: "탄산감을 높이려면 발효 온도를 조금 낮게 유지해보세요. 18도 정도가 적당합니다!", timestamp: "15분 전", likes: 7, liked: false, authorType: "user" },
-    { id: 5, author: "청주러버", avatar: personImages[4], content: "황설탕 대신 꿀을 써보셨나요? 향이 더 좋아진다는 이야기를 들었는데요.", timestamp: "10분 전", likes: 3, liked: false, authorType: "user" },
-    { id: 6, author: "한산양조장", avatar: personImages[5], content: "훌륭한 레시피입니다. 감귤을 추가하면 더욱 상큼한 맛이 날 것 같네요! 저희도 비슷한 시도를 해본 적 있어요.", timestamp: "5분 전", likes: 9, liked: false, authorType: "brewery" },
-  ]);
+  const loadRecipeFromApi = useCallback(async () => {
+    if (!Number.isFinite(recipeId)) return;
+    setIsDetailLoading(true);
+    setComments([]);
+    setShowAllComments(false);
+    setExpandedComments(new Set());
+    setCommentMenuTarget(null);
+    setEditingCommentId(null);
+    setCommentInput('');
+    try {
+      const nextRecipe = await fetchRecipeDetail(recipeId);
+      setRecipe({
+        id: nextRecipe.id,
+        title: nextRecipe.title,
+        author: nextRecipe.author,
+        authorAvatar: nextRecipe.authorAvatar || personImages[(nextRecipe.id - 1) % personImages.length],
+        alcoholRange: nextRecipe.alcoholRange || '6%~8%',
+        description: nextRecipe.description,
+        mainIngredients: nextRecipe.ingredients?.length ? nextRecipe.ingredients : ['쌀', '누룩', '물'],
+        subIngredients: nextRecipe.subIngredients || [],
+        flavorTags: nextRecipe.flavorTags || [],
+        commentsCount: nextRecipe.comments,
+        timestamp: nextRecipe.timestamp,
+        image: nextRecipe.image,
+        isFundable: nextRecipe.isFundable,
+      });
+      setLiked(Boolean(nextRecipe.liked));
+      setLikesCount(nextRecipe.likes);
+    } catch (error) {
+      console.warn('Failed to load recipe detail from API', error);
+      setRecipe({
+        id: fallbackRecipe.id,
+        title: fallbackRecipe.title,
+        author: fallbackRecipe.author,
+        authorAvatar: personImages[(fallbackRecipe.id - 1) % personImages.length],
+        alcoholRange: fallbackRecipe.alcoholRange || '6%~8%',
+        description: fallbackRecipe.description,
+        mainIngredients: fallbackRecipe.ingredients?.slice(0, 3) || ['쌀', '누룩', '물'],
+        subIngredients: fallbackRecipe.subIngredients || ['생수', '꿀'],
+        flavorTags: fallbackRecipe.flavorTags || ['달콤한', '부드러운', '은은한 산미'],
+        commentsCount: fallbackRecipe.comments,
+        timestamp: fallbackRecipe.timestamp,
+        image: fallbackRecipe.image,
+        isFundable: fallbackRecipe.isFundable,
+      });
+      setLiked(Boolean(fallbackRecipe.liked));
+      setLikesCount(fallbackRecipe.likes);
+    } finally {
+      setIsDetailLoading(false);
+    }
+  }, [fallbackRecipe, recipeId]);
+
+  const loadCommentsFromApi = useCallback(async () => {
+    if (!Number.isFinite(recipeId)) return;
+    try {
+      const response = await fetchRecipeComments(recipeId);
+      setComments(
+        response.comments.map((comment, index) =>
+          mapRecipeComment(comment, personImages[index % personImages.length]) as RecipeComment
+        )
+      );
+    } catch (error) {
+      console.warn('Failed to load recipe comments from API', error);
+      setComments([]);
+    }
+  }, [recipeId]);
+
+  useEffect(() => {
+    loadRecipeFromApi();
+    loadCommentsFromApi();
+  }, [loadRecipeFromApi, loadCommentsFromApi]);
 
   const isBreweryUser = user?.type === 'brewery';
   const isRecipeAuthor = Boolean(user && user.name === recipe.author);
   const selectedComment = comments.find((comment) => comment.id === commentMenuTarget);
-  const canManageSelectedComment = Boolean(user && selectedComment?.author === user.name);
+  const canManageSelectedComment = Boolean(user && (selectedComment?.author === user.name || selectedComment?.isMine));
+  const getCommentReplies = (comment: RecipeComment) => comment.replies || [];
+  const visibleComments = showAllComments ? comments : comments.slice(0, INITIAL_COMMENT_COUNT);
 
-  const handleLike = () => {
+  const handleLike = async () => {
     if (!user) {
-      showLoginRequired('레시피 좋아요는 로그인 후 이용할 수 있어요.');
+      showLoginRequired('레시피 관심은 로그인 후 이용할 수 있어요.');
       return;
     }
-    setLiked(!liked);
-    setLikesCount(liked ? likesCount - 1 : likesCount + 1);
+    const token = await getRecipeAccessToken();
+    if (!token) {
+      showLoginRequired('실제 로그인 API 연결 후 이용할 수 있어요.');
+      return;
+    }
+    const previousLiked = liked;
+    const previousLikesCount = likesCount;
+    const nextLiked = !liked;
+    setLiked(nextLiked);
+    setLikesCount(nextLiked ? likesCount + 1 : Math.max(0, likesCount - 1));
+    try {
+      const response = nextLiked
+        ? await registerRecipeInterest(recipe.id)
+        : await deleteRecipeInterest(recipe.id);
+      setLikesCount(response.data.interest_count);
+      setRecipe((prev) => ({ ...prev, isFundable: response.data.is_fundable }));
+    } catch (error) {
+      console.warn('Failed to update recipe interest', error);
+      setLiked(previousLiked);
+      setLikesCount(previousLikesCount);
+    }
   };
 
-  const handleCommentLike = (cid: number) => {
+  const handleCommentLike = async (cid: number) => {
     if (!user) {
       showLoginRequired('댓글 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
-    setComments(comments.map(c => c.id === cid ? { ...c, liked: !c.liked, likes: c.liked ? c.likes - 1 : c.likes + 1 } : c));
+    const token = await getRecipeAccessToken();
+    if (!token) {
+      showLoginRequired('실제 로그인 API 연결 후 이용할 수 있어요.');
+      return;
+    }
+    const target = comments.find((comment) => comment.id === cid);
+    if (!target) return;
+    const nextLiked = !target.liked;
+    setComments((prev) => prev.map((c) => c.id === cid ? { ...c, liked: nextLiked, likes: nextLiked ? c.likes + 1 : Math.max(0, c.likes - 1) } : c));
+    try {
+      const response = nextLiked
+        ? await registerRecipeCommentLike(recipe.id, cid)
+        : await deleteRecipeCommentLike(recipe.id, cid);
+      setComments((prev) => prev.map((comment) => comment.id === cid ? { ...comment, liked: nextLiked, likes: response.data.like_count } : comment));
+    } catch (error) {
+      console.warn('Failed to update recipe comment like', error);
+      setComments((prev) => prev.map((comment) => comment.id === cid ? target : comment));
+    }
   };
 
-  const handleCommentSubmit = () => {
+  const handleCommentSubmit = async () => {
     if (!commentInput.trim()) return;
     if (!user) {
       showLoginRequired('댓글 작성은 로그인 후 이용할 수 있어요.');
       return;
     }
-
-    if (editingCommentId !== null) {
-      setComments((prev) =>
-        prev.map((comment) =>
-          comment.id === editingCommentId
-            ? { ...comment, content: commentInput.trim(), timestamp: "방금 전" }
-            : comment
-        )
-      );
-      setEditingCommentId(null);
-      setCommentInput("");
+    const token = await getRecipeAccessToken();
+    if (!token) {
+      showLoginRequired('실제 로그인 API 연결 후 이용할 수 있어요.');
       return;
     }
+    try {
+      if (editingCommentId !== null) {
+        await updateRecipeComment(recipe.id, editingCommentId, commentInput.trim());
+        setComments((prev) =>
+          prev.map((comment) =>
+            comment.id === editingCommentId ? { ...comment, content: commentInput.trim(), timestamp: '방금 전' } : comment
+          )
+        );
+        setEditingCommentId(null);
+        setCommentInput('');
+        return;
+      }
+      const response = await createRecipeComment(recipe.id, commentInput.trim());
+      setComments((prev) => [
+        ...prev,
+        {
+          id: response.comment.comment_id,
+          author: user.name,
+          avatar: personImages[prev.length % personImages.length],
+          content: response.comment.content,
+          timestamp: '방금 전',
+          likes: 0,
+          liked: false,
+          authorType: user.type === 'brewery' ? 'brewery' : 'user',
+        },
+      ]);
+      setCommentInput('');
+    } catch (error) {
+      console.warn('Failed to submit recipe comment', error);
+      Alert.alert('요청 실패', '댓글 요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요.');
+    }
+  };
 
-    const newComment = {
-      id: comments.length + 1,
-      author: user?.name || "익명",
-      avatar: personImages[comments.length % personImages.length],
-      content: commentInput,
-      timestamp: "방금 전",
+  const handleReplyOpen = (commentId: number) => {
+    if (!user) {
+      showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    setReplyInput('');
+    setExpandedComments((prev) => new Set([...prev, commentId]));
+    setReplyingTo((prev) => (prev === commentId ? null : commentId));
+  };
+
+  const handleReplySubmit = (commentId: number) => {
+    if (!replyInput.trim()) return;
+    if (!user) {
+      showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    const newReply: RecipeCommentReply = {
+      id: Date.now(),
+      author: user.name,
+      avatar: personImages[(comments.length + commentId) % personImages.length],
+      content: replyInput.trim(),
+      timestamp: '방금 전',
       likes: 0,
       liked: false,
-      authorType: user?.type || "user" as any,
+      authorType: user.type === 'brewery' ? 'brewery' : 'user',
     };
-    setComments([...comments, newComment]);
-    setCommentInput("");
+    setComments((prev) =>
+      prev.map((comment) =>
+        comment.id === commentId ? { ...comment, replies: [...getCommentReplies(comment), newReply] } : comment
+      )
+    );
+    setReplyInput('');
+    setReplyingTo(null);
+    setExpandedComments((prev) => new Set([...prev, commentId]));
+  };
+
+  const handleReplyLike = (commentId: number, replyId: number) => {
+    if (!user) {
+      showLoginRequired('답글 좋아요는 로그인 후 이용할 수 있어요.');
+      return;
+    }
+    setComments((prev) =>
+      prev.map((comment) =>
+        comment.id === commentId
+          ? {
+              ...comment,
+              replies: getCommentReplies(comment).map((reply) =>
+                reply.id === replyId
+                  ? { ...reply, liked: !reply.liked, likes: reply.liked ? reply.likes - 1 : reply.likes + 1 }
+                  : reply
+              ),
+            }
+          : comment
+      )
+    );
+  };
+
+  const toggleExpandComment = (commentId: number) => {
+    setExpandedComments((prev) => {
+      const next = new Set(prev);
+      if (next.has(commentId)) next.delete(commentId);
+      else next.add(commentId);
+      return next;
+    });
   };
 
   const handleRecipeEdit = () => {
@@ -154,52 +379,76 @@ export default function RecipeDetailScreen() {
     setCommentMenuTarget(null);
   };
 
-  const handleCommentDelete = () => {
+  const handleCommentDelete = async () => {
     if (commentMenuTarget === null) return;
-    setComments((prev) => prev.filter((comment) => comment.id !== commentMenuTarget));
-    if (editingCommentId === commentMenuTarget) {
-      setEditingCommentId(null);
-      setCommentInput("");
+    const token = await getRecipeAccessToken();
+    if (!token) {
+      showLoginRequired('실제 로그인 API 연결 후 이용할 수 있어요.');
+      return;
     }
-    setCommentMenuTarget(null);
+    try {
+      await deleteRecipeComment(recipe.id, commentMenuTarget);
+      setComments((prev) => prev.filter((comment) => comment.id !== commentMenuTarget));
+      if (editingCommentId === commentMenuTarget) {
+        setEditingCommentId(null);
+        setCommentInput('');
+      }
+      setCommentMenuTarget(null);
+    } catch (error) {
+      console.warn('Failed to delete recipe comment', error);
+      Alert.alert('요청 실패', '댓글 삭제를 처리하지 못했어요. 잠시 후 다시 시도해주세요.');
+    }
   };
-
-  const visibleComments = showAllComments ? comments : comments.slice(0, INITIAL_COMMENT_COUNT);
 
   const handleFundingProposal = () => {
     if (!user || user.type !== 'brewery') {
-      showLoginRequired('펀딩 제안은 로그인 후 이용할 수 있어요.');
+      showLoginRequired('펀딩 제안은 양조장 로그인 후 이용할 수 있어요.');
       return;
     }
-    router.push('/brewery/project/create' as any);
+    router.push('/brewery/project/terms' as any);
   };
+
+  if (isDetailLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { height: insets.top + 56, paddingTop: insets.top }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <ChevronLeft size={24} color="#111" />
+          </TouchableOpacity>
+          <View style={styles.headerMenuBtn} />
+        </View>
+        <View style={styles.loadingBox}>
+          <Text style={styles.loadingText}>레시피를 불러오고 있어요.</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={[styles.header, { height: insets.top + 56, paddingTop: insets.top }]}>
-         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <ChevronLeft size={24} color="#111" />
-         </TouchableOpacity>
-         {isRecipeAuthor ? (
-           <View style={styles.menuWrap}>
-             <TouchableOpacity style={styles.headerMenuBtn} onPress={() => setRecipeMenuVisible((prev) => !prev)}>
-               <MoreVertical size={24} color="#111" />
-             </TouchableOpacity>
-             {recipeMenuVisible && (
-               <View style={styles.menuBox}>
-                 <TouchableOpacity style={styles.menuItem} onPress={handleRecipeEdit}>
-                   <Text style={styles.menuText}>수정</Text>
-                 </TouchableOpacity>
-                 <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={handleRecipeDelete}>
-                   <Text style={styles.menuText}>삭제</Text>
-                 </TouchableOpacity>
-               </View>
-             )}
-           </View>
-         ) : (
-           <View style={styles.headerMenuBtn} />
-         )}
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <ChevronLeft size={24} color="#111" />
+        </TouchableOpacity>
+        {isRecipeAuthor ? (
+          <View style={styles.menuWrap}>
+            <TouchableOpacity style={styles.headerMenuBtn} onPress={() => setRecipeMenuVisible((prev) => !prev)}>
+              <MoreVertical size={24} color="#111" />
+            </TouchableOpacity>
+            {recipeMenuVisible && (
+              <View style={styles.menuBox}>
+                <TouchableOpacity style={styles.menuItem} onPress={handleRecipeEdit}>
+                  <Text style={styles.menuText}>수정</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={handleRecipeDelete}>
+                  <Text style={styles.menuText}>삭제</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        ) : (
+          <View style={styles.headerMenuBtn} />
+        )}
       </View>
 
       <ScrollView
@@ -210,162 +459,193 @@ export default function RecipeDetailScreen() {
           setCommentMenuTarget(null);
         }}
       >
-        {/* Banner Image */}
         <View style={styles.imageBox}>
           <Image source={getImageSource(recipe.image)!} style={styles.mainImg} />
         </View>
 
-        {/* Content Section */}
         <View style={styles.content}>
-           {/* Author & Like */}
-           <View style={styles.authorRow}>
-              <View style={styles.authorInfo}>
-                 <Image source={getAvatarSource(recipe.authorAvatar)} style={styles.avatar} />
-                 <View>
-                    <Text style={styles.authorName}>{recipe.author}</Text>
-                    <Text style={styles.timeTxt}>{recipe.timestamp}</Text>
-                 </View>
+          <View style={styles.authorRow}>
+            <View style={styles.authorInfo}>
+              <Image source={getAvatarSource(recipe.authorAvatar)} style={styles.avatar} />
+              <View>
+                <Text style={styles.authorName}>{recipe.author}</Text>
+                <Text style={styles.timeTxt}>{recipe.timestamp}</Text>
               </View>
-              <TouchableOpacity style={[styles.likeBtn, liked && styles.likeBtnActive]} onPress={handleLike}>
-                 <Heart size={16} color={liked ? "#FFF" : "#4B5563"} fill={liked ? "#FFF" : "transparent"} />
-                 <Text style={[styles.likeTxt, liked && { color: '#FFF' }]}>{likesCount}</Text>
-              </TouchableOpacity>
-           </View>
+            </View>
+            <TouchableOpacity style={[styles.likeBtn, liked && styles.likeBtnActive]} onPress={handleLike}>
+              <Heart size={16} color={liked ? '#FFF' : '#4B5563'} fill={liked ? '#FFF' : 'transparent'} />
+              <Text style={[styles.likeTxt, liked && { color: '#FFF' }]}>{likesCount}</Text>
+            </TouchableOpacity>
+          </View>
 
-           {/* Title & Tags */}
-           <Text style={styles.title}>{recipe.title}</Text>
-           <View style={styles.tagWrap}>
-              {recipe.flavorTags.map((tag, i) => (
-                <View key={i} style={styles.tag}><Text style={styles.tagTxt}>#{tag}</Text></View>
+          <Text style={styles.title}>{recipe.title}</Text>
+          <View style={styles.tagWrap}>
+            {recipe.flavorTags.map((tag, i) => (
+              <View key={i} style={styles.tag}><Text style={styles.tagTxt}>#{tag}</Text></View>
+            ))}
+            <View style={styles.alcoholTag}><Text style={styles.alcoholTxt}>{recipe.alcoholRange}</Text></View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>레시피 요약</Text>
+            <Text style={styles.bodyText}>{recipe.description}</Text>
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.row}>
+              <Sparkles size={16} color="#9CA3AF" />
+              <Text style={[styles.sectionTitle, { marginLeft: 8 }]}>메인 재료</Text>
+            </View>
+            <View style={styles.ingredientWrap}>
+              {recipe.mainIngredients.map((ing, i) => (
+                <View key={i} style={styles.ingBadge}><Text style={styles.ingTxt}>{ing}</Text></View>
               ))}
-              <View style={styles.alcoholTag}><Text style={styles.alcoholTxt}>{recipe.alcoholRange}</Text></View>
-           </View>
+            </View>
+          </View>
 
-           {/* Description */}
-           <View style={styles.section}>
-              <Text style={styles.sectionTitle}>프로젝트 요약</Text>
-              <Text style={styles.bodyText}>{recipe.description}</Text>
-           </View>
-
-           {/* Ingredients */}
-           <View style={styles.section}>
-              <View style={styles.row}>
-                 <Sparkles size={16} color="#9CA3AF" />
-                 <Text style={[styles.sectionTitle, { marginLeft: 8 }]}>메인 재료</Text>
-              </View>
+          {recipe.subIngredients.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>서브 재료</Text>
               <View style={styles.ingredientWrap}>
-                 {recipe.mainIngredients.map((ing, i) => (
-                   <View key={i} style={styles.ingBadge}><Text style={styles.ingTxt}>{ing}</Text></View>
-                 ))}
+                {recipe.subIngredients.map((ing, i) => (
+                  <View key={i} style={[styles.ingBadge, styles.subIngBadge]}><Text style={styles.subIngTxt}>{ing}</Text></View>
+                ))}
               </View>
-           </View>
+            </View>
+          )}
 
-           {recipe.subIngredients.length > 0 && (
-             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>서브 재료</Text>
-                <View style={styles.ingredientWrap}>
-                   {recipe.subIngredients.map((ing, i) => (
-                     <View key={i} style={[styles.ingBadge, styles.subIngBadge]}><Text style={styles.subIngTxt}>{ing}</Text></View>
-                   ))}
-                </View>
-             </View>
-           )}
-
-           {/* Propose Action */}
-           {isBreweryUser && (
-             <>
-               <TouchableOpacity style={styles.proposeBtn} onPress={handleFundingProposal}>
-                  <LinearGradient colors={['#111', '#333']} start={{x:0, y:0}} end={{x:1, y:0}} style={styles.proposeInner}>
-                     <Rocket size={20} color="#FFF" />
-                     <Text style={styles.proposeTxt}>이 레시피로 펀딩 제안하기</Text>
-                  </LinearGradient>
-               </TouchableOpacity>
-               <Text style={styles.proposeDesc}>이 레시피를 기반으로 크라우드펀딩 프로젝트를 시작할 수 있습니다</Text>
-             </>
-           )}
+          {isBreweryUser && (
+            <>
+              <TouchableOpacity style={styles.proposeBtn} onPress={handleFundingProposal}>
+                <LinearGradient colors={['#111', '#333']} start={{x:0, y:0}} end={{x:1, y:0}} style={styles.proposeInner}>
+                  <Rocket size={20} color="#FFF" />
+                  <Text style={styles.proposeTxt}>이 레시피로 펀딩 제안하기</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+              <Text style={styles.proposeDesc}>이 레시피를 기반으로 크라우드펀딩 프로젝트를 시작할 수 있습니다</Text>
+            </>
+          )}
         </View>
 
-        {/* Comments Section */}
         <View style={styles.commentSection}>
-           <Text style={styles.commentHeader}>댓글 {comments.length}</Text>
-           {visibleComments.map((c, idx) => (
-             <Animated.View key={c.id} entering={FadeInUp.delay(idx * 50)} style={styles.commentItem}>
-                <Image source={getAvatarSource(c.avatar)} style={styles.commentAvatar} />
-                <View style={{ flex: 1 }}>
-                   <View style={styles.commentBubble}>
-                      <View style={styles.commentUserRow}>
-                         <Text style={styles.commentAuthor}>{c.author}</Text>
-                         {c.authorType === 'brewery' && <View style={styles.breweryBadge}><Text style={styles.breweryBadgeTxt}>양조장</Text></View>}
-                         {user?.name === c.author && (
-                           <View style={styles.commentMenuWrap}>
-                             <TouchableOpacity
-                               style={styles.commentMoreBtn}
-                               onPress={() => setCommentMenuTarget((prev) => (prev === c.id ? null : c.id))}
-                               activeOpacity={0.8}
-                             >
-                               <MoreVertical size={16} color="#6B7280" />
-                             </TouchableOpacity>
-                             {commentMenuTarget === c.id && canManageSelectedComment && (
-                               <View style={[styles.menuBox, styles.commentMenuBox]}>
-                                 <TouchableOpacity style={styles.menuItem} onPress={handleCommentEdit}>
-                                   <Text style={styles.menuText}>수정</Text>
-                                 </TouchableOpacity>
-                                 <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={handleCommentDelete}>
-                                   <Text style={styles.menuText}>삭제</Text>
-                                 </TouchableOpacity>
-                               </View>
-                             )}
-                           </View>
-                         )}
+          <Text style={styles.commentHeader}>댓글 {comments.length}</Text>
+          {visibleComments.map((c, idx) => (
+            <Animated.View key={c.id} entering={FadeInUp.delay(idx * 50)} style={styles.commentItem}>
+              <Image source={getAvatarSource(c.avatar)} style={styles.commentAvatar} />
+              <View style={{ flex: 1 }}>
+                <View style={styles.commentBubble}>
+                  <View style={styles.commentUserRow}>
+                    <Text style={styles.commentAuthor}>{c.author}</Text>
+                    {c.authorType === 'brewery' && <View style={styles.breweryBadge}><Text style={styles.breweryBadgeTxt}>양조장</Text></View>}
+                    {(user?.name === c.author || c.isMine) && (
+                      <View style={styles.commentMenuWrap}>
+                        <TouchableOpacity style={styles.commentMoreBtn} onPress={() => setCommentMenuTarget((prev) => (prev === c.id ? null : c.id))} activeOpacity={0.8}>
+                          <MoreVertical size={16} color="#6B7280" />
+                        </TouchableOpacity>
+                        {commentMenuTarget === c.id && canManageSelectedComment && (
+                          <View style={[styles.menuBox, styles.commentMenuBox]}>
+                            <TouchableOpacity style={styles.menuItem} onPress={handleCommentEdit}>
+                              <Text style={styles.menuText}>수정</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={handleCommentDelete}>
+                              <Text style={styles.menuText}>삭제</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
                       </View>
-                      <Text style={styles.commentContent}>{c.content}</Text>
-                   </View>
-                   <View style={styles.commentFooter}>
-                      <Text style={styles.commentTime}>{c.timestamp}</Text>
-                      <TouchableOpacity onPress={() => handleCommentLike(c.id)}>
-                         <Text style={[styles.actionTxt, c.liked && { color: '#111', fontWeight: '800' }]}>좋아요 {c.likes > 0 && c.likes}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => {
-                        if (!user) showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
-                      }}>
-                        <Text style={styles.actionTxt}>답글</Text>
-                      </TouchableOpacity>
-                   </View>
+                    )}
+                  </View>
+                  <Text style={styles.commentContent}>{c.content}</Text>
                 </View>
-             </Animated.View>
-           ))}
-           
-           {!showAllComments && comments.length > INITIAL_COMMENT_COUNT && (
-             <TouchableOpacity style={styles.moreBtn} onPress={() => setShowAllComments(true)}>
-                <ChevronDown size={16} color="#6B7280" />
-                <Text style={styles.moreBtnTxt}>댓글 {comments.length - INITIAL_COMMENT_COUNT}개 더보기</Text>
-             </TouchableOpacity>
-           )}
+                <View style={styles.commentFooter}>
+                  <Text style={styles.commentTime}>{c.timestamp}</Text>
+                  <TouchableOpacity style={styles.commentActionButton} onPress={() => handleCommentLike(c.id)}>
+                    <ThumbsUp size={15} color={c.liked ? '#111' : '#9CA3AF'} fill={c.liked ? '#111' : 'transparent'} />
+                    <Text style={[styles.actionTxt, c.liked && styles.actionTxtActive]}>{c.likes}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.commentActionButton} onPress={() => handleReplyOpen(c.id)}>
+                    <MessageCircle size={15} color="#9CA3AF" />
+                    <Text style={styles.actionTxt}>답글</Text>
+                  </TouchableOpacity>
+                  {getCommentReplies(c).length > 0 && (
+                    <TouchableOpacity style={styles.commentActionButton} onPress={() => toggleExpandComment(c.id)}>
+                      {expandedComments.has(c.id) ? <ChevronUp size={15} color="#9CA3AF" /> : <ChevronDown size={15} color="#9CA3AF" />}
+                      <Text style={styles.actionTxt}>{getCommentReplies(c).length}개 답글</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {expandedComments.has(c.id) && getCommentReplies(c).length > 0 && (
+                  <View style={styles.replyList}>
+                    {getCommentReplies(c).map((reply) => (
+                      <View key={reply.id} style={styles.replyItem}>
+                        <Image source={getAvatarSource(reply.avatar)} style={styles.replyAvatar} />
+                        <View style={styles.replyContentWrap}>
+                          <View style={styles.commentUserRow}>
+                            <Text style={styles.commentAuthor}>{reply.author}</Text>
+                            {reply.authorType === 'brewery' && <View style={styles.breweryBadge}><Text style={styles.breweryBadgeTxt}>양조장</Text></View>}
+                            <Text style={styles.replyTime}>{reply.timestamp}</Text>
+                          </View>
+                          <Text style={styles.commentContent}>{reply.content}</Text>
+                          <TouchableOpacity style={styles.replyLikeBtn} onPress={() => handleReplyLike(c.id, reply.id)}>
+                            <ThumbsUp size={12} color={reply.liked ? '#111' : '#9CA3AF'} fill={reply.liked ? '#111' : 'transparent'} />
+                            <Text style={[styles.replyLikeTxt, reply.liked && styles.actionTxtActive]}>{reply.likes}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {replyingTo === c.id && (
+                  <View style={styles.replyInputRow}>
+                    <TextInput
+                      style={styles.replyInput}
+                      placeholder="답글을 입력하세요..."
+                      placeholderTextColor="#9CA3AF"
+                      value={replyInput}
+                      onChangeText={setReplyInput}
+                      returnKeyType="send"
+                      onSubmitEditing={() => handleReplySubmit(c.id)}
+                      autoFocus
+                    />
+                    <TouchableOpacity style={styles.replySendBtn} onPress={() => handleReplySubmit(c.id)}>
+                      <Send size={15} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            </Animated.View>
+          ))}
+
+          {!showAllComments && comments.length > INITIAL_COMMENT_COUNT && (
+            <TouchableOpacity style={styles.moreBtn} onPress={() => setShowAllComments(true)}>
+              <ChevronDown size={16} color="#6B7280" />
+              <Text style={styles.moreBtnTxt}>댓글 {comments.length - INITIAL_COMMENT_COUNT}개 더보기</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
 
-      {/* Footer Input */}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.footer}>
-         <View style={[styles.footerInner, { paddingBottom: insets.bottom + 10 }]}>
-            {user ? (
-               <View style={styles.inputBox}>
-                  <TextInput 
-                    style={styles.input}
-                    placeholder="댓글을 입력하세요..."
-                    placeholderTextColor="#9CA3AF"
-                    value={commentInput}
-                    onChangeText={setCommentInput}
-                  />
-                  <TouchableOpacity style={[styles.sendBtn, !commentInput.trim() && { opacity: 0.3 }]} onPress={handleCommentSubmit}>
-                     <Send size={18} color="#FFF" />
-                  </TouchableOpacity>
-               </View>
-            ) : (
-               <TouchableOpacity style={styles.loginReqBtn} onPress={() => showLoginRequired('댓글 작성은 로그인 후 이용할 수 있어요.')}>
-                  <Text style={styles.loginReqTxt}>로그인하고 댓글 작성하기</Text>
-               </TouchableOpacity>
-            )}
-         </View>
+        <View style={[styles.footerInner, { paddingBottom: insets.bottom + 10 }]}>
+          {user ? (
+            <View style={styles.inputBox}>
+              <TextInput
+                style={styles.input}
+                placeholder="댓글을 입력하세요..."
+                placeholderTextColor="#9CA3AF"
+                value={commentInput}
+                onChangeText={setCommentInput}
+              />
+              <TouchableOpacity style={[styles.sendBtn, !commentInput.trim() && { opacity: 0.3 }]} onPress={handleCommentSubmit}>
+                <Send size={18} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.loginReqBtn} onPress={() => showLoginRequired('댓글 작성은 로그인 후 이용할 수 있어요.')}>
+              <Text style={styles.loginReqTxt}>로그인하고 댓글 작성하기</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -377,26 +657,12 @@ const styles = StyleSheet.create({
   backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   headerMenuBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   menuWrap: { position: 'relative' },
-  menuBox: {
-    position: 'absolute',
-    top: 42,
-    right: 4,
-    minWidth: 120,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFF',
-    overflow: 'hidden',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    zIndex: 30,
-  },
+  menuBox: { position: 'absolute', top: 42, right: 4, minWidth: 120, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', overflow: 'hidden', elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 14, zIndex: 30 },
   menuItem: { paddingHorizontal: 16, paddingVertical: 13 },
   menuItemBorder: { borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   menuText: { fontSize: 14, fontWeight: '700', color: '#111' },
+  loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '700' },
   imageBox: { width: '100%', height: 300, backgroundColor: '#F9FAFB' },
   mainImg: { width: '100%', height: '100%', resizeMode: 'cover' },
   content: { padding: 24 },
@@ -443,6 +709,18 @@ const styles = StyleSheet.create({
   commentFooter: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8, paddingHorizontal: 4 },
   commentTime: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
   actionTxt: { fontSize: 11, color: '#6B7280', fontWeight: '700' },
+  actionTxtActive: { color: '#111', fontWeight: '800' },
+  commentActionButton: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  replyList: { marginTop: 12, marginLeft: 6, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: '#E5E7EB', gap: 10 },
+  replyItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 2 },
+  replyAvatar: { width: 32, height: 32, borderRadius: 16 },
+  replyContentWrap: { flex: 1, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#F3F4F6', borderRadius: 14, padding: 12 },
+  replyTime: { marginLeft: 'auto', fontSize: 11, color: '#9CA3AF', fontWeight: '600' },
+  replyLikeBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, marginTop: 8 },
+  replyLikeTxt: { fontSize: 11, color: '#6B7280', fontWeight: '700' },
+  replyInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, marginLeft: 6 },
+  replyInput: { flex: 1, height: 40, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 14, fontSize: 13, fontWeight: '600', color: '#111' },
+  replySendBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   moreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, backgroundColor: '#F9FAFB', borderRadius: 16, marginTop: 10 },
   moreBtnTxt: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F3F4F6' },

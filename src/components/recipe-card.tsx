@@ -70,12 +70,12 @@ export function RecipeCard({ recipe, index = 0, onLike, onComment, showLikeButto
                 onPress={() => onLike && onLike(recipe.id)}
                 style={styles.stat}
               >
-                <Heart 
-                  size={16} 
-                  color={recipe.liked ? "#111" : "#9CA3AF"} 
-                  fill={recipe.liked ? "#111" : "transparent"} 
+                <Heart
+                  size={16}
+                  color={recipe.liked ? "#EF4444" : "#9CA3AF"}
+                  fill={recipe.liked ? "#EF4444" : "transparent"}
                 />
-                <Text style={[styles.statTxt, recipe.liked && { color: '#111' }]}>{recipe.likes}</Text>
+                <Text style={[styles.statTxt, recipe.liked && styles.statTxtLiked]}>{recipe.likes}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 disabled={!onComment}
@@ -120,4 +120,5 @@ const styles = StyleSheet.create({
   footer: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 12 },
   stat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statTxt: { fontSize: 12, fontWeight: '700', color: '#9CA3AF' },
+  statTxtLiked: { color: '#EF4444' },
 });

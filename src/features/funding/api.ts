@@ -156,6 +156,175 @@ type RequestPaymentResponse = {
   message: string;
 };
 
+export type FundingListStatus = 'UPCOMING' | 'ONGOING' | 'ENDED';
+export type FundingListSort = 'POPULAR' | 'LATEST' | 'DEADLINE';
+
+export type FundingListItem = {
+  fundingId: number;
+  title: string;
+  thumbnailUrl: string | null;
+  breweryName: string;
+  currentAmount: number;
+  targetAmount: number;
+  achievementRate: number;
+  status: FundingListStatus | string;
+  endDate: string;
+};
+
+export type FundingListResponse = {
+  content: FundingListItem[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+};
+
+export type FundingDetailResponse = {
+  fundingId: number;
+  title: string;
+  summary: string;
+  thumbnailUrl: string | null;
+  breweryName: string;
+  status: FundingListStatus | string;
+  currentAmount: number;
+  targetAmount: number;
+  achievementRate: number;
+  supporterCount: number;
+  startDate: string;
+  endDate: string;
+  expectedDeliveryDate: string;
+  tasteProfile?: {
+    sweetness: number;
+    acidity: number;
+    body: number;
+    carbonation: number;
+    alcoholIntensity: number;
+    flavorNotes?: string[];
+  };
+  supportOptions?: FundingSupportOption[];
+};
+
+export type FundingIntroResponse = {
+  fundingId: number;
+  title: string;
+  introduction: string;
+  story: string;
+  images: string[];
+};
+
+export type FundingBreweryLogItem = {
+  logId: number;
+  step: string;
+  title: string;
+  content: string;
+  imageUrls: string[];
+  createdAt: string;
+};
+
+export type FundingBreweryLogsResponse = {
+  fundingId: number;
+  logs: FundingBreweryLogItem[];
+};
+
+export type FundingQuestionItem = {
+  questionId: number;
+  writerNickname: string;
+  title: string;
+  content: string;
+  answered: boolean;
+  createdAt: string;
+};
+
+export type FundingQuestionsResponse = {
+  content: FundingQuestionItem[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+};
+
+type CreateFundingQuestionPayload = {
+  title: string;
+  content: string;
+  isPrivate?: boolean;
+};
+
+type CreateFundingQuestionResponse = {
+  fundingId: number;
+  questionId: number;
+  message: string;
+};
+
+type CreateFundingReplyPayload = {
+  content: string;
+};
+
+type CreateFundingReplyResponse = {
+  fundingId: number;
+  questionId: number;
+  replyId: number;
+  message: string;
+};
+
+export type FundingReviewItem = {
+  reviewId: number;
+  writerNickname: string;
+  rating: number;
+  content: string;
+  imageUrls: string[];
+  createdAt: string;
+};
+
+export type FundingReviewsResponse = {
+  content: FundingReviewItem[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+};
+
+export type FundingSupportOption = {
+  optionId: number;
+  name: string;
+  price: number;
+  description: string;
+  stock?: number;
+  remainingStock?: number;
+  maxPerUser?: number;
+};
+
+export type FundingSupportOptionsResponse = {
+  fundingId: number;
+  supportOptions: FundingSupportOption[];
+};
+
+export type FundingOrderDetailResponse = {
+  orderId: number;
+  fundingId: number;
+  fundingTitle: string;
+  optionName: string;
+  quantity: number;
+  totalAmount: number;
+  orderStatus: string;
+  paymentStatus: string;
+  recipientName: string;
+  recipientPhone: string;
+  shippingAddress: string;
+  shippingDetailAddress: string;
+  createdAt: string;
+};
+
+type CreateFundingInquiryPayload = {
+  title: string;
+  content: string;
+};
+
+type CreateFundingInquiryResponse = {
+  fundingId: number;
+  inquiryId: number;
+  message: string;
+};
+
 const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
 
 export async function getFundingAccessToken() {
@@ -298,6 +467,91 @@ export async function createFundingOrder(fundingId: number, payload: CreateFundi
 
 export async function requestFundingPayment(orderId: number, payload: RequestPaymentPayload) {
   return requestFundingJson<RequestPaymentResponse>(`/api/orders/${orderId}/payment`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getFundingList(params: {
+  status?: FundingListStatus;
+  sort?: FundingListSort;
+  page?: number;
+  size?: number;
+} = {}) {
+  const query = new URLSearchParams();
+  if (params.status) query.set('status', params.status);
+  if (params.sort) query.set('sort', params.sort);
+  query.set('page', String(params.page ?? 0));
+  query.set('size', String(params.size ?? 10));
+  const suffix = query.toString();
+  return requestFundingJson<FundingListResponse>(`/api/fundings${suffix ? `?${suffix}` : ''}`);
+}
+
+export async function getFundingDetail(fundingId: number) {
+  return requestFundingJson<FundingDetailResponse>(`/api/fundings/${fundingId}`);
+}
+
+export async function getFundingIntro(fundingId: number) {
+  return requestFundingJson<FundingIntroResponse>(`/api/fundings/${fundingId}/intro`);
+}
+
+export async function getFundingBreweryLogs(fundingId: number) {
+  return requestFundingJson<FundingBreweryLogsResponse>(`/api/fundings/${fundingId}/brewery-logs`);
+}
+
+export async function getFundingQuestions(fundingId: number, params: {
+  page?: number;
+  size?: number;
+  answered?: boolean;
+} = {}) {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page ?? 0));
+  query.set('size', String(params.size ?? 10));
+  if (params.answered !== undefined) query.set('answered', String(params.answered));
+  return requestFundingJson<FundingQuestionsResponse>(`/api/fundings/${fundingId}/questions?${query.toString()}`);
+}
+
+export async function createFundingQuestion(fundingId: number, payload: CreateFundingQuestionPayload) {
+  return requestFundingJson<CreateFundingQuestionResponse>(`/api/fundings/${fundingId}/questions`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createFundingReply(fundingId: number, questionId: number, payload: CreateFundingReplyPayload) {
+  return requestFundingJson<CreateFundingReplyResponse>(`/api/fundings/${fundingId}/questions/${questionId}/replies`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getFundingReviews(fundingId: number, params: {
+  page?: number;
+  size?: number;
+  sort?: 'LATEST' | 'RATING';
+} = {}) {
+  const query = new URLSearchParams();
+  query.set('page', String(params.page ?? 0));
+  query.set('size', String(params.size ?? 10));
+  query.set('sort', params.sort ?? 'LATEST');
+  return requestFundingJson<FundingReviewsResponse>(`/api/fundings/${fundingId}/reviews?${query.toString()}`);
+}
+
+export async function getFundingSupportOptions(fundingId: number) {
+  return requestFundingJson<FundingSupportOptionsResponse>(`/api/fundings/${fundingId}/support-options`);
+}
+
+export async function getFundingOrderDetail(orderId: number) {
+  return requestFundingJson<FundingOrderDetailResponse>(`/api/orders/${orderId}`, {
+    auth: true,
+  });
+}
+
+export async function createFundingInquiry(fundingId: number, payload: CreateFundingInquiryPayload) {
+  return requestFundingJson<CreateFundingInquiryResponse>(`/api/fundings/${fundingId}/inquiries`, {
     method: 'POST',
     auth: true,
     body: JSON.stringify(payload),

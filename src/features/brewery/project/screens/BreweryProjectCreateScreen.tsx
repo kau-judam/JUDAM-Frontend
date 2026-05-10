@@ -45,7 +45,6 @@ import { Progress } from '@/components/ui/progress';
 import type { FundingProject, BudgetItem, ScheduleItem } from '@/constants/data';
 import { useAuth, type User as AuthUser } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
-<<<<<<< HEAD
 import {
   createFundingDraft,
   getFundingApiErrorMessage,
@@ -58,8 +57,6 @@ import {
   saveFundingTasteProfile,
   updateFundingDraft,
 } from '@/features/funding/api';
-=======
->>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import SafeStorage from '@/utils/storage';
 
@@ -647,7 +644,6 @@ export default function BreweryProjectCreateScreen() {
     accountVerified,
   });
 
-<<<<<<< HEAD
   const getBreweryId = () => {
     const breweryId = Number(user?.id);
     return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1;
@@ -801,8 +797,6 @@ export default function BreweryProjectCreateScreen() {
     });
   };
 
-=======
->>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
   const applyDraftPayload = (draft: any) => {
     if (draft.basicInfo) {
       setBasicInfo({
@@ -840,7 +834,6 @@ export default function BreweryProjectCreateScreen() {
 
   const saveDraft = async ({ showSavedModal = true, exitAfter = false }: { showSavedModal?: boolean; exitAfter?: boolean } = {}) => {
     setIsSaving(true);
-<<<<<<< HEAD
     try {
       const savedDraft = await getSavedDraft();
       const existingDraftId = getDraftId(savedDraft);
@@ -868,20 +861,6 @@ export default function BreweryProjectCreateScreen() {
       showAlert(getFundingApiErrorMessage(error, '임시저장 중 문제가 발생했습니다.'));
     } finally {
       setIsSaving(false);
-=======
-    const draft = createDraftPayload();
-    await SafeStorage.setItem(tempSaveKey, JSON.stringify(draft));
-    setIsSaving(false);
-    setHasTempSave(true);
-    setTempSaveTimestamp(draft.timestamp);
-    if (exitAfter) {
-      router.replace('/funding' as any);
-      return;
-    }
-    if (showSavedModal) {
-      setTempSaveMode('saved');
-      setShowTempSaveModal(true);
->>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
     }
   };
 
@@ -1320,7 +1299,6 @@ export default function BreweryProjectCreateScreen() {
     setShowSubmitConfirm(true);
   };
 
-<<<<<<< HEAD
   const confirmSubmit = async () => {
     setShowSubmitConfirm(false);
     setIsSubmitting(true);
@@ -1332,37 +1310,19 @@ export default function BreweryProjectCreateScreen() {
       const payload = buildProjectPayload(isEditMode ? 'edit' : 'create');
       const submittedProject = isEditMode && editProjectId ? updateProject(editProjectId, payload) : addProject(payload);
       if (!submittedProject) {
-=======
-  const confirmSubmit = () => {
-    setShowSubmitConfirm(false);
-    setIsSubmitting(true);
-    setTimeout(() => {
-      const payload = buildProjectPayload(isEditMode ? 'edit' : 'create');
-      const submittedProject = isEditMode && editProjectId ? updateProject(editProjectId, payload) : addProject(payload);
-      if (!submittedProject) {
-        setIsSubmitting(false);
->>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
         showAlert('수정할 펀딩 게시글을 찾을 수 없습니다.');
         return;
       }
       setCreatedProjectId(submittedProject.id);
-<<<<<<< HEAD
-=======
-      setIsSubmitting(false);
->>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
       void SafeStorage.removeItem(tempSaveKey);
       setHasTempSave(false);
       setTempSaveTimestamp('');
       setShowSubmitSuccess(true);
-<<<<<<< HEAD
     } catch (error) {
       showAlert(getFundingApiErrorMessage(error, '펀딩 프로젝트 저장 중 문제가 발생했습니다.'));
     } finally {
       setIsSubmitting(false);
     }
-=======
-    }, 700);
->>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
   };
 
   const handleSubmitSuccessClose = () => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   View,
@@ -46,6 +46,24 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import {
+  createFundingQuestion,
+  createFundingReply,
+  getFundingApiErrorMessage,
+  getFundingBreweryLogs,
+  getFundingDetail,
+  getFundingIntro,
+  getFundingQuestions,
+  getFundingReviews,
+  getFundingSupportOptions,
+} from '@/features/funding/api';
+import {
+  mapBreweryLogs,
+  mapFundingReview,
+  mergeFundingDetail,
+  mergeFundingIntro,
+  mergeSupportOption,
+} from '@/features/funding/apiMappers';
+import {
   BREWING_STAGES,
   getFundingProjectImageSource,
   getFundingStatusLabel,
@@ -86,6 +104,8 @@ const initialComments = [
 
 const JOURNALS_PER_STAGE = 1;
 
+type FundingQuestionComment = typeof initialComments[number];
+
 function todayText() {
   const today = new Date();
   return `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, '0')}. ${String(today.getDate()).padStart(2, '0')}`;
@@ -114,7 +134,8 @@ export default function FundingDetailScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { favoriteFundings, isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
-  const { projects, participatedFundings, updateProjectJournals, fundingReviews } = useFunding();
+  const { projects, participatedFundings, updateProjectJournals, fundingReviews, mergeProject, mergeFundingReviews } = useFunding();
+  const projectRef = useRef<(typeof projects)[number] | null>(null);
   const rawProjectId = Array.isArray(id) ? id[0] : id;
   const projectId = Number(rawProjectId);
   const initialTab = getInitialTab(tab);
@@ -130,6 +151,7 @@ export default function FundingDetailScreen() {
   const [reviewEditPrompt, setReviewEditPrompt] = useState<FundingReview | null>(null);
   const [showFundingOptionModal, setShowFundingOptionModal] = useState(false);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [supportOptionId, setSupportOptionId] = useState(1);
 
   // Q&A State
   const [comments, setComments] = useState(initialComments);
@@ -152,6 +174,10 @@ export default function FundingDetailScreen() {
   useEffect(() => {
     setActiveTab(getInitialTab(tab));
   }, [tab]);
+
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
 
   useFocusEffect(
     useCallback(() => {
@@ -182,6 +208,142 @@ export default function FundingDetailScreen() {
     setLikedJournalComments(new Set());
     setLikedJournalReplies(new Set());
   }, [projectId]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!Number.isFinite(projectId) || !projectRef.current) return;
+
+    getFundingDetail(projectId)
+      .then((detail) => {
+        const currentProject = projectRef.current;
+        if (!mounted || !currentProject) return;
+        mergeProject(projectId, mergeFundingDetail(currentProject, detail));
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '펀딩 상세 정보를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [mergeProject, projectId]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!Number.isFinite(projectId) || !projectRef.current || activeTab !== "소개") return;
+
+    getFundingIntro(projectId)
+      .then((intro) => {
+        const currentProject = projectRef.current;
+        if (!mounted || !currentProject) return;
+        mergeProject(projectId, mergeFundingIntro(currentProject, intro));
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '프로젝트 소개를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, mergeProject, projectId]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!Number.isFinite(projectId) || activeTab !== "양조일지") return;
+
+    getFundingBreweryLogs(projectId)
+      .then((response) => {
+        const currentProject = projectRef.current;
+        if (!mounted || !currentProject) return;
+        const apiJournals = mapBreweryLogs(response.logs);
+        const mergedJournals = apiJournals.map((journal) => {
+          const existingJournal = (currentProject.journals || []).find((item) => item.id === journal.id);
+          return existingJournal ? { ...journal, likes: existingJournal.likes, comments: existingJournal.comments } : journal;
+        });
+        updateProjectJournals(projectId, mergedJournals);
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '양조일지를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, projectId, updateProjectJournals]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!Number.isFinite(projectId) || activeTab !== "Q&A") return;
+
+    getFundingQuestions(projectId, { page: 0, size: 20 })
+      .then((response) => {
+        if (!mounted) return;
+        const apiComments: FundingQuestionComment[] = response.content.map((item) => ({
+          id: item.questionId,
+          userName: item.writerNickname,
+          content: item.content || item.title,
+          date: new Date(item.createdAt).toLocaleDateString("ko-KR"),
+          likes: 0,
+          isBrewery: false,
+          replies: [],
+        }));
+        setComments((prev) => {
+          const prevById = new Map(prev.map((comment) => [comment.id, comment]));
+          const merged = apiComments.map((comment) => {
+            const existingComment = prevById.get(comment.id);
+            return existingComment ? { ...comment, likes: existingComment.likes, replies: existingComment.replies } : comment;
+          });
+          const localOnly = prev.filter((comment) => !apiComments.some((apiComment) => apiComment.id === comment.id));
+          return [...merged, ...localOnly];
+        });
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, 'Q&A를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, projectId]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!Number.isFinite(projectId) || activeTab !== "후기") return;
+
+    getFundingReviews(projectId, { page: 0, size: 20, sort: 'LATEST' })
+      .then((response) => {
+        if (!mounted) return;
+        mergeFundingReviews(projectId, response.content.map((review) => mapFundingReview(projectId, review)));
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '펀딩 후기를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, mergeFundingReviews, projectId]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!Number.isFinite(projectId) || !showFundingOptionModal) return;
+
+    getFundingSupportOptions(projectId)
+      .then((response) => {
+        const currentProject = projectRef.current;
+        const option = response.supportOptions[0];
+        if (!mounted || !currentProject || !option) return;
+        setSupportOptionId(option.optionId);
+        mergeProject(projectId, mergeSupportOption(currentProject, option));
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '후원 옵션을 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [mergeProject, projectId, showFundingOptionModal]);
 
   if (!project) {
     return (
@@ -278,7 +440,7 @@ export default function FundingDetailScreen() {
 
   const handleConfirmFundingOption = () => {
     setShowFundingOptionModal(false);
-    router.push(`/funding/support?id=${project.id}&quantity=${selectedQuantity}` as any);
+    router.push(`/funding/support?id=${project.id}&quantity=${selectedQuantity}&optionId=${supportOptionId}` as any);
   };
 
   const handleTabChange = (nextTab: "소개" | "양조일지" | "Q&A" | "후기") => {
@@ -286,44 +448,67 @@ export default function FundingDetailScreen() {
     router.setParams({ tab: getTabParam(nextTab) } as any);
   };
 
-  const handleAddComment = () => {
+  const handleAddComment = async () => {
     if (!newComment.trim()) return;
     if (!user) {
       showLoginRequired('펀딩 Q&A 댓글은 로그인 후 이용할 수 있어요.');
       return;
     }
-    const comment = {
-      id: Date.now(),
-      userName: user?.name || "나",
-      content: newComment.trim(),
-      date: new Date().toLocaleDateString("ko-KR"),
-      likes: 0,
-      isBrewery: user?.type === "brewery",
-      replies: [],
-    };
-    setComments([comment, ...comments]);
-    setNewComment("");
+    const content = newComment.trim();
+    try {
+      const response = await createFundingQuestion(project.id, {
+        title: content.slice(0, 30) || '펀딩 문의',
+        content,
+        isPrivate: false,
+      });
+      const comment = {
+        id: response.questionId,
+        userName: user?.name || "나",
+        content,
+        date: new Date().toLocaleDateString("ko-KR"),
+        likes: 0,
+        isBrewery: user?.type === "brewery",
+        replies: [],
+      };
+      setComments([comment, ...comments]);
+      setNewComment("");
+    } catch (error) {
+      setFeedbackModal({
+        title: 'Q&A 등록 실패',
+        body: getFundingApiErrorMessage(error, '질문 등록 중 문제가 발생했습니다.'),
+      });
+    }
   };
 
-  const handleAddReply = (commentId: number) => {
+  const handleAddReply = async (commentId: number) => {
     if (!replyContent.trim()) return;
     if (!user) {
       showLoginRequired('펀딩 Q&A 답글은 로그인 후 이용할 수 있어요.');
       return;
     }
-    const newReply = {
-      id: Date.now(),
-      userName: user?.name || "나",
-      content: replyContent.trim(),
-      date: new Date().toLocaleDateString("ko-KR"),
-      likes: 0,
-      isBrewery: user?.type === "brewery",
-    };
-    setComments(comments.map(c => c.id === commentId ? { ...c, replies: [...c.replies, newReply] } : c));
-    setReplyContent("");
-    setReplyingTo(null);
-    setExpandedComments(new Set([...expandedComments, commentId]));
+    const content = replyContent.trim();
+    try {
+      const response = await createFundingReply(project.id, commentId, { content });
+      const newReply = {
+        id: response.replyId,
+        userName: user?.name || "나",
+        content,
+        date: new Date().toLocaleDateString("ko-KR"),
+        likes: 0,
+        isBrewery: user?.type === "brewery",
+      };
+      setComments(comments.map(c => c.id === commentId ? { ...c, replies: [...c.replies, newReply] } : c));
+      setReplyContent("");
+      setReplyingTo(null);
+      setExpandedComments(new Set([...expandedComments, commentId]));
+    } catch (error) {
+      setFeedbackModal({
+        title: '답글 등록 실패',
+        body: getFundingApiErrorMessage(error, '답글 등록 중 문제가 발생했습니다.'),
+      });
+    }
   };
+
 
   const toggleCommentLike = (commentId: number) => {
     if (!user) {

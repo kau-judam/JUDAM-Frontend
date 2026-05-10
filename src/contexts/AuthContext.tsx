@@ -68,8 +68,9 @@ function getTemporaryAccessToken(type: UserType) {
 
 function getTemporaryLoginType(email: string, password: string, fallbackType: UserType) {
   const normalizedEmail = email.trim().toLowerCase();
-  if (normalizedEmail === "user@judam.test" && password === "judam123") return "user";
-  if (normalizedEmail === "brewery@judam.test" && password === "judam123") return "brewery";
+  const normalizedPassword = password.trim().toLowerCase();
+  if (normalizedEmail === "user@judam.test" && normalizedPassword === "judam123") return "user";
+  if (normalizedEmail === "brewery@judam.test" && normalizedPassword === "judam123") return "brewery";
   return fallbackType;
 }
 

@@ -158,19 +158,25 @@ export function mergeFundingIntro(existing: FundingProject, intro: FundingIntroR
   };
 }
 
-function mapBreweryStage(step: string): BrewingStage {
+function mapBreweryStage(step?: string): BrewingStage {
+  if (!step) return 1;
+  if (step === 'INGREDIENT') return 1;
+  if (step === 'FERMENTATION') return 3;
+  if (step === 'AGING') return 4;
+  if (step === 'BOTTLING') return 5;
+  if (step === 'SHIPPING') return 5;
   if (step.includes('원재료')) return 1;
   if (step.includes('가공') || step.includes('혼합')) return 2;
   if (step.includes('발효')) return 3;
   if (step.includes('숙성') || step.includes('제술') || step.includes('정제')) return 4;
-  if (step.includes('병입')) return 5;
+  if (step.includes('병입') || step.includes('배송')) return 5;
   return 1;
 }
 
 export function mapBreweryLogs(logs: FundingBreweryLogItem[]): JournalEntry[] {
   return logs.map((log) => ({
     id: log.logId,
-    stage: mapBreweryStage(log.step),
+    stage: mapBreweryStage(log.stage || log.step),
     date: formatDate(log.createdAt),
     title: log.title,
     content: log.content,

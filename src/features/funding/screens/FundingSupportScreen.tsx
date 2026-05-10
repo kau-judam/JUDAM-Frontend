@@ -38,7 +38,9 @@ import {
   createFundingOrder,
   getFundingApiErrorMessage,
   getFundingOrderDetail,
+  getFundingPaymentInfo,
   getFundingSupportOptions,
+  isFundingApiMissingEndpointError,
   requestFundingPayment,
 } from '@/features/funding/api';
 import { mergeSupportOption } from '@/features/funding/apiMappers';
@@ -290,6 +292,13 @@ export default function FundingSupportScreen() {
       });
       if (payment.paymentUrl) {
         await Linking.openURL(payment.paymentUrl);
+      }
+      try {
+        await getFundingPaymentInfo(order.orderId);
+      } catch (paymentInfoError) {
+        if (!isFundingApiMissingEndpointError(paymentInfoError)) {
+          console.warn(getFundingApiErrorMessage(paymentInfoError, '결제 정보를 불러오지 못했습니다.'));
+        }
       }
       try {
         await getFundingOrderDetail(order.orderId);

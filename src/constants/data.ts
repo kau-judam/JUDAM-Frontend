@@ -129,7 +129,7 @@ export interface FundingProject {
   updatedAt?: string;
 }
 
-export const fundingProjects: FundingProject[] = [
+const seedFundingProjects: FundingProject[] = [
   {
     id: 1,
     title: "봄을 담은 벚꽃 막걸리 프로젝트",
@@ -439,6 +439,13 @@ export const fundingProjects: FundingProject[] = [
     journals: [],
   },
 ];
+
+export const fundingProjects: FundingProject[] = seedFundingProjects.filter((project) =>
+  [
+    "봄을 담은 벚꽃 막걸리 프로젝트",
+    "산사 막걸리 프로젝트",
+  ].includes(project.title)
+);
 
 export interface Recipe {
   id: number;

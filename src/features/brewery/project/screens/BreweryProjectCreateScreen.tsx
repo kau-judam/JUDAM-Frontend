@@ -45,6 +45,18 @@ import { Progress } from '@/components/ui/progress';
 import type { FundingProject, BudgetItem, ScheduleItem } from '@/constants/data';
 import { useAuth, type User as AuthUser } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import {
+  createFundingDraft,
+  getFundingApiErrorMessage,
+  saveFundingBasicInfo,
+  saveFundingBreweryInfo,
+  saveFundingLegalInfo,
+  saveFundingNotices,
+  saveFundingPlan,
+  saveFundingSchedule,
+  saveFundingTasteProfile,
+  updateFundingDraft,
+} from '@/features/funding/api';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import SafeStorage from '@/utils/storage';
 
@@ -632,6 +644,159 @@ export default function BreweryProjectCreateScreen() {
     accountVerified,
   });
 
+  const getBreweryId = () => {
+    const breweryId = Number(user?.id);
+    return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1;
+  };
+
+  const createDraftApiPayload = () => {
+    const alcoholPercentage = Number(basicInfo.alcoholContent);
+
+    return {
+      breweryId: getBreweryId(),
+      title: basicInfo.title.trim() || undefined,
+      shortTitle: basicInfo.shortTitle.trim() || undefined,
+      category: 'MAKGEOLLI',
+      mainIngredient: basicInfo.mainIngredient.trim() || undefined,
+      subIngredient: basicInfo.subIngredient.trim() || undefined,
+      alcoholPercentage: Number.isFinite(alcoholPercentage) && basicInfo.alcoholContent.trim() ? alcoholPercentage : undefined,
+      summary: basicInfo.summary.trim() || undefined,
+    };
+  };
+
+  const createDraftUpdateApiPayload = () => {
+    const alcoholPercentage = Number(basicInfo.alcoholContent);
+
+    return {
+      title: basicInfo.title.trim() || undefined,
+      shortTitle: basicInfo.shortTitle.trim() || undefined,
+      summary: basicInfo.summary.trim() || undefined,
+      alcoholPercentage: Number.isFinite(alcoholPercentage) && basicInfo.alcoholContent.trim() ? alcoholPercentage : undefined,
+    };
+  };
+
+  const toTasteScale = (value: number) => Math.max(1, Math.min(5, Math.round(value / 20)));
+
+  const getAlcoholIntensity = () => {
+    const alcohol = Number(productInfo.alcoholContent || basicInfo.alcoholContent) || 0;
+    if (alcohol <= 5) return 1;
+    if (alcohol <= 7) return 2;
+    if (alcohol <= 9) return 3;
+    if (alcohol <= 12) return 4;
+    return 5;
+  };
+
+  const getBudgetPlanForApi = () => {
+    const parsed = parseBudgetItems(projectPlan.budget)
+      .filter((item) => item.item.trim())
+      .map((item) => ({ category: item.item, amount: item.amount || Number(fundingInfo.goalAmount) || 1 }));
+    if (parsed.length > 0) return parsed;
+    return [{ category: '제품 생산 및 품질 관리', amount: Number(fundingInfo.goalAmount) || 1 }];
+  };
+
+  const getSchedulePlanForApi = () => {
+    const parsed = parseScheduleItems(projectPlan.schedule)
+      .filter((item) => item.description.trim())
+      .map((item, index) => ({
+        step: `STEP ${index + 1}`,
+        description: item.description,
+        date: normalizeProjectDate(item.date) || fundingInfo.startDate,
+      }));
+    if (parsed.length > 0) return parsed;
+    return [
+      {
+        step: '펀딩 진행',
+        description: `${fundingInfo.duration}일 동안 펀딩을 진행합니다.`,
+        date: fundingInfo.startDate,
+      },
+    ];
+  };
+
+  const getDraftId = (draft: any) => {
+    const value = Number(draft?.serverDraft?.draftId);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
+
+  const ensureServerDraft = async () => {
+    const savedDraft = await getSavedDraft();
+    const draftId = getDraftId(savedDraft);
+    if (draftId) {
+      await updateFundingDraft(draftId, createDraftUpdateApiPayload());
+      return draftId;
+    }
+    const serverDraft = await createFundingDraft(createDraftApiPayload());
+    const draft = {
+      ...createDraftPayload(),
+      serverDraft,
+    };
+    await SafeStorage.setItem(tempSaveKey, JSON.stringify(draft));
+    setHasTempSave(true);
+    setTempSaveTimestamp(draft.timestamp);
+    return serverDraft.draftId;
+  };
+
+  const saveProjectSectionsToApi = async (draftId: number) => {
+    await saveFundingBasicInfo(draftId, {
+      title: basicInfo.title.trim(),
+      shortTitle: basicInfo.shortTitle.trim() || undefined,
+      category: 'MAKGEOLLI',
+      mainIngredient: basicInfo.mainIngredient.trim(),
+      subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
+      alcoholPercentage: Number(basicInfo.alcoholContent),
+      summary: basicInfo.summary.trim(),
+      thumbnailUrl: basicInfo.images[0],
+    });
+    await saveFundingSchedule(draftId, {
+      pricePerBottle: Number(fundingInfo.pricePerBottle),
+      totalQuantity: Number(fundingInfo.bottleQuantity),
+      fundingStartDate: fundingInfo.startDate,
+      fundingPeriodDays: Number(fundingInfo.duration),
+      fundingEndDate: endDateText,
+      expectedDeliveryDate: fundingInfo.expectedDeliveryDate,
+    });
+    await saveFundingLegalInfo(draftId, {
+      productType: 'MAKGEOLLI',
+      volume: Number(productInfo.volume),
+      alcoholPercentage: Number(productInfo.alcoholContent || basicInfo.alcoholContent),
+      rawMaterials: productInfo.ingredients
+        .filter((item) => item.ingredient.trim() || item.origin.trim())
+        .map((item) => ({
+          name: item.ingredient.trim(),
+          origin: item.origin.trim(),
+        })),
+    });
+    await saveFundingTasteProfile(draftId, {
+      sweetness: toTasteScale(tasteProfile.sweetness),
+      acidity: toTasteScale(tasteProfile.acidity),
+      body: toTasteScale(tasteProfile.body),
+      carbonation: toTasteScale(tasteProfile.carbonation),
+      alcoholIntensity: getAlcoholIntensity(),
+      flavorNotes: getReadyTags(),
+    });
+    await saveFundingPlan(draftId, {
+      introduction: projectPlan.introduction.trim(),
+      budgetPlan: getBudgetPlanForApi(),
+      schedulePlan: getSchedulePlanForApi(),
+    });
+    await saveFundingBreweryInfo(draftId, {
+      breweryName: creatorInfo.name.trim(),
+      representativeName: taxInfo.ceoName.trim(),
+      businessRegistrationNumber: taxInfo.businessNumber.trim(),
+      businessAddress: taxInfo.address.trim(),
+      contactEmail: taxInfo.email.trim(),
+      contactPhone: creatorInfo.phone.trim(),
+      bankName: creatorInfo.accountBank.trim(),
+      accountNumber: creatorInfo.accountNumber.trim(),
+      accountHolder: taxInfo.ceoName.trim() || creatorInfo.name.trim(),
+    });
+    await saveFundingNotices(draftId, {
+      refundPolicy: trustInfo.projectPolicy.trim(),
+      exchangePolicy: trustInfo.projectPolicy.trim(),
+      adultVerificationNotice: '본 프로젝트는 성인인증을 완료한 후원자만 참여할 수 있습니다.',
+      riskNotice: trustInfo.expectedDifficulties.trim(),
+    });
+  };
+
   const applyDraftPayload = (draft: any) => {
     if (draft.basicInfo) {
       setBasicInfo({
@@ -669,18 +834,33 @@ export default function BreweryProjectCreateScreen() {
 
   const saveDraft = async ({ showSavedModal = true, exitAfter = false }: { showSavedModal?: boolean; exitAfter?: boolean } = {}) => {
     setIsSaving(true);
-    const draft = createDraftPayload();
-    await SafeStorage.setItem(tempSaveKey, JSON.stringify(draft));
-    setIsSaving(false);
-    setHasTempSave(true);
-    setTempSaveTimestamp(draft.timestamp);
-    if (exitAfter) {
-      router.replace('/funding' as any);
-      return;
-    }
-    if (showSavedModal) {
-      setTempSaveMode('saved');
-      setShowTempSaveModal(true);
+    try {
+      const savedDraft = await getSavedDraft();
+      const existingDraftId = getDraftId(savedDraft);
+      const serverDraft = isEditMode
+        ? savedDraft?.serverDraft || null
+        : existingDraftId
+          ? await updateFundingDraft(existingDraftId, createDraftUpdateApiPayload())
+          : await createFundingDraft(createDraftApiPayload());
+      const draft = {
+        ...createDraftPayload(),
+        serverDraft,
+      };
+      await SafeStorage.setItem(tempSaveKey, JSON.stringify(draft));
+      setHasTempSave(true);
+      setTempSaveTimestamp(draft.timestamp);
+      if (exitAfter) {
+        router.replace('/funding' as any);
+        return;
+      }
+      if (showSavedModal) {
+        setTempSaveMode('saved');
+        setShowTempSaveModal(true);
+      }
+    } catch (error) {
+      showAlert(getFundingApiErrorMessage(error, '임시저장 중 문제가 발생했습니다.'));
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1119,24 +1299,30 @@ export default function BreweryProjectCreateScreen() {
     setShowSubmitConfirm(true);
   };
 
-  const confirmSubmit = () => {
+  const confirmSubmit = async () => {
     setShowSubmitConfirm(false);
     setIsSubmitting(true);
-    setTimeout(() => {
+    try {
+      if (!isEditMode) {
+        const draftId = await ensureServerDraft();
+        await saveProjectSectionsToApi(draftId);
+      }
       const payload = buildProjectPayload(isEditMode ? 'edit' : 'create');
       const submittedProject = isEditMode && editProjectId ? updateProject(editProjectId, payload) : addProject(payload);
       if (!submittedProject) {
-        setIsSubmitting(false);
         showAlert('수정할 펀딩 게시글을 찾을 수 없습니다.');
         return;
       }
       setCreatedProjectId(submittedProject.id);
-      setIsSubmitting(false);
       void SafeStorage.removeItem(tempSaveKey);
       setHasTempSave(false);
       setTempSaveTimestamp('');
       setShowSubmitSuccess(true);
-    }, 700);
+    } catch (error) {
+      showAlert(getFundingApiErrorMessage(error, '펀딩 프로젝트 저장 중 문제가 발생했습니다.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSubmitSuccessClose = () => {

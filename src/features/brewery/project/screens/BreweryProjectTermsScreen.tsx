@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   Modal,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import { AlertCircle, Check, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { getFundingApiErrorMessage, saveFundingAgreement } from '@/features/funding/api';
 
 interface TermItem {
   id: string;
@@ -74,6 +76,7 @@ export default function BreweryProjectTermsScreen() {
   const { user } = useAuth();
   const [agreedTerms, setAgreedTerms] = useState<string[]>([]);
   const [modalTerm, setModalTerm] = useState<TermItem | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const allTermIds = termsData.map((term) => term.id);
   const allAgreed = agreedTerms.length === allTermIds.length;
@@ -88,9 +91,29 @@ export default function BreweryProjectTermsScreen() {
     ));
   };
 
-  const handleNext = () => {
-    if (allAgreed) {
+  const getBreweryId = () => {
+    const breweryId = Number(user?.id);
+    return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1;
+  };
+
+  const handleNext = async () => {
+    if (!allAgreed || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await saveFundingAgreement({
+        breweryId: getBreweryId(),
+        isAdultConfirmed: agreedTerms.includes('age'),
+        isContactInfoAgreed: agreedTerms.includes('contact'),
+        isSettlementInfoAgreed: agreedTerms.includes('settlement'),
+        isFeePolicyAgreed: agreedTerms.includes('fee'),
+        isResponsibilityAgreed: agreedTerms.includes('responsibility'),
+      });
       router.push('/brewery/project/create' as any);
+    } catch (error) {
+      Alert.alert('약관 동의 저장 실패', getFundingApiErrorMessage(error, '약관 동의 저장 중 문제가 발생했습니다.'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -227,9 +250,9 @@ export default function BreweryProjectTermsScreen() {
 
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
           <TouchableOpacity
-            style={[styles.nextButton, !allAgreed && styles.nextButtonDisabled]}
-            activeOpacity={allAgreed ? 0.78 : 1}
-            disabled={!allAgreed}
+            style={[styles.nextButton, (!allAgreed || isSubmitting) && styles.nextButtonDisabled]}
+            activeOpacity={allAgreed && !isSubmitting ? 0.78 : 1}
+            disabled={!allAgreed || isSubmitting}
             onPress={handleNext}
           >
             <Text style={styles.nextButtonText}>다음</Text>

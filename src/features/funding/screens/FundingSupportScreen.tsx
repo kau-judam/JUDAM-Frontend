@@ -3,6 +3,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -56,6 +57,7 @@ import {
   type PaymentMethod,
   type ShippingInfo,
 } from '@/features/funding/supportConfig';
+import { createFundingOrder, getFundingApiErrorMessage, requestFundingPayment } from '@/features/funding/api';
 import SafeStorage from '@/utils/storage';
 import { formatPhoneNumber, isValidEmail, isValidPhone } from '@/utils/validation';
 
@@ -230,18 +232,35 @@ export default function FundingSupportScreen() {
   };
 
   const handleConfirmPayment = async () => {
-    if (!project || !user || isProcessing) return;
+    if (!project || !user || !selectedPaymentMethod || isProcessing) return;
     setIsProcessing(true);
     setShowConfirmModal(false);
     try {
+      const order = await createFundingOrder(project.id, {
+        optionId: 1,
+        quantity,
+        recipientName: shippingInfo.recipientName.trim(),
+        recipientPhone: shippingInfo.phone.trim(),
+        shippingAddress: shippingInfo.address.trim(),
+        shippingDetailAddress: shippingInfo.detailAddress.trim(),
+        adultVerified: agreeTerms,
+        noticeAgreed: agreeRefund,
+      });
+      const payment = await requestFundingPayment(order.orderId, {
+        paymentMethod: selectedPaymentMethod === 'toss' ? 'EASY_PAY' : 'BANK_TRANSFER',
+        paymentProvider: selectedPaymentMethod === 'toss' ? 'TOSS' : 'BANK',
+        amount: order.totalAmount,
+      });
+      if (payment.paymentUrl) {
+        await Linking.openURL(payment.paymentUrl);
+      }
       await SafeStorage.setItem(getRecentShippingKey(user.id), JSON.stringify(shippingInfo));
       setRecentShippingInfo(shippingInfo);
-      await new Promise((resolve) => setTimeout(resolve, 700));
       addParticipation(project.id, fundingAmount);
       updateProjectFunding(project.id, fundingAmount);
       setShowSuccessModal(true);
-    } catch {
-      Alert.alert('알림', '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.');
+    } catch (error) {
+      Alert.alert('알림', getFundingApiErrorMessage(error, '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.'));
     } finally {
       setIsProcessing(false);
     }

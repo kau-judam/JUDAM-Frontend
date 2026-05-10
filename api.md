@@ -7,14 +7,60 @@
 - 서버 주소(`baseURI`)가 아직 확정되지 않은 API는 실제 호출 코드를 만들지 않고 연결 대기 상태로 둔다.
 - 로그인/회원가입 API 연결 후 `access_token` 저장 위치가 정해지면 인증 API에 `Authorization: Bearer {access_token}` 헤더를 붙인다.
 - 명세가 현재 화면 UI와 맞지 않거나 필드가 부족하면 바로 코드를 수정하지 않고 사용자에게 먼저 질문한다.
+- 2026-05-10 이후 펀딩 API 연결은 사용자가 명확히 요청한 `[펀딩]` 범위로만 진행한다. 사용자가 별도로 UI 수정을 요청하지 않는 한 UI/디자인/화면 플로우는 건드리지 않고 API client, mapper, state 연동, 에러/로딩 처리만 수정한다.
+- 펀딩 API는 PR 단위로 쪼개 연결한다. 1차 PR은 펀딩 생성 시작 흐름만 다루며, 약관 동의 저장, 펀딩 프로젝트 임시저장, 임시저장 프로젝트 수정만 포함한다.
 - 이 문서는 백엔드 내부 구현을 수정하기 위한 문서가 아니라 React Native/Expo 프론트 연결용 메모다.
+
+## Funding API PR Plan
+
+현재 사용자가 정한 펀딩 API 연결 순서다. 추후 백엔드 명세가 더 구체화되면 각 PR 아래에 endpoint, request/response, frontend mapping을 추가한다.
+
+### 1차 PR: 펀딩 생성 시작 단계
+- 펀딩 약관 동의 저장
+- 펀딩 프로젝트 임시저장
+- 임시저장 프로젝트 수정
+- 여기까지 연결 후 PR을 끊는다.
+
+### 2차 PR: 펀딩 기본 정보 입력 단계
+- 프로젝트 기본 정보 저장
+- 목표 금액 및 일정 저장
+- 법적 고시 정보 저장
+
+### 3차 PR: 펀딩 상세 정보 확장
+- 맛 지표 저장
+- 프로젝트 계획 정보 저장
+- 창작자/정산 정보 저장
+- 환불/정책 관련 저장
+
+### 4차 PR: 파일 + 검증
+- 필수 서류 업로드
+
+### 5차 PR: 조회 API
+- 펀딩 프로젝트 목록 조회
+- 상세 조회
+- 프로젝트 소개 조회
+- 양조일지 조회
+
+### 6차 PR: 커뮤니티 + 상호작용
+- Q&A 목록 조회
+- 질문 등록
+- 답글 등록
+- 후기 조회
+
+### 7차 PR: 결제 / 후원
+- 후원 옵션 조회
+- 주문 생성
+- 결제 요청
+- 주문 상세 조회
 
 ## Common
 
 Base URL:
 - Current server: `http://43.202.24.223:3000`
 - The server is usage-billed. Avoid unnecessary manual API calls during verification.
-- Frontend constant: `src/features/recipe/api.ts`의 `JUDAM_API_BASE_URL`.
+- Frontend constants:
+  - Recipe: `src/features/recipe/api.ts`의 `JUDAM_API_BASE_URL`
+  - Funding: `src/features/funding/api.ts`의 `JUDAM_FUNDING_API_BASE_URL`
 
 Headers:
 ```http
@@ -38,6 +84,187 @@ Common error body:
   "message": "서버 내부 오류"
 }
 ```
+
+## Funding Agreement Save
+
+Source:
+- User-provided backend controller/routes note on 2026-05-10.
+
+Endpoint:
+```http
+POST {baseURI}/api/fundings/agreements
+```
+
+Access:
+- 로그인 필요.
+- 양조장 계정만 가능해야 한다.
+- `Authorization: Bearer {accessToken}` 필요.
+
+Purpose:
+- 양조장이 새 펀딩 프로젝트를 생성하기 전 필수 약관 동의 여부를 저장한다.
+- 약관 동의 완료 후 펀딩 프로젝트 임시저장 단계로 이동한다.
+
+Request:
+```ts
+type SaveFundingAgreementRequest = {
+  breweryId: number;
+  isAdultConfirmed: boolean;
+  isContactInfoAgreed: boolean;
+  isSettlementInfoAgreed: boolean;
+  isFeePolicyAgreed: boolean;
+  isResponsibilityAgreed: boolean;
+};
+```
+
+Response:
+```ts
+type SaveFundingAgreementResponse = {
+  agreementId: number;
+  breweryId: number;
+  message: string;
+};
+```
+
+Success:
+```json
+{
+  "agreementId": 1,
+  "breweryId": 1,
+  "message": "펀딩 약관 동의가 저장되었습니다."
+}
+```
+
+Errors:
+- `400`: 필수 약관 미동의. `필수 약관에 모두 동의해야 합니다.`
+- `401`: 인증 실패. `인증이 필요합니다.`
+- `403`: 권한 없음. `해당 양조장의 펀딩을 생성할 권한이 없습니다.`
+- `404`: 양조장 정보 없음. `양조장 정보를 찾을 수 없습니다.`
+- `500`: 서버 내부 오류.
+
+Frontend connection:
+- Connected on 2026-05-10.
+- API client: `src/features/funding/api.ts`
+- Screen: `src/features/brewery/project/screens/BreweryProjectTermsScreen.tsx`
+- The existing UI still requires all 7 displayed terms to be checked before the next step. The API currently receives only the 5 fields defined by backend: adult, contact, settlement, fee, responsibility.
+- The current mock brewery login has `user.id === "1"`, so `breweryId` is sent as `1`. If a mock/signup brewery has a non-numeric local id, the frontend temporarily falls back to `1` until real auth/brewery API provides a stable numeric brewery id.
+- Server is usage-billed, so this endpoint was not manually called during frontend verification.
+
+## Funding Draft Create
+
+Source:
+- User-provided backend controller/routes note on 2026-05-10.
+
+Endpoint:
+```http
+POST {baseURI}/api/fundings/drafts
+```
+
+Access:
+- 로그인 필요.
+- 양조장 계정만 가능해야 한다.
+- `Authorization: Bearer {accessToken}` 필요.
+
+Purpose:
+- 양조장이 새 펀딩 프로젝트를 작성하는 과정에서 입력한 내용을 임시저장한다.
+- `breweryId`만 필수이며 나머지 필드는 없어도 저장 가능하다.
+- 서버는 입력된 기본정보 필드 수를 기준으로 `progressRate`를 계산한다.
+
+Request:
+```ts
+type CreateFundingDraftRequest = {
+  breweryId: number;
+  title?: string;
+  shortTitle?: string;
+  category?: string;
+  mainIngredient?: string;
+  subIngredient?: string;
+  alcoholPercentage?: number;
+  summary?: string;
+};
+```
+
+Response:
+```ts
+type CreateFundingDraftResponse = {
+  draftId: number;
+  breweryId: number;
+  status: "DRAFT";
+  progressRate: number;
+  message: string;
+};
+```
+
+Success:
+```json
+{
+  "draftId": 1,
+  "breweryId": 1,
+  "status": "DRAFT",
+  "progressRate": 23,
+  "message": "펀딩 프로젝트가 임시저장되었습니다."
+}
+```
+
+Errors:
+- `400`: 양조장 ID 누락. `양조장 ID는 필수입니다.`
+- `401`: 인증 실패. `인증이 필요합니다.`
+- `403`: 권한 없음. `해당 양조장의 펀딩을 생성할 권한이 없습니다.`
+- `404`: 양조장 정보 없음. `양조장 정보를 찾을 수 없습니다.`
+- `500`: 서버 내부 오류.
+
+Frontend connection:
+- Connected on 2026-05-10.
+- API client: `src/features/funding/api.ts`
+- Screen: `src/features/brewery/project/screens/BreweryProjectCreateScreen.tsx`
+- The existing local temporary save UX is preserved. On new project creation, pressing `임시저장` first calls `POST /api/fundings/drafts`; after success, the existing local draft payload is saved with `serverDraft` metadata.
+- The frontend sends current basic information only: `title`, `shortTitle`, fixed `category: "MAKGEOLLI"`, `mainIngredient`, `subIngredient`, numeric `alcoholPercentage`, `summary`.
+- Existing project edit mode does not call this create-draft endpoint yet. It keeps the current local temporary-save behavior until the draft update API is provided.
+- Server is usage-billed, so this endpoint was not manually called during frontend verification.
+
+## Funding Draft Update And Section Saves
+
+Source:
+- User-provided backend notes on 2026-05-10.
+
+Connected on 2026-05-10:
+- `PATCH /api/fundings/drafts/{draftId}`: 임시저장 프로젝트 수정
+- `PATCH /api/fundings/drafts/{draftId}/basic-info`: 기본정보 저장
+- `PATCH /api/fundings/drafts/{draftId}/schedule`: 목표 금액 및 일정 저장
+- `PATCH /api/fundings/drafts/{draftId}/legal-info`: 법적 고시 정보 저장
+- `PATCH /api/fundings/drafts/{draftId}/taste-profile`: 맛지표 저장
+- `PATCH /api/fundings/drafts/{draftId}/plan`: 프로젝트 계획 정보 저장
+- `PATCH /api/fundings/drafts/{draftId}/brewery-info`: 창작자/정산/사업자 정보 저장
+- `PATCH /api/fundings/drafts/{draftId}/notices`: 환불/교환/성인인증/리스크 안내 저장
+
+Frontend connection:
+- API client: `src/features/funding/api.ts`
+- Screen: `src/features/brewery/project/screens/BreweryProjectCreateScreen.tsx`
+- 기존 UI에는 섹션별 저장 버튼이 없으므로 UI 추가 없이 다음 방식으로 연결했다.
+- `임시저장`을 다시 덮어쓸 때 저장된 `serverDraft.draftId`가 있으면 `PATCH /api/fundings/drafts/{draftId}`를 호출한다. 없으면 기존처럼 `POST /api/fundings/drafts`를 호출한다.
+- 신규 프로젝트 최종 제출 시 `draftId`를 확보한 뒤 basic-info, schedule, legal-info, taste-profile, plan, brewery-info, notices를 순서대로 저장하고 성공하면 기존 프론트 로컬 게시글 생성 흐름을 실행한다.
+- 수정 모드(`mode=edit`)는 펀딩 게시글 관리 플로우이므로 draft 생성/섹션 저장 API를 호출하지 않고 기존 로컬 수정 흐름을 유지한다.
+- 서버는 usage-billed라 직접 호출 검증은 하지 않았다.
+
+Pending / Needs confirmation:
+- `POST /api/fundings/drafts/{draftId}/documents`: 현재 화면 상태에는 파일명만 저장되고 실제 파일 URI/mimeType이 유지되지 않는 항목이 있어, documentType 매핑과 상태 구조 변경 확인 후 연결한다.
+- 조회 API와 후원/주문 API는 기존 화면 mock 데이터가 서버 mock 응답보다 훨씬 풍부하다. UI를 보존하려면 API 응답을 기존 `FundingProject`에 merge할지, 서버 응답으로 대체할지 확인 후 연결한다.
+
+## Funding Support Order / Payment
+
+Connected on 2026-05-10:
+- `POST /api/fundings/{fundingId}/orders`: 후원 주문 생성
+- `POST /api/orders/{orderId}/payment`: 결제 요청
+
+Frontend connection:
+- API client: `src/features/funding/api.ts`
+- Screen: `src/features/funding/screens/FundingSupportScreen.tsx`
+- 후원 최종 확인 시 주문 생성 API를 먼저 호출하고, 응답의 `orderId`와 `totalAmount`로 결제 요청 API를 호출한다.
+- 결제 요청 응답의 `paymentUrl`이 있으면 React Native `Linking.openURL(paymentUrl)`로 실제 URL을 연 뒤 기존 후원 성공 모달 흐름을 유지한다.
+- 현재 백엔드 mock 결제는 별도 결제 완료 callback/webhook 명세가 없으므로, paymentUrl open 이후 프론트 기존 성공 처리로 이어진다.
+
+Funding seed data note:
+- 2026-05-10 사용자 지시에 따라 프론트 런타임 펀딩 seed 목록은 `봄을 담은 벚꽃 막걸리 프로젝트`, `산사 막걸리 프로젝트` 2개만 유지한다.
+- 사용자는 `신사 막걸리 프로젝트`라고 적었지만 현재 코드의 기존 seed title은 `산사 막걸리 프로젝트`이므로 기존 데이터를 유지했다.
 
 ## Recipe Status
 

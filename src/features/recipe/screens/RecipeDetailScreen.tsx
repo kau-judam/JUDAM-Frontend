@@ -33,17 +33,30 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getImageSource, recipesData } from '@/constants/data';
 import {
   createRecipeComment,
+  deleteRecipe,
   deleteRecipeComment,
   deleteRecipeCommentLike,
   deleteRecipeInterest,
   fetchRecipeComments,
+  fetchRecipeCommentReplies,
   fetchRecipeDetail,
   getRecipeAccessToken,
   mapRecipeComment,
+  createRecipeCommentReply,
   registerRecipeCommentLike,
   registerRecipeInterest,
   updateRecipeComment,
 } from '@/features/recipe/api';
+import {
+  appendRecipeReplyState,
+  getRecipeCommentCountState,
+  getRecipeInterestState,
+  getRecipeReplyState,
+  markRecipeDeleted,
+  setRecipeCommentCountState,
+  setRecipeInterestState,
+  setRecipeReplyState,
+} from '@/features/recipe/interestState';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const INITIAL_COMMENT_COUNT = 3;
@@ -68,6 +81,8 @@ interface RecipeCommentReply {
   likes: number;
   liked: boolean;
   authorType: 'user' | 'brewery';
+  userId?: number;
+  isMine?: boolean;
 }
 
 interface RecipeComment {
@@ -102,6 +117,7 @@ export default function RecipeDetailScreen() {
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyInput, setReplyInput] = useState('');
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
+  const [loadedReplyCommentIds, setLoadedReplyCommentIds] = useState<Set<number>>(new Set());
   const [isDetailLoading, setIsDetailLoading] = useState(true);
   const [recipe, setRecipe] = useState({
     id: fallbackRecipe.id,
@@ -126,6 +142,7 @@ export default function RecipeDetailScreen() {
     setComments([]);
     setShowAllComments(false);
     setExpandedComments(new Set());
+    setLoadedReplyCommentIds(new Set());
     setCommentMenuTarget(null);
     setEditingCommentId(null);
     setCommentInput('');
@@ -146,8 +163,11 @@ export default function RecipeDetailScreen() {
         image: nextRecipe.image,
         isFundable: nextRecipe.isFundable,
       });
-      setLiked(Boolean(nextRecipe.liked));
-      setLikesCount(nextRecipe.likes);
+      const interestState = getRecipeInterestState(nextRecipe.id);
+      const commentCountState = getRecipeCommentCountState(nextRecipe.id);
+      setLiked(interestState?.liked ?? Boolean(nextRecipe.liked));
+      setLikesCount(interestState?.likes ?? nextRecipe.likes);
+      setRecipe((prev) => ({ ...prev, commentsCount: commentCountState ?? prev.commentsCount }));
     } catch (error) {
       console.warn('Failed to load recipe detail from API', error);
       setRecipe({
@@ -178,9 +198,17 @@ export default function RecipeDetailScreen() {
       const response = await fetchRecipeComments(recipeId);
       setComments(
         response.comments.map((comment, index) =>
-          mapRecipeComment(comment, personImages[index % personImages.length]) as RecipeComment
+          {
+            const mapped = mapRecipeComment(comment, personImages[index % personImages.length]) as RecipeComment;
+            const rememberedReplies = getRecipeReplyState(recipeId, mapped.id);
+            return rememberedReplies.length
+              ? { ...mapped, replies: rememberedReplies }
+              : mapped;
+          }
         )
       );
+      setRecipeCommentCountState(recipeId, response.totalElements);
+      setRecipe((prev) => ({ ...prev, commentsCount: response.totalElements }));
     } catch (error) {
       console.warn('Failed to load recipe comments from API', error);
       setComments([]);
@@ -199,6 +227,47 @@ export default function RecipeDetailScreen() {
   const getCommentReplies = (comment: RecipeComment) => comment.replies || [];
   const visibleComments = showAllComments ? comments : comments.slice(0, INITIAL_COMMENT_COUNT);
 
+  const loadRepliesFromApi = useCallback(async (commentId: number) => {
+    if (!Number.isFinite(recipeId) || loadedReplyCommentIds.has(commentId)) return;
+    try {
+      const response = await fetchRecipeCommentReplies(recipeId, commentId);
+      const mappedReplies: RecipeCommentReply[] = response.replies.map((reply, index) => {
+        const mapped = mapRecipeComment(reply, personImages[index % personImages.length]);
+        return {
+          id: mapped.id,
+          author: mapped.author,
+          avatar: mapped.avatar || personImages[index % personImages.length],
+          content: mapped.content,
+          timestamp: mapped.timestamp,
+          likes: mapped.likes,
+          liked: mapped.liked,
+          authorType: mapped.authorType === 'brewery' ? 'brewery' : 'user',
+          userId: mapped.userId,
+          isMine: mapped.isMine,
+        };
+      });
+      const rememberedReplies = getRecipeReplyState(recipeId, commentId);
+      const nextReplies = [
+        ...mappedReplies,
+        ...rememberedReplies.filter((reply) => !mappedReplies.some((mappedReply) => mappedReply.id === reply.id)),
+      ];
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                replies: nextReplies,
+              }
+            : comment
+        )
+      );
+      setRecipeReplyState(recipeId, commentId, nextReplies);
+      setLoadedReplyCommentIds((prev) => new Set([...prev, commentId]));
+    } catch (error) {
+      console.warn('Failed to load recipe comment replies from API', error);
+    }
+  }, [loadedReplyCommentIds, recipeId]);
+
   const handleLike = async () => {
     if (!user) {
       showLoginRequired('레시피 관심은 로그인 후 이용할 수 있어요.');
@@ -211,17 +280,30 @@ export default function RecipeDetailScreen() {
     }
     const previousLiked = liked;
     const previousLikesCount = likesCount;
+    const previousInterestState = getRecipeInterestState(recipe.id);
     const nextLiked = !liked;
+    const optimisticLikesCount = nextLiked ? likesCount + 1 : Math.max(0, likesCount - 1);
+    setRecipeInterestState(recipe.id, {
+      liked: nextLiked,
+      likes: optimisticLikesCount,
+      isFundable: recipe.isFundable,
+    });
     setLiked(nextLiked);
-    setLikesCount(nextLiked ? likesCount + 1 : Math.max(0, likesCount - 1));
+    setLikesCount(optimisticLikesCount);
     try {
       const response = nextLiked
         ? await registerRecipeInterest(recipe.id)
         : await deleteRecipeInterest(recipe.id);
+      setRecipeInterestState(recipe.id, {
+        liked: nextLiked,
+        likes: response.data.interest_count,
+        isFundable: response.data.is_fundable,
+      });
       setLikesCount(response.data.interest_count);
       setRecipe((prev) => ({ ...prev, isFundable: response.data.is_fundable }));
     } catch (error) {
       console.warn('Failed to update recipe interest', error);
+      setRecipeInterestState(recipe.id, previousInterestState);
       setLiked(previousLiked);
       setLikesCount(previousLikesCount);
     }
@@ -276,6 +358,7 @@ export default function RecipeDetailScreen() {
         return;
       }
       const response = await createRecipeComment(recipe.id, commentInput.trim());
+      const nextCommentsCount = recipe.commentsCount + 1;
       setComments((prev) => [
         ...prev,
         {
@@ -289,6 +372,8 @@ export default function RecipeDetailScreen() {
           authorType: user.type === 'brewery' ? 'brewery' : 'user',
         },
       ]);
+      setRecipe((prev) => ({ ...prev, commentsCount: nextCommentsCount }));
+      setRecipeCommentCountState(recipe.id, nextCommentsCount);
       setCommentInput('');
     } catch (error) {
       console.warn('Failed to submit recipe comment', error);
@@ -296,47 +381,72 @@ export default function RecipeDetailScreen() {
     }
   };
 
-  const handleReplyOpen = (commentId: number) => {
+  const handleReplyOpen = async (commentId: number) => {
     if (!user) {
       showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
       return;
     }
+    await loadRepliesFromApi(commentId);
     setReplyInput('');
     setExpandedComments((prev) => new Set([...prev, commentId]));
     setReplyingTo((prev) => (prev === commentId ? null : commentId));
   };
 
-  const handleReplySubmit = (commentId: number) => {
+  const handleReplySubmit = async (commentId: number) => {
     if (!replyInput.trim()) return;
     if (!user) {
       showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
       return;
     }
-    const newReply: RecipeCommentReply = {
-      id: Date.now(),
-      author: user.name,
-      avatar: personImages[(comments.length + commentId) % personImages.length],
-      content: replyInput.trim(),
-      timestamp: '방금 전',
-      likes: 0,
-      liked: false,
-      authorType: user.type === 'brewery' ? 'brewery' : 'user',
-    };
-    setComments((prev) =>
-      prev.map((comment) =>
-        comment.id === commentId ? { ...comment, replies: [...getCommentReplies(comment), newReply] } : comment
-      )
-    );
-    setReplyInput('');
-    setReplyingTo(null);
-    setExpandedComments((prev) => new Set([...prev, commentId]));
+    const token = await getRecipeAccessToken();
+    if (!token) {
+      showLoginRequired('실제 로그인 API 연결 후 이용할 수 있어요.');
+      return;
+    }
+    try {
+      const response = await createRecipeCommentReply(recipe.id, commentId, replyInput.trim());
+      const newReply: RecipeCommentReply = {
+        id: response.reply.comment_id,
+        author: response.reply.nickname || user.name,
+        avatar: personImages[(comments.length + commentId) % personImages.length],
+        content: response.reply.content,
+        timestamp: '방금 전',
+        likes: response.reply.like_count,
+        liked: false,
+        authorType: user.type === 'brewery' ? 'brewery' : 'user',
+        userId: response.reply.user_id,
+        isMine: true,
+      };
+      appendRecipeReplyState(recipe.id, commentId, newReply);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId ? { ...comment, replies: [...getCommentReplies(comment), newReply] } : comment
+        )
+      );
+      setLoadedReplyCommentIds((prev) => new Set([...prev, commentId]));
+      setReplyInput('');
+      setReplyingTo(null);
+      setExpandedComments((prev) => new Set([...prev, commentId]));
+    } catch (error) {
+      console.warn('Failed to submit recipe comment reply', error);
+      Alert.alert('요청 실패', '답글 요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요.');
+    }
   };
 
-  const handleReplyLike = (commentId: number, replyId: number) => {
+  const handleReplyLike = async (commentId: number, replyId: number) => {
     if (!user) {
       showLoginRequired('답글 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
+    const token = await getRecipeAccessToken();
+    if (!token) {
+      showLoginRequired('실제 로그인 API 연결 후 이용할 수 있어요.');
+      return;
+    }
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    const targetReply = targetComment?.replies?.find((reply) => reply.id === replyId);
+    if (!targetReply) return;
+    const nextLiked = !targetReply.liked;
     setComments((prev) =>
       prev.map((comment) =>
         comment.id === commentId
@@ -351,9 +461,39 @@ export default function RecipeDetailScreen() {
           : comment
       )
     );
+    try {
+      const response = nextLiked
+        ? await registerRecipeCommentLike(recipe.id, replyId)
+        : await deleteRecipeCommentLike(recipe.id, replyId);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                replies: getCommentReplies(comment).map((reply) =>
+                  reply.id === replyId ? { ...reply, liked: nextLiked, likes: response.data.like_count } : reply
+                ),
+              }
+            : comment
+        )
+      );
+    } catch (error) {
+      console.warn('Failed to update recipe comment reply like', error);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                replies: getCommentReplies(comment).map((reply) => (reply.id === replyId ? targetReply : reply)),
+              }
+            : comment
+        )
+      );
+    }
   };
 
-  const toggleExpandComment = (commentId: number) => {
+  const toggleExpandComment = async (commentId: number) => {
+    await loadRepliesFromApi(commentId);
     setExpandedComments((prev) => {
       const next = new Set(prev);
       if (next.has(commentId)) next.delete(commentId);
@@ -362,14 +502,24 @@ export default function RecipeDetailScreen() {
     });
   };
 
-  const handleRecipeEdit = () => {
+  const handleRecipeDelete = async () => {
     setRecipeMenuVisible(false);
-    router.push(`/recipe/create?editRecipeId=${recipe.id}` as any);
-  };
-
-  const handleRecipeDelete = () => {
-    setRecipeMenuVisible(false);
-    router.replace('/recipe' as any);
+    const token = await getRecipeAccessToken();
+    if (!token) {
+      showLoginRequired('실제 로그인 API 연결 후 이용할 수 있어요.');
+      return;
+    }
+    try {
+      await deleteRecipe(recipe.id);
+      markRecipeDeleted(recipe.id);
+      router.replace('/recipe' as any);
+    } catch (error) {
+      console.warn('Failed to delete recipe', error);
+      Alert.alert(
+        '요청 실패',
+        error instanceof Error ? error.message : '레시피 삭제를 처리하지 못했어요. 잠시 후 다시 시도해주세요.'
+      );
+    }
   };
 
   const handleCommentEdit = () => {
@@ -388,7 +538,10 @@ export default function RecipeDetailScreen() {
     }
     try {
       await deleteRecipeComment(recipe.id, commentMenuTarget);
+      const nextCommentsCount = Math.max(0, recipe.commentsCount - 1);
       setComments((prev) => prev.filter((comment) => comment.id !== commentMenuTarget));
+      setRecipeCommentCountState(recipe.id, nextCommentsCount);
+      setRecipe((prev) => ({ ...prev, commentsCount: nextCommentsCount }));
       if (editingCommentId === commentMenuTarget) {
         setEditingCommentId(null);
         setCommentInput('');
@@ -405,7 +558,7 @@ export default function RecipeDetailScreen() {
       showLoginRequired('펀딩 제안은 양조장 로그인 후 이용할 수 있어요.');
       return;
     }
-    router.push('/brewery/project/terms' as any);
+    router.push(`/brewery/project/terms?recipeId=${recipe.id}` as any);
   };
 
   if (isDetailLoading) {
@@ -437,10 +590,7 @@ export default function RecipeDetailScreen() {
             </TouchableOpacity>
             {recipeMenuVisible && (
               <View style={styles.menuBox}>
-                <TouchableOpacity style={styles.menuItem} onPress={handleRecipeEdit}>
-                  <Text style={styles.menuText}>수정</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={handleRecipeDelete}>
+                <TouchableOpacity style={styles.menuItem} onPress={handleRecipeDelete}>
                   <Text style={styles.menuText}>삭제</Text>
                 </TouchableOpacity>
               </View>
@@ -528,7 +678,7 @@ export default function RecipeDetailScreen() {
         </View>
 
         <View style={styles.commentSection}>
-          <Text style={styles.commentHeader}>댓글 {comments.length}</Text>
+          <Text style={styles.commentHeader}>댓글 {recipe.commentsCount}</Text>
           {visibleComments.map((c, idx) => (
             <Animated.View key={c.id} entering={FadeInUp.delay(idx * 50)} style={styles.commentItem}>
               <Image source={getAvatarSource(c.avatar)} style={styles.commentAvatar} />

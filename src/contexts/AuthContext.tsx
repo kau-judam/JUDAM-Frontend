@@ -20,6 +20,7 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
+  isAuthReady: boolean;
   login: (email: string, password: string, type: UserType) => Promise<void>;
   logout: () => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
@@ -84,6 +85,7 @@ async function removeTemporaryAccessToken() {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -91,15 +93,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const savedUser = await SafeStorage.getItem("judam_user");
         if (savedUser) {
           const parsedUser = JSON.parse(savedUser) as User;
-          setUser(parsedUser);
           const savedToken = await SafeStorage.getItem("judam_access_token");
           const expectedToken = getTemporaryAccessToken(parsedUser.type);
           if (savedToken !== expectedToken) {
             await saveTemporaryAccessToken(parsedUser.type);
           }
+          setUser(parsedUser);
         }
       } catch (e) {
         console.error("Failed to load user from SafeStorage", e);
+      } finally {
+        setIsAuthReady(true);
       }
     };
     loadUser();
@@ -207,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, signup, verifyBrewery, updateUser }}>
+    <AuthContext.Provider value={{ user, isAuthReady, login, logout, signup, verifyBrewery, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

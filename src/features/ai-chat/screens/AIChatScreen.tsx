@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,17 @@ import {
   TouchableOpacity,
   StatusBar,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
+import { Swipeable } from 'react-native-gesture-handler';
 import { 
   ChevronLeft, 
   Wine, 
   UtensilsCrossed, 
   Sparkles, 
   Plus, 
-  MessageCircle 
+  MessageCircle,
+  Trash2,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeOut } from 'react-native-reanimated';
@@ -105,6 +108,32 @@ export default function AIChatScreen() {
     };
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+
+      const loadRooms = async () => {
+        const savedRooms = await SafeStorage.getItem(CHAT_ROOMS_STORAGE_KEY);
+        if (!savedRooms || !mounted) return;
+
+        try {
+          const parsedRooms = JSON.parse(savedRooms) as ChatRoom[];
+          const availableRooms = parsedRooms.filter((room) =>
+            categories.some((category) => category.id === room.category),
+          );
+          setChatRooms(availableRooms);
+        } catch {
+          await SafeStorage.removeItem(CHAT_ROOMS_STORAGE_KEY);
+        }
+      };
+
+      loadRooms();
+      return () => {
+        mounted = false;
+      };
+    }, [])
+  );
+
   const persistRooms = async (rooms: ChatRoom[]) => {
     await SafeStorage.setItem(CHAT_ROOMS_STORAGE_KEY, JSON.stringify(rooms));
   };
@@ -118,6 +147,19 @@ export default function AIChatScreen() {
     setIsFloatingMenuOpen(false);
     router.push(`/ai-chat/${nextRoom.category}/${nextRoom.id}` as any);
   };
+
+  const deleteRoom = (roomId: string) => {
+    const nextRooms = chatRooms.filter((room) => room.id !== roomId);
+    setChatRooms(nextRooms);
+    persistRooms(nextRooms);
+  };
+
+  const renderDeleteAction = (roomId: string) => (
+    <TouchableOpacity style={styles.deleteAction} activeOpacity={0.9} onPress={() => deleteRoom(roomId)}>
+      <Trash2 size={19} color="#FFF" />
+      <Text style={styles.deleteActionText}>삭제</Text>
+    </TouchableOpacity>
+  );
 
   const filteredChatRooms = chatRooms
     .filter((room) => room.category === selectedCategory)
@@ -209,21 +251,23 @@ export default function AIChatScreen() {
         ) : (
           <View style={styles.chatList}>
             {filteredChatRooms.map((room) => (
-              <TouchableOpacity 
-                key={room.id} 
-                style={styles.chatItem}
-                onPress={() => router.push(`/ai-chat/${room.category}/${room.id}` as any)}
-              >
-                 <View style={styles.chatRow}>
-                    <View style={{ flex: 1 }}>
-                       <View style={styles.rowBetween}>
-                          <Text style={styles.chatTitle}>{room.title}</Text>
-                          <Text style={styles.chatTime}>{formatTimestamp(room.timestamp)}</Text>
-                       </View>
-                       <Text style={styles.lastMsg} numberOfLines={1}>{room.lastMessage}</Text>
-                    </View>
-                 </View>
-              </TouchableOpacity>
+              <Swipeable key={room.id} renderRightActions={() => renderDeleteAction(room.id)} overshootRight={false}>
+                <TouchableOpacity
+                  style={styles.chatItem}
+                  onPress={() => router.push(`/ai-chat/${room.category}/${room.id}` as any)}
+                  activeOpacity={0.85}
+                >
+                   <View style={styles.chatRow}>
+                      <View style={{ flex: 1 }}>
+                         <View style={styles.rowBetween}>
+                            <Text style={styles.chatTitle}>{room.title}</Text>
+                            <Text style={styles.chatTime}>{formatTimestamp(room.timestamp)}</Text>
+                         </View>
+                         <Text style={styles.lastMsg} numberOfLines={1}>{room.lastMessage}</Text>
+                      </View>
+                   </View>
+                </TouchableOpacity>
+              </Swipeable>
             ))}
           </View>
         )}
@@ -278,12 +322,14 @@ const styles = StyleSheet.create({
   newChatBtn: { backgroundColor: '#000', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 9999 },
   newChatBtnTxt: { color: '#FFF', fontSize: 14, fontWeight: '600' },
   chatList: { borderTopWidth: 1, borderTopColor: '#F9FAFB' },
-  chatItem: { padding: 20, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
+  chatItem: { padding: 20, borderBottomWidth: 1, borderBottomColor: '#F9FAFB', backgroundColor: '#FFF' },
   chatRow: { flexDirection: 'row', gap: 12 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   chatTitle: { fontSize: 15, fontWeight: '600', color: '#111' },
   chatTime: { fontSize: 12, color: '#9CA3AF' },
   lastMsg: { fontSize: 14, color: '#6B7280' },
+  deleteAction: { width: 88, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  deleteActionText: { fontSize: 13, fontWeight: '900', color: '#FFF' },
   fabArea: { position: 'absolute', right: 20, alignItems: 'flex-end' },
   floatingMenu: { backgroundColor: '#FFF', borderRadius: 24, padding: 8, marginBottom: 12, elevation: 10, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, gap: 4, borderWidth: 1, borderColor: '#F3F4F6' },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16 },

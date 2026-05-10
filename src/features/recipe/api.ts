@@ -28,6 +28,8 @@ export type RecipeListItemDto = {
   is_liked?: boolean;
   author_nickname?: string;
   author_name?: string;
+  author_profile_image?: string | null;
+  author_profile_image_url?: string | null;
 };
 
 export type RecipeDetailDto = RecipeListItemDto & {
@@ -37,7 +39,6 @@ export type RecipeDetailDto = RecipeListItemDto & {
   target_flavor: string;
   concept: string;
   updated_at: string;
-  author_profile_image_url?: string | null;
 };
 
 export type RecipeCommentDto = {
@@ -53,6 +54,7 @@ export type RecipeCommentDto = {
   updated_at: string | null;
   author_type?: 'USER' | 'BREWERY' | 'CONSUMER' | string;
   profile_image_url?: string | null;
+  author_profile_image?: string | null;
   is_mine?: boolean;
 };
 
@@ -64,7 +66,19 @@ export type CreateRecipePayload = {
   target_flavor: string;
   concept: string;
   summary: string;
-  image_url?: string | null;
+  image?: {
+    uri: string;
+    name?: string | null;
+    type?: string | null;
+  } | null;
+};
+
+export type CreateRecipeFundingPayload = {
+  title: string;
+  description: string;
+  goal_amount: number;
+  start_date: string;
+  end_date: string;
 };
 
 type RecipeListResponse = {
@@ -80,6 +94,13 @@ type RecipeDetailResponse = {
 
 type RecipeCommentListResponse = {
   comments: RecipeCommentDto[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+};
+
+type RecipeReplyListResponse = {
+  replies: RecipeCommentDto[];
   totalElements: number;
   totalPages: number;
   currentPage: number;
@@ -110,12 +131,32 @@ type CreateRecipeResponse = {
   recipe: RecipeListItemDto;
 };
 
+type DeleteRecipeResponse = {
+  status: number;
+  message: string;
+};
+
 type CreateCommentResponse = {
   status: number;
   message: string;
   comment: {
     comment_id: number;
     recipe_id: number;
+    user_id: number;
+    nickname: string;
+    content: string;
+    like_count: number;
+    created_at: string;
+  };
+};
+
+type CreateReplyResponse = {
+  status: number;
+  message: string;
+  reply: {
+    comment_id: number;
+    recipe_id: number;
+    parent_comment_id: number;
     user_id: number;
     nickname: string;
     content: string;
@@ -131,6 +172,22 @@ type UpdateCommentResponse = {
     comment_id: number;
     content: string;
     updated_at: string;
+  };
+};
+
+type RecipeFundingResponse = {
+  status: number;
+  message: string;
+  funding: {
+    funding_id: number;
+    recipe_id: number;
+    title: string;
+    goal_amount: number;
+    current_amount: number;
+    start_date: string;
+    end_date: string;
+    funding_status: string;
+    recipe_status: string;
   };
 };
 
@@ -176,6 +233,41 @@ async function requestJson<T>(path: string, options: RequestInit & { auth?: bool
 
   const response = await fetch(`${JUDAM_API_BASE_URL}${path}`, {
     ...requestOptions,
+    headers: nextHeaders,
+  });
+
+  const text = await response.text();
+  const data = parseRecipeResponseBody(path, response, text);
+
+  if (!response.ok) {
+    const message = (data as ApiErrorBody | null)?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
+async function requestFormJson<T>(path: string, formData: FormData, options: RequestInit & { auth?: boolean } = {}) {
+  const { auth, headers, ...requestOptions } = options;
+  const nextHeaders: Record<string, string> = {
+    ...(headers as Record<string, string> | undefined),
+  };
+
+  if (auth) {
+    const token = await getRecipeAccessToken();
+    if (!token) {
+      throw new Error('NEEDS_ACCESS_TOKEN');
+    }
+    nextHeaders.Authorization = `Bearer ${token}`;
+  } else {
+    const token = await getRecipeAccessToken();
+    if (token) nextHeaders.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${JUDAM_API_BASE_URL}${path}`, {
+    ...requestOptions,
+    method: requestOptions.method || 'POST',
+    body: formData,
     headers: nextHeaders,
   });
 
@@ -241,7 +333,7 @@ export function mapRecipeDetail(item: RecipeDetailDto): Recipe {
     alcoholRange: item.abv_range,
     concept: item.concept,
     summary: item.summary,
-    authorAvatar: item.author_profile_image_url || undefined,
+    authorAvatar: item.author_profile_image || item.author_profile_image_url || undefined,
   };
 }
 
@@ -249,7 +341,7 @@ export function mapRecipeComment(item: RecipeCommentDto, fallbackAvatar?: ImageS
   return {
     id: item.comment_id,
     author: item.user_nickname || item.user_user_nickname || item.nickname || '사용자',
-    avatar: item.profile_image_url || fallbackAvatar,
+    avatar: item.author_profile_image || item.profile_image_url || fallbackAvatar,
     content: item.content,
     timestamp: formatRecipeTimestamp(item.created_at),
     likes: item.like_count,
@@ -275,18 +367,59 @@ export async function fetchRecipes({ sort, page = 0, size = 20 }: { sort: Recipe
   };
 }
 
+export async function fetchBreweryConsumerRecipes({
+  status = 'ALL',
+  page = 0,
+  size = 20,
+}: {
+  status?: 'ALL' | 'PUBLISHED' | 'FUNDING_READY';
+  page?: number;
+  size?: number;
+}) {
+  const params = new URLSearchParams({
+    status,
+    page: String(page),
+    size: String(size),
+  });
+  const data = await requestJson<RecipeListResponse>(`/api/recipes/brewery?${params.toString()}`, { auth: true });
+  return {
+    ...data,
+    recipes: data.recipes.map(mapRecipeListItem),
+  };
+}
+
 export async function fetchRecipeDetail(recipeId: number) {
   const data = await requestJson<RecipeDetailResponse>(`/api/recipes/${recipeId}`);
   return mapRecipeDetail(data.recipe);
 }
 
 export async function createRecipe(payload: CreateRecipePayload) {
-  const data = await requestJson<CreateRecipeResponse>('/api/recipes', {
-    method: 'POST',
-    body: JSON.stringify(payload),
+  const formData = new FormData();
+  formData.append('title', payload.title);
+  formData.append('content', payload.content);
+  formData.append('abv_range', payload.abv_range);
+  formData.append('main_ingredient', payload.main_ingredient);
+  formData.append('target_flavor', payload.target_flavor);
+  formData.append('concept', payload.concept);
+  formData.append('summary', payload.summary);
+  if (payload.image?.uri && !payload.image.uri.startsWith('http')) {
+    const imageName = payload.image.name || payload.image.uri.split('/').pop() || `recipe-${Date.now()}.jpg`;
+    const imageType = payload.image.type || 'image/jpeg';
+    formData.append('image', {
+      uri: payload.image.uri,
+      name: imageName,
+      type: imageType,
+    } as unknown as Blob);
+  }
+  const data = await requestFormJson<CreateRecipeResponse>('/api/recipes', formData, { auth: true });
+  return mapRecipeListItem(data.recipe);
+}
+
+export async function deleteRecipe(recipeId: number) {
+  return requestJson<DeleteRecipeResponse>(`/api/recipes/${recipeId}`, {
+    method: 'DELETE',
     auth: true,
   });
-  return mapRecipeListItem(data.recipe);
 }
 
 export async function registerRecipeInterest(recipeId: number) {
@@ -311,8 +444,24 @@ export async function fetchRecipeComments(recipeId: number, page = 0, size = 20)
   return requestJson<RecipeCommentListResponse>(`/api/recipes/${recipeId}/comments?${params.toString()}`);
 }
 
+export async function fetchRecipeCommentReplies(recipeId: number, commentId: number, page = 0, size = 20) {
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+  return requestJson<RecipeReplyListResponse>(`/api/recipes/${recipeId}/comments/${commentId}/replies?${params.toString()}`);
+}
+
 export async function createRecipeComment(recipeId: number, content: string) {
   return requestJson<CreateCommentResponse>(`/api/recipes/${recipeId}/comments`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+    auth: true,
+  });
+}
+
+export async function createRecipeCommentReply(recipeId: number, commentId: number, content: string) {
+  return requestJson<CreateReplyResponse>(`/api/recipes/${recipeId}/comments/${commentId}/replies`, {
     method: 'POST',
     body: JSON.stringify({ content }),
     auth: true,
@@ -344,6 +493,14 @@ export async function registerRecipeCommentLike(recipeId: number, commentId: num
 export async function deleteRecipeCommentLike(recipeId: number, commentId: number) {
   return requestJson<RecipeCommentLikeResponse>(`/api/recipes/${recipeId}/comments/${commentId}/likes`, {
     method: 'DELETE',
+    auth: true,
+  });
+}
+
+export async function createRecipeFunding(recipeId: number, payload: CreateRecipeFundingPayload) {
+  return requestJson<RecipeFundingResponse>(`/api/recipes/${recipeId}/funding`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
     auth: true,
   });
 }

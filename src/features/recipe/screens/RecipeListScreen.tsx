@@ -28,6 +28,11 @@ import {
   getRecipeAccessToken,
   registerRecipeInterest,
 } from '@/features/recipe/api';
+import {
+  applyRecipeInterestState,
+  getRecipeInterestState,
+  setRecipeInterestState,
+} from '@/features/recipe/interestState';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const ACTION_CONTROL_HEIGHT = 40;
@@ -44,10 +49,9 @@ const SORT_LABELS: Record<SortOption, string> = {
 const SORT_OPTIONS: SortOption[] = ['popular', 'newest', 'recommended'];
 
 export default function RecipeScreen() {
-  const { user } = useAuth();
+  const { user, isAuthReady } = useAuth();
   const { scrollToTop } = useLocalSearchParams<{ scrollToTop?: string }>();
   const scrollRef = useRef<ScrollView>(null);
-  const likedRecipeIdsRef = useRef<Set<number>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('popular');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
@@ -55,12 +59,11 @@ export default function RecipeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const applyLocalInterestState = useCallback((items: Recipe[]) => {
-    const likedIds = likedRecipeIdsRef.current;
-    return items.map((item) => (likedIds.has(item.id) ? { ...item, liked: true } : item));
-  }, []);
+  const applyLocalInterestState = useCallback((items: Recipe[]) => applyRecipeInterestState(items), []);
 
   const loadRecipes = useCallback(async () => {
+    if (!isAuthReady) return;
+
     if (sortOption === 'recommended') {
       setRecipes([]);
       setLoadError(false);
@@ -83,7 +86,7 @@ export default function RecipeScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [applyLocalInterestState, sortOption]);
+  }, [applyLocalInterestState, isAuthReady, sortOption]);
 
   useEffect(() => {
     loadRecipes();
@@ -105,14 +108,18 @@ export default function RecipeScreen() {
     if (!target) return;
 
     const nextLiked = !target.liked;
-    const previousLikedIds = new Set(likedRecipeIdsRef.current);
-    if (nextLiked) likedRecipeIdsRef.current.add(recipeId);
-    else likedRecipeIdsRef.current.delete(recipeId);
+    const previousInterestState = getRecipeInterestState(recipeId);
+    const optimisticState = {
+      liked: nextLiked,
+      likes: nextLiked ? target.likes + 1 : Math.max(0, target.likes - 1),
+      isFundable: target.isFundable,
+    };
+    setRecipeInterestState(recipeId, optimisticState);
 
     setRecipes((prev) =>
       prev.map((recipe) =>
         recipe.id === recipeId
-          ? { ...recipe, liked: nextLiked, likes: nextLiked ? recipe.likes + 1 : Math.max(0, recipe.likes - 1) }
+          ? { ...recipe, ...optimisticState }
           : recipe
       )
     );
@@ -121,21 +128,28 @@ export default function RecipeScreen() {
       const response = nextLiked
         ? await registerRecipeInterest(recipeId)
         : await deleteRecipeInterest(recipeId);
+      setRecipeInterestState(recipeId, {
+        liked: nextLiked,
+        likes: response.data.interest_count,
+        isFundable: response.data.is_fundable,
+      });
       setRecipes((prev) =>
         prev.map((recipe) =>
           recipe.id === recipeId
-            ? {
-                ...recipe,
-                liked: nextLiked,
-                likes: response.data.interest_count,
-                isFundable: response.data.is_fundable,
-              }
+            ? applyRecipeInterestState([
+                {
+                  ...recipe,
+                  liked: nextLiked,
+                  likes: response.data.interest_count,
+                  isFundable: response.data.is_fundable,
+                },
+              ])[0]
             : recipe
         )
       );
     } catch (error) {
       console.warn('Failed to update recipe interest', error);
-      likedRecipeIdsRef.current = previousLikedIds;
+      setRecipeInterestState(recipeId, previousInterestState);
       setRecipes((prev) => prev.map((recipe) => (recipe.id === recipeId ? target : recipe)));
     }
   };
@@ -169,10 +183,12 @@ export default function RecipeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!scrollToTop) return;
-      requestAnimationFrame(() => {
-        scrollRef.current?.scrollTo({ y: 0, animated: false });
-      });
+      setRecipes((prev) => applyRecipeInterestState(prev));
+      if (scrollToTop) {
+        requestAnimationFrame(() => {
+          scrollRef.current?.scrollTo({ y: 0, animated: false });
+        });
+      }
     }, [scrollToTop])
   );
 

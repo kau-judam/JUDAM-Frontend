@@ -440,10 +440,7 @@ Current connection plan:
 - `status=ALL`, `page=0`, `size=20`부터 시작.
 
 Missing for current `[주담]` list UI:
-- 작성자 닉네임/이름
-- 댓글 수
-- 현재 사용자의 관심 등록 여부(`is_interested` 또는 `liked`)
-- 작성자 프로필 이미지
+- 2026-05-10 신규 명세에서 해결됨: 작성자 닉네임 `author_nickname`, 작성자 프로필 이미지 `author_profile_image`, 댓글 수 `comment_count`, 현재 사용자 관심 여부 `is_interested`.
 - `내 추천순`용 추천 점수 또는 추천 정렬 API
 
 ## Recipe Detail
@@ -497,10 +494,7 @@ Frontend mapping:
 - `is_fundable` -> 펀딩 제안 버튼 활성화 판단
 
 Missing for current detail UI:
-- 작성자 닉네임/이름
-- 작성자 프로필 이미지
-- 현재 사용자의 관심 등록 여부
-- 댓글 수
+- 2026-05-10 신규 명세에서 해결됨: 작성자 닉네임 `author_nickname`, 작성자 프로필 이미지 `author_profile_image`, 댓글 수 `comment_count`, 현재 사용자 관심 여부 `is_interested`.
 - `target_flavor`, `main_ingredient`, `ai_sub_ingredient`가 문자열이라 UI chip 배열 매핑 규칙 필요
 
 Errors:
@@ -522,18 +516,9 @@ Access:
 - `author_type`은 JWT role에서 서버가 자동 추출한다.
 
 Request:
-```ts
-type CreateRecipeRequest = {
-  title: string;
-  content: string;
-  abv_range: string;
-  main_ingredient: string;
-  target_flavor: string;
-  concept: string;
-  summary: string;
-  image_url?: string | null;
-};
-```
+- `multipart/form-data`
+- Text fields: `title`, `content`, `abv_range`, `main_ingredient`, `target_flavor`, `concept`, `summary`
+- File field: `image` optional. If omitted, backend stores `image_url = null`.
 
 Response:
 ```ts
@@ -562,7 +547,7 @@ Notes:
 
 Current screen gap:
 - 현재 `RecipeCreateScreen`은 메인 재료 배열, 선택 서브 재료 배열, 맛 태그 배열, 직접 입력 태그를 가진다. API는 문자열 필드를 받으므로 전송 전 join 규칙이 필요하다.
-- 이미지 업로드 API가 별도로 필요하다. 현재는 로컬 이미지 URI만 있다.
+- 2026-05-10 신규 명세에서 별도 이미지 업로드 API 없이 `POST /api/recipes`의 multipart `image` 필드로 직접 전송하도록 변경됨.
 
 ## Brewery Recipe Create
 
@@ -759,10 +744,9 @@ Note:
 - 현재 프론트 상세 댓글 UI는 `authorType`, `avatar`, 대댓글을 사용하지만 API에는 없음.
 
 Missing for current comment UI:
-- 작성자 유형(USER/BREWERY)
-- 작성자 프로필 이미지
-- 내가 작성한 댓글인지 여부(`is_mine`) 또는 프론트가 `user_id`로 판단할 수 있는 현재 사용자 id
-- 대댓글 목록/작성/좋아요 API. 현재 화면에는 대댓글 UI가 있으나 전달된 명세에는 없음.
+- 2026-05-10 신규 명세에서 해결됨: 루트 댓글 응답에 `author_type`, `author_profile_image`, `is_mine` 추가.
+- 2026-05-10 신규 명세에서 대댓글 목록/작성 API 추가됨: `GET/POST /api/recipes/{recipeId}/comments/{commentId}/replies`.
+- 대댓글 좋아요는 별도 API가 없지만 대댓글도 `recipe_comments` 행이므로 기존 댓글 좋아요 API(`POST/DELETE /api/recipes/{recipeId}/comments/{commentId}/likes`)에 대댓글 `comment_id`를 넣어 사용한다.
 
 ### Comment Create
 
@@ -916,6 +900,246 @@ Errors:
 
 Frontend mapping:
 - 댓글 목록의 `is_liked` 기준으로 POST/DELETE 중 하나를 호출한다.
+- 대댓글도 `recipe_comments.comment_id`를 가지므로, 프론트는 대댓글 좋아요에도 같은 endpoint를 사용한다.
+
+## Recipe Comment Replies
+
+Source PDFs:
+- `09e2c342-9036-45ac-890e-fe3ad3e689e4_레시피_댓글_대댓글_목록_조회.pdf`
+- `9bc0b595-dc7f-43c2-a9be-a81b3f2a718b_레시피_댓글_대댓글_작성.pdf`
+
+List:
+```http
+GET {baseURI}/api/recipes/{recipeId}/comments/{commentId}/replies?page=0&size=20
+```
+
+Create:
+```http
+POST {baseURI}/api/recipes/{recipeId}/comments/{commentId}/replies
+```
+
+Access:
+- 목록 조회는 public. 로그인 시 `is_liked`, `is_mine`이 사용자 기준으로 계산된다.
+- 작성은 로그인 필요.
+
+Create request:
+```json
+{
+  "content": "저도 그렇게 생각해요!"
+}
+```
+
+List response:
+```ts
+type RecipeReplyListResponse = {
+  replies: Array<{
+    comment_id: number;
+    user_id: number;
+    nickname: string;
+    author_profile_image: string | null;
+    author_type: "USER" | "BREWERY";
+    content: string;
+    like_count: number;
+    is_liked: boolean;
+    is_mine: boolean;
+    created_at: string;
+    updated_at: string | null;
+  }>;
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+};
+```
+
+Create response:
+```ts
+type CreateRecipeReplyResponse = {
+  status: 201;
+  message: string;
+  reply: {
+    comment_id: number;
+    recipe_id: number;
+    parent_comment_id: number;
+    user_id: number;
+    nickname: string;
+    content: string;
+    like_count: number;
+    created_at: string;
+  };
+};
+```
+
+Frontend connection:
+- Connected on 2026-05-10.
+- API client: `src/features/recipe/api.ts`
+- Screen: `src/features/recipe/screens/RecipeDetailScreen.tsx`
+- 서버 과금 방지를 위해 댓글 목록 조회 시 모든 댓글의 대댓글을 한 번에 N+1로 조회하지 않는다. 사용자가 답글 입력을 열거나 답글 펼침을 누르는 시점에 해당 댓글의 대댓글 목록을 lazy load한다.
+- 대댓글 작성 성공 후 기존 답글 UI에 응답 값을 추가한다.
+- 대댓글 좋아요는 별도 endpoint가 없어 기존 댓글 좋아요 등록/취소 API에 대댓글 `comment_id`를 넣어 호출한다.
+
+## Recipe Delete
+
+Source PDF:
+- `cbbc2ff2-e6e2-4af9-bd25-b5e78298d59d_레시피_삭제.pdf`
+
+Endpoint:
+```http
+DELETE {baseURI}/api/recipes/{recipeId}
+```
+
+Access:
+- 로그인 필요.
+- 본인이 작성한 레시피만 삭제 가능.
+- 삭제 가능 상태는 `PUBLISHED`, `FUNDING_READY`.
+- `FUNDING_IN_PROGRESS`, `COMPLETED` 상태 레시피는 삭제 불가.
+
+Request:
+- Header: `Authorization: Bearer {access_token}`
+- Path parameter: `recipeId`
+- Body 없음.
+
+Response:
+```ts
+type DeleteRecipeResponse = {
+  status: 200;
+  message: "레시피가 삭제되었습니다.";
+};
+```
+
+Errors:
+- `400`: 펀딩이 진행 중이거나 완료된 레시피는 삭제할 수 없음.
+- `401`: 유효하지 않거나 만료된 토큰.
+- `403`: 본인이 작성한 레시피가 아님.
+- `404`: 레시피 없음.
+- `500`: 서버 내부 오류.
+
+Backend memo:
+- `RECIPES.user_id`와 JWT user id를 비교한다.
+- 삭제 시 `RECIPE_INTERESTS`, `RECIPE_COMMENTS`, `RECIPE_COMMENT_LIKES` 관련 데이터는 cascade 삭제한다.
+
+Frontend connection:
+- Connected on 2026-05-10.
+- API client: `src/features/recipe/api.ts` `deleteRecipe`.
+- Screen: `src/features/recipe/screens/RecipeDetailScreen.tsx`.
+- `[주담]` 상세의 작성자 메뉴에 남겨둔 `삭제` 버튼에서 호출한다.
+- 삭제 성공 후 목록으로 이동하고, 세션 공유 상태에서 해당 recipe id를 삭제 처리해 서버 목록을 즉시 다시 호출하지 않아도 목록 카드가 남아 보이지 않게 한다.
+- 서버는 usage-billed라 직접 호출 검증은 하지 않았다.
+
+## Recipe Funding Conversion
+
+Source PDF:
+- `e1a88a9f-4a71-4d8b-83e9-7bbf549e687a_레시피_펀딩_전환_제안.pdf`
+- `915fe859-073a-433f-b181-cbb5a7d28f45_레시피_펀딩_전환_제안.pdf`
+
+Endpoint:
+```http
+POST {baseURI}/api/recipes/{recipeId}/funding
+```
+
+Access:
+- 로그인 필요.
+- 양조장 계정만 가능.
+- `FUNDING_READY` 상태인 레시피만 전환 가능.
+
+Request:
+```ts
+type CreateRecipeFundingRequest = {
+  title: string;
+  description: string;
+  goal_amount: number;
+  start_date: string;
+  end_date: string;
+};
+```
+
+Response:
+```ts
+type CreateRecipeFundingResponse = {
+  status: 201;
+  message: string;
+  funding: {
+    funding_id: number;
+    recipe_id: number;
+    title: string;
+    goal_amount: number;
+    current_amount: number;
+    start_date: string;
+    end_date: string;
+    funding_status: "ACTIVE" | string;
+    recipe_status: "FUNDING_IN_PROGRESS" | string;
+  };
+};
+```
+
+Frontend connection:
+- API client function added on 2026-05-10: `createRecipeFunding`.
+- Connected to the `[주담]` brewery proposal flow on 2026-05-10 without skipping the user's required terms page.
+- `RecipeDetailScreen` sends `recipeId` to `/brewery/project/terms?recipeId={recipeId}` when a brewery presses `이 레시피로 펀딩 제안하기`.
+- `BreweryProjectTermsScreen` preserves `recipeId` and forwards it to `/brewery/project/create?recipeId={recipeId}` after agreement save succeeds.
+- `BreweryProjectCreateScreen` calls this API during final submit only for new projects that have a valid `recipeId`. Payload mapping:
+  - `title`: `basicInfo.title`
+  - `description`: `projectPlan.introduction || basicInfo.summary`
+  - `goal_amount`: `Number(fundingInfo.goalAmount)`
+  - `start_date`: `fundingInfo.startDate`
+  - `end_date`: computed funding end date from start date + duration
+- Existing funding draft section save and document upload flow is preserved before recipe funding conversion. When conversion succeeds, the returned `funding_id` is merged into `FundingContext` as the visible app project id so the success modal can open `/funding/{funding_id}`.
+- Server is usage-billed, so this endpoint was not manually called during frontend verification.
+
+## Brewery Consumer Recipe Check
+
+Source PDF:
+- `c6b07d90-f975-4aa2-a9de-2fd28ae5f3b2_양조장_소비자_레시피_확인.pdf`
+
+Endpoint:
+```http
+GET {baseURI}/api/recipes/brewery
+```
+
+Access:
+- 로그인 필요.
+- 양조장 계정만 가능.
+- `Authorization: Bearer {accessToken}` 필요.
+
+Purpose:
+- 양조장이 소비자가 등록한 레시피만 확인한다.
+- 서버는 `author_type = USER` 필터를 고정 적용한다.
+- 기본 정렬은 `interest_count DESC`이며 별도 `sort` 파라미터가 없다.
+
+Query:
+- `status`: `ALL` 기본값 / `PUBLISHED` / `FUNDING_READY`
+- `page`: 0부터 시작, 기본값 0
+- `size`: 기본값 20
+
+Response:
+```ts
+type BreweryConsumerRecipeListResponse = {
+  recipes: Array<{
+    recipe_id: number;
+    title: string;
+    summary: string;
+    main_ingredient: string;
+    author_type: "USER";
+    status: string;
+    is_fundable: boolean;
+    interest_count: number;
+    image_url: string | null;
+    created_at: string;
+  }>;
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+};
+```
+
+Errors:
+- `401`: 유효하지 않거나 만료된 토큰
+- `403`: 양조장 계정만 사용 가능
+- `500`: 서버 내부 오류
+
+Frontend connection:
+- API client added on 2026-05-10: `fetchBreweryConsumerRecipes`.
+- It is not wired to replace the current `[주담]` list UI yet because this endpoint is fixed to consumer recipes + popularity sorting and the PDF response does not include `comment_count`, `is_interested`, `author_nickname`, or profile image fields used by the current shared recipe card state. Replacing the visible list with this endpoint would regress the current latest/popular list behavior and initial heart state.
+- If the product wants a separate brewery-only "consumer recipe review" view/filter, this endpoint can be used safely there. For the current public `[주담]` list, `GET /api/recipes` remains the screen source.
 
 ## My Page Recipe APIs
 
@@ -1017,10 +1241,12 @@ Notes:
 - 댓글 수정/삭제 메뉴를 안정적으로 제어하려면 `is_mine` 또는 현재 사용자 id 매칭 정책 필요.
 - 현재 프론트에는 대댓글 UI가 있으나 PDF 명세에는 대댓글 API가 없다. 대댓글을 유지할지 숨길지 결정 필요.
 - 이미지 업로드 API가 필요하다. 레시피 작성 API는 `image_url`만 받는다.
+- 2026-05-10 업데이트: 위 항목 중 목록/상세 작성자 정보, 댓글 수, 관심 여부, 댓글 작성자 정보, 댓글 `is_mine`, 대댓글 목록/작성, 레시피 작성 이미지 multipart는 신규 명세가 도착해 연결 완료했다.
 - 레시피 작성 화면의 배열 입력값을 서버 문자열 필드로 보낼 join 규칙 필요.
 - `author_type` 값이 API마다 `USER`, `CONSUMER`로 혼재한다. 프론트 enum 통일 전에 백엔드 확인 필요.
 - `내 추천순` 정렬용 API 또는 추천 점수 필드가 필요하다.
 - 검색 API는 현재 없음. 검색을 서버 연동하려면 `keyword` 같은 query parameter가 필요하다.
+- 레시피 펀딩 전환 API는 2026-05-10에 `[주담]` 상세 → 펀딩 약관 → 펀딩 프로젝트 생성 최종 제출 흐름에 연결했다. 다만 `POST /api/recipes/{recipeId}/funding`는 서버에서 즉시 `ACTIVE` 프로젝트를 만들고, 기존 펀딩 생성 화면은 draft/심사 흐름도 함께 갖고 있으므로 실제 제품 정책상 즉시 ACTIVE가 맞는지, 또는 심사 제출 상태가 맞는지는 백엔드/기획 확인이 필요하다.
 
 ## Frontend Connection Log
 
@@ -1074,6 +1300,21 @@ Notes:
 - Document upload API remains pending until the project creation screen preserves real file URI and mimeType for multipart upload.
 - Server was not manually called because it is usage-billed.
 
+2026-05-10 recipe connection note:
+- Read the new recipe PDFs from `C:\Users\USER\Downloads`.
+- Updated recipe list/detail/comment schemas for `author_nickname`, `author_profile_image`, `comment_count`, `is_interested`, root comment `author_type`, root comment `author_profile_image`, and root comment `is_mine`.
+- Connected recipe creation as `multipart/form-data` with optional `image` file field. Local gallery images are now sent as file uploads through `POST /api/recipes`; generated remote placeholder images are not uploaded.
+- Connected recipe comment reply list and create APIs:
+  - `GET /api/recipes/{recipeId}/comments/{commentId}/replies`
+  - `POST /api/recipes/{recipeId}/comments/{commentId}/replies`
+- Added recipe funding conversion API client:
+  - `POST /api/recipes/{recipeId}/funding`
+- 2026-05-10 additional connection: the detail button preserves the user's required terms page and then calls recipe funding conversion during final project submit.
+- Connected recipe delete API:
+  - `DELETE /api/recipes/{recipeId}`
+  - The `[주담]` detail author menu delete action now calls the backend and hides the deleted card from the current list session after success.
+- Server was not manually called because it is usage-billed.
+
 ## PDF Sources Read On 2026-05-06
 
 - `f47c346e-85ca-4408-b59e-d66cf4c0e431_레시피_목록_조회.pdf`
@@ -1091,3 +1332,16 @@ Notes:
 - `11346145-c8a7-4ba6-b85a-d661b94420c0_양조장_소비자_레시피_확인.pdf`
 - `764bb013-207c-41e1-8c40-a8f46c3b767e_마이페이지_내_레시피_목록.pdf`
 - `0b6d1c0a-0ef7-47e4-8a2d-0c2f7bdd1e1f_마이페이지_관심_레시피_목록.pdf`
+
+## PDF Sources Read On 2026-05-10
+
+- `52b65203-785a-4869-9d6b-f55fc0336922_레시피_작성.pdf`
+- `a1df8db3-79e6-4887-b0e3-c6a18b4b98af_레시피_목록_조회.pdf`
+- `66b5a551-37a2-49e0-b469-5cfa58c8bd17_레시피_상세_조회.pdf`
+- `bedca053-82bf-4030-9e74-a3a94a10e80a_레시피_댓글_목록_조회.pdf`
+- `09e2c342-9036-45ac-890e-fe3ad3e689e4_레시피_댓글_대댓글_목록_조회.pdf`
+- `9bc0b595-dc7f-43c2-a9be-a81b3f2a718b_레시피_댓글_대댓글_작성.pdf`
+- `e1a88a9f-4a71-4d8b-83e9-7bbf549e687a_레시피_펀딩_전환_제안.pdf`
+- `915fe859-073a-433f-b181-cbb5a7d28f45_레시피_펀딩_전환_제안.pdf`
+- `c6b07d90-f975-4aa2-a9de-2fd28ae5f3b2_양조장_소비자_레시피_확인.pdf`
+- `cbbc2ff2-e6e2-4af9-bd25-b5e78298d59d_레시피_삭제.pdf`

@@ -60,6 +60,7 @@ import {
   updateFundingDraft,
 } from '@/features/funding/api';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
+import { createRecipeFunding } from '@/features/recipe/api';
 import SafeStorage from '@/utils/storage';
 
 type TabId = 'basic' | 'funding' | 'rewards' | 'taste' | 'plan' | 'creator' | 'trust' | 'verification';
@@ -439,8 +440,10 @@ export default function BreweryProjectCreateScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const { user } = useAuth();
-  const { projects, addProject, updateProject } = useFunding();
+  const { projects, addProject, updateProject, mergeProjects } = useFunding();
   const editProjectIdParam = getParamValue(params.projectId) || getParamValue(params.editId);
+  const sourceRecipeIdParam = getParamValue(params.recipeId);
+  const sourceRecipeId = sourceRecipeIdParam ? Number(sourceRecipeIdParam) : null;
   const editProjectId = editProjectIdParam ? Number(editProjectIdParam) : null;
   const editProject = useMemo(
     () => (editProjectId ? projects.find((project) => project.id === editProjectId) || null : null),
@@ -1409,12 +1412,41 @@ export default function BreweryProjectCreateScreen() {
     setShowSubmitConfirm(false);
     setIsSubmitting(true);
     try {
+      let convertedFunding: Awaited<ReturnType<typeof createRecipeFunding>>['funding'] | null = null;
       if (!isEditMode) {
         const draftId = await ensureServerDraft();
         await saveProjectSectionsToApi(draftId);
         await uploadProjectDocumentsToApi(draftId);
+        if (sourceRecipeId && Number.isFinite(sourceRecipeId)) {
+          const response = await createRecipeFunding(sourceRecipeId, {
+            title: basicInfo.title,
+            description: projectPlan.introduction || basicInfo.summary,
+            goal_amount: Number(fundingInfo.goalAmount),
+            start_date: fundingInfo.startDate,
+            end_date: endDateText,
+          });
+          convertedFunding = response.funding;
+        }
       }
       const payload = buildProjectPayload(isEditMode ? 'edit' : 'create');
+      if (!isEditMode && convertedFunding) {
+        const convertedProject: FundingProject = {
+          ...payload,
+          id: convertedFunding.funding_id,
+          goalAmount: convertedFunding.goal_amount,
+          currentAmount: convertedFunding.current_amount,
+          status: convertedFunding.funding_status === 'ACTIVE' ? '진행 중' : payload.status,
+          startDate: convertedFunding.start_date,
+          endDate: convertedFunding.end_date,
+        };
+        mergeProjects([convertedProject]);
+        setCreatedProjectId(convertedProject.id);
+        void SafeStorage.removeItem(tempSaveKey);
+        setHasTempSave(false);
+        setTempSaveTimestamp('');
+        setShowSubmitSuccess(true);
+        return;
+      }
       const submittedProject = isEditMode && editProjectId ? updateProject(editProjectId, payload) : addProject(payload);
       if (!submittedProject) {
         showAlert('수정할 펀딩 게시글을 찾을 수 없습니다.');

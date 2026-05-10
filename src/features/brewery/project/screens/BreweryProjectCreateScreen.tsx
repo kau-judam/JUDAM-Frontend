@@ -55,6 +55,8 @@ import {
   saveFundingPlan,
   saveFundingSchedule,
   saveFundingTasteProfile,
+  uploadFundingDocument,
+  type FundingDocumentType,
   updateFundingDraft,
 } from '@/features/funding/api';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
@@ -62,6 +64,13 @@ import SafeStorage from '@/utils/storage';
 
 type TabId = 'basic' | 'funding' | 'rewards' | 'taste' | 'plan' | 'creator' | 'trust' | 'verification';
 type FileKey = 'profileImage' | 'idCard' | 'businessLicense' | 'salesPermit' | 'alcoholPermit' | 'manufacturingLicense';
+type DocumentFileKey = Exclude<FileKey, 'profileImage'>;
+type UploadedFileValue = string | {
+  name: string;
+  uri?: string;
+  mimeType?: string;
+  size?: number;
+};
 type DatePickerTarget = 'startDate' | 'expectedDeliveryDate';
 type TempSaveMode = 'saved' | 'existing' | 'exitExisting';
 
@@ -104,6 +113,25 @@ const mockAddresses: AddressItem[] = [
 const BANK_OPTIONS = ['KB국민', '신한', '우리', '하나', '농협은행', 'IBK기업', '카카오뱅크', '토스뱅크', '케이뱅크', 'SC제일', '부산', '대구', '광주', '전북', '경남', '수협', '새마을금고', '신협'];
 const TEMP_SAVE_KEY = 'judam_project_temp_save';
 const DOCUMENT_PICKER_TYPES = ['application/pdf', 'image/*'];
+const DOCUMENT_FILE_KEYS: DocumentFileKey[] = ['idCard', 'businessLicense', 'salesPermit', 'alcoholPermit', 'manufacturingLicense'];
+const EMPTY_UPLOADED_FILES: Record<FileKey, UploadedFileValue> = {
+  profileImage: '',
+  idCard: '',
+  businessLicense: '',
+  salesPermit: '',
+  alcoholPermit: '',
+  manufacturingLicense: '',
+};
+const DOCUMENT_TYPE_BY_FILE_KEY: Record<DocumentFileKey, FundingDocumentType> = {
+  idCard: 'ETC',
+  businessLicense: 'BUSINESS_REGISTRATION',
+  salesPermit: 'MAIL_ORDER_BUSINESS',
+  alcoholPermit: 'LIQUOR_LICENSE',
+  manufacturingLicense: 'LIQUOR_LICENSE',
+};
+const SUPPORTED_DOCUMENT_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
+const SUPPORTED_DOCUMENT_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+const MAX_DOCUMENT_FILE_SIZE = 5 * 1024 * 1024;
 const IMAGE_THUMB_SIZE = 128;
 const IMAGE_THUMB_GAP = 12;
 const IMAGE_REORDER_STEP = IMAGE_THUMB_SIZE + IMAGE_THUMB_GAP;
@@ -183,6 +211,64 @@ function parseTextLines(value: string) {
 
 function getParamValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function normalizeUploadedFile(value: unknown): UploadedFileValue {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value !== 'object') return '';
+  const file = value as Partial<{ name: unknown; uri: unknown; mimeType: unknown; size: unknown }>;
+  const name = typeof file.name === 'string' ? file.name : '';
+  if (!name) return '';
+  return {
+    name,
+    uri: typeof file.uri === 'string' ? file.uri : undefined,
+    mimeType: typeof file.mimeType === 'string' ? file.mimeType : undefined,
+    size: typeof file.size === 'number' ? file.size : undefined,
+  };
+}
+
+function normalizeUploadedFiles(files?: Partial<Record<FileKey, unknown>>) {
+  return {
+    ...EMPTY_UPLOADED_FILES,
+    profileImage: normalizeUploadedFile(files?.profileImage),
+    idCard: normalizeUploadedFile(files?.idCard),
+    businessLicense: normalizeUploadedFile(files?.businessLicense),
+    salesPermit: normalizeUploadedFile(files?.salesPermit),
+    alcoholPermit: normalizeUploadedFile(files?.alcoholPermit),
+    manufacturingLicense: normalizeUploadedFile(files?.manufacturingLicense),
+  };
+}
+
+function getUploadedFileName(file?: UploadedFileValue) {
+  if (!file) return '';
+  return typeof file === 'string' ? file : file.name;
+}
+
+function getLocalUploadFile(file: UploadedFileValue) {
+  if (!file || typeof file === 'string' || !file.uri) return null;
+  return {
+    uri: file.uri,
+    name: file.name,
+    mimeType: file.mimeType,
+  };
+}
+
+function getDocumentFileExtension(fileName: string) {
+  const extension = fileName.split('.').pop()?.toLowerCase() || '';
+  return extension;
+}
+
+function getMimeTypeFromFileName(fileName: string) {
+  const extension = getDocumentFileExtension(fileName);
+  if (extension === 'pdf') return 'application/pdf';
+  if (extension === 'png') return 'image/png';
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  return 'application/octet-stream';
+}
+
+function isSupportedDocumentFile(fileName: string, mimeType?: string) {
+  return SUPPORTED_DOCUMENT_EXTENSIONS.includes(getDocumentFileExtension(fileName)) || Boolean(mimeType && SUPPORTED_DOCUMENT_MIME_TYPES.includes(mimeType));
 }
 
 function normalizeProjectDate(value?: string) {
@@ -450,14 +536,7 @@ export default function BreweryProjectCreateScreen() {
     projectPolicy: DEFAULT_PROJECT_POLICY,
     expectedDifficulties: DEFAULT_EXPECTED_DIFFICULTIES,
   });
-  const [uploadedFiles, setUploadedFiles] = useState<Record<FileKey, string>>({
-    profileImage: '',
-    idCard: '',
-    businessLicense: '',
-    salesPermit: '',
-    alcoholPermit: '',
-    manufacturingLicense: '',
-  });
+  const [uploadedFiles, setUploadedFiles] = useState<Record<FileKey, UploadedFileValue>>(EMPTY_UPLOADED_FILES);
 
   useEffect(() => {
     if (!editProject || !canEditProject) return;
@@ -473,7 +552,7 @@ export default function BreweryProjectCreateScreen() {
     setTrustInfo(draft.trustInfo);
     setCreatorInfo(draft.creatorInfo);
     setTaxInfo(draft.taxInfo);
-    setUploadedFiles(draft.uploadedFiles);
+    setUploadedFiles(normalizeUploadedFiles(draft.uploadedFiles));
     setPhoneVerified(true);
     setPhoneVerificationSent(false);
     setPhoneVerificationCode('');
@@ -797,6 +876,16 @@ export default function BreweryProjectCreateScreen() {
     });
   };
 
+  const uploadProjectDocumentsToApi = async (draftId: number) => {
+    for (const key of DOCUMENT_FILE_KEYS) {
+      const file = getLocalUploadFile(uploadedFiles[key]);
+      if (!file) {
+        throw new Error('선택한 서류 파일 정보를 찾을 수 없습니다. 서류를 다시 선택해주세요.');
+      }
+      await uploadFundingDocument(draftId, DOCUMENT_TYPE_BY_FILE_KEY[key], file);
+    }
+  };
+
   const applyDraftPayload = (draft: any) => {
     if (draft.basicInfo) {
       setBasicInfo({
@@ -814,7 +903,7 @@ export default function BreweryProjectCreateScreen() {
     if (draft.creatorInfo) setCreatorInfo(draft.creatorInfo);
     if (draft.taxInfo) setTaxInfo(draft.taxInfo);
     if (draft.trustInfo) setTrustInfo(draft.trustInfo);
-    if (draft.uploadedFiles) setUploadedFiles(draft.uploadedFiles);
+    if (draft.uploadedFiles) setUploadedFiles(normalizeUploadedFiles(draft.uploadedFiles));
     setPhoneVerified(Boolean(draft.phoneVerified));
     setAccountVerified(Boolean(draft.accountVerified));
   };
@@ -1143,7 +1232,7 @@ export default function BreweryProjectCreateScreen() {
       const asset = result.assets[0];
       const fileName = asset.fileName || `brewery_profile_${Date.now()}.jpg`;
       setCreatorInfo((prev) => ({ ...prev, profileImage: asset.uri }));
-      setUploadedFiles((prev) => ({ ...prev, profileImage: fileName }));
+      setUploadedFiles((prev) => ({ ...prev, profileImage: { name: fileName, uri: asset.uri, mimeType: asset.mimeType || getMimeTypeFromFileName(fileName) } }));
       showAlert('프로필 이미지가 선택되었습니다.');
     } catch {
       showAlert('이미지를 불러오지 못했습니다. 다시 시도해주세요.');
@@ -1169,7 +1258,7 @@ export default function BreweryProjectCreateScreen() {
       const asset = result.assets[0];
       const fileName = asset.fileName || `brewery_profile_camera_${Date.now()}.jpg`;
       setCreatorInfo((prev) => ({ ...prev, profileImage: asset.uri }));
-      setUploadedFiles((prev) => ({ ...prev, profileImage: fileName }));
+      setUploadedFiles((prev) => ({ ...prev, profileImage: { name: fileName, uri: asset.uri, mimeType: asset.mimeType || getMimeTypeFromFileName(fileName) } }));
       showAlert('프로필 사진이 등록되었습니다.');
     } catch {
       showAlert('카메라를 실행하지 못했습니다. 다시 시도해주세요.');
@@ -1195,7 +1284,24 @@ export default function BreweryProjectCreateScreen() {
       if (result.canceled || !result.assets?.length) return;
 
       const selectedFile = result.assets[0];
-      setUploadedFiles((prev) => ({ ...prev, [key]: selectedFile.name || '선택한 파일' }));
+      const fileName = selectedFile.name || '선택한 파일';
+      if (!isSupportedDocumentFile(fileName, selectedFile.mimeType)) {
+        showAlert('PDF, JPG, PNG 파일만 등록할 수 있습니다.');
+        return;
+      }
+      if (selectedFile.size && selectedFile.size > MAX_DOCUMENT_FILE_SIZE) {
+        showAlert('5MB 이하 파일만 등록할 수 있습니다.');
+        return;
+      }
+      setUploadedFiles((prev) => ({
+        ...prev,
+        [key]: {
+          name: fileName,
+          uri: selectedFile.uri,
+          mimeType: selectedFile.mimeType || getMimeTypeFromFileName(fileName),
+          size: selectedFile.size,
+        },
+      }));
     } catch {
       showAlert('파일을 불러오지 못했습니다. 다시 시도해주세요.');
     }
@@ -1306,6 +1412,7 @@ export default function BreweryProjectCreateScreen() {
       if (!isEditMode) {
         const draftId = await ensureServerDraft();
         await saveProjectSectionsToApi(draftId);
+        await uploadProjectDocumentsToApi(draftId);
       }
       const payload = buildProjectPayload(isEditMode ? 'edit' : 'create');
       const submittedProject = isEditMode && editProjectId ? updateProject(editProjectId, payload) : addProject(payload);
@@ -1808,7 +1915,7 @@ export default function BreweryProjectCreateScreen() {
                 <Text style={styles.blackSmallButtonText}>이미지 업로드</Text>
               </TouchableOpacity>
             </View>
-            {Boolean(uploadedFiles.profileImage) && <Text style={styles.helper}>선택됨: {uploadedFiles.profileImage}</Text>}
+            {Boolean(uploadedFiles.profileImage) && <Text style={styles.helper}>선택됨: {getUploadedFileName(uploadedFiles.profileImage)}</Text>}
           </View>
           <TextArea
             label="창작자 소개 (선택)"
@@ -1882,7 +1989,7 @@ export default function BreweryProjectCreateScreen() {
             )}
             <View style={styles.formGroup}>
               <Text style={styles.smallSubLabel}>신분증/사업자등록증 <Text style={styles.required}>*</Text></Text>
-              <UploadButton fileName={uploadedFiles.idCard} onPress={() => { void handleDocumentUpload('idCard'); }} />
+              <UploadButton fileName={getUploadedFileName(uploadedFiles.idCard)} onPress={() => { void handleDocumentUpload('idCard'); }} />
             </View>
           </View>
           <View style={styles.formGroup}>
@@ -1974,7 +2081,7 @@ export default function BreweryProjectCreateScreen() {
             <Field label="이메일 주소" required helper="전자세금계산서를 수령할 담당자 이메일" value={taxInfo.email} onChangeText={(value) => setTaxInfo((prev) => ({ ...prev, email: value }))} placeholder="example@company.com" keyboardType="email-address" />
             <View style={styles.formGroup}>
               <RequiredLabel label="사업자 등록증 사본" required />
-              <UploadButton fileName={uploadedFiles.businessLicense} onPress={() => { void handleDocumentUpload('businessLicense'); }} />
+              <UploadButton fileName={getUploadedFileName(uploadedFiles.businessLicense)} onPress={() => { void handleDocumentUpload('businessLicense'); }} />
             </View>
           </View>
         </View>
@@ -2029,9 +2136,9 @@ export default function BreweryProjectCreateScreen() {
     return (
       <View style={styles.tabContent}>
         <InfoBox tone="red" title="전통주 필수 서류" body="주류의 통신판매에 관한 명령위임 고시에 의거하여 아래 서류를 반드시 제출해주셔야 합니다." compact />
-        <FileCard title="통신판매신고증" desc="사업자의 통신판매신고증" fileName={uploadedFiles.salesPermit} onPress={() => { void handleDocumentUpload('salesPermit'); }} />
-        <FileCard title="주류 통신판매 승인(신청)서" desc="주류 통신판매 승인서" fileName={uploadedFiles.alcoholPermit} onPress={() => { void handleDocumentUpload('alcoholPermit'); }} />
-        <FileCard title="전통주 제조면허증" desc="전통주 제조 면허증" fileName={uploadedFiles.manufacturingLicense} onPress={() => { void handleDocumentUpload('manufacturingLicense'); }} />
+        <FileCard title="통신판매신고증" desc="사업자의 통신판매신고증" fileName={getUploadedFileName(uploadedFiles.salesPermit)} onPress={() => { void handleDocumentUpload('salesPermit'); }} />
+        <FileCard title="주류 통신판매 승인(신청)서" desc="주류 통신판매 승인서" fileName={getUploadedFileName(uploadedFiles.alcoholPermit)} onPress={() => { void handleDocumentUpload('alcoholPermit'); }} />
+        <FileCard title="전통주 제조면허증" desc="전통주 제조 면허증" fileName={getUploadedFileName(uploadedFiles.manufacturingLicense)} onPress={() => { void handleDocumentUpload('manufacturingLicense'); }} />
         <View style={styles.blueHint}>
           <Text style={styles.blueHintText}>📌 서류 심사는 3-5일 소요됩니다.</Text>
         </View>

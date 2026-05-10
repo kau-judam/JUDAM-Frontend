@@ -33,7 +33,7 @@
 - 환불/정책 관련 저장
 
 ### 4차 PR: 파일 + 검증
-- 필수 서류 업로드
+- 필수 서류 업로드: connected on 2026-05-10
 
 ### 5차 PR: 조회 API
 - 펀딩 프로젝트 목록 조회
@@ -245,8 +245,37 @@ Frontend connection:
 - 수정 모드(`mode=edit`)는 펀딩 게시글 관리 플로우이므로 draft 생성/섹션 저장 API를 호출하지 않고 기존 로컬 수정 흐름을 유지한다.
 - 서버는 usage-billed라 직접 호출 검증은 하지 않았다.
 
+## Funding Document Upload
+
+Connected on 2026-05-10:
+- `POST /api/fundings/drafts/{draftId}/documents`: 필수 서류 업로드
+
+Request:
+- Header: `Authorization: Bearer {accessToken}`
+- Body: `multipart/form-data`
+- Fields: `documentType`, `file`
+
+Document type mapping:
+- `idCard`: `ETC`
+- `businessLicense`: `BUSINESS_REGISTRATION`
+- `salesPermit`: `MAIL_ORDER_BUSINESS`
+- `alcoholPermit`: `LIQUOR_LICENSE`
+- `manufacturingLicense`: `LIQUOR_LICENSE`
+
+Frontend connection:
+- API client: `src/features/funding/api.ts`
+- Screen: `src/features/brewery/project/screens/BreweryProjectCreateScreen.tsx`
+- 기존 화면 UI는 유지하고, 파일 선택 state를 파일명 문자열에서 기존 문자열 호환 `name/uri/mimeType/size` 구조로 확장했다.
+- `expo-document-picker`에서 선택한 PDF/JPG/JPEG/PNG 파일만 허용하고 5MB 초과 파일은 프론트에서 먼저 막는다.
+- 신규 프로젝트 최종 제출 시 `draftId`를 확보하고 섹션 저장을 완료한 뒤, 인증 서류 5개를 `FormData`로 순차 업로드한다.
+- multipart 요청은 boundary 유지를 위해 `Content-Type`을 직접 지정하지 않고 `Authorization`만 붙인다.
+- `alcoholPermit`와 `manufacturingLicense`는 현재 백엔드 enum상 둘 다 `LIQUOR_LICENSE`로 전송한다. 백엔드가 같은 `documentType`을 replace-only로 처리하면 두 서류를 구분할 수 없으므로, 실제 서버 정책이 replace-only라면 별도 enum 추가 또는 다중 파일 지원이 필요하다.
+- 수정 모드의 기존 제출 서류 문자열은 로컬 수정 흐름 유지용이며 신규 업로드 API는 새 프로젝트 최종 제출 시 호출한다.
+- 서버는 usage-billed라 직접 호출 검증은 하지 않았다.
+
 Pending / Needs confirmation:
-- `POST /api/fundings/drafts/{draftId}/documents`: 현재 화면 상태에는 파일명만 저장되고 실제 파일 URI/mimeType이 유지되지 않는 항목이 있어, 사용자가 4차 필수 서류 업로드 상태 구조를 수정한 뒤 연결한다.
+- `POST /api/fundings/drafts/{draftId}/submit`: 프로젝트 제출 API. request body 유무, 성공 response의 `fundingId`, 제출 후 status, 필수 섹션/서류 누락 실패 응답 명세가 필요하다.
+- `GET /api/fundings/drafts/{draftId}/preview`: 프로젝트 미리보기 API. response 구조와 서버 저장 draft 기준인지, 저장 전 로컬 입력값까지 포함 가능한지 명세가 필요하다.
 
 ## Funding Support Order / Payment
 
@@ -295,7 +324,7 @@ Connected on 2026-05-10:
 - `POST /api/fundings/{fundingId}/questions`: 질문 등록
 - `POST /api/fundings/{fundingId}/questions/{questionId}/replies`: 답글 등록
 - `GET /api/fundings/{fundingId}/reviews`: 후기 목록 조회
-- `POST /api/fundings/{fundingId}/inquiries`: 양조장 1:1 문의 등록 API client 추가
+- `POST /api/fundings/{fundingId}/inquiries`: 양조장 1:1 문의 등록 API client 추가. 사용자가 1:1 문의는 Q&A로 대체한다고 정리했으므로 현재 화면에서는 호출하지 않는다.
 
 Frontend connection:
 - API client: `src/features/funding/api.ts`
@@ -306,7 +335,7 @@ Frontend connection:
 - 답글 등록은 기존 인라인 답글 입력 UI에서 `content`만 전송한다. 성공 응답의 `replyId`로 기존 로컬 답글 카드에 추가한다.
 - 후기 탭 진입 시 후기 목록을 조회하고 기존 `FundingReview` 구조로 merge한다.
 - 사용자가 후기를 새로 작성/수정하는 API 명세는 현재 제공되지 않았다. `FundingReviewWriteScreen`은 기존 로컬 후기 생성/수정 흐름을 유지한다.
-- 양조장 1:1 문의 등록은 현재 React Native 앱에 연결할 UI 진입점이 없어 API client 함수만 추가했다. 화면 연결이 필요하면 해당 문의 UI 위치를 먼저 정해야 한다.
+- 양조장 1:1 문의 등록은 사용자가 Q&A로 대체한다고 확정해 현재 화면에서는 호출하지 않는다.
 
 ## Recipe Status
 

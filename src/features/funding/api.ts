@@ -121,6 +121,28 @@ type FundingNoticesPayload = {
   riskNotice: string;
 };
 
+export type FundingDocumentType =
+  | 'BUSINESS_REGISTRATION'
+  | 'MAIL_ORDER_BUSINESS'
+  | 'LIQUOR_LICENSE'
+  | 'BANK_ACCOUNT_COPY'
+  | 'ETC';
+
+type FundingDocumentUploadFile = {
+  uri: string;
+  name: string;
+  mimeType?: string;
+};
+
+type FundingDocumentUploadResponse = {
+  draftId: number;
+  documentId: number;
+  documentType: FundingDocumentType;
+  fileName: string;
+  fileUrl: string;
+  message: string;
+};
+
 type CreateFundingOrderPayload = {
   optionId: number;
   quantity: number;
@@ -369,6 +391,40 @@ async function requestFundingJson<T>(path: string, options: RequestInit & { auth
   return data as T;
 }
 
+async function requestFundingForm<T>(path: string, formData: FormData, options: RequestInit & { auth?: boolean } = {}) {
+  const { auth, headers, ...requestOptions } = options;
+  const nextHeaders: Record<string, string> = {
+    ...(headers as Record<string, string> | undefined),
+  };
+
+  if (auth) {
+    const token = await getFundingAccessToken();
+    if (!token) {
+      throw new Error('NEEDS_ACCESS_TOKEN');
+    }
+    nextHeaders.Authorization = `Bearer ${token}`;
+  } else {
+    const token = await getFundingAccessToken();
+    if (token) nextHeaders.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
+    ...requestOptions,
+    headers: nextHeaders,
+    body: formData,
+  });
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    const message = (data as FundingApiErrorBody | null)?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
 export function getFundingApiErrorMessage(error: unknown, fallback = '요청을 처리하지 못했습니다.') {
   if (error instanceof Error) {
     if (error.message === 'NEEDS_ACCESS_TOKEN') return '로그인 정보가 필요합니다. 다시 로그인해주세요.';
@@ -454,6 +510,21 @@ export async function saveFundingNotices(draftId: number, payload: FundingNotice
     method: 'PATCH',
     auth: true,
     body: JSON.stringify(payload),
+  });
+}
+
+export async function uploadFundingDocument(draftId: number, documentType: FundingDocumentType, file: FundingDocumentUploadFile) {
+  const formData = new FormData();
+  formData.append('documentType', documentType);
+  formData.append('file', {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType || 'application/octet-stream',
+  } as unknown as Blob);
+
+  return requestFundingForm<FundingDocumentUploadResponse>(`/api/fundings/drafts/${draftId}/documents`, formData, {
+    method: 'POST',
+    auth: true,
   });
 }
 

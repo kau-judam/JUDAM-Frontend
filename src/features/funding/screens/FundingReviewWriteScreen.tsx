@@ -22,8 +22,21 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import { canAccessFundingReviews } from '@/features/funding/permissions';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
+import { createFundingReview, getFundingApiErrorMessage, type FundingUploadFile } from '@/features/funding/api';
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
 import { showLoginRequired } from '@/utils/authPrompt';
+
+function getReviewImageFileName(uri: string, index: number) {
+  const rawName = uri.split('/').pop()?.split('?')[0];
+  if (rawName && rawName.includes('.')) return rawName;
+  return `funding-review-${Date.now()}-${index}.jpg`;
+}
+
+function getReviewImageMimeType(fileName: string) {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (extension === 'png') return 'image/png';
+  return 'image/jpeg';
+}
 
 function RatingStars({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   return (
@@ -83,6 +96,7 @@ export default function FundingReviewWriteScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [rating, setRating] = useState(0);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [imageFilesByUri, setImageFilesByUri] = useState<Record<string, FundingUploadFile>>({});
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [customTags, setCustomTags] = useState<string[]>([]);
   const [customInput, setCustomInput] = useState('');
@@ -105,6 +119,7 @@ export default function FundingReviewWriteScreen() {
 
     setRating(editableReview.rating);
     setUploadedImages(editableReview.images || []);
+    setImageFilesByUri({});
     setSelectedTags(presetTags);
     setCustomTags(extraTags);
     setCustomInput('');
@@ -143,8 +158,24 @@ export default function FundingReviewWriteScreen() {
     });
 
     if (result.canceled) return;
-    const selected = result.assets.map((asset) => asset.uri).filter(Boolean);
-    setUploadedImages((prev) => [...prev, ...selected].slice(0, 3));
+    const selected = result.assets.reduce<FundingUploadFile[]>((files, asset, index) => {
+        if (!asset.uri) return files;
+        const name = asset.fileName || getReviewImageFileName(asset.uri, index);
+        files.push({
+          uri: asset.uri,
+          name,
+          mimeType: asset.mimeType || getReviewImageMimeType(name),
+        });
+        return files;
+      }, []);
+    setUploadedImages((prev) => [...prev, ...selected.map((asset) => asset.uri)].slice(0, 3));
+    setImageFilesByUri((prev) => {
+      const next = { ...prev };
+      selected.forEach((asset) => {
+        next[asset.uri] = asset;
+      });
+      return next;
+    });
   };
 
   const handleSubmit = async () => {
@@ -166,32 +197,45 @@ export default function FundingReviewWriteScreen() {
     }
 
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 900));
-    const reviewPayload = {
-      projectId,
-      userId: user.id,
-      userName: user.name || '사용자',
-      rating,
-      comment: reviewText.trim(),
-      rewardName,
-      images: uploadedImages,
-      mood: mood.trim(),
-      pairing: pairing.trim(),
-      showRecordInReview,
-      tags: allTags,
-    };
-    const savedReview =
-      isEditMode && editableReview
-        ? updateFundingReview(editableReview.id, reviewPayload)
-        : addFundingReview(reviewPayload);
-    setIsLoading(false);
-    if (!savedReview) {
-      Alert.alert('알림', '후기를 저장하지 못했습니다. 다시 시도해주세요.');
-      return;
+    try {
+      const imageFiles = uploadedImages.map((image) => imageFilesByUri[image]).filter((file): file is FundingUploadFile => Boolean(file));
+      const response = isEditMode
+        ? null
+        : await createFundingReview(projectId, {
+            rating,
+            content: reviewText.trim(),
+            images: imageFiles,
+          });
+      const reviewPayload = {
+        id: response?.reviewId,
+        projectId,
+        userId: user.id,
+        userName: user.name || '사용자',
+        rating: response?.rating || rating,
+        comment: reviewText.trim(),
+        rewardName,
+        images: response?.imageUrls?.length ? response.imageUrls : uploadedImages,
+        mood: mood.trim(),
+        pairing: pairing.trim(),
+        showRecordInReview,
+        tags: allTags,
+      };
+      const savedReview =
+        isEditMode && editableReview
+          ? updateFundingReview(editableReview.id, reviewPayload)
+          : addFundingReview(reviewPayload);
+      if (!savedReview) {
+        Alert.alert('알림', '후기를 저장하지 못했습니다. 다시 시도해주세요.');
+        return;
+      }
+      Alert.alert(isEditMode ? '후기가 수정되었습니다!' : '후기가 등록되었습니다!', isEditMode ? '수정한 내용이 후기 게시글에 반영되었습니다.' : '소중한 후기를 남겨주셔서 감사합니다.', [
+        { text: '확인', onPress: () => router.replace(`/funding/${projectId}/review/${savedReview.id}` as any) },
+      ]);
+    } catch (error) {
+      Alert.alert('알림', getFundingApiErrorMessage(error, '후기를 저장하지 못했습니다. 다시 시도해주세요.'));
+    } finally {
+      setIsLoading(false);
     }
-    Alert.alert(isEditMode ? '후기가 수정되었습니다!' : '후기가 등록되었습니다!', isEditMode ? '수정한 내용이 후기 게시글에 반영되었습니다.' : '소중한 후기를 남겨주셔서 감사합니다.', [
-      { text: '확인', onPress: () => router.replace(`/funding/${projectId}/review/${savedReview.id}` as any) },
-    ]);
   };
 
   if (!project) {

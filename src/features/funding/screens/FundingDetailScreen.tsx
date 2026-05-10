@@ -46,6 +46,7 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import {
+  createFundingReport,
   createFundingQuestion,
   createFundingReply,
   getFundingApiErrorMessage,
@@ -54,7 +55,10 @@ import {
   getFundingIntro,
   getFundingQuestions,
   getFundingReviews,
+  getFundingShareLink,
   getFundingSupportOptions,
+  isFundingApiMissingEndpointError,
+  type FundingReportReason,
 } from '@/features/funding/api';
 import {
   mapBreweryLogs,
@@ -796,15 +800,31 @@ export default function FundingDetailScreen() {
   };
 
   const handleShareProject = async () => {
-    const shareUrl = `https://judam.app/funding/${project.id}`;
-    try {
+    const fallbackShareUrl = `https://judam.app/funding/${project.id}`;
+    const shareProject = async (shareUrl: string, title = project.title, summary = project.shortDescription || project.projectSummary || '') => {
       await NativeShare.share({
-        title: project.title,
-        message: `${project.title}\n${project.shortDescription || project.projectSummary || ''}\n${shareUrl}\n주담 펀딩 프로젝트를 확인해보세요.`,
+        title,
+        message: `${title}\n${summary}\n${shareUrl}\n주담 펀딩 프로젝트를 확인해보세요.`,
         url: shareUrl,
       });
       setShowShareModal(false);
-    } catch {
+    };
+
+    try {
+      const share = await getFundingShareLink(project.id);
+      await shareProject(share.shareUrl || fallbackShareUrl, share.title || project.title, share.summary || project.shortDescription || project.projectSummary || '');
+    } catch (error) {
+      if (isFundingApiMissingEndpointError(error)) {
+        try {
+          await shareProject(fallbackShareUrl);
+        } catch {
+          setFeedbackModal({
+            title: '공유하기',
+            body: '공유를 완료하지 못했습니다. 다시 시도해주세요.',
+          });
+        }
+        return;
+      }
       setFeedbackModal({
         title: '공유하기',
         body: '공유를 완료하지 못했습니다. 다시 시도해주세요.',
@@ -812,7 +832,7 @@ export default function FundingDetailScreen() {
     }
   };
 
-  const handleSubmitReport = () => {
+  const handleSubmitReport = async () => {
     if (!user) {
       setShowReportModal(false);
       showLoginRequired('프로젝트 신고는 로그인 후 이용할 수 있어요.');
@@ -825,13 +845,24 @@ export default function FundingDetailScreen() {
       });
       return;
     }
-    setShowReportModal(false);
-    setReportReason("");
-    setReportDetail("");
-    setFeedbackModal({
-      title: '신고가 접수되었습니다',
-      body: '검토 후 필요한 조치를 진행하겠습니다.',
-    });
+    try {
+      await createFundingReport(project.id, {
+        reason: reportReason as FundingReportReason,
+        content: reportDetail.trim() || undefined,
+      });
+      setShowReportModal(false);
+      setReportReason("");
+      setReportDetail("");
+      setFeedbackModal({
+        title: '신고가 접수되었습니다',
+        body: '검토 후 필요한 조치를 진행하겠습니다.',
+      });
+    } catch (error) {
+      setFeedbackModal({
+        title: '신고 등록 실패',
+        body: getFundingApiErrorMessage(error, '신고 등록 중 문제가 발생했습니다.'),
+      });
+    }
   };
 
   return (
@@ -1723,11 +1754,11 @@ export default function FundingDetailScreen() {
             <Text style={styles.reportLabel}>신고 사유 *</Text>
             <View style={styles.reportReasonList}>
               {[
-                ['fraud', '사기 / 허위 정보'],
-                ['inappropriate', '부적절한 내용'],
-                ['copyright', '저작권 침해'],
-                ['illegal', '불법 제품'],
-                ['other', '기타'],
+                ['FALSE_INFORMATION', '허위 정보'],
+                ['INAPPROPRIATE_CONTENT', '부적절한 내용'],
+                ['COPYRIGHT', '저작권 침해'],
+                ['FRAUD', '사기 의심'],
+                ['ETC', '기타'],
               ].map(([value, label]) => (
                 <TouchableOpacity key={value} style={[styles.reportReasonButton, reportReason === value && styles.reportReasonButtonActive]} onPress={() => setReportReason(value)}>
                   <Text style={[styles.reportReasonText, reportReason === value && styles.reportReasonTextActive]}>{label}</Text>

@@ -134,6 +134,8 @@ type FundingDocumentUploadFile = {
   mimeType?: string;
 };
 
+export type FundingUploadFile = FundingDocumentUploadFile;
+
 type FundingDocumentUploadResponse = {
   draftId: number;
   documentId: number;
@@ -141,6 +143,87 @@ type FundingDocumentUploadResponse = {
   fileName: string;
   fileUrl: string;
   message: string;
+};
+
+export type FundingBreweryLogStage =
+  | 'INGREDIENT'
+  | 'FERMENTATION'
+  | 'AGING'
+  | 'BOTTLING'
+  | 'SHIPPING';
+
+type FundingBreweryLogMutationPayload = {
+  stage?: FundingBreweryLogStage;
+  title?: string;
+  content?: string;
+  images?: FundingUploadFile[];
+  deleteImageUrls?: string[];
+};
+
+type FundingBreweryLogMutationResponse = {
+  breweryLogId: number;
+  fundingId: number;
+  stage: FundingBreweryLogStage | string;
+  title: string;
+  imageUrls: string[];
+  message: string;
+};
+
+type FundingBreweryLogDeleteResponse = {
+  breweryLogId: number;
+  fundingId: number;
+  message: string;
+};
+
+export type FundingShareLinkResponse = {
+  fundingId: number;
+  shareUrl: string;
+  message: string;
+  title?: string;
+  summary?: string;
+  thumbnailImageUrl?: string;
+  shareCount?: number;
+};
+
+export type FundingReportReason =
+  | 'FALSE_INFORMATION'
+  | 'INAPPROPRIATE_CONTENT'
+  | 'COPYRIGHT'
+  | 'FRAUD'
+  | 'ETC';
+
+type CreateFundingReportPayload = {
+  reason: FundingReportReason;
+  content?: string;
+};
+
+type CreateFundingReportResponse = {
+  reportId: number;
+  fundingId: number;
+  reason: FundingReportReason | string;
+  message: string;
+};
+
+export type FundingReportStatus = 'PENDING' | 'REVIEWING' | 'RESOLVED' | 'REJECTED';
+
+export type FundingReportItem = {
+  reportId: number;
+  fundingId: number;
+  fundingTitle: string;
+  reporterId: number;
+  reporterNickname: string;
+  reason: FundingReportReason | string;
+  content?: string;
+  status: FundingReportStatus | string;
+  createdAt: string;
+};
+
+type FundingReportsResponse = {
+  content: FundingReportItem[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
 };
 
 type CreateFundingOrderPayload = {
@@ -175,6 +258,38 @@ type RequestPaymentResponse = {
   paymentId: number;
   paymentStatus: string;
   paymentUrl: string;
+  message: string;
+};
+
+type FundingPaymentInfoResponse = {
+  paymentId: number;
+  orderId: number;
+  paymentMethod: string;
+  paymentProvider: string;
+  paymentStatus: string;
+  amount: number;
+  approvedAt?: string;
+  createdAt: string;
+};
+
+type CreateFundingReviewPayload = {
+  rating: number;
+  content: string;
+  images?: FundingUploadFile[];
+};
+
+type CreateFundingReviewResponse = {
+  reviewId: number;
+  fundingId: number;
+  rating: number;
+  imageUrls: string[];
+  message: string;
+};
+
+type FundingLikeResponse = {
+  fundingId: number;
+  liked: boolean;
+  likeCount: number;
   message: string;
 };
 
@@ -236,7 +351,8 @@ export type FundingIntroResponse = {
 
 export type FundingBreweryLogItem = {
   logId: number;
-  step: string;
+  step?: string;
+  stage?: FundingBreweryLogStage | string;
   title: string;
   content: string;
   imageUrls: string[];
@@ -347,6 +463,29 @@ type CreateFundingInquiryResponse = {
   message: string;
 };
 
+export type MyFundingOrderItem = {
+  orderId: number;
+  fundingId: number;
+  fundingTitle: string;
+  thumbnailUrl: string | null;
+  optionName: string;
+  quantity: number;
+  totalAmount: number;
+  orderStatus: string;
+  paymentStatus: string;
+  expectedDeliveryDate: string;
+  orderedAt: string;
+  reviewWritten?: boolean;
+};
+
+type MyFundingOrdersResponse = {
+  content: MyFundingOrderItem[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+};
+
 const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
 
 export async function getFundingAccessToken() {
@@ -355,6 +494,18 @@ export async function getFundingAccessToken() {
     if (value) return value;
   }
   return null;
+}
+
+function parseFundingResponseBody(path: string, response: Response, text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const contentType = response.headers.get('content-type') || 'unknown content-type';
+    throw new Error(`API 응답이 JSON이 아닙니다. ${response.status} ${path} (${contentType})`);
+  }
 }
 
 async function requestFundingJson<T>(path: string, options: RequestInit & { auth?: boolean } = {}) {
@@ -381,7 +532,7 @@ async function requestFundingJson<T>(path: string, options: RequestInit & { auth
   });
 
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  const data = parseFundingResponseBody(path, response, text);
 
   if (!response.ok) {
     const message = (data as FundingApiErrorBody | null)?.message || `HTTP ${response.status}`;
@@ -415,7 +566,7 @@ async function requestFundingForm<T>(path: string, formData: FormData, options: 
   });
 
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  const data = parseFundingResponseBody(path, response, text);
 
   if (!response.ok) {
     const message = (data as FundingApiErrorBody | null)?.message || `HTTP ${response.status}`;
@@ -425,12 +576,31 @@ async function requestFundingForm<T>(path: string, formData: FormData, options: 
   return data as T;
 }
 
+function createFundingFormFile(file: FundingUploadFile) {
+  return {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType || 'application/octet-stream',
+  } as unknown as Blob;
+}
+
+function appendFundingFormFiles(formData: FormData, fieldName: string, files?: FundingUploadFile[]) {
+  files?.forEach((file) => {
+    formData.append(fieldName, createFundingFormFile(file));
+  });
+}
+
 export function getFundingApiErrorMessage(error: unknown, fallback = '요청을 처리하지 못했습니다.') {
   if (error instanceof Error) {
     if (error.message === 'NEEDS_ACCESS_TOKEN') return '로그인 정보가 필요합니다. 다시 로그인해주세요.';
     return error.message || fallback;
   }
   return fallback;
+}
+
+export function isFundingApiMissingEndpointError(error: unknown) {
+  const message = getFundingApiErrorMessage(error, '');
+  return message.includes('API 응답이 JSON이 아닙니다.') && message.includes('404');
 }
 
 export async function saveFundingAgreement(payload: FundingAgreementPayload) {
@@ -516,14 +686,46 @@ export async function saveFundingNotices(draftId: number, payload: FundingNotice
 export async function uploadFundingDocument(draftId: number, documentType: FundingDocumentType, file: FundingDocumentUploadFile) {
   const formData = new FormData();
   formData.append('documentType', documentType);
-  formData.append('file', {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType || 'application/octet-stream',
-  } as unknown as Blob);
+  formData.append('file', createFundingFormFile(file));
 
   return requestFundingForm<FundingDocumentUploadResponse>(`/api/fundings/drafts/${draftId}/documents`, formData, {
     method: 'POST',
+    auth: true,
+  });
+}
+
+export async function createBreweryLog(fundingId: number, payload: Required<Pick<FundingBreweryLogMutationPayload, 'stage' | 'title' | 'content'>> & Pick<FundingBreweryLogMutationPayload, 'images'>) {
+  const formData = new FormData();
+  formData.append('stage', payload.stage);
+  formData.append('title', payload.title);
+  formData.append('content', payload.content);
+  appendFundingFormFiles(formData, 'images', payload.images);
+
+  return requestFundingForm<FundingBreweryLogMutationResponse>(`/api/fundings/${fundingId}/brewery-logs`, formData, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function updateBreweryLog(fundingId: number, breweryLogId: number, payload: FundingBreweryLogMutationPayload) {
+  const formData = new FormData();
+  if (payload.stage) formData.append('stage', payload.stage);
+  if (payload.title) formData.append('title', payload.title);
+  if (payload.content) formData.append('content', payload.content);
+  payload.deleteImageUrls?.forEach((url) => {
+    formData.append('deleteImageUrls', url);
+  });
+  appendFundingFormFiles(formData, 'images', payload.images);
+
+  return requestFundingForm<FundingBreweryLogMutationResponse>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}`, formData, {
+    method: 'PATCH',
+    auth: true,
+  });
+}
+
+export async function deleteBreweryLog(fundingId: number, breweryLogId: number) {
+  return requestFundingJson<FundingBreweryLogDeleteResponse>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}`, {
+    method: 'DELETE',
     auth: true,
   });
 }
@@ -541,6 +743,12 @@ export async function requestFundingPayment(orderId: number, payload: RequestPay
     method: 'POST',
     auth: true,
     body: JSON.stringify(payload),
+  });
+}
+
+export async function getFundingPaymentInfo(orderId: number) {
+  return requestFundingJson<FundingPaymentInfoResponse>(`/api/orders/${orderId}/payment`, {
+    auth: true,
   });
 }
 
@@ -569,6 +777,32 @@ export async function getFundingIntro(fundingId: number) {
 
 export async function getFundingBreweryLogs(fundingId: number) {
   return requestFundingJson<FundingBreweryLogsResponse>(`/api/fundings/${fundingId}/brewery-logs`);
+}
+
+export async function getFundingShareLink(fundingId: number) {
+  return requestFundingJson<FundingShareLinkResponse>(`/api/fundings/${fundingId}/share-link`);
+}
+
+export async function createFundingReport(fundingId: number, payload: CreateFundingReportPayload) {
+  return requestFundingJson<CreateFundingReportResponse>(`/api/fundings/${fundingId}/reports`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getFundingReports(params: {
+  status?: FundingReportStatus;
+  page?: number;
+  size?: number;
+} = {}) {
+  const query = new URLSearchParams();
+  if (params.status) query.set('status', params.status);
+  query.set('page', String(params.page ?? 0));
+  query.set('size', String(params.size ?? 10));
+  return requestFundingJson<FundingReportsResponse>(`/api/fundings/reports?${query.toString()}`, {
+    auth: true,
+  });
 }
 
 export async function getFundingQuestions(fundingId: number, params: {
@@ -611,6 +845,18 @@ export async function getFundingReviews(fundingId: number, params: {
   return requestFundingJson<FundingReviewsResponse>(`/api/fundings/${fundingId}/reviews?${query.toString()}`);
 }
 
+export async function createFundingReview(fundingId: number, payload: CreateFundingReviewPayload) {
+  const formData = new FormData();
+  formData.append('rating', String(payload.rating));
+  formData.append('content', payload.content);
+  appendFundingFormFiles(formData, 'images', payload.images);
+
+  return requestFundingForm<CreateFundingReviewResponse>(`/api/fundings/${fundingId}/reviews`, formData, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
 export async function getFundingSupportOptions(fundingId: number) {
   return requestFundingJson<FundingSupportOptionsResponse>(`/api/fundings/${fundingId}/support-options`);
 }
@@ -626,5 +872,33 @@ export async function createFundingInquiry(fundingId: number, payload: CreateFun
     method: 'POST',
     auth: true,
     body: JSON.stringify(payload),
+  });
+}
+
+export async function likeFundingProject(fundingId: number) {
+  return requestFundingJson<FundingLikeResponse>(`/api/fundings/${fundingId}/likes`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function unlikeFundingProject(fundingId: number) {
+  return requestFundingJson<FundingLikeResponse>(`/api/fundings/${fundingId}/likes`, {
+    method: 'DELETE',
+    auth: true,
+  });
+}
+
+export async function getMyFundingOrders(params: {
+  status?: string;
+  page?: number;
+  size?: number;
+} = {}) {
+  const query = new URLSearchParams();
+  if (params.status) query.set('status', params.status);
+  query.set('page', String(params.page ?? 0));
+  query.set('size', String(params.size ?? 10));
+  return requestFundingJson<MyFundingOrdersResponse>(`/api/users/me/funding-orders?${query.toString()}`, {
+    auth: true,
   });
 }

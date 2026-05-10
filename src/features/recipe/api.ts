@@ -144,6 +144,18 @@ export async function getRecipeAccessToken() {
   return null;
 }
 
+function parseRecipeResponseBody(path: string, response: Response, text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const contentType = response.headers.get('content-type') || 'unknown content-type';
+    throw new Error(`API 응답이 JSON이 아닙니다. ${response.status} ${path} (${contentType})`);
+  }
+}
+
 async function requestJson<T>(path: string, options: RequestInit & { auth?: boolean } = {}) {
   const { auth, headers, ...requestOptions } = options;
   const nextHeaders: Record<string, string> = {
@@ -168,7 +180,7 @@ async function requestJson<T>(path: string, options: RequestInit & { auth?: bool
   });
 
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  const data = parseRecipeResponseBody(path, response, text);
 
   if (!response.ok) {
     const message = (data as ApiErrorBody | null)?.message || `HTTP ${response.status}`;

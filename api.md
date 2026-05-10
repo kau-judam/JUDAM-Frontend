@@ -282,6 +282,7 @@ Pending / Needs confirmation:
 Connected on 2026-05-10:
 - `POST /api/fundings/{fundingId}/orders`: 후원 주문 생성
 - `POST /api/orders/{orderId}/payment`: 결제 요청
+- `GET /api/orders/{orderId}/payment`: 결제 정보 조회
 - `GET /api/fundings/{fundingId}/support-options`: 후원 옵션 조회
 - `GET /api/orders/{orderId}`: 주문 상세 조회
 
@@ -292,7 +293,7 @@ Frontend connection:
 - 상세 후원 옵션 모달 또는 후원하기 화면 진입 시 후원 옵션 API를 호출한다. 기존 UI를 유지하기 위해 서버 옵션명이 현재 프로젝트와 매칭되는 경우에만 1병 가격/대표 리워드명/용량을 기존 `FundingProject`에 merge한다.
 - 후원 최종 확인 시 주문 생성 API를 먼저 호출하고, 응답의 `orderId`와 `totalAmount`로 결제 요청 API를 호출한다.
 - 결제 요청 응답의 `paymentUrl`이 있으면 React Native `Linking.openURL(paymentUrl)`로 실제 URL을 연 뒤 기존 후원 성공 모달 흐름을 유지한다.
-- 결제 요청 후 `GET /api/orders/{orderId}`를 호출해 주문 상세 조회도 연결했다. 단, 현재 백엔드 mock 결제는 별도 결제 완료 callback/webhook 명세가 없으므로, paymentUrl open 이후 프론트 기존 성공 처리로 이어진다.
+- 결제 요청 후 `GET /api/orders/{orderId}/payment`와 `GET /api/orders/{orderId}`를 호출한다. 단, 현재 배포 서버에서 `GET /api/orders/{orderId}/payment`는 HTML 404를 반환하므로 프론트는 이 missing endpoint 에러를 숨기고 기존 성공 흐름을 유지한다. 백엔드 mock 결제는 별도 결제 완료 callback/webhook 명세가 없으므로, paymentUrl open 이후 프론트 기존 성공 처리로 이어진다.
 - 현재 결제 요청 mock은 서버 내부 주문 금액을 `36000`으로 고정 비교하는 명세다. UI에서 1병 또는 다른 수량을 선택하면 주문 생성 응답 금액과 결제 요청 mock 검증 금액이 맞지 않아 실패할 수 있다. 실제 결제 검증 전에는 백엔드가 주문 생성 금액과 결제 요청 검증 금액을 같은 기준으로 맞춰야 한다.
 
 Funding seed data note:
@@ -306,15 +307,26 @@ Connected on 2026-05-10:
 - `GET /api/fundings/{fundingId}`: 상세 조회
 - `GET /api/fundings/{fundingId}/intro`: 프로젝트 소개 조회
 - `GET /api/fundings/{fundingId}/brewery-logs`: 양조일지 조회
+- `POST /api/fundings/{fundingId}/brewery-logs`: 양조일지 등록
+- `PATCH /api/fundings/{fundingId}/brewery-logs/{breweryLogId}`: 양조일지 수정
+- `DELETE /api/fundings/{fundingId}/brewery-logs/{breweryLogId}`: 양조일지 삭제
+- `GET /api/fundings/{fundingId}/share-link`: 펀딩 공유 링크 조회
+- `POST /api/fundings/{fundingId}/reports`: 펀딩 신고 등록
+- `GET /api/fundings/reports`: 펀딩 신고 목록 조회 API client 추가
 
 Frontend connection:
 - API client: `src/features/funding/api.ts`
 - Mapper: `src/features/funding/apiMappers.ts`
-- Screens: `src/features/funding/screens/FundingListScreen.tsx`, `src/features/funding/screens/FundingDetailScreen.tsx`
+- Screens: `src/features/funding/screens/FundingListScreen.tsx`, `src/features/funding/screens/FundingDetailScreen.tsx`, `src/features/brewery/project/screens/BreweryJournalManageScreen.tsx`
 - 목록 화면은 현재 필터/정렬 UI를 유지하고 `전체 -> status 생략`, `진행중인 프로젝트 -> ONGOING`, `성사된 프로젝트 -> ENDED`, `인기순/추천순 -> POPULAR`, `마감임박 -> DEADLINE`, `최신순 -> LATEST`로 조회한다.
 - 서버 응답은 기존 `FundingProject`를 완전 대체하지 않고 merge한다. 현재 백엔드 mock 응답은 기존 화면 mock보다 필드가 적고 일부 응답이 벚꽃 프로젝트 기준으로 고정되어 있어, 제목/리워드/상태/가격 등 기존 UI 데이터가 잘못 덮이지 않게 프로젝트명이 매칭될 때만 상세·소개·후원 옵션 주요 값을 반영한다.
 - 목록 API로 새 서버 fundingId가 내려오면 기존 카드 형식에 맞춘 최소 `FundingProject`로 추가된다.
-- 양조일지는 `logs`를 기존 `JournalEntry` 구조로 매핑한다. 서버에는 양조일지 댓글/대댓글 조회 명세가 없으므로 기존 로컬 댓글 UX는 유지한다.
+- 양조일지는 `logs`를 기존 `JournalEntry` 구조로 매핑한다. 조회 응답은 기존 `step` 문자열과 신규 `stage` enum을 모두 수용한다. 서버에는 양조일지 댓글/대댓글 조회 명세가 없으므로 기존 로컬 댓글 UX는 유지한다.
+- 양조일지 등록/수정은 기존 관리 화면의 이미지 선택값을 `multipart/form-data` `images`로 전송한다. 기존 이미지 삭제는 수정 시 제거된 URL을 `deleteImageUrls`로 전송한다.
+- 현재 프론트 양조일지 단계는 1~5 숫자 단계이고 백엔드 stage enum은 `INGREDIENT`, `FERMENTATION`, `AGING`, `BOTTLING`, `SHIPPING`이다. 현재 매핑은 `1 -> INGREDIENT`, `2 -> INGREDIENT`, `3 -> FERMENTATION`, `4 -> AGING`, `5 -> BOTTLING`이다. 프론트에는 배송 단계가 따로 없으므로 `SHIPPING`은 현재 화면에서 전송하지 않는다.
+- 공유하기는 상세 화면의 기존 공유 모달에서 `GET /api/fundings/{fundingId}/share-link`를 호출한 뒤 Native Share를 연다. 현재 배포 서버에서 share-link 라우트가 HTML 404를 반환하는 케이스가 확인되어, 프론트는 기본 앱 공유 URL로 fallback한다.
+- 신고하기는 상세 화면의 기존 신고 모달에서 백엔드 enum(`FALSE_INFORMATION`, `INAPPROPRIATE_CONTENT`, `COPYRIGHT`, `FRAUD`, `ETC`)으로 전송한다.
+- 신고 목록 조회는 관리자/운영자 화면이 현재 앱에 없어 API client만 추가했다.
 - 서버 과금 방지를 위해 직접 호출 검증은 하지 않았다.
 
 ## Funding Q&A / Review APIs
@@ -324,6 +336,7 @@ Connected on 2026-05-10:
 - `POST /api/fundings/{fundingId}/questions`: 질문 등록
 - `POST /api/fundings/{fundingId}/questions/{questionId}/replies`: 답글 등록
 - `GET /api/fundings/{fundingId}/reviews`: 후기 목록 조회
+- `POST /api/fundings/{fundingId}/reviews`: 후기 작성
 - `POST /api/fundings/{fundingId}/inquiries`: 양조장 1:1 문의 등록 API client 추가. 사용자가 1:1 문의는 Q&A로 대체한다고 정리했으므로 현재 화면에서는 호출하지 않는다.
 
 Frontend connection:
@@ -334,8 +347,25 @@ Frontend connection:
 - 현재 Q&A UI에는 제목 입력칸이 없으므로 질문 등록 API의 `title`은 질문 내용 앞 30자를 사용하고, `content`는 전체 입력값을 보낸다. UI는 변경하지 않았다.
 - 답글 등록은 기존 인라인 답글 입력 UI에서 `content`만 전송한다. 성공 응답의 `replyId`로 기존 로컬 답글 카드에 추가한다.
 - 후기 탭 진입 시 후기 목록을 조회하고 기존 `FundingReview` 구조로 merge한다.
-- 사용자가 후기를 새로 작성/수정하는 API 명세는 현재 제공되지 않았다. `FundingReviewWriteScreen`은 기존 로컬 후기 생성/수정 흐름을 유지한다.
+- 새 후기 작성은 `FundingReviewWriteScreen`에서 `multipart/form-data`로 `rating`, `content`, `images`를 전송한다. 현재 화면은 기존 UI 정책상 이미지 최대 3장이다.
+- 후기 수정 API 명세는 아직 제공되지 않아 후기 수정 모드는 기존 로컬 수정 흐름을 유지한다.
 - 양조장 1:1 문의 등록은 사용자가 Q&A로 대체한다고 확정해 현재 화면에서는 호출하지 않는다.
+
+## Funding Likes / My Orders
+
+Connected on 2026-05-10:
+- `POST /api/fundings/{fundingId}/likes`: 펀딩 찜 등록
+- `DELETE /api/fundings/{fundingId}/likes`: 펀딩 찜 해제
+- `GET /api/users/me/funding-orders`: 마이페이지 후원 내역 조회
+
+Frontend connection:
+- API client: `src/features/funding/api.ts`
+- Contexts: `src/contexts/FavoritesContext.tsx`, `src/contexts/FundingContext.tsx`
+- Screen: `src/features/mypage/screens/MyPageScreen.tsx`
+- 찜 버튼은 기존 로컬 optimistic UI를 유지하면서 등록/해제 API를 호출하고, 실패하면 로컬 상태를 되돌린다. 단, 서버가 이미 같은 상태라고 알려주는 `이미 찜한 프로젝트입니다.` / `찜하지 않은 프로젝트입니다.` 응답은 멱등 성공처럼 처리해 화면 상태를 서버 기준에 맞춘다.
+- 런타임에서 `POST/DELETE /api/fundings/{fundingId}/likes`가 HTML 404를 반환하는 케이스가 확인됐다. 이 경우 백엔드 likes 라우트가 실제 서버에 등록/배포되지 않았거나 해당 local seed fundingId가 서버에 없을 수 있으므로, 프론트는 경고를 숨기고 기존 로컬 찜 상태를 유지한다. 백엔드가 JSON API 응답을 반환하도록 라우트 등록 여부를 확인해야 한다.
+- 마이페이지 진입 시 후원 내역을 조회해 `FundingContext.participatedFundings`에 병합한다. 현재 마이페이지에는 후원 내역 목록 UI가 없으므로 참여 펀딩 수와 후기 작성 권한 판단에만 반영한다.
+- `GET /api/users/me/funding-orders`는 사용자가 전달한 최신 명세 경로 기준으로 연결했다. 현재 배포 서버에서는 HTML 404를 반환하므로, 프론트는 이 missing endpoint 에러를 숨기고 기존 로컬 참여 펀딩 상태를 유지한다.
 
 ## Recipe Status
 

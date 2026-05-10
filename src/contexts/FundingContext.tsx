@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
 import { fundingProjects, FundingProject, JournalEntry, ProjectStatus } from "@/constants/data";
 import { fundingReviews as seedFundingReviews, FundingReview } from "@/features/funding/reviews";
+import type { MyFundingOrderItem } from "@/features/funding/api";
 
 interface ParticipatedFunding {
   fundingId: number;
@@ -8,13 +9,14 @@ interface ParticipatedFunding {
   date: string;
 }
 
-type FundingReviewInput = Omit<FundingReview, "id" | "date" | "timestamp" | "likes">;
+type FundingReviewInput = Omit<FundingReview, "id" | "date" | "timestamp" | "likes"> & { id?: number };
 
 interface FundingContextType {
   projects: FundingProject[];
   participatedFundings: ParticipatedFunding[];
   fundingReviews: FundingReview[];
   addParticipation: (fundingId: number, amount: number) => void;
+  mergeParticipationsFromOrders: (orders: MyFundingOrderItem[]) => void;
   addProject: (project: Omit<FundingProject, "id">) => FundingProject;
   updateProject: (projectId: number, project: Partial<Omit<FundingProject, "id">>) => FundingProject | null;
   addFundingReview: (review: FundingReviewInput) => FundingReview;
@@ -100,7 +102,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     ).padStart(2, "0")}`;
     const nextReview: FundingReview = {
       ...review,
-      id: Math.max(0, ...fundingReviews.map((item) => item.id)) + 1,
+      id: review.id || Math.max(0, ...fundingReviews.map((item) => item.id)) + 1,
       date,
       timestamp: "방금 전",
       likes: 0,
@@ -108,6 +110,23 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     setFundingReviews((prev) => [nextReview, ...prev]);
     return nextReview;
   };
+
+  const mergeParticipationsFromOrders = useCallback((orders: MyFundingOrderItem[]) => {
+    if (orders.length === 0) return;
+    setParticipatedFundings((prev) => {
+      const next = [...prev];
+      orders.forEach((order) => {
+        if (next.some((item) => item.fundingId === order.fundingId)) return;
+        const date = order.orderedAt ? order.orderedAt.slice(0, 10).replace(/-/g, ".") : "";
+        next.push({
+          fundingId: order.fundingId,
+          amount: order.totalAmount,
+          date,
+        });
+      });
+      return next;
+    });
+  }, []);
 
   const updateFundingReview = (reviewId: number, review: Partial<FundingReviewInput>) => {
     const currentReview = fundingReviews.find((item) => item.id === reviewId);
@@ -223,6 +242,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
         participatedFundings,
         fundingReviews,
         addParticipation,
+        mergeParticipationsFromOrders,
         addProject,
         updateProject,
         addFundingReview,

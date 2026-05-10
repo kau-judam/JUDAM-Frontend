@@ -19,11 +19,39 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BREWING_STAGES, BrewingStage, JournalEntry, getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import {
+  createBreweryLog,
+  deleteBreweryLog,
+  getFundingApiErrorMessage,
+  updateBreweryLog,
+  type FundingBreweryLogStage,
+  type FundingUploadFile,
+} from '@/features/funding/api';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 
 function todayText() {
   const today = new Date();
   return `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, '0')}. ${String(today.getDate()).padStart(2, '0')}`;
+}
+
+const BREWING_STAGE_TO_API_STAGE: Record<BrewingStage, FundingBreweryLogStage> = {
+  1: 'INGREDIENT',
+  2: 'INGREDIENT',
+  3: 'FERMENTATION',
+  4: 'AGING',
+  5: 'BOTTLING',
+};
+
+function getImageFileName(uri: string, index: number) {
+  const rawName = uri.split('/').pop()?.split('?')[0];
+  if (rawName && rawName.includes('.')) return rawName;
+  return `brewery-log-${Date.now()}-${index}.jpg`;
+}
+
+function getImageMimeType(fileName: string) {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (extension === 'png') return 'image/png';
+  return 'image/jpeg';
 }
 
 export default function BreweryJournalManageScreen() {
@@ -39,7 +67,10 @@ export default function BreweryJournalManageScreen() {
   const [content, setContent] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [images, setImages] = useState<string[]>([]);
+  const [imageFilesByUri, setImageFilesByUri] = useState<Record<string, FundingUploadFile>>({});
+  const [originalImages, setOriginalImages] = useState<string[]>([]);
   const [message, setMessage] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const journals = project?.journals || [];
   const canManage = Boolean(user?.isBreweryVerified && isFundingProjectOwnedByBrewery(user, project));
@@ -50,6 +81,8 @@ export default function BreweryJournalManageScreen() {
     setContent('');
     setVideoUrl('');
     setImages([]);
+    setImageFilesByUri({});
+    setOriginalImages([]);
   };
 
   const openEditor = (stage: BrewingStage, entry?: JournalEntry) => {
@@ -59,6 +92,8 @@ export default function BreweryJournalManageScreen() {
     setContent(entry?.content || '');
     setVideoUrl(entry?.videoUrl || '');
     setImages(entry?.images || []);
+    setOriginalImages(entry?.images || []);
+    setImageFilesByUri({});
   };
 
   const pickImages = async () => {
@@ -76,11 +111,27 @@ export default function BreweryJournalManageScreen() {
     });
 
     if (result.canceled) return;
-    const selectedImages = result.assets.map((asset) => asset.uri).filter(Boolean);
-    setImages((prev) => [...prev, ...selectedImages].slice(0, 5));
+    const selectedImages = result.assets.reduce<FundingUploadFile[]>((files, asset, index) => {
+        if (!asset.uri) return files;
+        const name = asset.fileName || getImageFileName(asset.uri, index);
+        files.push({
+          uri: asset.uri,
+          name,
+          mimeType: asset.mimeType || getImageMimeType(name),
+        });
+        return files;
+      }, []);
+    setImages((prev) => [...prev, ...selectedImages.map((asset) => asset.uri)].slice(0, 5));
+    setImageFilesByUri((prev) => {
+      const next = { ...prev };
+      selectedImages.forEach((asset) => {
+        next[asset.uri] = asset;
+      });
+      return next;
+    });
   };
 
-  const saveJournal = () => {
+  const saveJournal = async () => {
     if (!project || !selectedStage) return;
     if (!title.trim()) {
       setMessage('양조일지 제목을 입력해주세요.');
@@ -91,32 +142,60 @@ export default function BreweryJournalManageScreen() {
       return;
     }
 
-    const nextEntry: JournalEntry = {
-      id: editingEntry?.id || Math.max(0, ...journals.map((entry) => entry.id)) + 1,
-      stage: selectedStage,
-      date: editingEntry?.date || todayText(),
-      title: title.trim(),
-      content: content.trim(),
-      images: images.length > 0 ? images : undefined,
-      videoUrl: videoUrl.trim() || undefined,
-      likes: editingEntry?.likes || 0,
-      comments: editingEntry?.comments || [],
-    };
+    setIsSaving(true);
+    try {
+      const localImageFiles = images.map((image) => imageFilesByUri[image]).filter((file): file is FundingUploadFile => Boolean(file));
+      const response = editingEntry
+        ? await updateBreweryLog(project.id, editingEntry.id, {
+            stage: BREWING_STAGE_TO_API_STAGE[selectedStage],
+            title: title.trim(),
+            content: content.trim(),
+            images: localImageFiles,
+            deleteImageUrls: originalImages.filter((image) => !images.includes(image)),
+          })
+        : await createBreweryLog(project.id, {
+            stage: BREWING_STAGE_TO_API_STAGE[selectedStage],
+            title: title.trim(),
+            content: content.trim(),
+            images: localImageFiles,
+          });
 
-    const nextJournals = editingEntry
-      ? journals.map((entry) => (entry.id === editingEntry.id ? nextEntry : entry))
-      : [nextEntry, ...journals];
+      const nextEntry: JournalEntry = {
+        id: response.breweryLogId,
+        stage: selectedStage,
+        date: editingEntry?.date || todayText(),
+        title: response.title || title.trim(),
+        content: content.trim(),
+        images: response.imageUrls?.length ? response.imageUrls : images.length > 0 ? images : undefined,
+        videoUrl: videoUrl.trim() || undefined,
+        likes: editingEntry?.likes || 0,
+        comments: editingEntry?.comments || [],
+      };
 
-    updateProjectJournals(project.id, nextJournals);
-    resetForm();
-    setSelectedStage(null);
-    setMessage(editingEntry ? '양조일지가 수정되었습니다.' : '양조일지가 저장되었습니다.');
+      const nextJournals = editingEntry
+        ? journals.map((entry) => (entry.id === editingEntry.id ? nextEntry : entry))
+        : [nextEntry, ...journals];
+
+      updateProjectJournals(project.id, nextJournals);
+      resetForm();
+      setSelectedStage(null);
+      setMessage(response.message || (editingEntry ? '양조일지가 수정되었습니다.' : '양조일지가 저장되었습니다.'));
+    } catch (error) {
+      setMessage(getFundingApiErrorMessage(error, '양조일지를 저장하지 못했습니다.'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const deleteJournal = (entryId: number) => {
+  const deleteJournal = async (entryId: number) => {
     if (!project) return;
-    updateProjectJournals(project.id, journals.filter((entry) => entry.id !== entryId));
-    setMessage('양조일지가 삭제되었습니다.');
+    try {
+      const response = await deleteBreweryLog(project.id, entryId);
+      updateProjectJournals(project.id, journals.filter((entry) => entry.id !== entryId));
+      setMessage(response.message || '양조일지가 삭제되었습니다.');
+    } catch (error) {
+      setMessage(getFundingApiErrorMessage(error, '양조일지를 삭제하지 못했습니다.'));
+    }
   };
 
   if (!project || !canManage) {
@@ -268,8 +347,8 @@ export default function BreweryJournalManageScreen() {
                 ))}
               </View>
             </View>
-            <TouchableOpacity style={styles.saveButton} onPress={saveJournal}>
-              <Text style={styles.saveButtonText}>저장하기</Text>
+            <TouchableOpacity style={[styles.saveButton, isSaving && { opacity: 0.6 }]} onPress={saveJournal} disabled={isSaving}>
+              <Text style={styles.saveButtonText}>{isSaving ? '저장 중...' : '저장하기'}</Text>
             </TouchableOpacity>
           </ScrollView>
         </KeyboardAvoidingView>

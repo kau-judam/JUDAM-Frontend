@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -42,6 +42,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
 import { Button } from '@/components/ui/button';
+import { getFundingApiErrorMessage, getMyFundingOrders, isFundingApiMissingEndpointError } from '@/features/funding/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 import { getBtiResult } from '@/features/bti/data';
 
@@ -59,9 +60,27 @@ export default function MyPageScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const { favoriteFundings } = useFavorites();
-  const { participatedFundings } = useFunding();
+  const { participatedFundings, mergeParticipationsFromOrders } = useFunding();
   const [supportVisible, setSupportVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+    getMyFundingOrders({ page: 0, size: 20 })
+      .then((response) => {
+        if (!mounted) return;
+        mergeParticipationsFromOrders(response.content);
+      })
+      .catch((error) => {
+        if (isFundingApiMissingEndpointError(error)) return;
+        console.warn(getFundingApiErrorMessage(error, "후원 내역을 불러오지 못했습니다."));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [mergeParticipationsFromOrders, user]);
 
   if (!user) {
     return (

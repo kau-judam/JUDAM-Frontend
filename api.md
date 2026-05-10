@@ -246,25 +246,67 @@ Frontend connection:
 - 서버는 usage-billed라 직접 호출 검증은 하지 않았다.
 
 Pending / Needs confirmation:
-- `POST /api/fundings/drafts/{draftId}/documents`: 현재 화면 상태에는 파일명만 저장되고 실제 파일 URI/mimeType이 유지되지 않는 항목이 있어, documentType 매핑과 상태 구조 변경 확인 후 연결한다.
-- 조회 API와 후원/주문 API는 기존 화면 mock 데이터가 서버 mock 응답보다 훨씬 풍부하다. UI를 보존하려면 API 응답을 기존 `FundingProject`에 merge할지, 서버 응답으로 대체할지 확인 후 연결한다.
+- `POST /api/fundings/drafts/{draftId}/documents`: 현재 화면 상태에는 파일명만 저장되고 실제 파일 URI/mimeType이 유지되지 않는 항목이 있어, 사용자가 4차 필수 서류 업로드 상태 구조를 수정한 뒤 연결한다.
 
 ## Funding Support Order / Payment
 
 Connected on 2026-05-10:
 - `POST /api/fundings/{fundingId}/orders`: 후원 주문 생성
 - `POST /api/orders/{orderId}/payment`: 결제 요청
+- `GET /api/fundings/{fundingId}/support-options`: 후원 옵션 조회
+- `GET /api/orders/{orderId}`: 주문 상세 조회
 
 Frontend connection:
 - API client: `src/features/funding/api.ts`
-- Screen: `src/features/funding/screens/FundingSupportScreen.tsx`
+- Mapper: `src/features/funding/apiMappers.ts`
+- Screens: `src/features/funding/screens/FundingDetailScreen.tsx`, `src/features/funding/screens/FundingSupportScreen.tsx`
+- 상세 후원 옵션 모달 또는 후원하기 화면 진입 시 후원 옵션 API를 호출한다. 기존 UI를 유지하기 위해 서버 옵션명이 현재 프로젝트와 매칭되는 경우에만 1병 가격/대표 리워드명/용량을 기존 `FundingProject`에 merge한다.
 - 후원 최종 확인 시 주문 생성 API를 먼저 호출하고, 응답의 `orderId`와 `totalAmount`로 결제 요청 API를 호출한다.
 - 결제 요청 응답의 `paymentUrl`이 있으면 React Native `Linking.openURL(paymentUrl)`로 실제 URL을 연 뒤 기존 후원 성공 모달 흐름을 유지한다.
-- 현재 백엔드 mock 결제는 별도 결제 완료 callback/webhook 명세가 없으므로, paymentUrl open 이후 프론트 기존 성공 처리로 이어진다.
+- 결제 요청 후 `GET /api/orders/{orderId}`를 호출해 주문 상세 조회도 연결했다. 단, 현재 백엔드 mock 결제는 별도 결제 완료 callback/webhook 명세가 없으므로, paymentUrl open 이후 프론트 기존 성공 처리로 이어진다.
+- 현재 결제 요청 mock은 서버 내부 주문 금액을 `36000`으로 고정 비교하는 명세다. UI에서 1병 또는 다른 수량을 선택하면 주문 생성 응답 금액과 결제 요청 mock 검증 금액이 맞지 않아 실패할 수 있다. 실제 결제 검증 전에는 백엔드가 주문 생성 금액과 결제 요청 검증 금액을 같은 기준으로 맞춰야 한다.
 
 Funding seed data note:
-- 2026-05-10 사용자 지시에 따라 프론트 런타임 펀딩 seed 목록은 `봄을 담은 벚꽃 막걸리 프로젝트`, `산사 막걸리 프로젝트` 2개만 유지한다.
-- 사용자는 `신사 막걸리 프로젝트`라고 적었지만 현재 코드의 기존 seed title은 `산사 막걸리 프로젝트`이므로 기존 데이터를 유지했다.
+- 2026-05-10 사용자 지시에 따라 프론트 런타임 펀딩 seed 목록은 `봄을 담은 벚꽃 막걸리 프로젝트`, `꽃향기 가득한 생막걸리 프로젝트`, `산사 막걸리 프로젝트` 3개만 유지한다.
+- 사용자는 `신사 막걸리 프로젝트`라고 적었지만 현재 코드의 기존 seed title은 `산사 막걸리 프로젝트`이므로 기존 데이터를 유지했다. 실제 표기 변경이 필요하면 seed title/brewery 문구를 별도 확인 후 수정한다.
+
+## Funding Lookup APIs
+
+Connected on 2026-05-10:
+- `GET /api/fundings`: 펀딩 프로젝트 목록 조회
+- `GET /api/fundings/{fundingId}`: 상세 조회
+- `GET /api/fundings/{fundingId}/intro`: 프로젝트 소개 조회
+- `GET /api/fundings/{fundingId}/brewery-logs`: 양조일지 조회
+
+Frontend connection:
+- API client: `src/features/funding/api.ts`
+- Mapper: `src/features/funding/apiMappers.ts`
+- Screens: `src/features/funding/screens/FundingListScreen.tsx`, `src/features/funding/screens/FundingDetailScreen.tsx`
+- 목록 화면은 현재 필터/정렬 UI를 유지하고 `전체 -> status 생략`, `진행중인 프로젝트 -> ONGOING`, `성사된 프로젝트 -> ENDED`, `인기순/추천순 -> POPULAR`, `마감임박 -> DEADLINE`, `최신순 -> LATEST`로 조회한다.
+- 서버 응답은 기존 `FundingProject`를 완전 대체하지 않고 merge한다. 현재 백엔드 mock 응답은 기존 화면 mock보다 필드가 적고 일부 응답이 벚꽃 프로젝트 기준으로 고정되어 있어, 제목/리워드/상태/가격 등 기존 UI 데이터가 잘못 덮이지 않게 프로젝트명이 매칭될 때만 상세·소개·후원 옵션 주요 값을 반영한다.
+- 목록 API로 새 서버 fundingId가 내려오면 기존 카드 형식에 맞춘 최소 `FundingProject`로 추가된다.
+- 양조일지는 `logs`를 기존 `JournalEntry` 구조로 매핑한다. 서버에는 양조일지 댓글/대댓글 조회 명세가 없으므로 기존 로컬 댓글 UX는 유지한다.
+- 서버 과금 방지를 위해 직접 호출 검증은 하지 않았다.
+
+## Funding Q&A / Review APIs
+
+Connected on 2026-05-10:
+- `GET /api/fundings/{fundingId}/questions`: Q&A 목록 조회
+- `POST /api/fundings/{fundingId}/questions`: 질문 등록
+- `POST /api/fundings/{fundingId}/questions/{questionId}/replies`: 답글 등록
+- `GET /api/fundings/{fundingId}/reviews`: 후기 목록 조회
+- `POST /api/fundings/{fundingId}/inquiries`: 양조장 1:1 문의 등록 API client 추가
+
+Frontend connection:
+- API client: `src/features/funding/api.ts`
+- Mapper: `src/features/funding/apiMappers.ts`
+- Screen: `src/features/funding/screens/FundingDetailScreen.tsx`
+- Q&A 탭 진입 시 질문 목록을 조회하고, 기존 Q&A 카드 구조에 맞춰 writer/content/date를 merge한다. 서버 질문 응답에는 답글 목록이 없으므로 기존 로컬 답글은 같은 questionId 기준으로 보존한다.
+- 현재 Q&A UI에는 제목 입력칸이 없으므로 질문 등록 API의 `title`은 질문 내용 앞 30자를 사용하고, `content`는 전체 입력값을 보낸다. UI는 변경하지 않았다.
+- 답글 등록은 기존 인라인 답글 입력 UI에서 `content`만 전송한다. 성공 응답의 `replyId`로 기존 로컬 답글 카드에 추가한다.
+- 후기 탭 진입 시 후기 목록을 조회하고 기존 `FundingReview` 구조로 merge한다.
+- 사용자가 후기를 새로 작성/수정하는 API 명세는 현재 제공되지 않았다. `FundingReviewWriteScreen`은 기존 로컬 후기 생성/수정 흐름을 유지한다.
+- 양조장 1:1 문의 등록은 현재 React Native 앱에 연결할 UI 진입점이 없어 API client 함수만 추가했다. 화면 연결이 필요하면 해당 문의 UI 위치를 먼저 정해야 한다.
 
 ## Recipe Status
 
@@ -962,6 +1004,16 @@ Notes:
 - `POST /api/recipes` and some recipe detail comment APIs can still return backend `500 서버 내부 오류`.
 - Frontend now catches recipe detail comment submit/delete failures so they do not surface as uncaught promise errors.
 - Backend still needs to inspect server logs for the root cause of `500`, especially request body validation, null handling, JWT user mapping, and DB constraints.
+
+2026-05-10 funding connection note:
+- Connected funding 5th API group: `GET /api/fundings`, `GET /api/fundings/{fundingId}`, `GET /api/fundings/{fundingId}/intro`, `GET /api/fundings/{fundingId}/brewery-logs`.
+- Connected funding 6th API group: `GET/POST /api/fundings/{fundingId}/questions`, `POST /api/fundings/{fundingId}/questions/{questionId}/replies`, `GET /api/fundings/{fundingId}/reviews`.
+- Connected funding 7th remaining APIs: `GET /api/fundings/{fundingId}/support-options`, `GET /api/orders/{orderId}`. Order create and payment request were already connected.
+- Added API client for `POST /api/fundings/{fundingId}/inquiries`, but the current React Native app has no visible 1:1 inquiry entry point, so no screen calls it yet.
+- Funding lookup responses are merged into the existing UI model instead of replacing `FundingProject`; this preserves the richer current card/detail UI and locally created funding projects.
+- Funding review create/update API was not provided, so review write/edit remains local state only.
+- Document upload API remains pending until the project creation screen preserves real file URI and mimeType for multipart upload.
+- Server was not manually called because it is usage-billed.
 
 ## PDF Sources Read On 2026-05-06
 

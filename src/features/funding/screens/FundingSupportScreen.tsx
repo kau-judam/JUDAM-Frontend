@@ -1,12 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
   KeyboardAvoidingView,
-<<<<<<< HEAD
   Linking,
-=======
->>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
   Modal,
   Platform,
   ScrollView,
@@ -37,6 +34,14 @@ import { getFundingProjectImageSource, isSupportableFundingStatus } from '@/cons
 import type { FundingProject } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import {
+  createFundingOrder,
+  getFundingApiErrorMessage,
+  getFundingOrderDetail,
+  getFundingSupportOptions,
+  requestFundingPayment,
+} from '@/features/funding/api';
+import { mergeSupportOption } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import {
@@ -60,24 +65,23 @@ import {
   type PaymentMethod,
   type ShippingInfo,
 } from '@/features/funding/supportConfig';
-<<<<<<< HEAD
-import { createFundingOrder, getFundingApiErrorMessage, requestFundingPayment } from '@/features/funding/api';
-=======
->>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
 import SafeStorage from '@/utils/storage';
 import { formatPhoneNumber, isValidEmail, isValidPhone } from '@/utils/validation';
 
 export default function FundingSupportScreen() {
   const insets = useSafeAreaInsets();
-  const { id, quantity: quantityParam } = useLocalSearchParams();
+  const { id, quantity: quantityParam, optionId: optionIdParam } = useLocalSearchParams();
   const { user } = useAuth();
-  const { projects, addParticipation, updateProjectFunding } = useFunding();
+  const { projects, addParticipation, updateProjectFunding, mergeProject } = useFunding();
   const fundingId = getFundingId(id);
   const project = useMemo(
     () => projects.find((item) => item.id === fundingId) || null,
     [fundingId, projects]
   );
+  const projectRef = useRef<FundingProject | null>(project);
+  const rawOptionId = Array.isArray(optionIdParam) ? optionIdParam[0] : optionIdParam;
   const [quantity, setQuantity] = useState(getInitialQuantity(quantityParam));
+  const [selectedSupportOptionId, setSelectedSupportOptionId] = useState(Math.max(1, Number(rawOptionId) || 1));
   const [additionalSupport, setAdditionalSupport] = useState('0');
   const [supportMessage, setSupportMessage] = useState('');
   const [showMessageOptions, setShowMessageOptions] = useState(false);
@@ -106,6 +110,10 @@ export default function FundingSupportScreen() {
     detailAddress: '',
     phone: user?.phone || '',
   });
+
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
 
   const clearValidationError = (key: string) => {
     setValidationErrors((prev) => {
@@ -151,6 +159,7 @@ export default function FundingSupportScreen() {
 
   useEffect(() => {
     setQuantity(getInitialQuantity(quantityParam));
+    setSelectedSupportOptionId(Math.max(1, Number(rawOptionId) || 1));
     setAdditionalSupport('0');
     setSupportMessage('');
     setShowMessageOptions(false);
@@ -163,7 +172,29 @@ export default function FundingSupportScreen() {
     setShowRefundPolicy(false);
     setValidationErrors({});
     setShowConfirmModal(false);
-  }, [project?.id, quantityParam, user?.name]);
+  }, [project?.id, quantityParam, rawOptionId, user?.name]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!project?.id) return;
+
+    getFundingSupportOptions(project.id)
+      .then((response) => {
+        const currentProject = projectRef.current;
+        if (!mounted || !currentProject) return;
+        const option = response.supportOptions.find((item) => item.optionId === selectedSupportOptionId) || response.supportOptions[0];
+        if (!option) return;
+        setSelectedSupportOptionId(option.optionId);
+        mergeProject(project.id, mergeSupportOption(currentProject, option));
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '후원 옵션을 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [mergeProject, project?.id, selectedSupportOptionId]);
 
   const unitPrice = project ? getProjectUnitPrice(project) : 0;
   const shippingFee = project ? getProjectShippingFee(project) : 0;
@@ -238,13 +269,12 @@ export default function FundingSupportScreen() {
   };
 
   const handleConfirmPayment = async () => {
-<<<<<<< HEAD
     if (!project || !user || !selectedPaymentMethod || isProcessing) return;
     setIsProcessing(true);
     setShowConfirmModal(false);
     try {
       const order = await createFundingOrder(project.id, {
-        optionId: 1,
+        optionId: selectedSupportOptionId,
         quantity,
         recipientName: shippingInfo.recipientName.trim(),
         recipientPhone: shippingInfo.phone.trim(),
@@ -261,6 +291,11 @@ export default function FundingSupportScreen() {
       if (payment.paymentUrl) {
         await Linking.openURL(payment.paymentUrl);
       }
+      try {
+        await getFundingOrderDetail(order.orderId);
+      } catch (detailError) {
+        console.warn(getFundingApiErrorMessage(detailError, '주문 상세를 불러오지 못했습니다.'));
+      }
       await SafeStorage.setItem(getRecentShippingKey(user.id), JSON.stringify(shippingInfo));
       setRecentShippingInfo(shippingInfo);
       addParticipation(project.id, fundingAmount);
@@ -268,20 +303,6 @@ export default function FundingSupportScreen() {
       setShowSuccessModal(true);
     } catch (error) {
       Alert.alert('알림', getFundingApiErrorMessage(error, '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.'));
-=======
-    if (!project || !user || isProcessing) return;
-    setIsProcessing(true);
-    setShowConfirmModal(false);
-    try {
-      await SafeStorage.setItem(getRecentShippingKey(user.id), JSON.stringify(shippingInfo));
-      setRecentShippingInfo(shippingInfo);
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      addParticipation(project.id, fundingAmount);
-      updateProjectFunding(project.id, fundingAmount);
-      setShowSuccessModal(true);
-    } catch {
-      Alert.alert('알림', '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.');
->>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
     } finally {
       setIsProcessing(false);
     }

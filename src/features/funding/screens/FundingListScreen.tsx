@@ -31,6 +31,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
+import { getFundingList, getFundingApiErrorMessage } from '@/features/funding/api';
+import { mergeFundingListItem } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import {
   getFundingListStats,
@@ -52,7 +54,8 @@ export default function FundingListScreen() {
   const { scrollToTop, sort } = useLocalSearchParams<{ scrollToTop?: string; sort?: string }>();
   const scrollRef = useRef<ScrollView>(null);
   const { favoriteFundings, isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
-  const { projects } = useFunding();
+  const { projects, mergeProjects } = useFunding();
+  const projectsRef = useRef(projects);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<FundingStatusFilter>("전체 프로젝트");
   const [selectedSort, setSelectedSort] = useState<FundingSortOption>("인기순");
@@ -70,10 +73,46 @@ export default function FundingListScreen() {
   }, [searchTerm, selectedStatus, selectedSort]);
 
   useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  useEffect(() => {
     if (sort === "recommend" && userTasteProfile) {
       setSelectedSort("추천순");
     }
   }, [sort, userTasteProfile]);
+
+  useEffect(() => {
+    let mounted = true;
+    const status =
+      selectedStatus === "진행중인 프로젝트"
+        ? "ONGOING"
+        : selectedStatus === "성사된 프로젝트"
+          ? "ENDED"
+          : undefined;
+    const apiSort =
+      selectedSort === "마감임박"
+        ? "DEADLINE"
+        : selectedSort === "최신순"
+          ? "LATEST"
+          : "POPULAR";
+
+    getFundingList({ status, sort: apiSort, page: 0, size: 10 })
+      .then((response) => {
+        if (!mounted) return;
+        const nextProjects = response.content.map((item) =>
+          mergeFundingListItem(projectsRef.current.find((project) => project.id === item.fundingId), item)
+        );
+        mergeProjects(nextProjects);
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '펀딩 목록을 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [mergeProjects, selectedSort, selectedStatus]);
 
   useFocusEffect(
     useCallback(() => {

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useState, ReactNode } from "react";
 import { fundingProjects, FundingProject, JournalEntry, ProjectStatus } from "@/constants/data";
 import { fundingReviews as seedFundingReviews, FundingReview } from "@/features/funding/reviews";
 
@@ -19,6 +19,9 @@ interface FundingContextType {
   updateProject: (projectId: number, project: Partial<Omit<FundingProject, "id">>) => FundingProject | null;
   addFundingReview: (review: FundingReviewInput) => FundingReview;
   updateFundingReview: (reviewId: number, review: Partial<FundingReviewInput>) => FundingReview | null;
+  mergeProjects: (incomingProjects: FundingProject[]) => void;
+  mergeProject: (projectId: number, project: Partial<Omit<FundingProject, "id">>) => void;
+  mergeFundingReviews: (projectId: number, reviews: FundingReview[]) => void;
   updateProjectJournals: (projectId: number, journals: JournalEntry[]) => void;
   updateProjectStatus: (projectId: number, status: ProjectStatus) => void;
   updateProjectFunding: (projectId: number, amount: number) => void;
@@ -121,13 +124,67 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     return updatedReview;
   };
 
-  const updateProjectJournals = (projectId: number, journals: JournalEntry[]) => {
+  const mergeProjects = useCallback((incomingProjects: FundingProject[]) => {
+    if (incomingProjects.length === 0) return;
+    setProjects((prev) => {
+      const nextProjects = [...prev];
+      incomingProjects.forEach((incomingProject) => {
+        const index = nextProjects.findIndex((project) => project.id === incomingProject.id);
+        if (index >= 0) {
+          nextProjects[index] = {
+            ...nextProjects[index],
+            ...incomingProject,
+            id: nextProjects[index].id,
+            createdAt: nextProjects[index].createdAt || incomingProject.createdAt,
+            updatedAt: incomingProject.updatedAt || new Date().toISOString(),
+          };
+        } else {
+          nextProjects.push(incomingProject);
+        }
+      });
+      return nextProjects;
+    });
+  }, []);
+
+  const mergeProject = useCallback((projectId: number, project: Partial<Omit<FundingProject, "id">>) => {
+    setProjects((prev) =>
+      prev.map((item) =>
+        item.id === projectId
+          ? {
+              ...item,
+              ...project,
+              id: projectId,
+              createdAt: item.createdAt,
+              updatedAt: project.updatedAt || new Date().toISOString(),
+            }
+          : item
+      )
+    );
+  }, []);
+
+  const mergeFundingReviews = useCallback((projectId: number, reviews: FundingReview[]) => {
+    if (reviews.length === 0) return;
+    setFundingReviews((prev) => {
+      const nextReviews = [...prev];
+      reviews.forEach((review) => {
+        const index = nextReviews.findIndex((item) => item.projectId === projectId && item.id === review.id);
+        if (index >= 0) {
+          nextReviews[index] = { ...nextReviews[index], ...review };
+        } else {
+          nextReviews.push(review);
+        }
+      });
+      return nextReviews;
+    });
+  }, []);
+
+  const updateProjectJournals = useCallback((projectId: number, journals: JournalEntry[]) => {
     setProjects((prev) =>
       prev.map((project) =>
         project.id === projectId ? { ...project, journals, updatedAt: new Date().toISOString() } : project
       )
     );
-  };
+  }, []);
 
   const updateProjectStatus = (projectId: number, status: ProjectStatus) => {
     setProjects((prev) =>
@@ -170,6 +227,9 @@ export function FundingProvider({ children }: { children: ReactNode }) {
         updateProject,
         addFundingReview,
         updateFundingReview,
+        mergeProjects,
+        mergeProject,
+        mergeFundingReviews,
         updateProjectJournals,
         updateProjectStatus,
         updateProjectFunding,

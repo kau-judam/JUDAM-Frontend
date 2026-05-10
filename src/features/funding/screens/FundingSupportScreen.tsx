@@ -3,7 +3,10 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+<<<<<<< HEAD
   Linking,
+=======
+>>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
   Modal,
   Platform,
   ScrollView,
@@ -57,7 +60,10 @@ import {
   type PaymentMethod,
   type ShippingInfo,
 } from '@/features/funding/supportConfig';
+<<<<<<< HEAD
 import { createFundingOrder, getFundingApiErrorMessage, requestFundingPayment } from '@/features/funding/api';
+=======
+>>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
 import SafeStorage from '@/utils/storage';
 import { formatPhoneNumber, isValidEmail, isValidPhone } from '@/utils/validation';
 
@@ -232,6 +238,7 @@ export default function FundingSupportScreen() {
   };
 
   const handleConfirmPayment = async () => {
+<<<<<<< HEAD
     if (!project || !user || !selectedPaymentMethod || isProcessing) return;
     setIsProcessing(true);
     setShowConfirmModal(false);
@@ -261,6 +268,20 @@ export default function FundingSupportScreen() {
       setShowSuccessModal(true);
     } catch (error) {
       Alert.alert('알림', getFundingApiErrorMessage(error, '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.'));
+=======
+    if (!project || !user || isProcessing) return;
+    setIsProcessing(true);
+    setShowConfirmModal(false);
+    try {
+      await SafeStorage.setItem(getRecentShippingKey(user.id), JSON.stringify(shippingInfo));
+      setRecentShippingInfo(shippingInfo);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      addParticipation(project.id, fundingAmount);
+      updateProjectFunding(project.id, fundingAmount);
+      setShowSuccessModal(true);
+    } catch {
+      Alert.alert('알림', '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.');
+>>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
     } finally {
       setIsProcessing(false);
     }

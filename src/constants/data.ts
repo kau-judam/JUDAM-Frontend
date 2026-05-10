@@ -129,7 +129,11 @@ export interface FundingProject {
   updatedAt?: string;
 }
 
+<<<<<<< HEAD
 const seedFundingProjects: FundingProject[] = [
+=======
+export const fundingProjects: FundingProject[] = [
+>>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
   {
     id: 1,
     title: "봄을 담은 벚꽃 막걸리 프로젝트",
@@ -440,6 +444,7 @@ const seedFundingProjects: FundingProject[] = [
   },
 ];
 
+<<<<<<< HEAD
 export const fundingProjects: FundingProject[] = seedFundingProjects.filter((project) =>
   [
     "봄을 담은 벚꽃 막걸리 프로젝트",
@@ -447,6 +452,8 @@ export const fundingProjects: FundingProject[] = seedFundingProjects.filter((pro
   ].includes(project.title)
 );
 
+=======
+>>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
 export interface Recipe {
   id: number;
   title: string;

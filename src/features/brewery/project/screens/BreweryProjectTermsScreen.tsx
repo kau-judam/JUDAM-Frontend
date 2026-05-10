@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import {
+<<<<<<< HEAD
+  Alert,
+=======
+>>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
   Modal,
   ScrollView,
   StyleSheet,
@@ -12,6 +16,10 @@ import { AlertCircle, Check, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+<<<<<<< HEAD
+import { getFundingApiErrorMessage, saveFundingAgreement } from '@/features/funding/api';
+=======
+>>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
 
 interface TermItem {
   id: string;
@@ -74,6 +82,10 @@ export default function BreweryProjectTermsScreen() {
   const { user } = useAuth();
   const [agreedTerms, setAgreedTerms] = useState<string[]>([]);
   const [modalTerm, setModalTerm] = useState<TermItem | null>(null);
+<<<<<<< HEAD
+  const [isSubmitting, setIsSubmitting] = useState(false);
+=======
+>>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
 
   const allTermIds = termsData.map((term) => term.id);
   const allAgreed = agreedTerms.length === allTermIds.length;
@@ -88,9 +100,35 @@ export default function BreweryProjectTermsScreen() {
     ));
   };
 
+<<<<<<< HEAD
+  const getBreweryId = () => {
+    const breweryId = Number(user?.id);
+    return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1;
+  };
+
+  const handleNext = async () => {
+    if (!allAgreed || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await saveFundingAgreement({
+        breweryId: getBreweryId(),
+        isAdultConfirmed: agreedTerms.includes('age'),
+        isContactInfoAgreed: agreedTerms.includes('contact'),
+        isSettlementInfoAgreed: agreedTerms.includes('settlement'),
+        isFeePolicyAgreed: agreedTerms.includes('fee'),
+        isResponsibilityAgreed: agreedTerms.includes('responsibility'),
+      });
+      router.push('/brewery/project/create' as any);
+    } catch (error) {
+      Alert.alert('약관 동의 저장 실패', getFundingApiErrorMessage(error, '약관 동의 저장 중 문제가 발생했습니다.'));
+    } finally {
+      setIsSubmitting(false);
+=======
   const handleNext = () => {
     if (allAgreed) {
       router.push('/brewery/project/create' as any);
+>>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
     }
   };
 
@@ -227,9 +265,15 @@ export default function BreweryProjectTermsScreen() {
 
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
           <TouchableOpacity
+<<<<<<< HEAD
+            style={[styles.nextButton, (!allAgreed || isSubmitting) && styles.nextButtonDisabled]}
+            activeOpacity={allAgreed && !isSubmitting ? 0.78 : 1}
+            disabled={!allAgreed || isSubmitting}
+=======
             style={[styles.nextButton, !allAgreed && styles.nextButtonDisabled]}
             activeOpacity={allAgreed ? 0.78 : 1}
             disabled={!allAgreed}
+>>>>>>> 85f3caab7eb01469865e2e1532953bebd08795cd
             onPress={handleNext}
           >
             <Text style={styles.nextButtonText}>다음</Text>

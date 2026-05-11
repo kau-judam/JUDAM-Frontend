@@ -69,6 +69,7 @@ export default function RecipeCreateScreen() {
   const [concept, setConcept] = useState('');
   const [description, setDescription] = useState(editRecipe?.description || '');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageAsset, setImageAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [notice, setNotice] = useState<NoticeState>(null);
   const hasMainIngredient = mainIngredients.some((ingredient) => ingredient.trim() !== '');
   const hasSubIngredient = selectedSubIngredients.length > 0;
@@ -149,6 +150,7 @@ export default function RecipeCreateScreen() {
       return;
     }
     setImagePreview(DUMMY_IMAGE);
+    setImageAsset(null);
   };
 
   const handlePickImage = async () => {
@@ -163,7 +165,9 @@ export default function RecipeCreateScreen() {
       quality: 0.9,
     });
     if (!result.canceled) {
-      setImagePreview(result.assets[0].uri);
+      const asset = result.assets[0];
+      setImagePreview(asset.uri);
+      setImageAsset(asset);
     }
   };
 
@@ -186,7 +190,13 @@ export default function RecipeCreateScreen() {
         target_flavor: [...selectedFlavorTags, ...customFlavorTags].join(', '),
         concept: concept.trim(),
         summary: description.trim(),
-        image_url: imagePreview?.startsWith('http') ? imagePreview : null,
+        image: imageAsset
+          ? {
+              uri: imageAsset.uri,
+              name: imageAsset.fileName,
+              type: imageAsset.mimeType,
+            }
+          : null,
       });
     } catch (error) {
       console.warn('Failed to create recipe through API', error);

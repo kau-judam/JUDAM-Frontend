@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { AlertCircle, Check, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -73,6 +73,7 @@ const termsData: TermItem[] = [
 
 export default function BreweryProjectTermsScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ recipeId?: string }>();
   const { user } = useAuth();
   const [agreedTerms, setAgreedTerms] = useState<string[]>([]);
   const [modalTerm, setModalTerm] = useState<TermItem | null>(null);
@@ -96,6 +97,11 @@ export default function BreweryProjectTermsScreen() {
     return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1;
   };
 
+  const getProjectCreateRoute = () => {
+    const rawRecipeId = Array.isArray(params.recipeId) ? params.recipeId[0] : params.recipeId;
+    return rawRecipeId ? `/brewery/project/create?recipeId=${rawRecipeId}` : '/brewery/project/create';
+  };
+
   const handleNext = async () => {
     if (!allAgreed || isSubmitting) return;
 
@@ -109,7 +115,7 @@ export default function BreweryProjectTermsScreen() {
         isFeePolicyAgreed: agreedTerms.includes('fee'),
         isResponsibilityAgreed: agreedTerms.includes('responsibility'),
       });
-      router.push('/brewery/project/create' as any);
+      router.push(getProjectCreateRoute() as any);
     } catch (error) {
       Alert.alert('약관 동의 저장 실패', getFundingApiErrorMessage(error, '약관 동의 저장 중 문제가 발생했습니다.'));
     } finally {

@@ -20,6 +20,7 @@ export interface User {
 
 interface AuthContextType {
   user: User | null;
+  isAuthReady: boolean;
   login: (email: string, password: string, type: UserType) => Promise<void>;
   logout: () => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
@@ -74,6 +75,13 @@ function getTemporaryLoginType(email: string, password: string, fallbackType: Us
   return fallbackType;
 }
 
+function normalizeTemporaryUser(user: User): User {
+  if (user.type === "user" && user.id === "2" && user.name === "테스트 사용자") {
+    return { ...user, name: "테스트소비자" };
+  }
+  return user;
+}
+
 async function saveTemporaryAccessToken(type: UserType) {
   await SafeStorage.setItem("judam_access_token", getTemporaryAccessToken(type));
 }
@@ -84,22 +92,26 @@ async function removeTemporaryAccessToken() {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   useEffect(() => {
     const loadUser = async () => {
       try {
         const savedUser = await SafeStorage.getItem("judam_user");
         if (savedUser) {
-          const parsedUser = JSON.parse(savedUser) as User;
-          setUser(parsedUser);
+          const parsedUser = normalizeTemporaryUser(JSON.parse(savedUser) as User);
           const savedToken = await SafeStorage.getItem("judam_access_token");
           const expectedToken = getTemporaryAccessToken(parsedUser.type);
           if (savedToken !== expectedToken) {
             await saveTemporaryAccessToken(parsedUser.type);
           }
+          await SafeStorage.setItem("judam_user", JSON.stringify(parsedUser));
+          setUser(parsedUser);
         }
       } catch (e) {
         console.error("Failed to load user from SafeStorage", e);
+      } finally {
+        setIsAuthReady(true);
       }
     };
     loadUser();
@@ -112,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const mockUser: User = {
       id: loginType === "brewery" ? "1" : "2",
       uid: loginType === "brewery" ? "JD-BREW0001" : "JD-USER0002",
-      name: loginType === "brewery" ? "술샘양조장" : "테스트 사용자",
+      name: loginType === "brewery" ? "술샘양조장" : "테스트소비자",
       email,
       phone: "010-1234-5678",
       type: loginType,
@@ -207,7 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, signup, verifyBrewery, updateUser }}>
+    <AuthContext.Provider value={{ user, isAuthReady, login, logout, signup, verifyBrewery, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

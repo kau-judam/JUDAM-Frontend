@@ -42,7 +42,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 
 import { Progress } from '@/components/ui/progress';
-import type { FundingProject, BudgetItem, ScheduleItem } from '@/constants/data';
+import type { FundingProject, BudgetItem, ScheduleItem, ProjectStatus } from '@/constants/data';
 import { useAuth, type User as AuthUser } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import {
@@ -60,6 +60,7 @@ import {
   updateFundingDraft,
 } from '@/features/funding/api';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
+import { FIXED_PROJECT_SHIPPING_FEE } from '@/features/funding/supportConfig';
 import { createRecipeFunding } from '@/features/recipe/api';
 import SafeStorage from '@/utils/storage';
 
@@ -115,6 +116,8 @@ const BANK_OPTIONS = ['KB국민', '신한', '우리', '하나', '농협은행', 
 const TEMP_SAVE_KEY = 'judam_project_temp_save';
 const DOCUMENT_PICKER_TYPES = ['application/pdf', 'image/*'];
 const DOCUMENT_FILE_KEYS: DocumentFileKey[] = ['idCard', 'businessLicense', 'salesPermit', 'alcoholPermit', 'manufacturingLicense'];
+// TODO: 백엔드 제출/심사 API가 붙으면 새 프로젝트 기본 상태를 다시 심사 흐름으로 전환한다.
+const TEMP_CREATED_PROJECT_STATUS: ProjectStatus = '진행 중';
 const EMPTY_UPLOADED_FILES: Record<FileKey, UploadedFileValue> = {
   profileImage: '',
   idCard: '',
@@ -1367,7 +1370,7 @@ export default function BreweryProjectCreateScreen() {
       currentAmount: mode === 'edit' ? editProject?.currentAmount || 0 : 0,
       backers: mode === 'edit' ? editProject?.backers || 0 : 0,
       daysLeft: Number(fundingInfo.duration) || editProject?.daysLeft || 30,
-      status: mode === 'edit' ? editProject?.status || '심사 중' : '심사 중',
+      status: mode === 'edit' ? editProject?.status || '심사 중' : TEMP_CREATED_PROJECT_STATUS,
       startDate: fundingInfo.startDate,
       endDate: endDateText,
       pricePerBottle: Number(fundingInfo.pricePerBottle) || 0,
@@ -1378,7 +1381,7 @@ export default function BreweryProjectCreateScreen() {
       targetQuantity: quantity,
       estimatedDelivery: fundingInfo.expectedDeliveryDate,
       rewardItems: [`${basicInfo.title} ${volumeText(productInfo.volume)} x 1`.trim()],
-      shippingFee: editProject?.shippingFee ?? 3000,
+      shippingFee: FIXED_PROJECT_SHIPPING_FEE,
       mainIngredients: basicInfo.mainIngredient,
       subIngredients: basicInfo.subIngredient,
       tags: getReadyTags(),
@@ -1435,7 +1438,7 @@ export default function BreweryProjectCreateScreen() {
           id: convertedFunding.funding_id,
           goalAmount: convertedFunding.goal_amount,
           currentAmount: convertedFunding.current_amount,
-          status: convertedFunding.funding_status === 'ACTIVE' ? '진행 중' : payload.status,
+          status: TEMP_CREATED_PROJECT_STATUS,
           startDate: convertedFunding.start_date,
           endDate: convertedFunding.end_date,
         };
@@ -1532,7 +1535,7 @@ export default function BreweryProjectCreateScreen() {
               '전통주 제조 면허증 및 통신판매 신고증이 있어야 합니다',
               '프로젝트 내용과 리워드가 명확하게 작성되어야 합니다',
               '발송 일정 및 환불 정책이 구체적으로 명시되어야 합니다',
-              '심사는 3-5영업일이 소요되며, 승인 후 펀딩을 시작할 수 있습니다',
+              '현재 테스트 기간에는 제출 즉시 후원 가능한 상태로 표시됩니다',
             ]}
           />
           <InfoBox tone="red" title="전통주 프로젝트 필수 설정" body="19세 이상 성인만 후원 가능합니다." compact />
@@ -2230,8 +2233,8 @@ export default function BreweryProjectCreateScreen() {
         </View>
       </KeyboardAvoidingView>
       <SimpleModal visible={showAlertModal} icon="alert" title="알림" body={alertMessage} primaryLabel="확인" onPrimary={() => setShowAlertModal(false)} />
-      <ConfirmModal visible={showSubmitConfirm} title={isEditMode ? '수정 내용을 반영하시겠습니까?' : '제출 하시겠습니까?'} body={isEditMode ? '수정한 내용이 기존 펀딩 게시글에 바로 반영됩니다.' : '제출하면 펀딩 게시글이 생성되고 심사 중 상태로 등록됩니다.'} onCancel={() => setShowSubmitConfirm(false)} onConfirm={confirmSubmit} />
-      <SimpleModal visible={showSubmitSuccess} icon="success" title={isEditMode ? '수정이 완료되었습니다' : '성공적으로 업로드 되었습니다'} body={isEditMode ? '수정한 내용이 펀딩 게시글에 반영되었습니다.' : '펀딩 게시글이 생성되었습니다. 심사는 3-5영업일이 소요됩니다.'} primaryLabel="게시글 확인" onPrimary={handleSubmitSuccessClose} />
+      <ConfirmModal visible={showSubmitConfirm} title={isEditMode ? '수정 내용을 반영하시겠습니까?' : '제출 하시겠습니까?'} body={isEditMode ? '수정한 내용이 기존 펀딩 게시글에 바로 반영됩니다.' : '제출하면 펀딩 게시글이 생성되고 임시 승인 상태로 바로 후원할 수 있습니다.'} onCancel={() => setShowSubmitConfirm(false)} onConfirm={confirmSubmit} />
+      <SimpleModal visible={showSubmitSuccess} icon="success" title={isEditMode ? '수정이 완료되었습니다' : '성공적으로 업로드 되었습니다'} body={isEditMode ? '수정한 내용이 펀딩 게시글에 반영되었습니다.' : '펀딩 게시글이 생성되었습니다. 현재 테스트를 위해 바로 후원 가능한 상태로 표시됩니다.'} primaryLabel="게시글 확인" onPrimary={handleSubmitSuccessClose} />
       <TempSaveModal
         visible={showTempSaveModal}
         mode={tempSaveMode}

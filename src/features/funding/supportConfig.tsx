@@ -44,6 +44,7 @@ export const mockAddresses: SupportAddress[] = [
 
 export const bankOptions = ['국민은행', '신한은행', '우리은행', '하나은행', '농협은행', '카카오뱅크'];
 export const MAX_ADDITIONAL_SUPPORT = 10000000;
+export const FIXED_PROJECT_SHIPPING_FEE = 3000;
 
 export function digitsOnly(value: string) {
   return value.replace(/[^0-9]/g, '');
@@ -70,8 +71,8 @@ export function getProjectUnitPrice(project: FundingProject) {
   return 0;
 }
 
-export function getProjectShippingFee(project: FundingProject) {
-  return project.shippingFee ?? 0;
+export function getProjectShippingFee(_project: FundingProject) {
+  return FIXED_PROJECT_SHIPPING_FEE;
 }
 
 export function getProjectBottleSize(project: FundingProject) {

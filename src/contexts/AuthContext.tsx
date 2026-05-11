@@ -75,6 +75,13 @@ function getTemporaryLoginType(email: string, password: string, fallbackType: Us
   return fallbackType;
 }
 
+function normalizeTemporaryUser(user: User): User {
+  if (user.type === "user" && user.id === "2" && user.name === "테스트 사용자") {
+    return { ...user, name: "테스트소비자" };
+  }
+  return user;
+}
+
 async function saveTemporaryAccessToken(type: UserType) {
   await SafeStorage.setItem("judam_access_token", getTemporaryAccessToken(type));
 }
@@ -92,12 +99,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const savedUser = await SafeStorage.getItem("judam_user");
         if (savedUser) {
-          const parsedUser = JSON.parse(savedUser) as User;
+          const parsedUser = normalizeTemporaryUser(JSON.parse(savedUser) as User);
           const savedToken = await SafeStorage.getItem("judam_access_token");
           const expectedToken = getTemporaryAccessToken(parsedUser.type);
           if (savedToken !== expectedToken) {
             await saveTemporaryAccessToken(parsedUser.type);
           }
+          await SafeStorage.setItem("judam_user", JSON.stringify(parsedUser));
           setUser(parsedUser);
         }
       } catch (e) {
@@ -116,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const mockUser: User = {
       id: loginType === "brewery" ? "1" : "2",
       uid: loginType === "brewery" ? "JD-BREW0001" : "JD-USER0002",
-      name: loginType === "brewery" ? "술샘양조장" : "테스트 사용자",
+      name: loginType === "brewery" ? "술샘양조장" : "테스트소비자",
       email,
       phone: "010-1234-5678",
       type: loginType,

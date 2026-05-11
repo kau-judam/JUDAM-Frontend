@@ -20,13 +20,14 @@ import {
   CheckCircle, 
   ChevronLeft,
   ChevronRight, 
-  MessageCircle, 
   Factory, 
-  FileCheck, 
   Target, 
   X,
   Camera,
   Send,
+  PartyPopper,
+  Wine,
+  BookOpen,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { SlideInRight } from 'react-native-reanimated';
@@ -43,13 +44,24 @@ import {
   type ProjectStatus,
 } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
+import { initialNotifications, type AppNotification } from '@/features/notifications/data';
 
-const recentNotifications = [
-  { id: 1, type: "recipe", message: "새로운 레시피 제안이 도착했습니다", time: "10분 전", unread: true },
-  { id: 2, type: "funding", message: "벚꽃 막걸리 펀딩이 85%를 달성했습니다", time: "1시간 전", unread: true },
-  { id: 3, type: "comment", message: "누군가 프로젝트에 댓글을 남겼습니다", time: "2시간 전", unread: false },
-  { id: 4, type: "system", message: "제조 진행 현황이 업데이트되었습니다", time: "5시간 전", unread: false },
-];
+const unreadDashboardNotifications = initialNotifications.filter((notification) => !notification.read);
+
+const getDashboardNotificationIcon = (type: AppNotification["type"]) => {
+  switch (type) {
+    case "funding_success":
+      return <PartyPopper size={16} color="#FFF" />;
+    case "funding_end":
+      return <AlertCircle size={16} color="#FFF" />;
+    case "funding_new":
+      return <Wine size={16} color="#FFF" />;
+    case "funding_progress":
+      return <TrendingUp size={16} color="#FFF" />;
+    case "recipe_popular":
+      return <BookOpen size={16} color="#FFF" />;
+  }
+};
 
 const manufacturingStages = ["원료준비", "원료 가공", "발효", "제성", "병입"];
 
@@ -332,7 +344,7 @@ export default function BreweryDashboardScreen() {
            <View style={styles.rowBetween}>
               <View>
                  <Text style={styles.sectionTitle}>알림 및 정보</Text>
-                 <Text style={styles.sectionSubtitle}>최근 활동과 중요한 알림</Text>
+                 <Text style={styles.sectionSubtitle}>새로운 알림</Text>
               </View>
               <TouchableOpacity onPress={() => router.push('/notifications' as any)}>
                  <View style={styles.moreLink}>
@@ -343,18 +355,37 @@ export default function BreweryDashboardScreen() {
            </View>
 
            <View style={styles.notifBox}>
-              {recentNotifications.map((n, i) => (
-                <View key={n.id} style={[styles.notifItem, i < recentNotifications.length - 1 && styles.notifBorder, n.unread && styles.notifUnread]}>
-                   <View style={[styles.notifIcon, {backgroundColor: n.type === 'recipe' ? '#DBEAFE' : n.type === 'funding' ? '#D1FAE5' : '#F3E8FF'}]}>
-                      {n.type === 'recipe' ? <FileCheck size={16} color="#2563EB" /> : n.type === 'funding' ? <TrendingUp size={16} color="#059669" /> : <MessageCircle size={16} color="#9333EA" />}
-                   </View>
-                   <View style={{ flex: 1 }}>
-                      <Text style={styles.notifMsg}>{n.message}</Text>
-                      <Text style={styles.notifTime}>{n.time}</Text>
-                   </View>
-                   {n.unread && <View style={styles.notifDot} />}
+              {unreadDashboardNotifications.length === 0 ? (
+                <View style={styles.notifEmpty}>
+                  <Bell size={28} color="#D1D5DB" />
+                  <Text style={styles.notifEmptyText}>새로운 알림이 없습니다</Text>
                 </View>
-              ))}
+              ) : (
+                unreadDashboardNotifications.map((notification, i) => (
+                  <TouchableOpacity
+                    key={notification.id}
+                    style={[
+                      styles.notifItem,
+                      i < unreadDashboardNotifications.length - 1 && styles.notifBorder,
+                      styles.notifUnread,
+                    ]}
+                    activeOpacity={0.85}
+                    onPress={() => {
+                      if (notification.link) router.push(notification.link as any);
+                    }}
+                  >
+                    <View style={styles.notifIcon}>
+                      {getDashboardNotificationIcon(notification.type)}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.notifMsg}>{notification.title}</Text>
+                      <Text style={styles.notifContent} numberOfLines={2}>{notification.content}</Text>
+                      <Text style={styles.notifTime}>{notification.timestamp}</Text>
+                    </View>
+                    <View style={styles.notifDot} />
+                  </TouchableOpacity>
+                ))
+              )}
            </View>
         </View>
       </ScrollView>
@@ -557,11 +588,14 @@ const styles = StyleSheet.create({
   notifBox: { backgroundColor: '#FFF', borderRadius: 20, overflow: 'hidden', marginVertical: 16 },
   notifItem: { flexDirection: 'row', padding: 16, gap: 12, alignItems: 'center' },
   notifBorder: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  notifUnread: { backgroundColor: '#EFF6FF' },
-  notifIcon: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  notifUnread: { backgroundColor: '#F1F3F5' },
+  notifIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#111827', justifyContent: 'center', alignItems: 'center' },
   notifMsg: { fontSize: 13, color: '#111', fontWeight: '500', marginBottom: 4 },
+  notifContent: { fontSize: 12, color: '#4B5563', lineHeight: 17, marginBottom: 6 },
   notifTime: { fontSize: 11, color: '#9CA3AF' },
-  notifDot: { width: 6, height: 6, backgroundColor: '#3B82F6', borderRadius: 3 },
+  notifDot: { width: 6, height: 6, backgroundColor: '#9CA3AF', borderRadius: 3 },
+  notifEmpty: { minHeight: 112, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  notifEmptyText: { fontSize: 13, fontWeight: '600', color: '#9CA3AF' },
   quickStat: { flex: 1, backgroundColor: '#FFF', padding: 12, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: '#F3F4F6' },
   qsIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   qsVal: { fontSize: 16, fontWeight: '800', color: '#111' },

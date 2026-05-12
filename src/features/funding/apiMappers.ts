@@ -47,6 +47,11 @@ function normalizeText(value?: string) {
   return (value || '').replace(/\s/g, '').toLowerCase();
 }
 
+export function normalizeSupportOptionId(value: FundingSupportOption['optionId'] | null | undefined) {
+  const optionId = Number(value);
+  return Number.isFinite(optionId) ? optionId : null;
+}
+
 function isSameFundingText(current?: string, incoming?: string) {
   const currentText = normalizeText(current);
   const incomingText = normalizeText(incoming);

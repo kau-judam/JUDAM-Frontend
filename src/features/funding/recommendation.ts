@@ -31,7 +31,7 @@ const btiTasteProfiles: Record<string, TasteProfile> = {
 
 export function getTasteProfileFromSulbti(sulbti?: string): TasteProfile | null {
   if (!sulbti) return null;
-  const code = sulbti.trim().toUpperCase().replace(/^JD-/, "");
+  const code = sulbti.trim().toUpperCase().replace(/^JD-/, "").split("-")[0];
   return btiTasteProfiles[code] || null;
 }
 

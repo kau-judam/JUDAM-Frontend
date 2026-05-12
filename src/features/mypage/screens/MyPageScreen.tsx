@@ -44,7 +44,7 @@ import { useFunding } from '@/contexts/FundingContext';
 import { Button } from '@/components/ui/button';
 import { getFundingApiErrorMessage, getMyFundingOrders, isFundingApiMissingEndpointError } from '@/features/funding/api';
 import { showLoginRequired } from '@/utils/authPrompt';
-import { getBtiResult } from '@/features/bti/data';
+import { getBtiResult, resolveBtiType, resolveSulbtiCode } from '@/features/bti/data';
 
 const MY_ACTIVITIES = [
   { id: 1, type: "post", label: "게시글 작성", content: "오늘 드디어 벚꽃 막걸리 도착했어요! 첫 모금부터 꽃향기가 확 퍼지는 게 정말 감동이에요. 🌸", category: "자유게시판", likes: 42, comments: 8, time: "2시간 전" },
@@ -157,9 +157,11 @@ export default function MyPageScreen() {
 
   const initial = user.name?.[0] || 'U';
   const isBrewery = user.type === 'brewery';
-  const btiResult = user.sulbti ? getBtiResult(user.sulbti) : null;
+  const savedBtiCode = resolveSulbtiCode(user.sulbti);
+  const savedBtiType = resolveBtiType(savedBtiCode);
+  const btiResult = savedBtiCode ? getBtiResult(savedBtiCode) : null;
   const openBtiResultOrTest = () => {
-    router.push((user.sulbti ? `/bti-result/${user.sulbti}` : '/bti-test') as any);
+    router.push((savedBtiCode ? `/bti-result/${savedBtiCode}` : '/bti-test') as any);
   };
   const startBtiTest = () => {
     router.push('/bti-test' as any);
@@ -208,7 +210,7 @@ export default function MyPageScreen() {
            <TouchableOpacity style={styles.btiCard} activeOpacity={0.9} onPress={openBtiResultOrTest}>
               <View style={styles.btiIconBox}><Text style={{fontSize: 24}}>🍶</Text></View>
               <View style={styles.btiTxtBox}>
-                 <Text style={styles.btiTitle}>{btiResult ? `나의 술BTI ${btiResult.type}` : '나의 술BTI 확인하기'}</Text>
+                 <Text style={styles.btiTitle}>{btiResult ? `나의 술BTI ${savedBtiType}` : '나의 술BTI 확인하기'}</Text>
                  <Text style={styles.btiDesc}>{btiResult ? btiResult.name : '아직 테스트를 진행하지 않으셨어요'}</Text>
               </View>
               <ArrowRight size={20} color="#9CA3AF" />

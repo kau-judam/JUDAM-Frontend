@@ -13,18 +13,58 @@ import { ArrowLeft, Home, Lock, RotateCcw, Share2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { getBtiResult } from '@/features/bti/data';
+import { getBtiDisplayType, getBtiResult, resolveSulbtiCode } from '@/features/bti/data';
+
+const TASTE_AXIS_CONFIG = [
+  { key: 'sweetness', leftLabel: '달콤함', rightLabel: '깔끔함', valueLabel: '단맛', highSide: 'left' },
+  { key: 'body', leftLabel: '가벼움', rightLabel: '걸쭉함', valueLabel: '바디', highSide: 'right' },
+  { key: 'carbonation', leftLabel: '청량함', rightLabel: '탄산없음', valueLabel: '탄산', highSide: 'left' },
+  { key: 'flavor', leftLabel: '구수함', rightLabel: '독특/새콤함', valueLabel: '전통감', highSide: 'left' },
+  { key: 'alcohol', leftLabel: '낮은 도수', rightLabel: '높은 도수', valueLabel: '도수', highSide: 'right' },
+] as const;
+
+function clampProfileValue(value?: number) {
+  if (!Number.isFinite(value)) return 3;
+  return Math.max(1, Math.min(5, value || 3));
+}
+
+function getAlcoholProfileValue(resultCode: string | null) {
+  if (resultCode?.endsWith('-B')) return 5;
+  if (resultCode?.endsWith('-M')) return 1;
+  return 3;
+}
+
+function getAxisPosition(value: number, highSide: 'left' | 'right') {
+  const ratio = ((clampProfileValue(value) - 1) / 4) * 100;
+  const position = highSide === 'left' ? 100 - ratio : ratio;
+  return Math.max(4, Math.min(96, Math.round(position)));
+}
 
 export default function BTIResultScreen() {
   const insets = useSafeAreaInsets();
   const { type } = useLocalSearchParams<{ type: string }>();
   const { user } = useAuth();
-  const result = getBtiResult(type);
+  const savedCode = resolveSulbtiCode(user?.sulbti);
+  const routeCode = resolveSulbtiCode(type);
+  const resultCode = savedCode || routeCode;
+  const displayType = getBtiDisplayType(resultCode);
+  const result = resultCode ? getBtiResult(resultCode) : null;
+  const tasteAxes = TASTE_AXIS_CONFIG.map((axis) => {
+    const sourceValue =
+      axis.key === 'alcohol'
+        ? getAlcoholProfileValue(resultCode)
+        : result?.tasteProfile.find((item) => item.label === axis.valueLabel)?.value;
+    return {
+      ...axis,
+      position: getAxisPosition(clampProfileValue(sourceValue), axis.highSide),
+    };
+  });
 
   const handleShare = async () => {
+    if (!result) return;
     await Share.share({
       title: '나의 술BTI 결과',
-      message: `나의 술BTI는 ${result.type} - ${result.name}입니다. 주담에서 나에게 맞는 막걸리 펀딩을 찾아보세요.`,
+      message: `나의 술BTI는 ${displayType} - ${result.name}입니다. 주담에서 나에게 맞는 막걸리 펀딩을 찾아보세요.`,
     });
   };
 
@@ -54,6 +94,32 @@ export default function BTIResultScreen() {
     );
   }
 
+  if (!savedCode || !result) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+          <TouchableOpacity style={styles.iconButton} onPress={() => router.replace('/mypage' as any)}>
+            <ArrowLeft size={21} color="#111" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>술BTI 결과</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+        <View style={styles.lockContainer}>
+          <View style={styles.lockCard}>
+            <View style={styles.lockIcon}>
+              <RotateCcw size={26} color="#111" />
+            </View>
+            <Text style={styles.lockTitle}>아직 결과가 없어요</Text>
+            <Text style={styles.lockDesc}>술BTI 검사를 끝까지 완료하면 결과가 계정에 저장됩니다.</Text>
+            <TouchableOpacity style={styles.lockButton} onPress={() => router.replace('/bti-test' as any)}>
+              <Text style={styles.lockButtonText}>검사 시작하기</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
@@ -70,7 +136,7 @@ export default function BTIResultScreen() {
       >
         <LinearGradient colors={['#111111', '#2B2B2B']} style={styles.resultHero}>
           <Text style={styles.heroLabel}>당신의 술BTI는</Text>
-          <Text style={styles.heroType}>{result.type}</Text>
+          <Text style={styles.heroType}>{displayType}</Text>
           <Text style={styles.heroName}>{result.name}</Text>
           <Text style={styles.heroEnglish}>{result.analysisTitle}</Text>
         </LinearGradient>
@@ -105,14 +171,15 @@ export default function BTIResultScreen() {
         <View style={styles.profileCard}>
           <Text style={styles.sectionTitle}>맛 프로필</Text>
           <View style={styles.profileList}>
-            {result.tasteProfile.map((item) => (
-              <View key={item.label} style={styles.profileRow}>
+            {tasteAxes.map((axis) => (
+              <View key={axis.key} style={styles.profileRow}>
                 <View style={styles.profileMeta}>
-                  <Text style={styles.profileLabel}>{item.label}</Text>
-                  <Text style={styles.profileValue}>{item.value}/5</Text>
+                  <Text style={styles.profileLabel}>{axis.leftLabel}</Text>
+                  <Text style={styles.profileLabelRight}>{axis.rightLabel}</Text>
                 </View>
-                <View style={styles.profileTrack}>
-                  <View style={[styles.profileFill, { width: `${(item.value / 5) * 100}%` }]} />
+                <View style={styles.profileAxisTrack}>
+                  <View style={styles.profileAxisCenter} />
+                  <View style={[styles.profileAxisThumb, { left: `${axis.position}%` as `${number}%` }]} />
                 </View>
               </View>
             ))}
@@ -125,11 +192,11 @@ export default function BTIResultScreen() {
         </TouchableOpacity>
 
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.86} onPress={() => router.replace('/bti-test' as any)}>
+          <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.86} onPress={() => router.push('/bti-test' as any)}>
             <RotateCcw size={17} color="#374151" />
             <Text style={styles.secondaryButtonText}>다시하기</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.86} onPress={() => router.replace('/' as any)}>
+          <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.86} onPress={() => router.replace('/(tabs)' as any)}>
             <Home size={17} color="#374151" />
             <Text style={styles.secondaryButtonText}>홈으로</Text>
           </TouchableOpacity>
@@ -163,13 +230,14 @@ const styles = StyleSheet.create({
   recommendItem: { flex: 1, minHeight: 58, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   recommendText: { fontSize: 13, lineHeight: 18, fontWeight: '800', color: '#374151', textAlign: 'center' },
   profileCard: { borderRadius: 22, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', padding: 18, gap: 16 },
-  profileList: { gap: 14 },
-  profileRow: { gap: 7 },
+  profileList: { gap: 17 },
+  profileRow: { gap: 8 },
   profileMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  profileLabel: { fontSize: 13, fontWeight: '800', color: '#4B5563' },
-  profileValue: { fontSize: 13, fontWeight: '900', color: '#111' },
-  profileTrack: { height: 8, borderRadius: 999, backgroundColor: '#F3F4F6', overflow: 'hidden' },
-  profileFill: { height: '100%', borderRadius: 999, backgroundColor: '#111' },
+  profileLabel: { flex: 1, fontSize: 13, fontWeight: '900', color: '#111' },
+  profileLabelRight: { flex: 1, fontSize: 13, fontWeight: '900', color: '#111', textAlign: 'right' },
+  profileAxisTrack: { height: 6, borderRadius: 999, backgroundColor: '#111', overflow: 'visible', justifyContent: 'center' },
+  profileAxisCenter: { position: 'absolute', left: '50%', width: 1, height: 14, backgroundColor: '#D1D5DB' },
+  profileAxisThumb: { position: 'absolute', width: 16, height: 16, marginLeft: -8, borderRadius: 8, backgroundColor: '#FFF', borderWidth: 2, borderColor: '#111', shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
   primaryButton: { height: 52, borderRadius: 16, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   primaryButtonText: { color: '#FFF', fontSize: 15, fontWeight: '900' },
   actionRow: { flexDirection: 'row', gap: 10 },

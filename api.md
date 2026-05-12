@@ -519,6 +519,8 @@ Request:
 - `multipart/form-data`
 - Text fields: `title`, `content`, `abv_range`, `main_ingredient`, `target_flavor`, `concept`, `summary`
 - File field: `image` optional. If omitted, backend stores `image_url = null`.
+- Do not manually set `Content-Type: application/json` for this request.
+- When sending `FormData`, do not manually set `Content-Type`; the runtime must set the multipart boundary.
 
 Response:
 ```ts
@@ -544,6 +546,13 @@ Notes:
 - 초기 `interest_count`: `0`
 - `image_url` 미입력 시 null 허용. PDF에는 향후 AI 썸네일 자동 생성 가능성이 언급됨.
 - AI 법률 필터링은 서버 계층에서 처리한다.
+- 2026-05-12 업데이트: AI 법률 필터링이 통과하지 않으면 레시피 등록은 차단된다. 법률 위반 키워드, AI 서버 오류, 응답 시간 초과, AI 서버 연결 실패 등은 모두 `400`과 `message`로 내려올 수 있다. 프론트는 서버 `message`를 사용자에게 그대로 안내한다.
+- 주요 실패 메시지:
+  - `'{위반 키워드}' 표현을 수정해주세요`
+  - `등록할 수 없는 내용이 포함되어 있습니다. 레시피 내용을 다시 확인해 주세요.`
+  - `AI 서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.`
+  - `AI 서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.`
+  - `AI 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.`
 
 Current screen gap:
 - 현재 `RecipeCreateScreen`은 메인 재료 배열, 선택 서브 재료 배열, 맛 태그 배열, 직접 입력 태그를 가진다. API는 문자열 필드를 받으므로 전송 전 join 규칙이 필요하다.
@@ -725,10 +734,14 @@ type RecipeCommentListResponse = {
   comments: Array<{
     comment_id: number;
     user_id: number;
-    user_nickname: string;
+    nickname: string;
+    author_profile_image: string | null;
+    author_type: "USER" | "BREWERY";
     content: string;
     like_count: number;
+    reply_count: number;
     is_liked: boolean;
+    is_mine: boolean;
     created_at: string;
     updated_at: string | null;
   }>;
@@ -739,13 +752,13 @@ type RecipeCommentListResponse = {
 ```
 
 Note:
-- PDF 예시 중 첫 댓글에 `user_user_nickname` 오타처럼 보이는 필드가 있다. 스키마 표 기준 `user_nickname`을 사용한다.
 - 정렬은 `created_at ASC`로 오래된 댓글 먼저.
-- 현재 프론트 상세 댓글 UI는 `authorType`, `avatar`, 대댓글을 사용하지만 API에는 없음.
+- 2026-05-12 업데이트: 댓글 목록 응답은 루트 댓글만 반환하고, 작성자 닉네임/프로필/유형, 현재 사용자 좋아요 여부, 현재 사용자 작성 여부, `reply_count`를 포함한다.
 
 Missing for current comment UI:
 - 2026-05-10 신규 명세에서 해결됨: 루트 댓글 응답에 `author_type`, `author_profile_image`, `is_mine` 추가.
 - 2026-05-10 신규 명세에서 대댓글 목록/작성 API 추가됨: `GET/POST /api/recipes/{recipeId}/comments/{commentId}/replies`.
+- 2026-05-12 신규 명세에서 `reply_count`가 추가되어 답글 수 선표시도 해결됨.
 - 대댓글 좋아요는 별도 API가 없지만 대댓글도 `recipe_comments` 행이므로 기존 댓글 좋아요 API(`POST/DELETE /api/recipes/{recipeId}/comments/{commentId}/likes`)에 대댓글 `comment_id`를 넣어 사용한다.
 
 ### Comment Create
@@ -965,7 +978,9 @@ type CreateRecipeReplyResponse = {
     content: string;
     like_count: number;
     created_at: string;
+    parent_reply_count: number;
   };
+  parent_reply_count: number;
 };
 ```
 
@@ -973,8 +988,8 @@ Frontend connection:
 - Connected on 2026-05-10.
 - API client: `src/features/recipe/api.ts`
 - Screen: `src/features/recipe/screens/RecipeDetailScreen.tsx`
-- 서버 과금 방지를 위해 댓글 목록 조회 시 모든 댓글의 대댓글을 한 번에 N+1로 조회하지 않는다. 사용자가 답글 입력을 열거나 답글 펼침을 누르는 시점에 해당 댓글의 대댓글 목록을 lazy load한다.
-- 대댓글 작성 성공 후 기존 답글 UI에 응답 값을 추가한다.
+- 서버 과금 방지를 위해 댓글 목록 조회 시 모든 댓글의 대댓글을 한 번에 N+1로 조회하지 않는다. 댓글 목록의 `reply_count`로 `N개 답글` 버튼을 먼저 표시하고, 사용자가 답글 입력을 열거나 답글 펼침을 누르는 시점에 해당 댓글의 대댓글 목록을 lazy load한다.
+- 대댓글 작성 성공 후 기존 답글 UI에 응답 값을 추가하고, `parent_reply_count`로 부모 댓글의 `N개 답글` 숫자를 즉시 갱신한다.
 - 대댓글 좋아요는 별도 endpoint가 없어 기존 댓글 좋아요 등록/취소 API에 대댓글 `comment_id`를 넣어 호출한다.
 
 ## Recipe Delete

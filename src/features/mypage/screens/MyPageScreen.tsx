@@ -16,14 +16,8 @@ import {
   TrendingUp,
   BookOpen,
   PenSquare,
-  Heart,
-  Hash,
   Mail,
-  Phone,
-  MessageCircle,
-  ThumbsUp,
   ChevronRight,
-  ShieldCheck,
   Megaphone,
   HelpCircle,
   LogOut,
@@ -34,22 +28,17 @@ import {
   LayoutDashboard,
   Lock,
   UserRound,
+  Scroll,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
 import { Button } from '@/components/ui/button';
 import { getFundingApiErrorMessage, getMyFundingOrders, isFundingApiMissingEndpointError } from '@/features/funding/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 import { getBtiResult } from '@/features/bti/data';
-
-const MY_ACTIVITIES = [
-  { id: 1, type: "post", label: "게시글 작성", content: "오늘 드디어 벚꽃 막걸리 도착했어요! 첫 모금부터 꽃향기가 확 퍼지는 게 정말 감동이에요. 🌸", category: "자유게시판", likes: 42, comments: 8, time: "2시간 전" },
-  { id: 2, type: "recipe", label: "레시피 작성", content: "국내산 쌀 2kg에 장미꽃잎 50g을 넣고 3일 발효하면 은은한 꽃향기가 정말 예쁘게 나와요 🌹", category: "레시피", likes: 28, comments: 6, time: "어제" },
-];
 
 const FAQ_ITEMS = [
   { id: 1, q: "펀딩 취소·환불은 어떻게 하나요?", a: "펀딩 취소는 마감일 전까지 마이페이지에서 직접 취소하실 수 있습니다. 단, 제조가 시작된 경우 취소가 불가할 수 있습니다." },
@@ -59,7 +48,6 @@ const FAQ_ITEMS = [
 export default function MyPageScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
-  const { favoriteFundings } = useFavorites();
   const { participatedFundings, mergeParticipationsFromOrders } = useFunding();
   const [supportVisible, setSupportVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
@@ -164,6 +152,9 @@ export default function MyPageScreen() {
   const startBtiTest = () => {
     router.push('/bti-test' as any);
   };
+  const fundedCount = isBrewery ? 6 : participatedFundings.length;
+  const archiveCount = 12;
+  const activityCount = 5;
 
   return (
     <View style={styles.container}>
@@ -220,44 +211,19 @@ export default function MyPageScreen() {
 
         {/* 3. Stats Grid */}
         <View style={styles.statsGrid}>
-           <StatItem icon={<TrendingUp size={18} color="#4B5563" />} label="참여 펀딩" val={participatedFundings.length.toString()} />
-           <StatItem icon={<Heart size={18} color="#4B5563" />} label="찜한 펀딩" val={favoriteFundings.length.toString()} />
-           <StatItem icon={<BookOpen size={18} color="#4B5563" />} label="내 아카이브" val="12" />
-           <StatItem icon={<PenSquare size={18} color="#4B5563" />} label="작성 게시글" val="5" />
+           <StatItem icon={<TrendingUp size={18} color="#4B5563" />} label="참여 펀딩" val={fundedCount.toString()} onPress={() => router.push('/mypage/funded' as any)} />
+           <StatItem icon={<BookOpen size={18} color="#4B5563" />} label="내 아카이브" val={archiveCount.toString()} onPress={() => router.push('/mypage/archive' as any)} />
+           <StatItem icon={<PenSquare size={18} color="#4B5563" />} label="나의 활동" val={activityCount.toString()} onPress={() => router.push('/mypage/activity' as any)} />
         </View>
 
         {/* 4. Sections */}
         <View style={styles.sectionArea}>
-           <Text style={styles.sectionLabel}>계정 정보</Text>
-           <View style={styles.infoCard}>
-              <InfoRow icon={<Hash size={14} color="#9CA3AF" />} label="고유 ID" val={user.uid || "JD-UNKNOWN"} />
-              <InfoRow icon={<Mail size={14} color="#9CA3AF" />} label="이메일" val={user.email} />
-              <InfoRow icon={<Phone size={14} color="#9CA3AF" />} label="전화번호" val={user.phone || "미등록"} last />
-           </View>
-
-           <Text style={[styles.sectionLabel, { marginTop: 24 }]}>나의 활동</Text>
-           {MY_ACTIVITIES.map(act => (
-             <TouchableOpacity key={act.id} style={styles.activityCard} activeOpacity={0.8}>
-                <View style={styles.actHeader}>
-                   <View style={[styles.actBadge, act.type === 'post' ? styles.actBadgeDark : styles.actBadgeGray]}>
-                      <Text style={[styles.actBadgeTxt, act.type === 'post' && { color: '#FFF' }]}>{act.label}</Text>
-                   </View>
-                   <Text style={styles.actTime}>{act.time}</Text>
-                </View>
-                <Text style={styles.actContent} numberOfLines={2}>{act.content}</Text>
-                <View style={styles.actFooter}>
-                   <View style={styles.actStat}><ThumbsUp size={12} color="#9CA3AF" /><Text style={styles.actStatTxt}>{act.likes}</Text></View>
-                   <View style={styles.actStat}><MessageCircle size={12} color="#9CA3AF" /><Text style={styles.actStatTxt}>{act.comments}</Text></View>
-                   <Text style={styles.viewMore}>자세히 보기</Text>
-                </View>
-             </TouchableOpacity>
-           ))}
-
-           <Text style={[styles.sectionLabel, { marginTop: 24 }]}>기타</Text>
+           <Text style={styles.sectionLabel}>기타</Text>
            <View style={styles.menuCard}>
-              {!isBrewery && <MenuItem icon={<ShieldCheck size={18} color="#6B7280" />} title="양조장 인증 신청" />}
+              <MenuItem icon={<Settings size={18} color="#6B7280" />} title="설정" />
               <MenuItem icon={<Megaphone size={18} color="#6B7280" />} title="공지사항" />
               <MenuItem icon={<HelpCircle size={18} color="#6B7280" />} title="고객센터" onPress={() => setSupportVisible(true)} />
+              <MenuItem icon={<Scroll size={18} color="#6B7280" />} title="약관 및 정책" onPress={() => router.push('/terms' as any)} />
               <MenuItem icon={<LogOut size={18} color="#EF4444" />} title="로그아웃" danger last onPress={logout} />
            </View>
         </View>
@@ -317,25 +283,13 @@ export default function MyPageScreen() {
   );
 }
 
-function StatItem({ icon, label, val }: any) {
+function StatItem({ icon, label, val, onPress }: any) {
   return (
-    <View style={styles.statItem}>
+    <TouchableOpacity style={styles.statItem} activeOpacity={0.85} onPress={onPress} disabled={!onPress}>
        <View style={styles.statIconBox}>{icon}</View>
        <Text style={styles.statVal}>{val}</Text>
        <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function InfoRow({ icon, label, val, last }: any) {
-  return (
-    <View style={[styles.infoRow, !last && styles.borderB]}>
-       <View style={styles.infoIconBox}>{icon}</View>
-       <View style={{ flex: 1 }}>
-          <Text style={styles.infoLabel}>{label}</Text>
-          <Text style={styles.infoVal}>{val}</Text>
-       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -399,24 +353,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '700' },
   sectionArea: { padding: 24 },
   sectionLabel: { fontSize: 12, fontWeight: '800', color: '#9CA3AF', textTransform: 'uppercase', marginBottom: 12, marginLeft: 4 },
-  infoCard: { backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#F3F4F6' },
-  infoRow: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  infoIconBox: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' },
-  infoLabel: { fontSize: 10, color: '#9CA3AF', fontWeight: '700', marginBottom: 2 },
-  infoVal: { fontSize: 14, fontWeight: '700', color: '#111' },
   borderB: { borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
-  activityCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#F3F4F6' },
-  actHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  actBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  actBadgeDark: { backgroundColor: '#111' },
-  actBadgeGray: { backgroundColor: '#F3F4F6' },
-  actBadgeTxt: { fontSize: 10, fontWeight: '800', color: '#6B7280' },
-  actTime: { fontSize: 11, color: '#9CA3AF' },
-  actContent: { fontSize: 14, color: '#4B5563', lineHeight: 20, fontWeight: '500' },
-  actFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F9FAFB', gap: 16 },
-  actStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actStatTxt: { fontSize: 12, color: '#9CA3AF', fontWeight: '700' },
-  viewMore: { marginLeft: 'auto', fontSize: 11, color: '#9CA3AF', fontWeight: '700' },
   menuCard: { backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#F3F4F6' },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 18, gap: 12 },
   menuIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' },

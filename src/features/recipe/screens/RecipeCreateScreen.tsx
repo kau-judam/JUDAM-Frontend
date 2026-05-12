@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { recipesData } from '@/constants/data';
 import { createRecipe, getRecipeAccessToken } from '@/features/recipe/api';
+import { markCurrentUserRecipe } from '@/features/recipe/interestState';
 
 const FLAVOR_TAG_POOL = [
   '달콤함',
@@ -182,7 +183,7 @@ export default function RecipeCreateScreen() {
       return;
     }
     try {
-      await createRecipe({
+      const createdRecipe = await createRecipe({
         title: title.trim(),
         content: description.trim() || concept.trim(),
         abv_range: alcoholRange,
@@ -198,9 +199,13 @@ export default function RecipeCreateScreen() {
             }
           : null,
       });
+      markCurrentUserRecipe(createdRecipe.id);
     } catch (error) {
       console.warn('Failed to create recipe through API', error);
-      showNotice('API 레시피 제안에 실패했습니다.');
+      showNotice(
+        '레시피 제안에 실패했습니다.',
+        error instanceof Error ? error.message : '잠시 후 다시 시도해주세요.'
+      );
       return;
     }
     showNotice(

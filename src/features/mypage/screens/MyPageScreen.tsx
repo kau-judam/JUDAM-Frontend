@@ -38,7 +38,7 @@ import { useFunding } from '@/contexts/FundingContext';
 import { Button } from '@/components/ui/button';
 import { getFundingApiErrorMessage, getMyFundingOrders, isFundingApiMissingEndpointError } from '@/features/funding/api';
 import { showLoginRequired } from '@/utils/authPrompt';
-import { getBtiResult } from '@/features/bti/data';
+import { getBtiResult, resolveBtiType, resolveSulbtiCode } from '@/features/bti/data';
 
 const FAQ_ITEMS = [
   { id: 1, q: "펀딩 취소·환불은 어떻게 하나요?", a: "펀딩 취소는 마감일 전까지 마이페이지에서 직접 취소하실 수 있습니다. 단, 제조가 시작된 경우 취소가 불가할 수 있습니다." },
@@ -145,9 +145,11 @@ export default function MyPageScreen() {
 
   const initial = user.name?.[0] || 'U';
   const isBrewery = user.type === 'brewery';
-  const btiResult = user.sulbti ? getBtiResult(user.sulbti) : null;
+  const savedBtiCode = resolveSulbtiCode(user.sulbti);
+  const savedBtiType = resolveBtiType(savedBtiCode);
+  const btiResult = savedBtiCode ? getBtiResult(savedBtiCode) : null;
   const openBtiResultOrTest = () => {
-    router.push((user.sulbti ? `/bti-result/${user.sulbti}` : '/bti-test') as any);
+    router.push((savedBtiCode ? `/bti-result/${savedBtiCode}` : '/bti-test') as any);
   };
   const startBtiTest = () => {
     router.push('/bti-test' as any);
@@ -199,7 +201,7 @@ export default function MyPageScreen() {
            <TouchableOpacity style={styles.btiCard} activeOpacity={0.9} onPress={openBtiResultOrTest}>
               <View style={styles.btiIconBox}><Text style={{fontSize: 24}}>🍶</Text></View>
               <View style={styles.btiTxtBox}>
-                 <Text style={styles.btiTitle}>{btiResult ? `나의 술BTI ${btiResult.type}` : '나의 술BTI 확인하기'}</Text>
+                 <Text style={styles.btiTitle}>{btiResult ? `나의 술BTI ${savedBtiType}` : '나의 술BTI 확인하기'}</Text>
                  <Text style={styles.btiDesc}>{btiResult ? btiResult.name : '아직 테스트를 진행하지 않으셨어요'}</Text>
               </View>
               <ArrowRight size={20} color="#9CA3AF" />

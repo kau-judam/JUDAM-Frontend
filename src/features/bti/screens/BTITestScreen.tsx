@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -20,6 +21,7 @@ import {
   BtiQuestion,
   buildAnswersWithCustomInputs,
   calculateSulbti,
+  resolveSulbtiCode,
 } from '@/features/bti/data';
 
 const QUESTIONS_PER_PAGE = 5;
@@ -32,6 +34,7 @@ export default function BTITestScreen() {
   const [answers, setAnswers] = useState<BtiAnswers>({});
   const [customInputs, setCustomInputs] = useState<Record<number, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const currentQuestions = useMemo(
     () => BTI_QUESTIONS.slice(currentPage * QUESTIONS_PER_PAGE, (currentPage + 1) * QUESTIONS_PER_PAGE),
@@ -40,7 +43,12 @@ export default function BTITestScreen() {
 
   const progress = ((currentPage + 1) / TOTAL_PAGES) * 100;
 
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [currentPage]);
+
   const handleBack = () => {
+    if (isSubmitting) return;
     if (currentPage > 0) {
       setCurrentPage((page) => page - 1);
       return;
@@ -77,7 +85,6 @@ export default function BTITestScreen() {
   const handleNext = async () => {
     if (!isPageComplete || isSubmitting) return;
     const mergedAnswers = buildAnswersWithCustomInputs(answers, customInputs);
-    setAnswers(mergedAnswers);
 
     if (currentPage < TOTAL_PAGES - 1) {
       setCurrentPage((page) => page + 1);
@@ -85,10 +92,15 @@ export default function BTITestScreen() {
     }
 
     setIsSubmitting(true);
-    const resultType = calculateSulbti(mergedAnswers);
-    await updateUser({ sulbti: resultType });
-    setIsSubmitting(false);
-    router.replace(`/bti-result/${resultType}` as any);
+    try {
+      const resultType = resolveSulbtiCode(calculateSulbti(mergedAnswers));
+      if (!resultType) throw new Error('Invalid sulbti result');
+      await updateUser({ sulbti: resultType });
+      router.replace(`/bti-result/${resultType}` as any);
+    } catch {
+      setIsSubmitting(false);
+      Alert.alert('결과 저장 실패', '잠시 후 다시 시도해 주세요.');
+    }
   };
 
   if (!user) {
@@ -126,7 +138,7 @@ export default function BTITestScreen() {
     >
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.iconButton} onPress={handleBack}>
+          <TouchableOpacity style={styles.iconButton} disabled={isSubmitting} onPress={handleBack}>
             <ArrowLeft size={21} color="#111" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>술BTI 검사</Text>
@@ -144,6 +156,7 @@ export default function BTITestScreen() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 96 }]}
         keyboardShouldPersistTaps="handled"

@@ -100,7 +100,7 @@ export default function FundingListScreen() {
     getFundingList({ status, sort: apiSort, page: 0, size: 10 })
       .then((response) => {
         if (!mounted) return;
-        const nextProjects = response.content.map((item) =>
+        const nextProjects = response.data.map((item) =>
           mergeFundingListItem(projectsRef.current.find((project) => project.id === item.fundingId), item)
         );
         mergeProjects(nextProjects);

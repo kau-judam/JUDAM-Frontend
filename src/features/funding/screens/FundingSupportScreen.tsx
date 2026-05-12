@@ -43,7 +43,7 @@ import {
   isFundingApiMissingEndpointError,
   requestFundingPayment,
 } from '@/features/funding/api';
-import { mergeSupportOption } from '@/features/funding/apiMappers';
+import { mergeSupportOption, normalizeSupportOptionId } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import {
@@ -184,9 +184,11 @@ export default function FundingSupportScreen() {
       .then((response) => {
         const currentProject = projectRef.current;
         if (!mounted || !currentProject) return;
-        const option = response.supportOptions.find((item) => item.optionId === selectedSupportOptionId) || response.supportOptions[0];
+        const option = response.supportOptions.find((item) => normalizeSupportOptionId(item.optionId) === selectedSupportOptionId) || response.supportOptions[0];
         if (!option) return;
-        setSelectedSupportOptionId(option.optionId);
+        const optionId = normalizeSupportOptionId(option.optionId);
+        if (optionId === null) return;
+        setSelectedSupportOptionId(optionId);
         mergeProject(project.id, mergeSupportOption(currentProject, option));
       })
       .catch((error) => {

@@ -468,6 +468,7 @@ export interface Recipe {
   status?: string;
   isFundable?: boolean;
   authorType?: string;
+  authorId?: string;
   authorAvatar?: string | ImageSourcePropType;
   createdAt?: string;
 }

@@ -51,10 +51,13 @@ import {
   appendRecipeReplyState,
   getRecipeCommentCountState,
   getRecipeInterestState,
+  getRecipeReplyCountState,
   getRecipeReplyState,
+  isCurrentUserRecipe,
   markRecipeDeleted,
   setRecipeCommentCountState,
   setRecipeInterestState,
+  setRecipeReplyCountState,
   setRecipeReplyState,
 } from '@/features/recipe/interestState';
 import { showLoginRequired } from '@/utils/authPrompt';
@@ -96,6 +99,7 @@ interface RecipeComment {
   authorType: 'user' | 'brewery';
   userId?: number;
   isMine?: boolean;
+  replyCount?: number;
   replies?: RecipeCommentReply[];
 }
 
@@ -126,6 +130,7 @@ export default function RecipeDetailScreen() {
     authorAvatar: personImages[(fallbackRecipe.id - 1) % personImages.length],
     alcoholRange: '6%~8%',
     description: fallbackRecipe.description,
+    concept: fallbackRecipe.concept,
     mainIngredients: fallbackRecipe.ingredients?.slice(0, 3) || ['쌀', '누룩', '물'],
     subIngredients: ['생수', '꿀'],
     flavorTags: ['달콤한', '부드러운', '은은한 산미'],
@@ -133,6 +138,7 @@ export default function RecipeDetailScreen() {
     timestamp: fallbackRecipe.timestamp,
     image: fallbackRecipe.image,
     isFundable: fallbackRecipe.isFundable,
+    authorId: fallbackRecipe.authorId,
   });
   const [comments, setComments] = useState<RecipeComment[]>([]);
 
@@ -155,6 +161,7 @@ export default function RecipeDetailScreen() {
         authorAvatar: nextRecipe.authorAvatar || personImages[(nextRecipe.id - 1) % personImages.length],
         alcoholRange: nextRecipe.alcoholRange || '6%~8%',
         description: nextRecipe.description,
+        concept: nextRecipe.concept,
         mainIngredients: nextRecipe.ingredients?.length ? nextRecipe.ingredients : ['쌀', '누룩', '물'],
         subIngredients: nextRecipe.subIngredients || [],
         flavorTags: nextRecipe.flavorTags || [],
@@ -162,6 +169,7 @@ export default function RecipeDetailScreen() {
         timestamp: nextRecipe.timestamp,
         image: nextRecipe.image,
         isFundable: nextRecipe.isFundable,
+        authorId: nextRecipe.authorId,
       });
       const interestState = getRecipeInterestState(nextRecipe.id);
       const commentCountState = getRecipeCommentCountState(nextRecipe.id);
@@ -177,6 +185,7 @@ export default function RecipeDetailScreen() {
         authorAvatar: personImages[(fallbackRecipe.id - 1) % personImages.length],
         alcoholRange: fallbackRecipe.alcoholRange || '6%~8%',
         description: fallbackRecipe.description,
+        concept: fallbackRecipe.concept,
         mainIngredients: fallbackRecipe.ingredients?.slice(0, 3) || ['쌀', '누룩', '물'],
         subIngredients: fallbackRecipe.subIngredients || ['생수', '꿀'],
         flavorTags: fallbackRecipe.flavorTags || ['달콤한', '부드러운', '은은한 산미'],
@@ -184,6 +193,7 @@ export default function RecipeDetailScreen() {
         timestamp: fallbackRecipe.timestamp,
         image: fallbackRecipe.image,
         isFundable: fallbackRecipe.isFundable,
+        authorId: fallbackRecipe.authorId,
       });
       setLiked(Boolean(fallbackRecipe.liked));
       setLikesCount(fallbackRecipe.likes);
@@ -201,9 +211,10 @@ export default function RecipeDetailScreen() {
           {
             const mapped = mapRecipeComment(comment, personImages[index % personImages.length]) as RecipeComment;
             const rememberedReplies = getRecipeReplyState(recipeId, mapped.id);
+            const rememberedReplyCount = getRecipeReplyCountState(recipeId, mapped.id);
             return rememberedReplies.length
-              ? { ...mapped, replies: rememberedReplies }
-              : mapped;
+              ? { ...mapped, replyCount: rememberedReplyCount ?? mapped.replyCount ?? rememberedReplies.length, replies: rememberedReplies }
+              : { ...mapped, replyCount: rememberedReplyCount ?? mapped.replyCount ?? 0 };
           }
         )
       );
@@ -221,7 +232,12 @@ export default function RecipeDetailScreen() {
   }, [loadRecipeFromApi, loadCommentsFromApi]);
 
   const isBreweryUser = user?.type === 'brewery';
-  const isRecipeAuthor = Boolean(user && user.name === recipe.author);
+  const isRecipeAuthor = Boolean(
+    user &&
+      (user.name === recipe.author ||
+        recipe.authorId === user.id ||
+        isCurrentUserRecipe(recipe.id))
+  );
   const selectedComment = comments.find((comment) => comment.id === commentMenuTarget);
   const canManageSelectedComment = Boolean(user && (selectedComment?.author === user.name || selectedComment?.isMine));
   const getCommentReplies = (comment: RecipeComment) => comment.replies || [];
@@ -262,6 +278,7 @@ export default function RecipeDetailScreen() {
         )
       );
       setRecipeReplyState(recipeId, commentId, nextReplies);
+      setRecipeReplyCountState(recipeId, commentId, nextReplies.length);
       setLoadedReplyCommentIds((prev) => new Set([...prev, commentId]));
     } catch (error) {
       console.warn('Failed to load recipe comment replies from API', error);
@@ -417,11 +434,23 @@ export default function RecipeDetailScreen() {
         userId: response.reply.user_id,
         isMine: true,
       };
+      const nextReplyCount = response.parent_reply_count ?? response.reply.parent_reply_count;
       appendRecipeReplyState(recipe.id, commentId, newReply);
       setComments((prev) =>
         prev.map((comment) =>
-          comment.id === commentId ? { ...comment, replies: [...getCommentReplies(comment), newReply] } : comment
+          comment.id === commentId
+            ? {
+                ...comment,
+                replyCount: nextReplyCount ?? Math.max(comment.replyCount ?? 0, getCommentReplies(comment).length + 1),
+                replies: [...getCommentReplies(comment), newReply],
+              }
+            : comment
         )
+      );
+      setRecipeReplyCountState(
+        recipe.id,
+        commentId,
+        nextReplyCount ?? Math.max(comments.find((comment) => comment.id === commentId)?.replyCount ?? 0, getRecipeReplyState(recipe.id, commentId).length + 1)
       );
       setLoadedReplyCommentIds((prev) => new Set([...prev, commentId]));
       setReplyInput('');
@@ -636,6 +665,13 @@ export default function RecipeDetailScreen() {
             <View style={styles.alcoholTag}><Text style={styles.alcoholTxt}>{recipe.alcoholRange}</Text></View>
           </View>
 
+          {recipe.concept ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>프로젝트 컨셉</Text>
+              <Text style={styles.bodyText}>{recipe.concept}</Text>
+            </View>
+          ) : null}
+
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>레시피 요약</Text>
             <Text style={styles.bodyText}>{recipe.description}</Text>
@@ -717,10 +753,10 @@ export default function RecipeDetailScreen() {
                     <MessageCircle size={15} color="#9CA3AF" />
                     <Text style={styles.actionTxt}>답글</Text>
                   </TouchableOpacity>
-                  {getCommentReplies(c).length > 0 && (
+                  {(c.replyCount ?? getCommentReplies(c).length) > 0 && (
                     <TouchableOpacity style={styles.commentActionButton} onPress={() => toggleExpandComment(c.id)}>
                       {expandedComments.has(c.id) ? <ChevronUp size={15} color="#9CA3AF" /> : <ChevronDown size={15} color="#9CA3AF" />}
-                      <Text style={styles.actionTxt}>{getCommentReplies(c).length}개 답글</Text>
+                      <Text style={styles.actionTxt}>{c.replyCount ?? getCommentReplies(c).length}개 답글</Text>
                     </TouchableOpacity>
                   )}
                 </View>

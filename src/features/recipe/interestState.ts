@@ -24,10 +24,16 @@ export type RecipeReplyState = {
   isMine?: boolean;
 };
 
+type RecipeCommentReplyCountState = {
+  replyCount: number;
+};
+
 const recipeInterestState = new Map<number, RecipeInterestState>();
 const recipeEngagementState = new Map<number, RecipeEngagementState>();
 const recipeReplyState = new Map<string, RecipeReplyState[]>();
+const recipeReplyCountState = new Map<string, RecipeCommentReplyCountState>();
 const deletedRecipeIds = new Set<number>();
+const currentUserRecipeIds = new Set<number>();
 
 export const getRecipeInterestState = (recipeId: number) => recipeInterestState.get(recipeId);
 
@@ -54,6 +60,13 @@ export const setRecipeReplyState = (recipeId: number, commentId: number, replies
   recipeReplyState.set(getReplyKey(recipeId, commentId), replies);
 };
 
+export const getRecipeReplyCountState = (recipeId: number, commentId: number) =>
+  recipeReplyCountState.get(getReplyKey(recipeId, commentId))?.replyCount;
+
+export const setRecipeReplyCountState = (recipeId: number, commentId: number, replyCount: number) => {
+  recipeReplyCountState.set(getReplyKey(recipeId, commentId), { replyCount });
+};
+
 export const appendRecipeReplyState = (recipeId: number, commentId: number, reply: RecipeReplyState) => {
   const key = getReplyKey(recipeId, commentId);
   const current = recipeReplyState.get(key) || [];
@@ -65,6 +78,12 @@ export const markRecipeDeleted = (recipeId: number) => {
 };
 
 export const isRecipeDeleted = (recipeId: number) => deletedRecipeIds.has(recipeId);
+
+export const markCurrentUserRecipe = (recipeId: number) => {
+  currentUserRecipeIds.add(recipeId);
+};
+
+export const isCurrentUserRecipe = (recipeId: number) => currentUserRecipeIds.has(recipeId);
 
 export const applyRecipeInterestState = <
   T extends Pick<Recipe, 'id' | 'liked' | 'likes' | 'isFundable' | 'comments'>,

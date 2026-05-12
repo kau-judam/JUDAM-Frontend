@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { AlertCircle, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Plus, Star, X } from 'lucide-react-native';
+import { AlertCircle, BookOpen, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Plus, Star, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFundingProjectImageSource } from '@/constants/data';
@@ -69,10 +69,13 @@ function RatingStars({ value, onChange }: { value: number; onChange: (value: num
 
 export default function FundingReviewWriteScreen() {
   const insets = useSafeAreaInsets();
-  const { fundingId, reviewId } = useLocalSearchParams<{ fundingId?: string; reviewId?: string }>();
+  const { fundingId, reviewId, archiveMode } = useLocalSearchParams<{ fundingId?: string; reviewId?: string; archiveMode?: string }>();
   const { user } = useAuth();
   const { projects, participatedFundings, fundingReviews, addFundingReview, updateFundingReview } = useFunding();
   const projectId = Number(Array.isArray(fundingId) ? fundingId[0] : fundingId);
+  const rawArchiveMode = Array.isArray(archiveMode) ? archiveMode[0] : archiveMode;
+  const isArchiveMode = rawArchiveMode === 'funding' || rawArchiveMode === 'normal' || rawArchiveMode === '1' || rawArchiveMode === 'true';
+  const isNormalArchiveMode = rawArchiveMode === 'normal';
   const targetReviewId = Number(Array.isArray(reviewId) ? reviewId[0] : reviewId);
   const hasReviewIdParam = Number.isFinite(targetReviewId) && targetReviewId > 0;
   const project = useMemo(() => projects.find((item) => item.id === projectId) || null, [projectId, projects]);
@@ -89,6 +92,14 @@ export default function FundingReviewWriteScreen() {
   const editableReview = hasReviewIdParam ? requestedReview : ownExistingReview;
   const isEditMode = Boolean(editableReview && isFundingReviewOwnedByUser(editableReview, user));
   const reviewParamBlocked = hasReviewIdParam && (!requestedReview || !isFundingReviewOwnedByUser(requestedReview, user));
+  const canUseReviewForm = Boolean(user) && (isArchiveMode || (hasParticipated && canWriteForProjectStatus)) && !reviewParamBlocked;
+  const headerTitle = isArchiveMode
+    ? isEditMode
+      ? '나의 술 기록 수정'
+      : '나의 술 기록 작성'
+    : isEditMode
+      ? '펀딩 술 후기 수정'
+      : '펀딩 술 후기 작성';
   const presetTagValues = useMemo(
     () => new Set(Object.values(reviewPresetTags).reduce<string[]>((all, tags) => [...all, ...tags], [])),
     []
@@ -101,6 +112,7 @@ export default function FundingReviewWriteScreen() {
   const [customTags, setCustomTags] = useState<string[]>([]);
   const [customInput, setCustomInput] = useState('');
   const [openSection, setOpenSection] = useState<string | null>('맛·향');
+  const [normalDrinkName, setNormalDrinkName] = useState('');
   const [reviewText, setReviewText] = useState('');
   const [mood, setMood] = useState('');
   const [pairing, setPairing] = useState('');
@@ -183,12 +195,16 @@ export default function FundingReviewWriteScreen() {
       showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.');
       return;
     }
-    if (!canWriteForProjectStatus) {
+    if (!isArchiveMode && !canWriteForProjectStatus) {
       Alert.alert('후기 작성 불가', '후기는 성사된 펀딩에서만 작성할 수 있습니다.');
       return;
     }
     if (rating === 0) {
       Alert.alert('별점 입력', '별점을 입력해주세요.');
+      return;
+    }
+    if (isNormalArchiveMode && !normalDrinkName.trim()) {
+      Alert.alert('술 이름 입력', '기록할 술 이름을 입력해주세요.');
       return;
     }
     if (!reviewText.trim()) {
@@ -199,7 +215,7 @@ export default function FundingReviewWriteScreen() {
     setIsLoading(true);
     try {
       const imageFiles = uploadedImages.map((image) => imageFilesByUri[image]).filter((file): file is FundingUploadFile => Boolean(file));
-      const response = isEditMode
+      const response = isEditMode || isArchiveMode
         ? null
         : await createFundingReview(projectId, {
             rating,
@@ -213,7 +229,7 @@ export default function FundingReviewWriteScreen() {
         userName: user.name || '사용자',
         rating: response?.rating || rating,
         comment: reviewText.trim(),
-        rewardName,
+        rewardName: isNormalArchiveMode ? normalDrinkName.trim() : rewardName,
         images: response?.imageUrls?.length ? response.imageUrls : uploadedImages,
         mood: mood.trim(),
         pairing: pairing.trim(),
@@ -226,6 +242,12 @@ export default function FundingReviewWriteScreen() {
           : addFundingReview(reviewPayload);
       if (!savedReview) {
         Alert.alert('알림', '후기를 저장하지 못했습니다. 다시 시도해주세요.');
+        return;
+      }
+      if (isArchiveMode) {
+        Alert.alert('저장 완료', '나의 술 기록이 저장되었습니다.', [
+          { text: '확인', onPress: () => router.replace('/mypage/archive' as any) },
+        ]);
         return;
       }
       Alert.alert(isEditMode ? '후기가 수정되었습니다!' : '후기가 등록되었습니다!', isEditMode ? '수정한 내용이 후기 게시글에 반영되었습니다.' : '소중한 후기를 남겨주셔서 감사합니다.', [
@@ -251,7 +273,7 @@ export default function FundingReviewWriteScreen() {
     );
   }
 
-  if (!user || !hasParticipated || !canWriteForProjectStatus || reviewParamBlocked) {
+  if (!canUseReviewForm) {
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
         <AlertCircle size={48} color="#F59E0B" />
@@ -278,23 +300,44 @@ export default function FundingReviewWriteScreen() {
         <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
           <ChevronLeft size={24} color="#111" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{isEditMode ? '펀딩 술 후기 수정' : '펀딩 술 후기 작성'}</Text>
+        <Text style={styles.headerTitle}>{headerTitle}</Text>
         <View style={styles.headerButton} />
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 36 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.projectCard}>
-          <Image source={getFundingProjectImageSource(project)} style={styles.projectImage} />
+          {isNormalArchiveMode ? (
+            <View style={styles.normalRecordIconBox}>
+              <BookOpen size={26} color="#FFF" />
+            </View>
+          ) : (
+            <Image source={getFundingProjectImageSource(project)} style={styles.projectImage} />
+          )}
           <View style={styles.projectInfo}>
             <View style={styles.projectMetaRow}>
-              <Text style={styles.projectBadge}>펀딩 술</Text>
-              <Text style={styles.projectCategory} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text>
+              <Text style={styles.projectBadge}>{isNormalArchiveMode ? '일반 술' : '펀딩 술'}</Text>
+              <Text style={styles.projectCategory} numberOfLines={1}>
+                {isNormalArchiveMode ? '직접 기록' : getFundingMainIngredientLabel(project)}
+              </Text>
             </View>
-            <Text style={styles.projectTitle} numberOfLines={2}>{project.title}</Text>
-            <Text style={styles.projectBrewery}>{project.brewery}</Text>
-            <Text style={styles.projectReward} numberOfLines={1}>{rewardName}</Text>
+            <Text style={styles.projectTitle} numberOfLines={2}>{isNormalArchiveMode ? '새로운 술 기록' : project.title}</Text>
+            <Text style={styles.projectBrewery}>{isNormalArchiveMode ? '술 이름과 경험을 자유롭게 작성해주세요' : project.brewery}</Text>
+            {!isNormalArchiveMode && <Text style={styles.projectReward} numberOfLines={1}>{rewardName}</Text>}
           </View>
         </View>
+
+        {isNormalArchiveMode && (
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>술 이름 *</Text>
+            <TextInput
+              style={styles.input}
+              value={normalDrinkName}
+              onChangeText={setNormalDrinkName}
+              placeholder="예: 안동 증류식 소주"
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
+        )}
 
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>사진 첨부 (최대 3장)</Text>
@@ -446,6 +489,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16 },
   projectCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 14, borderWidth: 1, borderColor: '#F3F4F6', flexDirection: 'row', gap: 12 },
   projectImage: { width: 66, height: 66, borderRadius: 14, backgroundColor: '#E5E7EB' },
+  normalRecordIconBox: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
   projectInfo: { flex: 1, minWidth: 0, justifyContent: 'center' },
   projectMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
   projectBadge: { fontSize: 10, fontWeight: '900', color: '#FFF', backgroundColor: '#111', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },

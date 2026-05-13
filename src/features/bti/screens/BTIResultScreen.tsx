@@ -15,7 +15,7 @@ import { ArrowLeft, Home, Lock, RotateCcw, Share2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { getBtiDisplayType, getBtiResult, resolveSulbtiCode } from '@/features/bti/data';
+import { getBtiDisplayType, getBtiResult, normalizeBtiTasteAxisValue, resolveSulbtiCode } from '@/features/bti/data';
 
 const BTI_CHARACTER_IMAGES: Record<string, ImageSourcePropType> = {
   SHFC: require('@/assets/images/BTI/1.png'),
@@ -42,7 +42,7 @@ const TASTE_AXIS_CONFIG = [
   { key: 'sweetness', leftLabel: '달콤함', rightLabel: '깔끔함', valueLabel: '단맛', highSide: 'left' },
   { key: 'body', leftLabel: '가벼움', rightLabel: '걸쭉함', valueLabel: '바디', highSide: 'right' },
   { key: 'carbonation', leftLabel: '청량함', rightLabel: '탄산없음', valueLabel: '탄산', highSide: 'left' },
-  { key: 'flavor', leftLabel: '구수함', rightLabel: '독특/새콤함', valueLabel: '전통감', highSide: 'left' },
+  { key: 'tradition', leftLabel: '구수함', rightLabel: '독특/새콤함', valueLabel: '전통감', highSide: 'left' },
   { key: 'alcohol', leftLabel: '낮은 도수', rightLabel: '높은 도수', valueLabel: '도수', highSide: 'right' },
 ] as const;
 
@@ -76,9 +76,10 @@ export default function BTIResultScreen() {
   const isSpecialCharacterLayout = result ? SPECIAL_CHARACTER_LAYOUT_TYPES.has(result.type) : false;
   const tasteAxes = TASTE_AXIS_CONFIG.map((axis) => {
     const sourceValue =
-      axis.key === 'alcohol'
+      normalizeBtiTasteAxisValue(user?.sulbtiProfile?.[axis.key])
+      ?? (axis.key === 'alcohol'
         ? getAlcoholProfileValue(resultCode)
-        : result?.tasteProfile.find((item) => item.label === axis.valueLabel)?.value;
+        : result?.tasteProfile.find((item) => item.label === axis.valueLabel)?.value);
     return {
       ...axis,
       position: getAxisPosition(clampProfileValue(sourceValue), axis.highSide),

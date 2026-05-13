@@ -669,7 +669,8 @@ export default function BreweryProjectCreateScreen() {
     uploadedFiles,
   ]);
 
-  const canSubmit = progress >= 100;
+  const hasBlockingDateWarning = Boolean(startDateWarning || deliveryDateWarning);
+  const canSubmit = progress >= 100 && !hasBlockingDateWarning;
   const canSendPhoneVerification = isValidProjectPhone(creatorInfo.phone);
 
   const showAlert = (message: string) => {

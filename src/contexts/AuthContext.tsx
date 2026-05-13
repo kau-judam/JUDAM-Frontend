@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import SafeStorage from "@/utils/storage";
+import type { BtiTasteAxisValues } from "@/features/bti/data";
 
 export type UserType = "user" | "brewery";
 
@@ -16,6 +17,7 @@ export interface User {
   breweryLocationDetail?: string;
   businessNumber?: string;
   sulbti?: string;
+  sulbtiProfile?: BtiTasteAxisValues;
 }
 
 interface AuthContextType {

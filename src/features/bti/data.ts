@@ -11,6 +11,8 @@ export interface BtiQuestion {
 export type BtiAnswer = number | string[];
 export type BtiAnswers = Record<number, BtiAnswer>;
 type BtiTypeInput = string | string[] | null | undefined;
+export type BtiTasteAxisKey = 'sweetness' | 'body' | 'carbonation' | 'tradition' | 'alcohol';
+export type BtiTasteAxisValues = Partial<Record<BtiTasteAxisKey, number>>;
 
 export interface BtiResultProfile {
   type: string;
@@ -222,6 +224,15 @@ export const BTI_RESULTS: Record<string, BtiResultProfile> = {
 
 export const BTI_RESULT_TYPES = Object.keys(BTI_RESULTS);
 const BTI_DOSAGE_SUFFIXES = ['M', 'B'];
+
+export function normalizeBtiTasteAxisValue(value?: number | null) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  if (value > 5) {
+    const percentValue = Math.max(0, Math.min(100, value));
+    return Math.max(1, Math.min(5, Math.round((percentValue / 100) * 4 + 1)));
+  }
+  return Math.max(1, Math.min(5, value));
+}
 
 function normalizeSulbtiInput(type?: BtiTypeInput) {
   const raw = Array.isArray(type) ? type[0] : type;

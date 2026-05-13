@@ -1,6 +1,27 @@
 import { Redirect } from 'expo-router';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Index() {
-  // 스플래시 화면을 없애고 즉시 온보딩으로 이동
-  return <Redirect href="/onboarding" />;
+  const { user, isAuthReady } = useAuth();
+
+  if (!isAuthReady) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator color="#111" />
+      </View>
+    );
+  }
+
+  return <Redirect href={user ? '/(tabs)' : '/onboarding'} />;
 }
+
+const styles = StyleSheet.create({
+  loading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+  },
+});

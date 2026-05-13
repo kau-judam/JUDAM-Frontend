@@ -174,6 +174,7 @@ export default function BreweryVerificationScreen() {
     try {
       await verifyBrewery({
         businessNumber: formData.businessNumber,
+        businessLicense,
         breweryName: formData.breweryName,
         breweryLocation: formData.breweryLocation,
         breweryLocationDetail: formData.breweryLocationDetail,

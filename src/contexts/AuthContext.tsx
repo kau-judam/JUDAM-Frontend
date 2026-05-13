@@ -21,7 +21,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   isAuthReady: boolean;
-  login: (email: string, password: string, type: UserType) => Promise<void>;
+  login: (email: string, password: string, type: UserType, keepLoggedIn?: boolean) => Promise<User>;
   logout: () => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
   verifyBrewery: (data: BreweryVerificationData) => Promise<void>;
@@ -62,6 +62,7 @@ const TEMP_USER_ACCESS_TOKEN =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIiLCJlbWFpbCI6InRlc3QtY29uc3VtZXJAanVkYW0uY29tIiwicm9sZSI6IlVTRVIiLCJpYXQiOjE3NzgwODc4NjYsImV4cCI6MTc3ODY5MjY2Nn0.BtGpz_7jGpN0ePz3LXxFhuQ22CkKm2Etr8cKh-6OPm8";
 const TEMP_BREWERY_ACCESS_TOKEN =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxIiwicHJvdmlkZXIiOiJrYWthbyIsInJvbGUiOiJCUkVXRVJZIiwiaWF0IjoxNzc4MTUzMTA1LCJleHAiOjE3Nzg3NTc5MDV9.Z5bfCtuy3JCZdIV-NYUsiQ0g8MOHH29LWNblO_v2jZo";
+const KEEP_LOGIN_KEY = "judam_keep_login";
 
 function getTemporaryAccessToken(type: UserType) {
   return type === "brewery" ? TEMP_BREWERY_ACCESS_TOKEN : TEMP_USER_ACCESS_TOKEN;
@@ -97,7 +98,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const loadUser = async () => {
       try {
+        const keepLoggedIn = await SafeStorage.getItem(KEEP_LOGIN_KEY);
         const savedUser = await SafeStorage.getItem("judam_user");
+        if (keepLoggedIn !== "true") {
+          if (savedUser) {
+            await SafeStorage.removeItem("judam_user");
+            await removeTemporaryAccessToken();
+          }
+          return;
+        }
         if (savedUser) {
           const parsedUser = normalizeTemporaryUser(JSON.parse(savedUser) as User);
           const savedToken = await SafeStorage.getItem("judam_access_token");
@@ -117,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadUser();
   }, []);
 
-  const login = async (email: string, password: string, type: UserType) => {
+  const login = async (email: string, password: string, type: UserType, keepLoggedIn = true) => {
     await new Promise((resolve) => setTimeout(resolve, 500));
     const loginType = getTemporaryLoginType(email, password, type);
 
@@ -139,15 +148,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await SafeStorage.setItem("judam_user", JSON.stringify(mockUser));
       await saveTemporaryAccessToken(loginType);
+      await SafeStorage.setItem(KEEP_LOGIN_KEY, keepLoggedIn ? "true" : "false");
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
     }
+
+    return mockUser;
   };
 
   const logout = async () => {
     setUser(null);
     try {
       await SafeStorage.removeItem("judam_user");
+      await SafeStorage.removeItem(KEEP_LOGIN_KEY);
+      await SafeStorage.removeItem("judam_onboarded");
       await removeTemporaryAccessToken();
     } catch (e) {
       console.error("Failed to remove user from SafeStorage", e);
@@ -174,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await SafeStorage.setItem("judam_user", JSON.stringify(mockUser));
       await saveTemporaryAccessToken(data.type);
+      await SafeStorage.setItem(KEEP_LOGIN_KEY, "true");
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
     }
@@ -200,6 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(updatedUser);
       try {
         await SafeStorage.setItem("judam_user", JSON.stringify(updatedUser));
+        await saveTemporaryAccessToken("brewery");
       } catch (e) {
         console.error("Failed to save updated user to SafeStorage", e);
       }

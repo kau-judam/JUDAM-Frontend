@@ -35,7 +35,6 @@ import Animated, {
 import { StatusBar } from 'expo-status-bar';
 
 import { useAuth } from '@/contexts/AuthContext';
-import SafeStorage from '@/utils/storage';
 import { isValidEmail } from '@/utils/validation';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -58,7 +57,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [rememberEmail, setRememberEmail] = useState(false);
+  const [keepLoggedIn, setKeepLoggedIn] = useState(true);
   const [notice, setNotice] = useState("");
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -71,16 +70,6 @@ export default function LoginScreen() {
     RNStatusBar.setHidden(true, 'none');
     translateY.value = withSpring(SCREEN_HEIGHT - MIN_HEIGHT, SPRING_CONFIG);
   }, [MIN_HEIGHT, translateY]);
-
-  useEffect(() => {
-    const loadRememberedEmail = async () => {
-      const savedEmail = await SafeStorage.getItem('judam_remember_email');
-      if (!savedEmail) return;
-      setEmail(savedEmail);
-      setRememberEmail(true);
-    };
-    loadRememberedEmail();
-  }, []);
 
   const panGesture = Gesture.Pan()
     .onStart(() => {
@@ -123,17 +112,10 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       const accountType = email.toLowerCase().includes('brewery') || email.includes('양조') ? 'brewery' : 'user';
-      await login(email, password, accountType);
-      if (rememberEmail) {
-        await SafeStorage.setItem('judam_remember_email', email);
-      } else {
-        await SafeStorage.removeItem('judam_remember_email');
-      }
+      const loggedInUser = await login(email, password, accountType, keepLoggedIn);
       setIsLoading(false);
       RNStatusBar.setHidden(false, 'fade');
-      const savedUser = await SafeStorage.getItem('judam_user');
-      const parsedUser = savedUser ? JSON.parse(savedUser) : null;
-      if (accountType === 'brewery' && parsedUser?.isBreweryVerified === false) {
+      if (loggedInUser.type === 'brewery' && loggedInUser.isBreweryVerified === false) {
         router.replace('/brewery/verification' as any);
         return;
       }
@@ -242,9 +224,9 @@ export default function LoginScreen() {
                 </View>
 
                 <View style={styles.optionRow}>
-                  <TouchableOpacity style={styles.rememberButton} onPress={() => setRememberEmail((prev) => !prev)}>
-                    <View style={[styles.rememberCheck, rememberEmail && styles.rememberCheckActive]}>
-                      {rememberEmail && <Check size={12} color="#FFF" />}
+                  <TouchableOpacity style={styles.rememberButton} onPress={() => setKeepLoggedIn((prev) => !prev)}>
+                    <View style={[styles.rememberCheck, keepLoggedIn && styles.rememberCheckActive]}>
+                      {keepLoggedIn && <Check size={12} color="#FFF" />}
                     </View>
                     <Text style={styles.rememberText}>로그인 유지</Text>
                   </TouchableOpacity>

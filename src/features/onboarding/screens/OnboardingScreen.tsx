@@ -77,6 +77,13 @@ const SLIDES = [
 
 const TOTAL = SLIDES.length + 1;
 
+const CTA_FEATURES = [
+  { emoji: "🍶", label: "술BTI\n테스트" },
+  { emoji: "💰", label: "크라우드\n펀딩" },
+  { emoji: "🏭", label: "양조\n현황" },
+  { emoji: "📝", label: "나만의\n레시피 제안" },
+];
+
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const { logout } = useAuth();
@@ -119,13 +126,21 @@ export default function OnboardingScreen() {
   );
 
   const finishOnboarding = async (target: string) => {
-    await SafeStorage.setItem('judam_onboarded', 'true');
+    try {
+      await SafeStorage.setItem('judam_onboarded', 'true');
+    } catch (error) {
+      console.warn('Failed to save onboarding state.', error);
+    }
     router.replace(target as any);
   };
 
   const handleGuestStart = async () => {
     RNStatusBar.setHidden(false, 'fade');
-    await logout();
+    try {
+      await logout();
+    } catch (error) {
+      console.warn('Failed to clear auth before guest start.', error);
+    }
     await finishOnboarding('/(tabs)');
   };
 
@@ -258,13 +273,6 @@ function FeatureSlide({ slide, insets }: { slide: any; insets: any }) {
 }
 
 function CTASlide({ onLogin, onSignup, onGuest, insets }: any) {
-  const features = [
-    { emoji: "🍶", label: "술BTI\n테스트" },
-    { emoji: "💰", label: "크라우드\n펀딩" },
-    { emoji: "🏭", label: "양조\n현황" },
-    { emoji: "📝", label: "나만의\n레시피 제안" },
-  ];
-
   return (
     <View style={styles.ctaContainer}>
       <View style={[styles.ctaVisual, { paddingTop: insets.top + 80 }]}>
@@ -281,9 +289,9 @@ function CTASlide({ onLogin, onSignup, onGuest, insets }: any) {
         </AnimatedRe.View>
 
         <View style={styles.featureGrid}>
-          {features.map((f, i) => (
+          {CTA_FEATURES.map((f, i) => (
             <AnimatedRe.View 
-              key={i} 
+              key={f.label} 
               entering={FadeIn.delay(400 + i * 60)}
               style={styles.featureItem}
             >

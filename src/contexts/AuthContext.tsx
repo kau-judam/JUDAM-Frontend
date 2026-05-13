@@ -128,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadUser();
   }, []);
 
-  const login = async (email: string, password: string, type: UserType, keepLoggedIn = true) => {
+  const login = async (email: string, password: string, type: UserType, keepLoggedIn = false) => {
     await new Promise((resolve) => setTimeout(resolve, 500));
     const loginType = getTemporaryLoginType(email, password, type);
 
@@ -190,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await SafeStorage.setItem("judam_user", JSON.stringify(mockUser));
       await saveTemporaryAccessToken(data.type);
-      await SafeStorage.setItem(KEEP_LOGIN_KEY, "true");
+      await SafeStorage.setItem(KEEP_LOGIN_KEY, "false");
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
     }

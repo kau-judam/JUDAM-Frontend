@@ -109,6 +109,37 @@ const initialComments = [
 
 const initialCommentIds = new Set(initialComments.map((comment) => comment.id));
 const JOURNALS_PER_STAGE = 1;
+const DEFAULT_PROJECT_BUDGET = [
+  { item: "원료비", amount: 180 },
+  { item: "양조 인건비", amount: 150 },
+  { item: "병입 및 포장 비용", amount: 100 },
+  { item: "배송비", amount: 80 },
+  { item: "디자인 및 마케팅", amount: 60 },
+  { item: "플랫폼 수수료 7%", amount: 40 },
+];
+const DEFAULT_PROJECT_SCHEDULE = [
+  { date: "3월 20일", description: "펀딩 시작 및 원료 준비 완료" },
+  { date: "4월 18일", description: "펀딩 종료 및 최종 레시피 확정" },
+  { date: "4월 25일", description: "양조 시작" },
+  { date: "5월 25일", description: "발효 완료 및 숙성" },
+  { date: "6월 1일", description: "병입 및 라벨링 작업" },
+  { date: "6월 15일", description: "배송 시작" },
+];
+const DEFAULT_PROJECT_POLICY_TEXT = `환불: 프로젝트 마감 후 즉시 양조 공정이 시작되므로 단순 변심 환불은 불가합니다. 단, 양조장의 사정으로 생산이 불가능해질 경우 100% 환불을 보장합니다.
+
+교환/AS: 주류 배송 특성상 파손된 상태로 수령 시, 사진과 함께 접수해주시면 즉시 새 제품으로 교환해 드립니다.
+
+성인인증: 본 프로젝트는 성인인증을 완료한 후원자만 참여 가능하며, 배송 시 대리 수령이 제한될 수 있습니다.`;
+const DEFAULT_EXPECTED_DIFFICULTIES_TEXT = `품질 변동: AI 검토와 전문가의 관리를 거치나, 기온 변화에 따라 도수나 당도가 기획안과 ±1~2% 정도 차이가 날 수 있습니다.
+
+일정 지연: 술이 충분히 익지 않았을 경우, 최상의 맛을 위해 출고가 최대 10일 정도 지연될 수 있으며 이 경우 커뮤니티를 통해 즉시 공지하겠습니다.`;
+const DEFAULT_TASTE_PROFILE = {
+  sweetness: 70,
+  aroma: 55,
+  acidity: 80,
+  body: 65,
+  carbonation: 75,
+};
 
 type FundingQuestionComment = typeof initialComments[number];
 
@@ -133,9 +164,10 @@ function getTabParam(tab: "소개" | "양조일지" | "Q&A" | "후기") {
 }
 
 export default function FundingDetailScreen() {
-  const { id, tab } = useLocalSearchParams<{
+  const { id, tab, fromProjectId } = useLocalSearchParams<{
     id?: string;
     tab?: string;
+    fromProjectId?: string;
   }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -144,8 +176,17 @@ export default function FundingDetailScreen() {
   const projectRef = useRef<(typeof projects)[number] | null>(null);
   const rawProjectId = Array.isArray(id) ? id[0] : id;
   const projectId = Number(rawProjectId);
+  const rawFromProjectId = Array.isArray(fromProjectId) ? fromProjectId[0] : fromProjectId;
+  const previousProjectId = Number(rawFromProjectId);
   const initialTab = getInitialTab(tab);
   const project = useMemo(() => projects.find((p) => p.id === projectId) || null, [projectId, projects]);
+  const handleHeaderBack = useCallback(() => {
+    if (Number.isFinite(previousProjectId) && previousProjectId > 0 && previousProjectId !== projectId) {
+      router.replace(`/funding/${previousProjectId}` as any);
+      return;
+    }
+    router.replace('/funding' as any);
+  }, [previousProjectId, projectId]);
   
   const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">(initialTab);
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
@@ -188,12 +229,12 @@ export default function FundingDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-        router.replace('/funding' as any);
+        handleHeaderBack();
         return true;
       });
 
       return () => subscription.remove();
-    }, [])
+    }, [handleHeaderBack])
   );
 
   useEffect(() => {
@@ -362,6 +403,43 @@ export default function FundingDetailScreen() {
     };
   }, [mergeProject, projectId, showFundingOptionModal]);
 
+  const userTasteProfile = useMemo(() => getTasteProfileFromSulbti(user?.sulbti), [user?.sulbti]);
+  const projectBudget = useMemo(() => project?.budget || DEFAULT_PROJECT_BUDGET, [project?.budget]);
+  const projectSchedule = useMemo(() => project?.schedule || DEFAULT_PROJECT_SCHEDULE, [project?.schedule]);
+  const projectPolicyText = project?.projectPolicy || DEFAULT_PROJECT_POLICY_TEXT;
+  const expectedDifficultiesText = project?.expectedDifficulties || DEFAULT_EXPECTED_DIFFICULTIES_TEXT;
+  const tasteProfile = useMemo(() => project?.tasteProfile || DEFAULT_TASTE_PROFILE, [project?.tasteProfile]);
+  const tasteItems = useMemo(() => {
+    return [
+      { label: "단맛", value: tasteProfile.sweetness },
+      { label: "잔향", value: tasteProfile.aroma },
+      { label: "산미", value: tasteProfile.acidity },
+      { label: "바디감", value: tasteProfile.body },
+      { label: "탄산감", value: tasteProfile.carbonation },
+    ];
+  }, [tasteProfile]);
+  const recommendedProjects = useMemo(() => {
+    if (!project) return [];
+    return sortFundingProjectsForDisplay(
+      projects.filter((item) => item.id !== project.id),
+      "추천순",
+      userTasteProfile,
+      favoriteFundings
+    ).slice(0, 4);
+  }, [favoriteFundings, project, projects, userTasteProfile]);
+  const projectReviews = useMemo(
+    () => (project ? fundingReviews.filter((review) => review.projectId === project.id) : []),
+    [fundingReviews, project]
+  );
+  const myReview = useMemo(
+    () => (user ? projectReviews.find((review) => isFundingReviewOwnedByUser(review, user)) || null : null),
+    [projectReviews, user]
+  );
+  const canShowAndWriteReviews = useMemo(
+    () => (project ? canAccessFundingReviews(project) : false),
+    [project]
+  );
+
   if (!project) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -375,51 +453,12 @@ export default function FundingDetailScreen() {
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified;
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
   const canManageOwnBreweryProject = Boolean(isBrewery && isOwnBreweryProject);
-  const userTasteProfile = getTasteProfileFromSulbti(user?.sulbti);
   const unitPrice = getProjectUnitPrice(project);
   const shippingFee = getProjectShippingFee(project);
   const bottleSize = getProjectBottleSize(project);
   const alcoholContent = getProjectAlcoholContent(project);
   const estimatedDelivery = getProjectEstimatedDelivery(project);
   const optionTotalAmount = unitPrice * selectedQuantity + shippingFee;
-  const projectBudget = project.budget || [
-    { item: "원료비", amount: 180 },
-    { item: "양조 인건비", amount: 150 },
-    { item: "병입 및 포장 비용", amount: 100 },
-    { item: "배송비", amount: 80 },
-    { item: "디자인 및 마케팅", amount: 60 },
-    { item: "플랫폼 수수료 7%", amount: 40 },
-  ];
-  const projectSchedule = project.schedule || [
-    { date: "3월 20일", description: "펀딩 시작 및 원료 준비 완료" },
-    { date: "4월 18일", description: "펀딩 종료 및 최종 레시피 확정" },
-    { date: "4월 25일", description: "양조 시작" },
-    { date: "5월 25일", description: "발효 완료 및 숙성" },
-    { date: "6월 1일", description: "병입 및 라벨링 작업" },
-    { date: "6월 15일", description: "배송 시작" },
-  ];
-  const projectPolicyText = project.projectPolicy || `환불: 프로젝트 마감 후 즉시 양조 공정이 시작되므로 단순 변심 환불은 불가합니다. 단, 양조장의 사정으로 생산이 불가능해질 경우 100% 환불을 보장합니다.
-
-교환/AS: 주류 배송 특성상 파손된 상태로 수령 시, 사진과 함께 접수해주시면 즉시 새 제품으로 교환해 드립니다.
-
-성인인증: 본 프로젝트는 성인인증을 완료한 후원자만 참여 가능하며, 배송 시 대리 수령이 제한될 수 있습니다.`;
-  const expectedDifficultiesText = project.expectedDifficulties || `품질 변동: AI 검토와 전문가의 관리를 거치나, 기온 변화에 따라 도수나 당도가 기획안과 ±1~2% 정도 차이가 날 수 있습니다.
-
-일정 지연: 술이 충분히 익지 않았을 경우, 최상의 맛을 위해 출고가 최대 10일 정도 지연될 수 있으며 이 경우 커뮤니티를 통해 즉시 공지하겠습니다.`;
-  const tasteProfile = project.tasteProfile || {
-    sweetness: 70,
-    aroma: 55,
-    acidity: 80,
-    body: 65,
-    carbonation: 75,
-  };
-  const tasteItems = [
-    { label: "단맛", value: tasteProfile.sweetness },
-    { label: "잔향", value: tasteProfile.aroma },
-    { label: "산미", value: tasteProfile.acidity },
-    { label: "바디감", value: tasteProfile.body },
-    { label: "탄산감", value: tasteProfile.carbonation },
-  ];
   const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
   const supportButtonLabel =
     isOwnBreweryProject
@@ -432,11 +471,7 @@ export default function FundingDetailScreen() {
         : "펀딩 종료"
       : "프로젝트 후원하기";
 
-  const recommendedProjects = sortFundingProjectsForDisplay(projects.filter(p => p.id !== project.id), "추천순", userTasteProfile, favoriteFundings).slice(0, 4);
   const journals = project.journals || [];
-  const projectReviews = fundingReviews.filter(r => r.projectId === project.id);
-  const myReview = user ? projectReviews.find((review) => isFundingReviewOwnedByUser(review, user)) || null : null;
-  const canShowAndWriteReviews = canAccessFundingReviews(project);
 
   const handleSupportClick = () => {
     if (!user) {
@@ -449,10 +484,6 @@ export default function FundingDetailScreen() {
     }
     if (!isSupportableFundingStatus(project.status)) return;
     setShowFundingOptionModal(true);
-  };
-
-  const handleHeaderBack = () => {
-    router.back();
   };
 
   const handleConfirmFundingOption = () => {
@@ -1637,7 +1668,7 @@ export default function FundingDetailScreen() {
                  key={p.id}
                  project={p}
                  favorite={isFavoriteFunding(p.id)}
-                 onPress={() => router.push(`/funding/${p.id}`)}
+                 onPress={() => router.push(`/funding/${p.id}?fromProjectId=${project.id}` as any)}
                  onFavoritePress={handleFavoritePress}
                />
              ))}

@@ -48,11 +48,26 @@ import {
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const FUNDING_ITEMS_PER_PAGE = 5;
+
+function getFundingApiStatus(status: FundingStatusFilter) {
+  if (status === "진행중인 프로젝트") return "ONGOING";
+  if (status === "성사된 프로젝트") return "ENDED";
+  return undefined;
+}
+
+function getFundingApiSort(sort: FundingSortOption) {
+  if (sort === "마감임박") return "DEADLINE";
+  if (sort === "최신순") return "LATEST";
+  return "POPULAR";
+}
 
 export default function FundingListScreen() {
   const { user } = useAuth();
   const { scrollToTop, sort } = useLocalSearchParams<{ scrollToTop?: string; sort?: string }>();
   const scrollRef = useRef<ScrollView>(null);
+  const currentScrollYRef = useRef(0);
+  const pendingPaginationScrollYRef = useRef<number | null>(null);
   const { favoriteFundings, isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
   const { projects, mergeProjects } = useFunding();
   const projectsRef = useRef(projects);
@@ -61,7 +76,6 @@ export default function FundingListScreen() {
   const [selectedSort, setSelectedSort] = useState<FundingSortOption>("인기순");
   const [showDropdown, setShowDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
 
   const isBreweryAccount = user?.type === "brewery";
   const isVerifiedBrewery = isBreweryAccount && user?.isBreweryVerified;
@@ -84,18 +98,8 @@ export default function FundingListScreen() {
 
   useEffect(() => {
     let mounted = true;
-    const status =
-      selectedStatus === "진행중인 프로젝트"
-        ? "ONGOING"
-        : selectedStatus === "성사된 프로젝트"
-          ? "ENDED"
-          : undefined;
-    const apiSort =
-      selectedSort === "마감임박"
-        ? "DEADLINE"
-        : selectedSort === "최신순"
-          ? "LATEST"
-          : "POPULAR";
+    const status = getFundingApiStatus(selectedStatus);
+    const apiSort = getFundingApiSort(selectedSort);
 
     getFundingList({ status, sort: apiSort, page: 0, size: 10 })
       .then((response) => {
@@ -118,10 +122,21 @@ export default function FundingListScreen() {
     useCallback(() => {
       if (!scrollToTop) return;
       requestAnimationFrame(() => {
+        currentScrollYRef.current = 0;
         scrollRef.current?.scrollTo({ y: 0, animated: false });
       });
     }, [scrollToTop])
   );
+
+  const restorePaginationScroll = useCallback(() => {
+    const targetY = pendingPaginationScrollYRef.current;
+    if (targetY === null) return;
+
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: targetY, animated: false });
+      pendingPaginationScrollYRef.current = null;
+    });
+  }, []);
 
   const filteredProjects = useMemo(() => {
     return projects.filter((project) => {
@@ -132,9 +147,30 @@ export default function FundingListScreen() {
   const sortedProjects = useMemo(() => {
     return sortFundingProjectsForDisplay(filteredProjects, selectedSort, userTasteProfile, favoriteFundings);
   }, [favoriteFundings, filteredProjects, selectedSort, userTasteProfile]);
-  const totalPages = Math.max(1, Math.ceil(sortedProjects.length / itemsPerPage));
-  const pagedProjects = sortedProjects.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil(sortedProjects.length / FUNDING_ITEMS_PER_PAGE)),
+    [sortedProjects.length]
+  );
+  const pagedProjects = useMemo(
+    () => sortedProjects.slice((currentPage - 1) * FUNDING_ITEMS_PER_PAGE, currentPage * FUNDING_ITEMS_PER_PAGE),
+    [currentPage, sortedProjects]
+  );
   const fundingStats = useMemo(() => getFundingListStats(projects), [projects]);
+
+  useEffect(() => {
+    restorePaginationScroll();
+  }, [currentPage, restorePaginationScroll]);
+
+  const handleScroll = useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
+    currentScrollYRef.current = event.nativeEvent.contentOffset.y;
+  }, []);
+
+  const handlePageChange = useCallback((page: number) => {
+    const nextPage = Math.min(Math.max(page, 1), totalPages);
+    if (nextPage === currentPage) return;
+    pendingPaginationScrollYRef.current = currentScrollYRef.current;
+    setCurrentPage(nextPage);
+  }, [currentPage, totalPages]);
 
   const handleHeroAction = () => {
     if (!user) {
@@ -176,7 +212,14 @@ export default function FundingListScreen() {
   return (
     <View style={styles.container}>
       <PageHeader title="펀딩" />
-      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        ref={scrollRef}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={handleScroll}
+        onContentSizeChange={restorePaginationScroll}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
         {/* 1. Hero Section */}
         <View style={styles.hero}>
           <Image
@@ -285,10 +328,10 @@ export default function FundingListScreen() {
               <Text style={styles.emptyTxt}>해당하는 펀딩 프로젝트가 없습니다.</Text>
             </View>
           ) : (
-            pagedProjects.map((project, index) => {
+            pagedProjects.map((project) => {
               const isOwnProject = isFundingProjectOwnedByBrewery(user, project);
               return (
-                <Animated.View key={project.id} entering={FadeInUp.delay(index * 50)} style={styles.projectCardSpacing}>
+                <View key={project.id} style={styles.projectCardSpacing}>
                   <FundingProjectCard
                     project={project}
                     favorite={isFavoriteFunding(project.id)}
@@ -298,17 +341,17 @@ export default function FundingListScreen() {
                     onPress={() => router.push(`/funding/${project.id}`)}
                     onFavoritePress={handleFavoritePress}
                   />
-                </Animated.View>
+                </View>
               );
             })
           )}
 
           {/* Pagination */}
-          {sortedProjects.length > itemsPerPage && (
+          {sortedProjects.length > FUNDING_ITEMS_PER_PAGE && (
             <View style={styles.pagination}>
               <TouchableOpacity 
                 disabled={currentPage === 1} 
-                onPress={() => setCurrentPage(prev => prev - 1)}
+                onPress={() => handlePageChange(currentPage - 1)}
                 style={[styles.pageArrow, currentPage === 1 && { opacity: 0.3 }]}
               >
                 <ChevronLeft size={20} color="#111" />
@@ -320,7 +363,7 @@ export default function FundingListScreen() {
                   <TouchableOpacity 
                     key={i} 
                     style={[styles.pageBtn, currentPage === i + 1 && styles.pageBtnActive]} 
-                    onPress={() => setCurrentPage(i + 1)}
+                    onPress={() => handlePageChange(i + 1)}
                   >
                     <Text style={[styles.pageBtnTxt, currentPage === i + 1 && styles.pageBtnTxtActive]}>{i + 1}</Text>
                   </TouchableOpacity>
@@ -329,7 +372,7 @@ export default function FundingListScreen() {
 
               <TouchableOpacity 
                 disabled={currentPage === totalPages} 
-                onPress={() => setCurrentPage(prev => prev + 1)}
+                onPress={() => handlePageChange(currentPage + 1)}
                 style={[styles.pageArrow, currentPage === totalPages && { opacity: 0.3 }]}
               >
                 <Text style={styles.pageArrowTxt}>다음</Text>

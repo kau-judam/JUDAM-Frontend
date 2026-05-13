@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { ArrowLeft, Check, ChevronRight, Lock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -47,14 +49,25 @@ export default function BTITestScreen() {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [currentPage]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (isSubmitting) return;
     if (currentPage > 0) {
       setCurrentPage((page) => page - 1);
       return;
     }
     router.back();
-  };
+  }, [currentPage, isSubmitting]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBack();
+        return true;
+      });
+
+      return () => subscription.remove();
+    }, [handleBack])
+  );
 
   const handleSingleAnswer = (questionId: number, value: number) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -70,7 +83,7 @@ export default function BTITestScreen() {
     });
   };
 
-  const isQuestionComplete = (question: BtiQuestion) => {
+  const isQuestionComplete = useCallback((question: BtiQuestion) => {
     const answer = answers[question.id];
     if (question.type === 'multiple') {
       const selected = Array.isArray(answer) && answer.length > 0;
@@ -78,9 +91,12 @@ export default function BTITestScreen() {
       return Boolean(selected || custom);
     }
     return answer !== undefined && answer !== null;
-  };
+  }, [answers, customInputs]);
 
-  const isPageComplete = currentQuestions.every(isQuestionComplete);
+  const isPageComplete = useMemo(
+    () => currentQuestions.every(isQuestionComplete),
+    [currentQuestions, isQuestionComplete]
+  );
 
   const handleNext = async () => {
     if (!isPageComplete || isSubmitting) return;
@@ -93,13 +109,21 @@ export default function BTITestScreen() {
 
     setIsSubmitting(true);
     try {
+      if (!BTI_QUESTIONS.every(isQuestionComplete)) {
+        throw new Error('INCOMPLETE_BTI_ANSWERS');
+      }
       const resultType = resolveSulbtiCode(calculateSulbti(mergedAnswers));
       if (!resultType) throw new Error('Invalid sulbti result');
       await updateUser({ sulbti: resultType });
       router.replace(`/bti-result/${resultType}` as any);
-    } catch {
+    } catch (error) {
       setIsSubmitting(false);
-      Alert.alert('결과 저장 실패', '잠시 후 다시 시도해 주세요.');
+      Alert.alert(
+        error instanceof Error && error.message === 'INCOMPLETE_BTI_ANSWERS' ? '답변 확인' : '결과 저장 실패',
+        error instanceof Error && error.message === 'INCOMPLETE_BTI_ANSWERS'
+          ? '아직 답변하지 않은 문항이 있어요. 처음부터 다시 확인해주세요.'
+          : '잠시 후 다시 시도해 주세요.'
+      );
     }
   };
 

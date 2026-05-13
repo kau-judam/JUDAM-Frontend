@@ -9,8 +9,9 @@ import {
   Mail,
   MessageSquare,
 } from 'lucide-react-native';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BackHandler,
   Dimensions,
   Image,
   KeyboardAvoidingView,
@@ -25,6 +26,7 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getPasswordStrength, isPasswordReady, isValidEmail } from '@/utils/validation';
@@ -64,17 +66,20 @@ export default function PasswordResetScreen() {
 
   const showNotice = (message: string) => setNotice(message);
 
-  const handleBack = () => {
-    if (step === 'verify') {
-      setStep('email');
-      return;
-    }
-    if (step === 'newPassword') {
-      setStep('verify');
-      return;
-    }
+  const handleBack = useCallback(() => {
     router.replace('/login' as any);
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBack();
+        return true;
+      });
+
+      return () => subscription.remove();
+    }, [handleBack])
+  );
 
   const handleSendCode = async () => {
     const normalizedEmail = email.trim().toLowerCase();

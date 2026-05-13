@@ -280,10 +280,14 @@ export default function FundingSupportScreen() {
       const order = await createFundingOrder(project.id, {
         optionId: selectedSupportOptionId,
         quantity,
+        supporterPhone: supporterInfo.phone.trim(),
+        supporterEmail: supporterInfo.email.trim(),
         recipientName: shippingInfo.recipientName.trim(),
         recipientPhone: shippingInfo.phone.trim(),
         shippingAddress: shippingInfo.address.trim(),
         shippingDetailAddress: shippingInfo.detailAddress.trim(),
+        additionalSupportAmount: extraAmount,
+        message: supportMessage.trim() || undefined,
         adultVerified: agreeTerms,
         noticeAgreed: agreeRefund,
       });

@@ -233,10 +233,14 @@ type FundingReportsResponse = {
 type CreateFundingOrderPayload = {
   optionId: number;
   quantity: number;
+  supporterPhone?: string;
+  supporterEmail?: string;
   recipientName: string;
   recipientPhone: string;
   shippingAddress: string;
   shippingDetailAddress?: string;
+  additionalSupportAmount?: number;
+  message?: string;
   adultVerified: boolean;
   noticeAgreed: boolean;
 };

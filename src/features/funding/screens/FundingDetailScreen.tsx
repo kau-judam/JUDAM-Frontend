@@ -107,6 +107,7 @@ const initialComments = [
   { id: 2, userName: "이술사", content: "알코올 도수가 궁금합니다. 혹시 알려주실 수 있나요?", date: "2026. 03. 24", likes: 5, isBrewery: false, replies: [] },
 ];
 
+const initialCommentIds = new Set(initialComments.map((comment) => comment.id));
 const JOURNALS_PER_STAGE = 1;
 
 type FundingQuestionComment = typeof initialComments[number];
@@ -159,7 +160,7 @@ export default function FundingDetailScreen() {
   const [supportOptionId, setSupportOptionId] = useState(1);
 
   // Q&A State
-  const [comments, setComments] = useState(initialComments);
+  const [comments, setComments] = useState<FundingQuestionComment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyContent, setReplyContent] = useState("");
@@ -196,7 +197,7 @@ export default function FundingDetailScreen() {
   );
 
   useEffect(() => {
-    setComments(initialComments);
+    setComments([]);
     setNewComment("");
     setReplyingTo(null);
     setReplyContent("");
@@ -212,6 +213,9 @@ export default function FundingDetailScreen() {
     setLikedJournals(new Set());
     setLikedJournalComments(new Set());
     setLikedJournalReplies(new Set());
+    setShowFundingOptionModal(false);
+    setSelectedQuantity(1);
+    setSupportOptionId(1);
   }, [projectId]);
 
   useEffect(() => {
@@ -293,16 +297,22 @@ export default function FundingDetailScreen() {
           replies: [],
         }));
         setComments((prev) => {
-          const prevById = new Map(prev.map((comment) => [comment.id, comment]));
+          const apiCommentIds = new Set(apiComments.map((comment) => comment.id));
+          const preservedLocalComments = prev.filter((comment) => !initialCommentIds.has(comment.id));
+          const prevById = new Map(preservedLocalComments.map((comment) => [comment.id, comment]));
           const merged = apiComments.map((comment) => {
             const existingComment = prevById.get(comment.id);
             return existingComment ? { ...comment, likes: existingComment.likes, replies: existingComment.replies } : comment;
           });
-          const localOnly = prev.filter((comment) => !apiComments.some((apiComment) => apiComment.id === comment.id));
+          const localOnly = preservedLocalComments.filter((comment) => !apiCommentIds.has(comment.id));
           return [...merged, ...localOnly];
         });
       })
       .catch((error) => {
+        if (isFundingApiMissingEndpointError(error)) {
+          setComments((prev) => (prev.length > 0 ? prev : initialComments));
+          return;
+        }
         console.warn(getFundingApiErrorMessage(error, 'Q&A를 불러오지 못했습니다.'));
       });
 

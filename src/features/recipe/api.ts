@@ -14,6 +14,7 @@ type ApiErrorBody = {
 
 export type RecipeListItemDto = {
   recipe_id: number;
+  user_id?: number | string;
   title: string;
   summary: string;
   main_ingredient: string;
@@ -49,6 +50,7 @@ export type RecipeCommentDto = {
   nickname?: string;
   content: string;
   like_count: number;
+  reply_count?: number;
   is_liked: boolean;
   created_at: string;
   updated_at: string | null;
@@ -162,7 +164,9 @@ type CreateReplyResponse = {
     content: string;
     like_count: number;
     created_at: string;
+    parent_reply_count?: number;
   };
+  parent_reply_count?: number;
 };
 
 type UpdateCommentResponse = {
@@ -297,10 +301,18 @@ export function formatRecipeTimestamp(value?: string | null) {
   return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
 }
 
+function isBrokenAuthorName(value?: string | null) {
+  if (!value) return true;
+  return /^[?\s]+$/.test(value.trim());
+}
+
 export function getRecipeAuthorLabel(item: { author_nickname?: string; author_name?: string; author_type?: string }) {
-  if (item.author_nickname) return item.author_nickname;
-  if (item.author_name) return item.author_name;
-  if (item.author_type === 'BREWERY') return '양조장';
+  if (item.author_type === 'BREWERY' && isBrokenAuthorName(item.author_nickname || item.author_name)) {
+    return '양조장 테스트';
+  }
+  if (!isBrokenAuthorName(item.author_nickname)) return item.author_nickname as string;
+  if (!isBrokenAuthorName(item.author_name)) return item.author_name as string;
+  if (item.author_type === 'BREWERY') return '양조장 테스트';
   return '사용자';
 }
 
@@ -319,6 +331,7 @@ export function mapRecipeListItem(item: RecipeListItemDto): Recipe {
     status: item.status,
     isFundable: item.is_fundable,
     authorType: item.author_type,
+    authorId: item.user_id ? String(item.user_id) : undefined,
     createdAt: item.created_at,
   };
 }
@@ -345,6 +358,7 @@ export function mapRecipeComment(item: RecipeCommentDto, fallbackAvatar?: ImageS
     content: item.content,
     timestamp: formatRecipeTimestamp(item.created_at),
     likes: item.like_count,
+    replyCount: item.reply_count ?? 0,
     liked: item.is_liked,
     authorType: item.author_type === 'BREWERY' ? 'brewery' : 'user',
     userId: item.user_id,

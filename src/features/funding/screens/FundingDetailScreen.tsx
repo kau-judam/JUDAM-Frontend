@@ -439,7 +439,7 @@ export default function FundingDetailScreen() {
   };
 
   const handleHeaderBack = () => {
-    router.replace('/funding' as any);
+    router.back();
   };
 
   const handleConfirmFundingOption = () => {

@@ -319,7 +319,7 @@ export default function SignupScreen() {
       });
       setIsLoading(false);
       RNStatusBar.setHidden(false, 'fade');
-      router.push('/(auth)/user-type');
+      router.replace('/(auth)/user-type');
     } catch {
       setIsLoading(false);
       showNotice('회원가입에 실패했습니다.');

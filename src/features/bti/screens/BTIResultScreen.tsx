@@ -194,7 +194,9 @@ export default function BTIResultScreen() {
           <View style={styles.recommendGrid}>
             {result.recommendations.map((drink) => (
               <View key={drink} style={styles.recommendItem}>
-                <Text style={styles.recommendText}>{drink}</Text>
+                <Text style={styles.recommendText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.88}>
+                  {drink}
+                </Text>
               </View>
             ))}
           </View>
@@ -260,9 +262,9 @@ const styles = StyleSheet.create({
   traitWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   traitPill: { borderWidth: 1.5, borderColor: '#111', borderRadius: 12, paddingHorizontal: 13, paddingVertical: 8, backgroundColor: '#FFF' },
   traitText: { fontSize: 13, fontWeight: '900', color: '#111' },
-  recommendGrid: { flexDirection: 'row', gap: 8 },
-  recommendItem: { flex: 1, minHeight: 58, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
-  recommendText: { fontSize: 13, lineHeight: 18, fontWeight: '800', color: '#374151', textAlign: 'center' },
+  recommendGrid: { gap: 8 },
+  recommendItem: { width: '78%', alignSelf: 'center', minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
+  recommendText: { alignSelf: 'stretch', fontSize: 14, lineHeight: 18, fontWeight: '800', color: '#374151', textAlign: 'center' },
   profileCard: { borderRadius: 22, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', padding: 18, gap: 16 },
   profileList: { gap: 17 },
   profileRow: { gap: 8 },

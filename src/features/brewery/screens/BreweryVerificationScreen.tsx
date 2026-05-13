@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
+  BackHandler,
   View,
   Text,
   StyleSheet,
@@ -14,7 +15,8 @@ import {
   Dimensions,
   Modal,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { 
@@ -70,8 +72,10 @@ const MOCK_ADDRESSES = [
 
 export default function BreweryVerificationScreen() {
   const insets = useSafeAreaInsets();
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const { user, verifyBrewery } = useAuth();
   const isEditMode = user?.isBreweryVerified || false;
+  const shouldReturnToUserType = from === 'auth';
   
   const [formData, setFormData] = useState({
     businessNumber: user?.businessNumber || '',
@@ -98,6 +102,25 @@ export default function BreweryVerificationScreen() {
       || address.jibunAddress.toLowerCase().includes(keyword)
     ));
   }, [addressSearch]);
+
+  const handleBack = useCallback(() => {
+    if (!isEditMode && shouldReturnToUserType) {
+      router.replace('/(auth)/user-type' as any);
+      return;
+    }
+    router.back();
+  }, [isEditMode, shouldReturnToUserType]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBack();
+        return true;
+      });
+
+      return () => subscription.remove();
+    }, [handleBack])
+  );
 
   if (!user) {
     return (
@@ -314,7 +337,7 @@ export default function BreweryVerificationScreen() {
         >
           {/* 뒤로가기 버튼 */}
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={handleBack}
             style={[styles.backBtn, { marginTop: insets.top + 20 }]}
           >
             <ArrowLeft size={20} color="#1F2937" />
@@ -515,7 +538,7 @@ export default function BreweryVerificationScreen() {
               <View style={styles.btnRow}>
                 <TouchableOpacity 
                   style={styles.cancelBtn} 
-                  onPress={() => router.back()}
+                  onPress={handleBack}
                 >
                    <Text style={styles.cancelBtnTxt}>{isEditMode ? "취소" : "나중에 하기"}</Text>
                 </TouchableOpacity>

@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  Alert,
+  BackHandler,
   View,
   Text,
   StyleSheet,
@@ -20,6 +22,7 @@ import {
   FolderKanban, 
   LayoutDashboard,
 } from 'lucide-react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
@@ -30,13 +33,32 @@ export default function UserTypeSelectionScreen() {
   const { user, updateUser } = useAuth();
   const [selectedType, setSelectedType] = useState<'user' | 'brewery' | null>(null);
 
+  const handleBack = useCallback(() => {
+    router.replace('/login' as any);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBack();
+        return true;
+      });
+
+      return () => subscription.remove();
+    }, [handleBack])
+  );
+
   const handleUserSelection = async () => {
-    await updateUser({ type: 'user' });
-    router.replace('/(tabs)');
+    try {
+      await updateUser({ type: 'user' });
+      router.replace('/(tabs)');
+    } catch {
+      Alert.alert('알림', '사용자 유형을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+    }
   };
 
   const handleBrewerySelection = () => {
-    router.push('/brewery/verification' as any);
+    router.push('/brewery/verification?from=auth' as any);
   };
 
   if (!user) {
@@ -66,7 +88,7 @@ export default function UserTypeSelectionScreen() {
     <Animated.View entering={FadeIn.duration(600)} style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <TouchableOpacity
-        onPress={() => router.back()}
+        onPress={handleBack}
         style={[styles.backBtn, { top: insets.top + 16 }]}
       >
         <ArrowLeft size={20} color="#111" />

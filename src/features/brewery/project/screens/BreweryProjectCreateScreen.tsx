@@ -600,8 +600,9 @@ export default function BreweryProjectCreateScreen() {
   const deliveryDate = parseDate(fundingInfo.expectedDeliveryDate);
   const startDateWarning = startDate && startDate < today ? '펀딩 시작일은 오늘 이후 날짜로 입력해주세요.' : '';
   const deliveryDateWarning = endDate && deliveryDate && deliveryDate <= endDate ? '예상 발송 시작일은 펀딩 종료일 이후 날짜로 입력해주세요.' : '';
-  const filteredAddresses = mockAddresses.filter(
-    (item) => item.address.includes(addressSearch) || item.zipCode.includes(addressSearch)
+  const filteredAddresses = useMemo(
+    () => mockAddresses.filter((item) => item.address.includes(addressSearch) || item.zipCode.includes(addressSearch)),
+    [addressSearch]
   );
 
   const progress = useMemo(() => {

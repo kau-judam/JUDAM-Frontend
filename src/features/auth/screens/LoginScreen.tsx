@@ -57,7 +57,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [keepLoggedIn, setKeepLoggedIn] = useState(true);
+  const [keepLoggedIn, setKeepLoggedIn] = useState(false);
   const [notice, setNotice] = useState("");
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -112,13 +112,9 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       const accountType = email.toLowerCase().includes('brewery') || email.includes('양조') ? 'brewery' : 'user';
-      const loggedInUser = await login(email, password, accountType, keepLoggedIn);
+      await login(email, password, accountType, keepLoggedIn);
       setIsLoading(false);
       RNStatusBar.setHidden(false, 'fade');
-      if (loggedInUser.type === 'brewery' && loggedInUser.isBreweryVerified === false) {
-        router.replace('/brewery/verification' as any);
-        return;
-      }
       router.replace('/(tabs)');
     } catch {
       setIsLoading(false);
@@ -128,7 +124,11 @@ export default function LoginScreen() {
 
   const handleGuestStart = async () => {
     RNStatusBar.setHidden(false, 'fade');
-    await logout();
+    try {
+      await logout();
+    } catch (error) {
+      console.warn('Failed to clear auth before guest start.', error);
+    }
     router.replace('/(tabs)');
   };
 

@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
+  Alert,
   Image,
   ImageSourcePropType,
   ScrollView,
@@ -74,24 +75,31 @@ export default function BTIResultScreen() {
   const result = resultCode ? getBtiResult(resultCode) : null;
   const characterImage = result ? BTI_CHARACTER_IMAGES[result.type] : null;
   const isSpecialCharacterLayout = result ? SPECIAL_CHARACTER_LAYOUT_TYPES.has(result.type) : false;
-  const tasteAxes = TASTE_AXIS_CONFIG.map((axis) => {
-    const sourceValue =
-      normalizeBtiTasteAxisValue(user?.sulbtiProfile?.[axis.key])
-      ?? (axis.key === 'alcohol'
-        ? getAlcoholProfileValue(resultCode)
-        : result?.tasteProfile.find((item) => item.label === axis.valueLabel)?.value);
-    return {
-      ...axis,
-      position: getAxisPosition(clampProfileValue(sourceValue), axis.highSide),
-    };
-  });
+  const tasteAxes = useMemo(
+    () => TASTE_AXIS_CONFIG.map((axis) => {
+      const sourceValue =
+        normalizeBtiTasteAxisValue(user?.sulbtiProfile?.[axis.key])
+        ?? (axis.key === 'alcohol'
+          ? getAlcoholProfileValue(resultCode)
+          : result?.tasteProfile.find((item) => item.label === axis.valueLabel)?.value);
+      return {
+        ...axis,
+        position: getAxisPosition(clampProfileValue(sourceValue), axis.highSide),
+      };
+    }),
+    [result, resultCode, user?.sulbtiProfile]
+  );
 
   const handleShare = async () => {
     if (!result) return;
-    await Share.share({
-      title: '나의 술BTI 결과',
-      message: `나의 술BTI는 ${displayType} - ${result.name}입니다. 주담에서 나에게 맞는 막걸리 펀딩을 찾아보세요.`,
-    });
+    try {
+      await Share.share({
+        title: '나의 술BTI 결과',
+        message: `나의 술BTI는 ${displayType} - ${result.name}입니다. 주담에서 나에게 맞는 막걸리 펀딩을 찾아보세요.`,
+      });
+    } catch {
+      Alert.alert('공유 실패', '결과를 공유하지 못했습니다. 다시 시도해주세요.');
+    }
   };
 
   if (!user) {
@@ -251,7 +259,7 @@ const styles = StyleSheet.create({
   resultHero: { borderRadius: 28, paddingHorizontal: 28, paddingVertical: 32, alignItems: 'center' },
   heroLabel: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.7)', marginBottom: 8 },
   heroType: { fontSize: 52, lineHeight: 60, fontWeight: '900', color: '#FFF', letterSpacing: 0 },
-  heroCharacter: { width: 330, height: 180, marginTop: 10, marginBottom: 6 },
+  heroCharacter: { width: 330, height: 180, marginTop: 10, marginBottom: 6, transform: [{ translateX: -10 }] },
   heroCharacterSpecial: { width: 246, height: 226, marginTop: 8, marginBottom: 4 },
   heroName: { fontSize: 23, fontWeight: '900', color: '#FFF', marginTop: 8, textAlign: 'center' },
   heroEnglish: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.68)', marginTop: 5 },

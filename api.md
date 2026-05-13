@@ -1360,3 +1360,121 @@ Notes:
 - `915fe859-073a-433f-b181-cbb5a7d28f45_레시피_펀딩_전환_제안.pdf`
 - `c6b07d90-f975-4aa2-a9de-2fd28ae5f3b2_양조장_소비자_레시피_확인.pdf`
 - `cbbc2ff2-e6e2-4af9-bd25-b5e78298d59d_레시피_삭제.pdf`
+
+## Recipe Suggestion Assist APIs
+
+Source:
+- User-provided backend note on 2026-05-13.
+
+Base URL:
+```http
+http://43.202.24.223:3000
+```
+
+### Suggest Sub Ingredients
+
+Endpoint:
+```http
+POST {baseURI}/api/recipe/suggest-sub-ingredients
+```
+
+Request:
+```json
+{
+  "main_ingredient": "경기도 쌀",
+  "region": "경기도"
+}
+```
+
+Response:
+```ts
+type SuggestSubIngredientsResponse = {
+  status: 200;
+  message: "서브재료 추천 성공";
+  data: {
+    sub_ingredients: string[];
+  };
+};
+```
+
+Frontend connection:
+- Connected on 2026-05-13.
+- API client: `src/features/recipe/api.ts` `suggestRecipeSubIngredients`.
+- Screen: `src/features/recipe/screens/RecipeCreateScreen.tsx` 서브 재료 `AI 생성` 버튼.
+- The frontend sends the joined main ingredient text as `main_ingredient` and infers `region` from known Korean region words included in the main ingredient. If no region word is found, it sends an empty string.
+
+### Suggest Flavor Tags
+
+Endpoint:
+```http
+POST {baseURI}/api/recipe/suggest-flavor-tags
+```
+
+Request:
+```json
+{
+  "title": "경기도 쌀 막걸리",
+  "main_ingredient": "경기도 쌀",
+  "sub_ingredients": ["누룩", "물"],
+  "abv_range": "5~7도"
+}
+```
+
+Response:
+```ts
+type SuggestFlavorTagsResponse = {
+  status: 200;
+  message: "맛 태그 추천 성공";
+  data: {
+    flavor_tags: string[];
+  };
+};
+```
+
+Frontend connection:
+- Connected on 2026-05-13.
+- API client: `src/features/recipe/api.ts` `suggestRecipeFlavorTags`.
+- Screen: `src/features/recipe/screens/RecipeCreateScreen.tsx` 지향하는 맛 `AI 생성` 버튼.
+- The frontend sends current title, joined main ingredient text, selected sub ingredients, and selected ABV range.
+
+### Suggest Summary
+
+Endpoint:
+```http
+POST {baseURI}/api/recipe/suggest-summary
+```
+
+Request:
+```json
+{
+  "title": "경기도 쌀 막걸리",
+  "main_ingredient": "경기도 쌀",
+  "sub_ingredients": ["누룩", "물"],
+  "abv_range": "5~7도",
+  "flavor_tags": ["달콤함", "청량함"],
+  "concept": null
+}
+```
+
+Response:
+```ts
+type SuggestSummaryResponse = {
+  status: 200;
+  message: "요약문 추천 성공";
+  data: {
+    summary: string;
+  };
+};
+```
+
+Frontend connection:
+- Connected on 2026-05-13.
+- API client: `src/features/recipe/api.ts` `suggestRecipeSummary`.
+- Screen: `src/features/recipe/screens/RecipeCreateScreen.tsx` 프로젝트 요약 `AI 생성` 버튼.
+- The frontend sends selected flavor tags plus custom flavor tags. Empty concept is sent as `null`.
+- These suggestion endpoints were not manually called during verification because the server is usage-billed. Verification used TypeScript and lint checks only.
+
+2026-05-13 temporary disconnection:
+- The frontend temporarily disconnected only the sub ingredient `AI 생성` button from `suggestRecipeSubIngredients`.
+- The API client function and endpoint memo remain in place so it can be reconnected later by restoring the button handler in `src/features/recipe/screens/RecipeCreateScreen.tsx`.
+- Flavor tag and summary suggestion buttons remain connected to their APIs.

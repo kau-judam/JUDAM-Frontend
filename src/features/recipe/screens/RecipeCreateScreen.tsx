@@ -39,10 +39,17 @@ const FLAVOR_TAG_POOL = [
   '과일향',
   '구수함',
 ];
+import {
+  createRecipe,
+  getRecipeAccessToken,
+  suggestRecipeFlavorTags,
+  suggestRecipeSummary,
+} from '@/features/recipe/api';
+import { markCurrentUserRecipe } from '@/features/recipe/interestState';
 
 const ALCOHOL_RANGES = ['3%~5%', '6%~8%', '9%~12%', '13%~15%', '15% 이상'];
 const DUMMY_IMAGE = 'https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?w=800&h=600&fit=crop';
-const AI_SUB_INGREDIENTS = ['딸기', '바나나', '복숭아', '사과'];
+const TEMP_SUB_INGREDIENT_SUGGESTIONS = ['누룩', '물', '유자', '생강', '꿀'];
 
 type NoticeState = {
   title: string;
@@ -93,12 +100,18 @@ export default function RecipeCreateScreen() {
     setMainIngredients((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   };
 
+  const getMainIngredientText = () => mainIngredients.map((ingredient) => ingredient.trim()).filter(Boolean).join(', ');
+
+  const getSelectedFlavorTags = () => [...selectedFlavorTags, ...customFlavorTags];
+
+  const getApiErrorMessage = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
+
   const handleGenerateSubIngredients = () => {
     if (!hasMainIngredient) {
       showNotice('메인 재료를 입력해주세요.');
       return;
     }
-    setGeneratedSubIngredients(AI_SUB_INGREDIENTS);
+    setGeneratedSubIngredients(TEMP_SUB_INGREDIENT_SUGGESTIONS);
     setSelectedSubIngredients([]);
   };
 
@@ -108,14 +121,24 @@ export default function RecipeCreateScreen() {
     );
   };
 
-  const handleGenerateFlavorTags = () => {
+  const handleGenerateFlavorTags = async () => {
     if (!hasMainIngredient || !hasSubIngredient) {
       showNotice('메인 재료와 서브 재료를 먼저 입력해주세요.');
       return;
     }
-    const shuffled = [...FLAVOR_TAG_POOL].sort(() => Math.random() - 0.5);
-    setGeneratedFlavorTags(shuffled.slice(0, 4));
-    setSelectedFlavorTags([]);
+    try {
+      const suggestions = await suggestRecipeFlavorTags({
+        title: title.trim(),
+        main_ingredient: getMainIngredientText(),
+        sub_ingredients: selectedSubIngredients,
+        abv_range: alcoholRange,
+      });
+      setGeneratedFlavorTags(suggestions);
+      setSelectedFlavorTags([]);
+    } catch (error) {
+      console.warn('Failed to suggest recipe flavor tags', error);
+      showNotice('AI 생성에 실패했습니다.', getApiErrorMessage(error, '맛 태그를 추천하지 못했어요.'));
+    }
   };
 
   const toggleFlavorTag = (tag: string) => {
@@ -137,12 +160,25 @@ export default function RecipeCreateScreen() {
     setCustomFlavorTags((prev) => prev.filter((item) => item !== tag));
   };
 
-  const handleGenerateSummary = () => {
+  const handleGenerateSummary = async () => {
     if (!hasMainIngredient || !hasSubIngredient) {
       showNotice('메인 재료와 서브 재료를 먼저 입력해주세요.');
       return;
     }
-    setDescription('무난한 메인 재료와 독특한 서브 재료를 가진 유니크한 술 입니다.');
+    try {
+      const summary = await suggestRecipeSummary({
+        title: title.trim(),
+        main_ingredient: getMainIngredientText(),
+        sub_ingredients: selectedSubIngredients,
+        abv_range: alcoholRange,
+        flavor_tags: getSelectedFlavorTags(),
+        concept: concept.trim() || null,
+      });
+      setDescription(summary);
+    } catch (error) {
+      console.warn('Failed to suggest recipe summary', error);
+      showNotice('AI 생성에 실패했습니다.', getApiErrorMessage(error, '요약문을 추천하지 못했어요.'));
+    }
   };
 
   const handleGenerateImage = () => {
@@ -187,8 +223,8 @@ export default function RecipeCreateScreen() {
         title: title.trim(),
         content: description.trim() || concept.trim(),
         abv_range: alcoholRange,
-        main_ingredient: mainIngredients.map((ingredient) => ingredient.trim()).filter(Boolean).join(', '),
-        target_flavor: [...selectedFlavorTags, ...customFlavorTags].join(', '),
+        main_ingredient: getMainIngredientText(),
+        target_flavor: getSelectedFlavorTags().join(', '),
         concept: concept.trim(),
         summary: description.trim(),
         image: imageAsset

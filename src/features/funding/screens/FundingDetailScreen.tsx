@@ -66,6 +66,7 @@ import {
   mergeFundingDetail,
   mergeFundingIntro,
   mergeSupportOption,
+  normalizeSupportOptionId,
 } from '@/features/funding/apiMappers';
 import {
   BREWING_STAGES,
@@ -337,7 +338,9 @@ export default function FundingDetailScreen() {
         const currentProject = projectRef.current;
         const option = response.supportOptions[0];
         if (!mounted || !currentProject || !option) return;
-        setSupportOptionId(option.optionId);
+        const optionId = normalizeSupportOptionId(option.optionId);
+        if (optionId === null) return;
+        setSupportOptionId(optionId);
         mergeProject(projectId, mergeSupportOption(currentProject, option));
       })
       .catch((error) => {

@@ -83,6 +83,23 @@ export type CreateRecipeFundingPayload = {
   end_date: string;
 };
 
+export type SuggestSubIngredientsPayload = {
+  main_ingredient: string;
+  region: string;
+};
+
+export type SuggestFlavorTagsPayload = {
+  title: string;
+  main_ingredient: string;
+  sub_ingredients: string[];
+  abv_range: string;
+};
+
+export type SuggestSummaryPayload = SuggestFlavorTagsPayload & {
+  flavor_tags: string[];
+  concept: string | null;
+};
+
 type RecipeListResponse = {
   recipes: RecipeListItemDto[];
   totalElements: number;
@@ -192,6 +209,30 @@ type RecipeFundingResponse = {
     end_date: string;
     funding_status: string;
     recipe_status: string;
+  };
+};
+
+type SuggestSubIngredientsResponse = {
+  status: number;
+  message: string;
+  data: {
+    sub_ingredients: string[];
+  };
+};
+
+type SuggestFlavorTagsResponse = {
+  status: number;
+  message: string;
+  data: {
+    flavor_tags: string[];
+  };
+};
+
+type SuggestSummaryResponse = {
+  status: number;
+  message: string;
+  data: {
+    summary: string;
   };
 };
 
@@ -427,6 +468,30 @@ export async function createRecipe(payload: CreateRecipePayload) {
   }
   const data = await requestFormJson<CreateRecipeResponse>('/api/recipes', formData, { auth: true });
   return mapRecipeListItem(data.recipe);
+}
+
+export async function suggestRecipeSubIngredients(payload: SuggestSubIngredientsPayload) {
+  const data = await requestJson<SuggestSubIngredientsResponse>('/api/recipe/suggest-sub-ingredients', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return data.data.sub_ingredients;
+}
+
+export async function suggestRecipeFlavorTags(payload: SuggestFlavorTagsPayload) {
+  const data = await requestJson<SuggestFlavorTagsResponse>('/api/recipe/suggest-flavor-tags', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return data.data.flavor_tags;
+}
+
+export async function suggestRecipeSummary(payload: SuggestSummaryPayload) {
+  const data = await requestJson<SuggestSummaryResponse>('/api/recipe/suggest-summary', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return data.data.summary;
 }
 
 export async function deleteRecipe(recipeId: number) {

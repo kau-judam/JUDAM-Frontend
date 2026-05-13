@@ -7,6 +7,10 @@ type FundingApiErrorBody = {
   message?: string;
 };
 
+type FundingApiEnvelope<T> = FundingApiErrorBody & {
+  data?: T;
+};
+
 type FundingAgreementPayload = {
   breweryId: number;
   isAdultConfirmed: boolean;
@@ -299,21 +303,33 @@ export type FundingListSort = 'POPULAR' | 'LATEST' | 'DEADLINE';
 export type FundingListItem = {
   fundingId: number;
   title: string;
+  description?: string;
+  recipeTitle?: string;
   thumbnailUrl: string | null;
   breweryName: string;
   currentAmount: number;
   targetAmount: number;
   achievementRate: number;
   status: FundingListStatus | string;
+  startDate?: string;
   endDate: string;
 };
 
 export type FundingListResponse = {
-  content: FundingListItem[];
+  data: FundingListItem[];
+  content?: FundingListItem[];
   page: number;
   size: number;
   totalElements: number;
   totalPages: number;
+};
+
+type FundingListApiResponse = FundingApiEnvelope<FundingListItem[]> & {
+  content?: FundingListItem[];
+  page?: number;
+  size?: number;
+  totalElements?: number;
+  totalPages?: number;
 };
 
 export type FundingDetailResponse = {
@@ -326,10 +342,11 @@ export type FundingDetailResponse = {
   currentAmount: number;
   targetAmount: number;
   achievementRate: number;
-  supporterCount: number;
+  description?: string;
+  supporterCount?: number;
   startDate: string;
   endDate: string;
-  expectedDeliveryDate: string;
+  expectedDeliveryDate?: string;
   tasteProfile?: {
     sweetness: number;
     acidity: number;
@@ -422,7 +439,7 @@ export type FundingReviewsResponse = {
 };
 
 export type FundingSupportOption = {
-  optionId: number;
+  optionId: number | string;
   name: string;
   price: number;
   description: string;
@@ -435,6 +452,10 @@ export type FundingSupportOptionsResponse = {
   fundingId: number;
   supportOptions: FundingSupportOption[];
 };
+
+type FundingSupportOptionsApiResponse = FundingSupportOptionsResponse | FundingApiEnvelope<FundingSupportOptionsResponse>;
+
+type FundingDetailApiResponse = FundingDetailResponse | FundingApiEnvelope<FundingDetailResponse>;
 
 export type FundingOrderDetailResponse = {
   orderId: number;
@@ -506,6 +527,14 @@ function parseFundingResponseBody(path: string, response: Response, text: string
     const contentType = response.headers.get('content-type') || 'unknown content-type';
     throw new Error(`API 응답이 JSON이 아닙니다. ${response.status} ${path} (${contentType})`);
   }
+}
+
+function getFundingResponseData<T>(response: T | FundingApiEnvelope<T>) {
+  if (response && typeof response === 'object' && 'data' in response) {
+    const data = (response as FundingApiEnvelope<T>).data;
+    if (data !== undefined) return data;
+  }
+  return response as T;
 }
 
 async function requestFundingJson<T>(path: string, options: RequestInit & { auth?: boolean } = {}) {
@@ -764,11 +793,22 @@ export async function getFundingList(params: {
   query.set('page', String(params.page ?? 0));
   query.set('size', String(params.size ?? 10));
   const suffix = query.toString();
-  return requestFundingJson<FundingListResponse>(`/api/fundings${suffix ? `?${suffix}` : ''}`);
+  const result = await requestFundingJson<FundingListApiResponse>(`/api/fundings${suffix ? `?${suffix}` : ''}`);
+  const data = Array.isArray(result.data) ? result.data : result.content ?? [];
+  return {
+    ...result,
+    data,
+    content: result.content ?? data,
+    page: result.page ?? params.page ?? 0,
+    size: result.size ?? params.size ?? 10,
+    totalElements: result.totalElements ?? data.length,
+    totalPages: result.totalPages ?? 1,
+  };
 }
 
 export async function getFundingDetail(fundingId: number) {
-  return requestFundingJson<FundingDetailResponse>(`/api/fundings/${fundingId}`);
+  const result = await requestFundingJson<FundingDetailApiResponse>(`/api/fundings/${fundingId}`);
+  return getFundingResponseData<FundingDetailResponse>(result);
 }
 
 export async function getFundingIntro(fundingId: number) {
@@ -858,7 +898,12 @@ export async function createFundingReview(fundingId: number, payload: CreateFund
 }
 
 export async function getFundingSupportOptions(fundingId: number) {
-  return requestFundingJson<FundingSupportOptionsResponse>(`/api/fundings/${fundingId}/support-options`);
+  const result = await requestFundingJson<FundingSupportOptionsApiResponse>(`/api/fundings/${fundingId}/support-options`);
+  const response = getFundingResponseData<FundingSupportOptionsResponse>(result);
+  return {
+    fundingId: response.fundingId ?? fundingId,
+    supportOptions: response.supportOptions ?? [],
+  };
 }
 
 export async function getFundingOrderDetail(orderId: number) {

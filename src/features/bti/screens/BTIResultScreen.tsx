@@ -1,5 +1,7 @@
 import React from 'react';
 import {
+  Image,
+  ImageSourcePropType,
   ScrollView,
   Share,
   StyleSheet,
@@ -14,6 +16,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { getBtiDisplayType, getBtiResult, resolveSulbtiCode } from '@/features/bti/data';
+
+const BTI_CHARACTER_IMAGES: Record<string, ImageSourcePropType> = {
+  SHFC: require('@/assets/images/BTI/1.png'),
+  SHFU: require('@/assets/images/BTI/2.png'),
+  SHMC: require('@/assets/images/BTI/3.png'),
+  SHMU: require('@/assets/images/BTI/4.png'),
+  SLFC: require('@/assets/images/BTI/5.png'),
+  SLFU: require('@/assets/images/BTI/6.png'),
+  SLMC: require('@/assets/images/BTI/7.png'),
+  SLMU: require('@/assets/images/BTI/8.png'),
+  DHFC: require('@/assets/images/BTI/9.png'),
+  DHFU: require('@/assets/images/BTI/10.png'),
+  DHMC: require('@/assets/images/BTI/11.png'),
+  DHMU: require('@/assets/images/BTI/12.png'),
+  DLFC: require('@/assets/images/BTI/13.png'),
+  DLFU: require('@/assets/images/BTI/14.png'),
+  DLMC: require('@/assets/images/BTI/15.png'),
+  DLMU: require('@/assets/images/BTI/16.png'),
+};
+
+const SPECIAL_CHARACTER_LAYOUT_TYPES = new Set(['SHFC', 'SLFC']);
 
 const TASTE_AXIS_CONFIG = [
   { key: 'sweetness', leftLabel: '달콤함', rightLabel: '깔끔함', valueLabel: '단맛', highSide: 'left' },
@@ -49,6 +72,8 @@ export default function BTIResultScreen() {
   const resultCode = savedCode || routeCode;
   const displayType = getBtiDisplayType(resultCode);
   const result = resultCode ? getBtiResult(resultCode) : null;
+  const characterImage = result ? BTI_CHARACTER_IMAGES[result.type] : null;
+  const isSpecialCharacterLayout = result ? SPECIAL_CHARACTER_LAYOUT_TYPES.has(result.type) : false;
   const tasteAxes = TASTE_AXIS_CONFIG.map((axis) => {
     const sourceValue =
       axis.key === 'alcohol'
@@ -137,6 +162,13 @@ export default function BTIResultScreen() {
         <LinearGradient colors={['#111111', '#2B2B2B']} style={styles.resultHero}>
           <Text style={styles.heroLabel}>당신의 술BTI는</Text>
           <Text style={styles.heroType}>{displayType}</Text>
+          {characterImage && (
+            <Image
+              source={characterImage}
+              style={[styles.heroCharacter, isSpecialCharacterLayout && styles.heroCharacterSpecial]}
+              resizeMode="contain"
+            />
+          )}
           <Text style={styles.heroName}>{result.name}</Text>
           <Text style={styles.heroEnglish}>{result.analysisTitle}</Text>
         </LinearGradient>
@@ -213,9 +245,11 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#111' },
   headerSpacer: { width: 38 },
   content: { padding: 20, gap: 18 },
-  resultHero: { borderRadius: 28, paddingHorizontal: 28, paddingVertical: 34, alignItems: 'center' },
+  resultHero: { borderRadius: 28, paddingHorizontal: 28, paddingVertical: 32, alignItems: 'center' },
   heroLabel: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.7)', marginBottom: 8 },
   heroType: { fontSize: 52, lineHeight: 60, fontWeight: '900', color: '#FFF', letterSpacing: 0 },
+  heroCharacter: { width: 330, height: 180, marginTop: 10, marginBottom: 6 },
+  heroCharacterSpecial: { width: 246, height: 226, marginTop: 8, marginBottom: 4 },
   heroName: { fontSize: 23, fontWeight: '900', color: '#FFF', marginTop: 8, textAlign: 'center' },
   heroEnglish: { fontSize: 13, fontWeight: '700', color: 'rgba(255,255,255,0.68)', marginTop: 5 },
   summaryCard: { backgroundColor: '#F9FAFB', borderRadius: 22, borderWidth: 1, borderColor: '#E5E7EB', padding: 18 },

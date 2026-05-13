@@ -18,6 +18,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { recipesData } from '@/constants/data';
+import { createRecipe, getRecipeAccessToken } from '@/features/recipe/api';
+import { markCurrentUserRecipe } from '@/features/recipe/interestState';
+
+const FLAVOR_TAG_POOL = [
+  '달콤함',
+  '상큼함',
+  '깔끔함',
+  '고소함',
+  '스파이시',
+  '가벼움',
+  '부드러움',
+  '탄산감',
+  '묵직함',
+  '청량감',
+  '씁쓸함',
+  '시원함',
+  '진한향',
+  '꽃향기',
+  '과일향',
+  '구수함',
+];
 import {
   createRecipe,
   getRecipeAccessToken,

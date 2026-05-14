@@ -7,7 +7,7 @@ import type {
   FundingReviewItem,
   FundingSupportOption,
 } from '@/features/funding/api';
-import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
+import { normalizeFundingImageUrl, normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import type { FundingReview } from '@/features/funding/reviews';
 
 function formatDate(value?: string) {
@@ -29,7 +29,7 @@ function getDaysLeft(value?: string) {
 
 export function mapFundingStatus(status: string, currentAmount = 0, targetAmount = 0): ProjectStatus {
   if (status === 'UPCOMING') return '펀딩 예정';
-  if (status === 'ONGOING') return '진행 중';
+  if (status === 'ONGOING' || status === 'ACTIVE') return '진행 중';
   if (status === 'ENDED') return currentAmount >= targetAmount ? '펀딩 성공' : '펀딩 실패';
   return '진행 중';
 }
@@ -62,16 +62,17 @@ function isSameFundingText(current?: string, incoming?: string) {
 
 export function mergeFundingListItem(existing: FundingProject | undefined, item: FundingListItem): FundingProject {
   const status = mapFundingStatus(item.status, item.currentAmount, item.targetAmount);
+  const thumbnailUrl = normalizeFundingImageUrl(item.thumbnailUrl);
   return {
     id: item.fundingId,
-    title: existing?.title || item.title,
-    brewery: existing?.brewery || item.breweryName,
+    title: item.title || existing?.title || '',
+    brewery: item.breweryName || existing?.brewery || '양조장 안내 예정',
     breweryLogo: existing?.breweryLogo || '🍶',
     location: existing?.location || '지역 안내 예정',
     category: existing?.category || '막걸리',
     shortTitle: existing?.shortTitle || item.title,
-    shortDescription: existing?.shortDescription || existing?.projectSummary || item.title,
-    image: existing?.image || item.thumbnailUrl || '',
+    shortDescription: item.description || existing?.shortDescription || existing?.projectSummary || item.title,
+    image: thumbnailUrl || existing?.image || '',
     images: existing?.images,
     localImage: existing?.localImage,
     popularRank: existing?.popularRank,
@@ -120,9 +121,16 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
 export function mergeFundingDetail(existing: FundingProject, detail: FundingDetailResponse): FundingProject {
   const supportOption = detail.supportOptions?.[0];
   const bottleSize = getVolumeFromDescription(supportOption?.description);
-  const sameProject = isSameFundingText(existing.title, detail.title) || isSameFundingText(existing.shortTitle, detail.title);
+  const thumbnailUrl = normalizeFundingImageUrl(detail.thumbnailUrl);
+  const sameProject =
+    detail.fundingId === existing.id ||
+    isSameFundingText(existing.title, detail.title) ||
+    isSameFundingText(existing.shortTitle, detail.title);
   return {
     ...existing,
+    title: sameProject ? detail.title || existing.title : existing.title,
+    brewery: sameProject ? detail.breweryName || existing.brewery : existing.brewery,
+    shortDescription: sameProject ? detail.description || detail.summary || existing.shortDescription : existing.shortDescription,
     currentAmount: sameProject ? detail.currentAmount ?? existing.currentAmount : existing.currentAmount,
     goalAmount: sameProject ? detail.targetAmount || existing.goalAmount : existing.goalAmount,
     backers: sameProject ? detail.supporterCount ?? existing.backers : existing.backers,
@@ -131,9 +139,8 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     endDate: sameProject ? formatDate(detail.endDate) || existing.endDate : existing.endDate,
     startDate: sameProject ? formatDate(detail.startDate) || existing.startDate : existing.startDate,
     estimatedDelivery: sameProject ? formatDate(detail.expectedDeliveryDate) || existing.estimatedDelivery : existing.estimatedDelivery,
-    projectSummary: sameProject ? existing.projectSummary || detail.summary : existing.projectSummary,
-    image: sameProject ? existing.image || detail.thumbnailUrl || '' : existing.image,
-    brewery: sameProject ? existing.brewery || detail.breweryName : existing.brewery,
+    projectSummary: sameProject ? detail.summary || detail.description || existing.projectSummary : existing.projectSummary,
+    image: sameProject ? thumbnailUrl || existing.image || '' : existing.image,
     pricePerBottle: sameProject ? supportOption?.price ?? existing.pricePerBottle : existing.pricePerBottle,
     rewardItems: sameProject && supportOption ? [supportOption.name] : existing.rewardItems,
     bottleSize: sameProject ? bottleSize || existing.bottleSize : existing.bottleSize,
@@ -211,8 +218,6 @@ export function mapFundingReview(projectId: number, item: FundingReviewItem): Fu
 
 export function mergeSupportOption(existing: FundingProject, option: FundingSupportOption): FundingProject {
   const bottleSize = getVolumeFromDescription(option.description);
-  const sameProject = isSameFundingText(existing.title, option.name) || isSameFundingText(existing.shortTitle, option.name);
-  if (!sameProject) return existing;
   return {
     ...existing,
     pricePerBottle: option.price,

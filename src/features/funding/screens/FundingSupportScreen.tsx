@@ -70,14 +70,6 @@ import {
 import SafeStorage from '@/utils/storage';
 import { formatPhoneNumber, isValidEmail, isValidPhone } from '@/utils/validation';
 
-function shouldOpenExternalPaymentUrl(paymentUrl?: string | null) {
-  if (!paymentUrl) return false;
-  const normalizedUrl = paymentUrl.trim();
-  if (!normalizedUrl) return false;
-  if (/^https?:\/\/([^/]+\.)?example\.com(?:[/?#:]|$)/i.test(normalizedUrl)) return false;
-  return /^https?:\/\//i.test(normalizedUrl) || /^[a-z][a-z0-9+.-]*:\/\//i.test(normalizedUrl);
-}
-
 export default function FundingSupportScreen() {
   const insets = useSafeAreaInsets();
   const { id, quantity: quantityParam, optionId: optionIdParam } = useLocalSearchParams();
@@ -305,11 +297,7 @@ export default function FundingSupportScreen() {
         paymentProvider: selectedPaymentMethod === 'toss' ? 'TOSS' : 'BANK',
         amount: order.totalAmount,
       });
-      if (shouldOpenExternalPaymentUrl(payment.paymentUrl)) {
-        const canOpenPaymentUrl = await Linking.canOpenURL(payment.paymentUrl);
-        if (!canOpenPaymentUrl) {
-          throw new Error('결제창을 열 수 없습니다. 결제 URL을 다시 확인해주세요.');
-        }
+      if (payment.paymentUrl) {
         await Linking.openURL(payment.paymentUrl);
       }
       try {

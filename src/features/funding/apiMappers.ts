@@ -7,6 +7,7 @@ import type {
   FundingReviewItem,
   FundingSupportOption,
 } from '@/features/funding/api';
+import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import type { FundingReview } from '@/features/funding/reviews';
 
 function formatDate(value?: string) {
@@ -185,7 +186,7 @@ export function mapBreweryLogs(logs: FundingBreweryLogItem[]): JournalEntry[] {
     date: formatDate(log.createdAt),
     title: log.title,
     content: log.content,
-    images: log.imageUrls || [],
+    images: normalizeFundingImageUrls(log.imageUrls),
     likes: 0,
     comments: [],
   }));
@@ -200,7 +201,7 @@ export function mapFundingReview(projectId: number, item: FundingReviewItem): Fu
     date: formatDate(item.createdAt),
     comment: item.content,
     rewardName: '후원 리워드',
-    images: item.imageUrls || [],
+    images: normalizeFundingImageUrls(item.imageUrls),
     tags: [],
     likes: 0,
     timestamp: formatDate(item.createdAt),

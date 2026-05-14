@@ -670,9 +670,14 @@ export default function BreweryProjectCreateScreen() {
     uploadedFiles,
   ]);
 
-  const hasBlockingDateWarning = Boolean(startDateWarning || deliveryDateWarning);
+  const hasBlockingDateWarning = Boolean((!isEditMode && startDateWarning) || deliveryDateWarning);
   const canSubmit = progress >= 100 && !hasBlockingDateWarning;
   const canSendPhoneVerification = isValidProjectPhone(creatorInfo.phone);
+  const exitRoute = isEditMode && editProjectId ? `/funding/${editProjectId}` : '/funding';
+
+  const navigateToExitRoute = () => {
+    router.replace(exitRoute as any);
+  };
 
   const showAlert = (message: string) => {
     setAlertMessage(message);
@@ -947,7 +952,7 @@ export default function BreweryProjectCreateScreen() {
       setHasTempSave(true);
       setTempSaveTimestamp(draft.timestamp);
       if (exitAfter) {
-        router.replace('/funding' as any);
+        navigateToExitRoute();
         return;
       }
       if (showSavedModal) {
@@ -1009,7 +1014,7 @@ export default function BreweryProjectCreateScreen() {
       setShowExitConfirm(true);
       return;
     }
-    router.replace('/funding' as any);
+    navigateToExitRoute();
   };
 
   const handleSave = async () => {
@@ -1032,7 +1037,7 @@ export default function BreweryProjectCreateScreen() {
   const handleExitWithoutSave = () => {
     setShowExitConfirm(false);
     setShowTempSaveModal(false);
-    router.replace('/funding' as any);
+    navigateToExitRoute();
   };
 
   const loadBreweryInfo = () => {

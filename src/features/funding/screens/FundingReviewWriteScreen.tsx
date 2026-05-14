@@ -23,6 +23,7 @@ import { useFunding } from '@/contexts/FundingContext';
 import { canAccessFundingReviews } from '@/features/funding/permissions';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { createFundingReview, getFundingApiErrorMessage, type FundingUploadFile } from '@/features/funding/api';
+import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
 import { showLoginRequired } from '@/utils/authPrompt';
 
@@ -222,6 +223,7 @@ export default function FundingReviewWriteScreen() {
             content: reviewText.trim(),
             images: imageFiles,
           });
+      const responseImageUrls = normalizeFundingImageUrls(response?.imageUrls);
       const reviewPayload = {
         id: response?.reviewId,
         projectId,
@@ -230,7 +232,7 @@ export default function FundingReviewWriteScreen() {
         rating: response?.rating || rating,
         comment: reviewText.trim(),
         rewardName: isNormalArchiveMode ? normalDrinkName.trim() : rewardName,
-        images: response?.imageUrls?.length ? response.imageUrls : uploadedImages,
+        images: responseImageUrls.length ? responseImageUrls : uploadedImages,
         mood: mood.trim(),
         pairing: pairing.trim(),
         showRecordInReview,

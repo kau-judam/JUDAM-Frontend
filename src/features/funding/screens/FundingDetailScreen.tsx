@@ -74,7 +74,7 @@ import {
   getFundingStatusLabel,
   isSupportableFundingStatus,
 } from '@/constants/data';
-import type { BrewingStage, JournalComment, JournalReply } from '@/constants/data';
+import type { BrewingStage, JournalComment, JournalEntry, JournalReply } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import {
   getTasteProfileFromSulbti,
@@ -161,6 +161,10 @@ function getTabParam(tab: "소개" | "양조일지" | "Q&A" | "후기") {
   if (tab === "Q&A") return "qna";
   if (tab === "후기") return "review";
   return "intro";
+}
+
+function getJournalMergeKey(journal: JournalEntry) {
+  return `${journal.id}:${journal.stage}:${journal.title}:${journal.content}`;
 }
 
 export default function FundingDetailScreen() {
@@ -310,7 +314,9 @@ export default function FundingDetailScreen() {
           const existingJournal = (currentProject.journals || []).find((item) => item.id === journal.id);
           return existingJournal ? { ...journal, likes: existingJournal.likes, comments: existingJournal.comments } : journal;
         });
-        updateProjectJournals(projectId, mergedJournals);
+        const apiJournalKeys = new Set(apiJournals.map(getJournalMergeKey));
+        const localOnlyJournals = (currentProject.journals || []).filter((journal) => !apiJournalKeys.has(getJournalMergeKey(journal)));
+        updateProjectJournals(projectId, [...mergedJournals, ...localOnlyJournals]);
       })
       .catch((error) => {
         console.warn(getFundingApiErrorMessage(error, '양조일지를 불러오지 못했습니다.'));
@@ -1284,12 +1290,12 @@ export default function FundingDetailScreen() {
                                 </View>
                                 {hasStageEntries ? (
                                   <View style={styles.journalEntries}>
-                                    {visibleEntries.map((entry) => {
+                                    {visibleEntries.map((entry, entryIndex) => {
                                       const entryComments = entry.comments || [];
                                       const commentsOpen = expandedJournalComments.has(entry.id);
                                       const isJournalLiked = likedJournals.has(entry.id);
                                       return (
-                                        <View key={entry.id} style={styles.journalEntryCard}>
+                                        <View key={`${stage.id}-${entry.id}-${entryIndex}`} style={styles.journalEntryCard}>
                                           <View style={styles.journalEntryHeader}>
                                             <Text style={styles.journalEntryTitle} numberOfLines={2}>{entry.title}</Text>
                                             <Text style={styles.journalDate}>{entry.date}</Text>

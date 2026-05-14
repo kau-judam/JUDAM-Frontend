@@ -54,6 +54,47 @@ function getImageMimeType(fileName: string) {
   return 'image/jpeg';
 }
 
+function isNetworkRequestFailed(error: unknown) {
+  return error instanceof Error && error.message.toLowerCase().includes('network request failed');
+}
+
+function waitForRetry() {
+  return new Promise((resolve) => setTimeout(resolve, 450));
+}
+
+function isSameJournalEntry(entry: JournalEntry, target: JournalEntry) {
+  return (
+    entry === target ||
+    (entry.id === target.id &&
+      entry.stage === target.stage &&
+      entry.date === target.date &&
+      entry.title === target.title &&
+      entry.content === target.content)
+  );
+}
+
+function replaceSingleJournalEntry(journals: JournalEntry[], target: JournalEntry, replacement: JournalEntry) {
+  let replaced = false;
+  return journals.map((entry) => {
+    if (!replaced && isSameJournalEntry(entry, target)) {
+      replaced = true;
+      return replacement;
+    }
+    return entry;
+  });
+}
+
+function removeSingleJournalEntry(journals: JournalEntry[], target: JournalEntry) {
+  let removed = false;
+  return journals.filter((entry) => {
+    if (!removed && isSameJournalEntry(entry, target)) {
+      removed = true;
+      return false;
+    }
+    return true;
+  });
+}
+
 export default function BreweryJournalManageScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -132,7 +173,7 @@ export default function BreweryJournalManageScreen() {
   };
 
   const saveJournal = async () => {
-    if (!project || !selectedStage) return;
+    if (!project || !selectedStage || isSaving) return;
     if (!title.trim()) {
       setMessage('양조일지 제목을 입력해주세요.');
       return;
@@ -145,20 +186,28 @@ export default function BreweryJournalManageScreen() {
     setIsSaving(true);
     try {
       const localImageFiles = images.map((image) => imageFilesByUri[image]).filter((file): file is FundingUploadFile => Boolean(file));
-      const response = editingEntry
-        ? await updateBreweryLog(project.id, editingEntry.id, {
+      const submitBreweryLog = () => editingEntry
+        ? updateBreweryLog(project.id, editingEntry.id, {
             stage: BREWING_STAGE_TO_API_STAGE[selectedStage],
             title: title.trim(),
             content: content.trim(),
             images: localImageFiles,
             deleteImageUrls: originalImages.filter((image) => !images.includes(image)),
           })
-        : await createBreweryLog(project.id, {
+        : createBreweryLog(project.id, {
             stage: BREWING_STAGE_TO_API_STAGE[selectedStage],
             title: title.trim(),
             content: content.trim(),
             images: localImageFiles,
           });
+      let response: Awaited<ReturnType<typeof submitBreweryLog>>;
+      try {
+        response = await submitBreweryLog();
+      } catch (error) {
+        if (!isNetworkRequestFailed(error)) throw error;
+        await waitForRetry();
+        response = await submitBreweryLog();
+      }
 
       const nextEntry: JournalEntry = {
         id: response.breweryLogId,
@@ -173,7 +222,7 @@ export default function BreweryJournalManageScreen() {
       };
 
       const nextJournals = editingEntry
-        ? journals.map((entry) => (entry.id === editingEntry.id ? nextEntry : entry))
+        ? replaceSingleJournalEntry(journals, editingEntry, nextEntry)
         : [nextEntry, ...journals];
 
       updateProjectJournals(project.id, nextJournals);
@@ -187,11 +236,11 @@ export default function BreweryJournalManageScreen() {
     }
   };
 
-  const deleteJournal = async (entryId: number) => {
+  const deleteJournal = async (targetEntry: JournalEntry) => {
     if (!project) return;
     try {
-      const response = await deleteBreweryLog(project.id, entryId);
-      updateProjectJournals(project.id, journals.filter((entry) => entry.id !== entryId));
+      const response = await deleteBreweryLog(project.id, targetEntry.id);
+      updateProjectJournals(project.id, removeSingleJournalEntry(journals, targetEntry));
       setMessage(response.message || '양조일지가 삭제되었습니다.');
     } catch (error) {
       setMessage(getFundingApiErrorMessage(error, '양조일지를 삭제하지 못했습니다.'));
@@ -255,8 +304,8 @@ export default function BreweryJournalManageScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {stageJournals.map((entry) => (
-                  <View key={entry.id} style={styles.entryCard}>
+                {stageJournals.map((entry, index) => (
+                  <View key={`${stage.id}-${entry.id}-${index}`} style={styles.entryCard}>
                     <View style={styles.entryTop}>
                       <View style={styles.entryTextArea}>
                         <Text style={styles.entryTitle}>{entry.title}</Text>
@@ -265,7 +314,7 @@ export default function BreweryJournalManageScreen() {
                       <TouchableOpacity style={styles.entryAction} onPress={() => openEditor(stage.id, entry)}>
                         <Text style={styles.entryActionText}>수정</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.entryDelete} onPress={() => deleteJournal(entry.id)}>
+                      <TouchableOpacity style={styles.entryDelete} onPress={() => deleteJournal(entry)}>
                         <Trash2 size={16} color="#DC2626" />
                       </TouchableOpacity>
                     </View>

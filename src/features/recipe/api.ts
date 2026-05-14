@@ -65,6 +65,7 @@ export type CreateRecipePayload = {
   content: string;
   abv_range: string;
   main_ingredient: string;
+  sub_ingredient?: string | null;
   target_flavor: string;
   concept: string;
   summary: string;
@@ -215,25 +216,28 @@ type RecipeFundingResponse = {
 type SuggestSubIngredientsResponse = {
   status: number;
   message: string;
-  data: {
+  data?: {
     sub_ingredients: string[];
   };
+  sub_ingredients?: string[];
 };
 
 type SuggestFlavorTagsResponse = {
   status: number;
   message: string;
-  data: {
+  data?: {
     flavor_tags: string[];
   };
+  flavor_tags?: string[];
 };
 
 type SuggestSummaryResponse = {
   status: number;
   message: string;
-  data: {
+  data?: {
     summary: string;
   };
+  summary?: string;
 };
 
 const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
@@ -244,6 +248,40 @@ export async function getRecipeAccessToken() {
     if (value) return value;
   }
   return null;
+}
+
+export type RecipeJwtPayload = {
+  id?: string;
+  userId?: string;
+  role?: string;
+  exp?: number;
+};
+
+export function decodeRecipeJwtPayload(token: string): RecipeJwtPayload | null {
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+    if (typeof atob !== 'function') return null;
+    const normalizedPayload = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedPayload = normalizedPayload.padEnd(
+      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
+      '='
+    );
+    const decoded = atob(paddedPayload);
+    return JSON.parse(decoded) as RecipeJwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+export function isJwtExpired(token: string, now = Date.now()) {
+  try {
+    const parsed = decodeRecipeJwtPayload(token);
+    if (!parsed?.exp) return false;
+    return parsed.exp * 1000 <= now;
+  } catch {
+    return false;
+  }
 }
 
 function parseRecipeResponseBody(path: string, response: Response, text: string) {
@@ -454,6 +492,9 @@ export async function createRecipe(payload: CreateRecipePayload) {
   formData.append('content', payload.content);
   formData.append('abv_range', payload.abv_range);
   formData.append('main_ingredient', payload.main_ingredient);
+  if (payload.sub_ingredient?.trim()) {
+    formData.append('sub_ingredient', payload.sub_ingredient.trim());
+  }
   formData.append('target_flavor', payload.target_flavor);
   formData.append('concept', payload.concept);
   formData.append('summary', payload.summary);
@@ -475,7 +516,7 @@ export async function suggestRecipeSubIngredients(payload: SuggestSubIngredients
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return data.data.sub_ingredients;
+  return data.data?.sub_ingredients ?? data.sub_ingredients ?? [];
 }
 
 export async function suggestRecipeFlavorTags(payload: SuggestFlavorTagsPayload) {
@@ -483,7 +524,7 @@ export async function suggestRecipeFlavorTags(payload: SuggestFlavorTagsPayload)
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return data.data.flavor_tags;
+  return data.data?.flavor_tags ?? data.flavor_tags ?? [];
 }
 
 export async function suggestRecipeSummary(payload: SuggestSummaryPayload) {
@@ -491,7 +532,7 @@ export async function suggestRecipeSummary(payload: SuggestSummaryPayload) {
     method: 'POST',
     body: JSON.stringify(payload),
   });
-  return data.data.summary;
+  return data.data?.summary ?? data.summary ?? '';
 }
 
 export async function deleteRecipe(recipeId: number) {

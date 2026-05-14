@@ -1478,3 +1478,32 @@ Frontend connection:
 - The frontend temporarily disconnected only the sub ingredient `AI 생성` button from `suggestRecipeSubIngredients`.
 - The API client function and endpoint memo remain in place so it can be reconnected later by restoring the button handler in `src/features/recipe/screens/RecipeCreateScreen.tsx`.
 - Flavor tag and summary suggestion buttons remain connected to their APIs.
+
+2026-05-14 recipe create/suggestion update:
+- Reconnected the `[주담]` recipe create screen sub ingredient `AI 생성` button to `POST /api/recipe/suggest-sub-ingredients`.
+- `RecipeCreateScreen` sends joined main ingredients as `main_ingredient` and infers `region` from Korean region words in the main ingredient text. If no region is found, it sends an empty string.
+- `POST /api/recipes` now includes selected sub ingredients as the optional multipart text field `sub_ingredient`, joined with `, `.
+- `createRecipe` still sends all recipe create fields through `FormData` and does not manually set `Content-Type`, so the browser/runtime can set the multipart boundary.
+
+2026-05-14 temporary sub ingredient demo fallback:
+- The sub ingredient `AI 생성` button was temporarily disconnected again because `POST /api/recipe/suggest-sub-ingredients` is not ready enough for recipe creation demos.
+- `RecipeCreateScreen` currently shows local demo suggestions: `누룩`, `물`, `유자`, `생강`, `꿀`.
+- The API client function `suggestRecipeSubIngredients` remains in `src/features/recipe/api.ts` for later reconnection.
+- Recipe creation still sends the user's selected demo sub ingredients to `POST /api/recipes` as multipart `sub_ingredient`.
+- The AI implementation screenshot shows suggestion responses without the previous `data` wrapper, e.g. `{ "flavor_tags": [...] }` and `{ "summary": "..." }`. The frontend parser now accepts both wrapped (`data.flavor_tags`) and unwrapped (`flavor_tags`) response shapes.
+- Direct test against `http://43.202.24.223:3000/api/recipe/suggest-flavor-tags` with `main_ingredient: "apple"`, `sub_ingredients: ["꿀"]`, `abv_range: "3%~5%"` returned `200` with an empty `flavor_tags` array. Per product request, only sub ingredients use local demo fallback; empty flavor tag responses are logged to the Metro console and no temporary flavor tags are shown.
+- Backend-provided AI examples use `abv_range` in Korean degree format such as `5~7도`, while the recipe create screen displays recipe-create ranges such as `3%~5%`. For AI suggestion calls only, `RecipeCreateScreen` converts `3%~5%` -> `3~5도` and `15% 이상` -> `15도 이상`. Final recipe creation still sends the selected `%` range.
+
+2026-05-14 recipe create validation update:
+- `RecipeCreateScreen` now blocks submit before calling `POST /api/recipes` when required API fields are empty: title, main ingredient, `abv_range`, `target_flavor`, `concept`, and `summary/content`.
+- This prevents demo submissions from reaching the backend with empty required multipart text fields, which can currently surface as backend `500 서버 내부 오류`.
+
+2026-05-14 temporary token expiry note:
+- The current mock user JWT in `AuthContext` expires at `2026-05-14 02:17:46 KST` (`2026-05-13T17:17:46Z`). After that point, `POST /api/recipes` can surface as backend `500 서버 내부 오류` instead of a clean `401`.
+- Added a frontend JWT expiry guard for recipe creation so expired local tokens show a login-expired modal before calling the API.
+- A new backend-issued test token or real login API token is needed to continue authenticated recipe creation demos after this expiry.
+- Replaced the temporary brewery token in `AuthContext` with the user-provided token expiring at `2026-05-22 14:15:13 KST`. The provided token payload has `userId: "1"` but no `role` claim, so recipe creation may still fail if the backend requires `role` from JWT for `author_type`.
+- Added a recipe create guard that decodes the saved JWT and blocks submit when the token has no `role`. This avoids sending refresh-token-shaped JWTs to `POST /api/recipes`, where the backend can currently surface the missing role as `500 서버 내부 오류`.
+- Replaced the temporary brewery token again with a backend-provided access token containing `role: "BREWERY"`, expiring at `2026-05-21 12:58:19 KST`. This token is suitable for brewery-authenticated recipe create testing.
+- Direct server verification with the new brewery token succeeded for both `POST /api/recipes` multipart without image and `POST /api/recipes/brewery` JSON without image, returning `201`. If the app still shows `500` or `Network request failed`, focus on app-side file upload/image asset state. `RecipeCreateScreen` now clears both preview and `imageAsset` when the image remove button is pressed and logs create payload metadata before submit.
+- Follow-up direct verification with the same brewery token and a tiny 1x1 PNG attached as multipart `image` returned `500 서버 내부 오류`. Because the same endpoint succeeds without `image`, the remaining issue is backend-side multipart file handling/S3 upload/AI image pipeline, not the frontend text fields or token.

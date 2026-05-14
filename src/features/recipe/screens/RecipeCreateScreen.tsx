@@ -20,7 +20,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { recipesData } from '@/constants/data';
 import {
   createRecipe,
+  decodeRecipeJwtPayload,
   getRecipeAccessToken,
+  isJwtExpired,
   suggestRecipeFlavorTags,
   suggestRecipeSummary,
 } from '@/features/recipe/api';
@@ -83,6 +85,12 @@ export default function RecipeCreateScreen() {
 
   const getSelectedFlavorTags = () => [...selectedFlavorTags, ...customFlavorTags];
 
+  const getAiAbvRangeText = () => {
+    if (!alcoholRange) return '';
+    if (alcoholRange.includes('이상')) return alcoholRange.replace('%', '도');
+    return `${alcoholRange.replace(/%/g, '')}도`;
+  };
+
   const getApiErrorMessage = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
 
   const handleGenerateSubIngredients = () => {
@@ -106,12 +114,23 @@ export default function RecipeCreateScreen() {
       return;
     }
     try {
-      const suggestions = await suggestRecipeFlavorTags({
+      const payload = {
         title: title.trim(),
         main_ingredient: getMainIngredientText(),
         sub_ingredients: selectedSubIngredients,
-        abv_range: alcoholRange,
+        abv_range: getAiAbvRangeText(),
+      };
+      console.log('Recipe flavor tag AI request', payload);
+      const suggestions = await suggestRecipeFlavorTags({
+        title: payload.title,
+        main_ingredient: payload.main_ingredient,
+        sub_ingredients: payload.sub_ingredients,
+        abv_range: payload.abv_range,
       });
+      console.log('Recipe flavor tag AI response', suggestions);
+      if (suggestions.length === 0) {
+        console.warn('Recipe flavor tag AI returned an empty array.');
+      }
       setGeneratedFlavorTags(suggestions);
       setSelectedFlavorTags([]);
     } catch (error) {
@@ -149,7 +168,7 @@ export default function RecipeCreateScreen() {
         title: title.trim(),
         main_ingredient: getMainIngredientText(),
         sub_ingredients: selectedSubIngredients,
-        abv_range: alcoholRange,
+        abv_range: getAiAbvRangeText(),
         flavor_tags: getSelectedFlavorTags(),
         concept: concept.trim() || null,
       });
@@ -187,9 +206,30 @@ export default function RecipeCreateScreen() {
     }
   };
 
+  const handleRemoveImage = () => {
+    setImagePreview(null);
+    setImageAsset(null);
+  };
+
   const handleSubmit = async () => {
     if (!title.trim() || !hasMainIngredient) {
       showNotice('필수 항목을 모두 입력해 주세요.');
+      return;
+    }
+    if (!alcoholRange) {
+      showNotice('도수 범위를 선택해 주세요.');
+      return;
+    }
+    if (getSelectedFlavorTags().length === 0) {
+      showNotice('지향하는 맛을 선택하거나 직접 입력해 주세요.');
+      return;
+    }
+    if (!concept.trim()) {
+      showNotice('프로젝트 컨셉을 입력해 주세요.');
+      return;
+    }
+    if (!description.trim()) {
+      showNotice('프로젝트 요약을 입력해 주세요.');
       return;
     }
     const token = await getRecipeAccessToken();
@@ -197,12 +237,36 @@ export default function RecipeCreateScreen() {
       showNotice('API 로그인 연결 후 이용할 수 있어요.');
       return;
     }
+    if (isJwtExpired(token)) {
+      showNotice('로그인 시간이 만료되었습니다.', '다시 로그인한 뒤 레시피를 제안해 주세요.');
+      return;
+    }
+    const tokenPayload = decodeRecipeJwtPayload(token);
+    if (!tokenPayload?.role) {
+      showNotice(
+        '레시피 작성용 토큰이 필요합니다.',
+        '현재 저장된 토큰에는 권한 정보가 없어 레시피 작성자를 확인할 수 없습니다. role이 포함된 access token으로 다시 로그인해 주세요.'
+      );
+      return;
+    }
     try {
+      console.log('Recipe create request', {
+        title: title.trim(),
+        abv_range: alcoholRange,
+        main_ingredient: getMainIngredientText(),
+        sub_ingredient: selectedSubIngredients.join(', '),
+        target_flavor: getSelectedFlavorTags().join(', '),
+        hasImageAsset: Boolean(imageAsset),
+        imageName: imageAsset?.fileName,
+        imageType: imageAsset?.mimeType,
+        imageUri: imageAsset?.uri,
+      });
       const createdRecipe = await createRecipe({
         title: title.trim(),
         content: description.trim() || concept.trim(),
         abv_range: alcoholRange,
         main_ingredient: getMainIngredientText(),
+        sub_ingredient: selectedSubIngredients.join(', '),
         target_flavor: getSelectedFlavorTags().join(', '),
         concept: concept.trim(),
         summary: description.trim(),
@@ -326,7 +390,7 @@ export default function RecipeCreateScreen() {
         </Section>
 
         <Section>
-          <Text style={styles.label}>도수 범위</Text>
+          <Text style={styles.label}>도수 범위 *</Text>
           <View style={styles.chipWrap}>
             {ALCOHOL_RANGES.map((range) => (
               <Chip
@@ -341,7 +405,7 @@ export default function RecipeCreateScreen() {
 
         <Section>
           <View style={styles.sectionHead}>
-            <Text style={styles.labelNoMargin}>지향하는 맛 (다중 선택 가능)</Text>
+            <Text style={styles.labelNoMargin}>지향하는 맛 * (다중 선택 가능)</Text>
             <SmallDarkButton label="AI 생성" icon={<Wand2 size={12} color="#FFF" />} onPress={handleGenerateFlavorTags} />
           </View>
           {generatedFlavorTags.length > 0 ? (
@@ -392,7 +456,7 @@ export default function RecipeCreateScreen() {
         </Section>
 
         <Section>
-          <Text style={styles.label}>프로젝트 컨셉</Text>
+          <Text style={styles.label}>프로젝트 컨셉 *</Text>
           <TextInput
             value={concept}
             onChangeText={setConcept}
@@ -406,7 +470,7 @@ export default function RecipeCreateScreen() {
 
         <Section>
           <View style={styles.sectionHead}>
-            <Text style={styles.labelNoMargin}>프로젝트 요약</Text>
+            <Text style={styles.labelNoMargin}>프로젝트 요약 *</Text>
             <SmallDarkButton label="AI 생성" icon={<Wand2 size={12} color="#FFF" />} onPress={handleGenerateSummary} />
           </View>
           <TextInput
@@ -429,7 +493,7 @@ export default function RecipeCreateScreen() {
           {imagePreview ? (
             <View style={styles.previewBox}>
               <Image source={{ uri: imagePreview }} style={styles.previewImage} />
-              <TouchableOpacity style={styles.previewRemoveBtn} onPress={() => setImagePreview(null)}>
+              <TouchableOpacity style={styles.previewRemoveBtn} onPress={handleRemoveImage}>
                 <X size={16} color="#FFF" />
               </TouchableOpacity>
             </View>

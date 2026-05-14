@@ -463,6 +463,7 @@ export default function BreweryProjectCreateScreen() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showSubmitSuccess, setShowSubmitSuccess] = useState(false);
+  const [submitSyncWarning, setSubmitSyncWarning] = useState('');
   const [showTempSaveModal, setShowTempSaveModal] = useState(false);
   const [tempSaveMode, setTempSaveMode] = useState<TempSaveMode>('saved');
   const [tempSaveTimestamp, setTempSaveTimestamp] = useState('');
@@ -598,8 +599,13 @@ export default function BreweryProjectCreateScreen() {
   const endDate = startDate ? addDays(startDate, duration) : null;
   const endDateText = endDate ? formatDate(endDate) : '';
   const deliveryDate = parseDate(fundingInfo.expectedDeliveryDate);
+  const minimumDeliveryDate = endDate ? addDays(endDate, 30) : null;
+  const minimumDeliveryDateText = minimumDeliveryDate ? formatDate(minimumDeliveryDate) : '';
   const startDateWarning = startDate && startDate < today ? '펀딩 시작일은 오늘 이후 날짜로 입력해주세요.' : '';
-  const deliveryDateWarning = endDate && deliveryDate && deliveryDate <= endDate ? '예상 발송 시작일은 펀딩 종료일 이후 날짜로 입력해주세요.' : '';
+  const deliveryDateWarning =
+    minimumDeliveryDate && deliveryDate && deliveryDate < minimumDeliveryDate
+      ? `예상 발송 시작일은 펀딩 종료일로부터 최소 30일 이후(${minimumDeliveryDateText} 이후)로 입력해주세요.`
+      : '';
   const filteredAddresses = useMemo(
     () => mockAddresses.filter((item) => item.address.includes(addressSearch) || item.zipCode.includes(addressSearch)),
     [addressSearch]
@@ -809,14 +815,26 @@ export default function BreweryProjectCreateScreen() {
     return Number.isFinite(value) && value > 0 ? value : null;
   };
 
+  const shouldCreateNewServerDraft = (error: unknown) => {
+    const message = getFundingApiErrorMessage(error, '');
+    return message.includes('찾을 수 없습니다') || message.includes('404');
+  };
+
+  const syncServerDraft = async (existingDraftId: number | null) => {
+    if (existingDraftId) {
+      try {
+        return await updateFundingDraft(existingDraftId, createDraftUpdateApiPayload());
+      } catch (error) {
+        if (!shouldCreateNewServerDraft(error)) throw error;
+      }
+    }
+    return createFundingDraft(createDraftApiPayload());
+  };
+
   const ensureServerDraft = async () => {
     const savedDraft = await getSavedDraft();
     const draftId = getDraftId(savedDraft);
-    if (draftId) {
-      await updateFundingDraft(draftId, createDraftUpdateApiPayload());
-      return draftId;
-    }
-    const serverDraft = await createFundingDraft(createDraftApiPayload());
+    const serverDraft = await syncServerDraft(draftId);
     const draft = {
       ...createDraftPayload(),
       serverDraft,
@@ -824,7 +842,11 @@ export default function BreweryProjectCreateScreen() {
     await SafeStorage.setItem(tempSaveKey, JSON.stringify(draft));
     setHasTempSave(true);
     setTempSaveTimestamp(draft.timestamp);
-    return serverDraft.draftId;
+    const nextDraftId = getDraftId(draft);
+    if (!nextDraftId) {
+      throw new Error('서버 임시저장 ID를 확인하지 못했습니다.');
+    }
+    return nextDraftId;
   };
 
   const saveProjectSectionsToApi = async (draftId: number) => {
@@ -939,20 +961,30 @@ export default function BreweryProjectCreateScreen() {
     try {
       const savedDraft = await getSavedDraft();
       const existingDraftId = getDraftId(savedDraft);
-      const serverDraft = isEditMode
-        ? savedDraft?.serverDraft || null
-        : existingDraftId
-          ? await updateFundingDraft(existingDraftId, createDraftUpdateApiPayload())
-          : await createFundingDraft(createDraftApiPayload());
       const draft = {
         ...createDraftPayload(),
-        serverDraft,
+        serverDraft: savedDraft?.serverDraft || null,
       };
       await SafeStorage.setItem(tempSaveKey, JSON.stringify(draft));
       setHasTempSave(true);
       setTempSaveTimestamp(draft.timestamp);
+
+      let syncError: unknown = null;
+      if (!isEditMode) {
+        try {
+          const serverDraft = await syncServerDraft(existingDraftId);
+          await SafeStorage.setItem(tempSaveKey, JSON.stringify({ ...draft, serverDraft }));
+        } catch (error) {
+          syncError = error;
+        }
+      }
+
       if (exitAfter) {
         navigateToExitRoute();
+        return;
+      }
+      if (syncError) {
+        showAlert(`기기에는 임시저장되었습니다. 서버 동기화는 실패했어요. ${getFundingApiErrorMessage(syncError, '')}`);
         return;
       }
       if (showSavedModal) {
@@ -1421,21 +1453,29 @@ export default function BreweryProjectCreateScreen() {
   const confirmSubmit = async () => {
     setShowSubmitConfirm(false);
     setIsSubmitting(true);
+    setSubmitSyncWarning('');
     try {
       let convertedFunding: Awaited<ReturnType<typeof createRecipeFunding>>['funding'] | null = null;
+      let serverSyncWarning = '';
       if (!isEditMode) {
-        const draftId = await ensureServerDraft();
-        await saveProjectSectionsToApi(draftId);
-        await uploadProjectDocumentsToApi(draftId);
-        if (sourceRecipeId && Number.isFinite(sourceRecipeId)) {
-          const response = await createRecipeFunding(sourceRecipeId, {
-            title: basicInfo.title,
-            description: projectPlan.introduction || basicInfo.summary,
-            goal_amount: Number(fundingInfo.goalAmount),
-            start_date: fundingInfo.startDate,
-            end_date: endDateText,
-          });
-          convertedFunding = response.funding;
+        try {
+          const draftId = await ensureServerDraft();
+          await saveProjectSectionsToApi(draftId);
+          await uploadProjectDocumentsToApi(draftId);
+          if (sourceRecipeId && Number.isFinite(sourceRecipeId)) {
+            const response = await createRecipeFunding(sourceRecipeId, {
+              title: basicInfo.title,
+              description: projectPlan.introduction || basicInfo.summary,
+              goal_amount: Number(fundingInfo.goalAmount),
+              start_date: fundingInfo.startDate,
+              end_date: endDateText,
+            });
+            convertedFunding = response.funding;
+          }
+        } catch (error) {
+          serverSyncWarning = getFundingApiErrorMessage(error, '서버 동기화 중 문제가 발생했습니다.')
+            .replace(/펀딩 프로젝트 임시저장/g, '펀딩 프로젝트 제출 준비')
+            .replace(/임시저장/g, '제출 준비');
         }
       }
       const payload = buildProjectPayload(isEditMode ? 'edit' : 'create');
@@ -1454,6 +1494,7 @@ export default function BreweryProjectCreateScreen() {
         void SafeStorage.removeItem(tempSaveKey);
         setHasTempSave(false);
         setTempSaveTimestamp('');
+        setSubmitSyncWarning(serverSyncWarning ? `앱에는 프로젝트가 생성되었습니다. 다만 서버 동기화는 실패했어요.\n\n${serverSyncWarning}` : '');
         setShowSubmitSuccess(true);
         return;
       }
@@ -1466,9 +1507,13 @@ export default function BreweryProjectCreateScreen() {
       void SafeStorage.removeItem(tempSaveKey);
       setHasTempSave(false);
       setTempSaveTimestamp('');
+      setSubmitSyncWarning(serverSyncWarning ? `앱에는 프로젝트가 생성되었습니다. 다만 서버 동기화는 실패했어요.\n\n${serverSyncWarning}` : '');
       setShowSubmitSuccess(true);
     } catch (error) {
-      showAlert(getFundingApiErrorMessage(error, '펀딩 프로젝트 저장 중 문제가 발생했습니다.'));
+      const message = getFundingApiErrorMessage(error, '펀딩 프로젝트 제출 중 문제가 발생했습니다.')
+        .replace(/펀딩 프로젝트 임시저장/g, '펀딩 프로젝트 제출 준비')
+        .replace(/임시저장/g, '제출 준비');
+      showAlert(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -1765,7 +1810,8 @@ export default function BreweryProjectCreateScreen() {
             onOpenCalendar={() => setDatePickerTarget('expectedDeliveryDate')}
             placeholder="YYYY-MM-DD"
             keyboardType="numbers-and-punctuation"
-            helper={deliveryDateWarning ? undefined : '펀딩 종료 후 제작 및 배송에 소요되는 기간을 고려해주세요.'}
+            helper={deliveryDateWarning || '펀딩 종료일로부터 최소 30일 이후 날짜를 입력해주세요.'}
+            warning={Boolean(deliveryDateWarning)}
           />
           <View style={styles.summaryBox}>
             <Text style={styles.summaryTitle}>일정 요약</Text>
@@ -2241,7 +2287,7 @@ export default function BreweryProjectCreateScreen() {
       </KeyboardAvoidingView>
       <SimpleModal visible={showAlertModal} icon="alert" title="알림" body={alertMessage} primaryLabel="확인" onPrimary={() => setShowAlertModal(false)} />
       <ConfirmModal visible={showSubmitConfirm} title={isEditMode ? '수정 내용을 반영하시겠습니까?' : '제출 하시겠습니까?'} body={isEditMode ? '수정한 내용이 기존 펀딩 게시글에 바로 반영됩니다.' : '제출하면 펀딩 게시글이 생성되고 임시 승인 상태로 바로 후원할 수 있습니다.'} onCancel={() => setShowSubmitConfirm(false)} onConfirm={confirmSubmit} />
-      <SimpleModal visible={showSubmitSuccess} icon="success" title={isEditMode ? '수정이 완료되었습니다' : '성공적으로 업로드 되었습니다'} body={isEditMode ? '수정한 내용이 펀딩 게시글에 반영되었습니다.' : '펀딩 게시글이 생성되었습니다. 현재 테스트를 위해 바로 후원 가능한 상태로 표시됩니다.'} primaryLabel="게시글 확인" onPrimary={handleSubmitSuccessClose} />
+      <SimpleModal visible={showSubmitSuccess} icon="success" title={isEditMode ? '수정이 완료되었습니다' : '성공적으로 업로드 되었습니다'} body={submitSyncWarning || (isEditMode ? '수정한 내용이 펀딩 게시글에 반영되었습니다.' : '펀딩 게시글이 생성되었습니다. 현재 테스트를 위해 바로 후원 가능한 상태로 표시됩니다.')} primaryLabel="게시글 확인" onPrimary={handleSubmitSuccessClose} />
       <TempSaveModal
         visible={showTempSaveModal}
         mode={tempSaveMode}

@@ -6,11 +6,13 @@ import {
   StyleSheet,
   ScrollView,
   Image,
+  useWindowDimensions,
   TouchableOpacity,
   TextInput,
   Modal,
   Share as NativeShare,
 } from 'react-native';
+import type { ImageSourcePropType, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -70,11 +72,12 @@ import {
 } from '@/features/funding/apiMappers';
 import {
   BREWING_STAGES,
+  getImageSource,
   getFundingProjectImageSource,
   getFundingStatusLabel,
   isSupportableFundingStatus,
 } from '@/constants/data';
-import type { BrewingStage, JournalComment, JournalEntry, JournalReply } from '@/constants/data';
+import type { BrewingStage, FundingProject, JournalComment, JournalEntry, JournalReply } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import {
   getTasteProfileFromSulbti,
@@ -88,10 +91,12 @@ import {
   getProjectUnitPrice,
 } from '@/features/funding/supportConfig';
 import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/funding/reviews';
+import { normalizeFundingImageUrl } from '@/features/funding/imageUrls';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { canAccessFundingReviews } from '@/features/funding/permissions';
 import { showLoginRequired } from '@/utils/authPrompt';
 
+const HERO_IMAGE_HEIGHT = 256;
 const initialComments = [
   {
     id: 1,
@@ -167,6 +172,33 @@ function getJournalMergeKey(journal: JournalEntry) {
   return `${journal.id}:${journal.stage}:${journal.title}:${journal.content}`;
 }
 
+function getFundingProjectImageSources(project: FundingProject) {
+  const sources: ImageSourcePropType[] = [];
+  const seenUris = new Set<string>();
+
+  const addUri = (uri?: string) => {
+    const normalizedUri = normalizeFundingImageUrl(uri);
+    if (!normalizedUri || seenUris.has(normalizedUri)) return;
+    if (/\/(?:undefined|null|nan)$/i.test(normalizedUri)) return;
+    const source = getImageSource(normalizedUri);
+    if (!source) return;
+    seenUris.add(normalizedUri);
+    sources.push(source);
+  };
+
+  if (project.localImage) {
+    sources.push(project.localImage);
+  }
+
+  if (project.images?.length) {
+    project.images.forEach(addUri);
+  }
+
+  addUri(project.image);
+
+  return sources;
+}
+
 export default function FundingDetailScreen() {
   const { id, tab, fromProjectId } = useLocalSearchParams<{
     id?: string;
@@ -174,6 +206,7 @@ export default function FundingDetailScreen() {
     fromProjectId?: string;
   }>();
   const insets = useSafeAreaInsets();
+  const { width: viewportWidth } = useWindowDimensions();
   const { user } = useAuth();
   const { favoriteFundings, isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
   const { projects, participatedFundings, updateProjectJournals, fundingReviews, mergeProject, mergeFundingReviews } = useFunding();
@@ -203,6 +236,7 @@ export default function FundingDetailScreen() {
   const [showFundingOptionModal, setShowFundingOptionModal] = useState(false);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [supportOptionId, setSupportOptionId] = useState(1);
+  const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
 
   // Q&A State
   const [comments, setComments] = useState<FundingQuestionComment[]>([]);
@@ -445,6 +479,22 @@ export default function FundingDetailScreen() {
     () => (project ? canAccessFundingReviews(project) : false),
     [project]
   );
+  const heroImageSources = useMemo(
+    () => (project ? getFundingProjectImageSources(project) : []),
+    [project]
+  );
+  const handleHeroImageScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (heroImageSources.length <= 1) return;
+      const nextIndex = Math.round(event.nativeEvent.contentOffset.x / Math.max(1, viewportWidth));
+      setActiveHeroImageIndex(Math.min(Math.max(nextIndex, 0), heroImageSources.length - 1));
+    },
+    [heroImageSources.length, viewportWidth]
+  );
+
+  useEffect(() => {
+    setActiveHeroImageIndex(0);
+  }, [heroImageSources.length, projectId]);
 
   if (!project) {
     return (
@@ -963,7 +1013,45 @@ export default function FundingDetailScreen() {
       >
         {/* 1. Hero Visual */}
         <View style={styles.visualContainer}>
-           <Image source={getFundingProjectImageSource(project)} style={styles.mainImg} />
+          {heroImageSources.length > 0 ? (
+            <>
+              <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                bounces={false}
+                style={styles.heroCarousel}
+                onMomentumScrollEnd={handleHeroImageScroll}
+              >
+                {heroImageSources.map((source, index) => (
+                  <Image
+                    key={`hero-image-${index}`}
+                    source={source}
+                    style={[styles.mainImg, { width: viewportWidth }]}
+                  />
+                ))}
+              </ScrollView>
+              {heroImageSources.length > 1 && (
+                <>
+                  <View style={styles.heroImageCounter}>
+                    <Text style={styles.heroImageCounterText}>
+                      {activeHeroImageIndex + 1}/{heroImageSources.length}
+                    </Text>
+                  </View>
+                  <View style={styles.heroImageDots}>
+                    {heroImageSources.map((_, index) => (
+                      <View
+                        key={`hero-dot-${index}`}
+                        style={[styles.heroImageDot, activeHeroImageIndex === index && styles.heroImageDotActive]}
+                      />
+                    ))}
+                  </View>
+                </>
+              )}
+            </>
+          ) : (
+            <Image source={getFundingProjectImageSource(project)} style={styles.mainImg} />
+          )}
         </View>
 
         {/* 2. Title & Desc */}
@@ -1982,8 +2070,14 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#111' },
   headerIconBtn: { padding: 6, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   headerRight: { flexDirection: 'row', gap: 8 },
-  visualContainer: { width: '100%', height: 256, backgroundColor: '#E5E7EB', zIndex: 1 },
-  mainImg: { width: '100%', height: '100%', resizeMode: 'cover' },
+  visualContainer: { width: '100%', height: HERO_IMAGE_HEIGHT, backgroundColor: '#E5E7EB', zIndex: 1 },
+  heroCarousel: { width: '100%', height: HERO_IMAGE_HEIGHT },
+  mainImg: { width: '100%', height: HERO_IMAGE_HEIGHT, resizeMode: 'cover' },
+  heroImageCounter: { position: 'absolute', top: 14, right: 14, minWidth: 44, height: 26, borderRadius: 13, backgroundColor: 'rgba(17,17,17,0.72)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  heroImageCounterText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
+  heroImageDots: { position: 'absolute', left: 0, right: 0, bottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  heroImageDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.55)' },
+  heroImageDotActive: { width: 18, backgroundColor: '#FFF' },
   contentWrapper: { paddingHorizontal: 16 },
   titleSection: { paddingHorizontal: 16, paddingTop: 24, paddingBottom: 24 },
   projectTitle: { fontSize: 26, fontWeight: '800', color: '#111', lineHeight: 34, marginBottom: 12 },

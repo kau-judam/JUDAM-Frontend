@@ -541,6 +541,11 @@ function getFundingResponseData<T>(response: T | FundingApiEnvelope<T>) {
   return response as T;
 }
 
+function normalizeBreweryId(value: unknown) {
+  const breweryId = Number(value);
+  return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1;
+}
+
 async function requestFundingJson<T>(path: string, options: RequestInit & { auth?: boolean } = {}) {
   const { auth, headers, ...requestOptions } = options;
   const nextHeaders: Record<string, string> = {
@@ -640,7 +645,7 @@ export async function saveFundingAgreement(payload: FundingAgreementPayload) {
   return requestFundingJson<FundingAgreementResponse>('/api/fundings/agreements', {
     method: 'POST',
     auth: true,
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, breweryId: normalizeBreweryId(payload.breweryId) }),
   });
 }
 
@@ -648,7 +653,7 @@ export async function createFundingDraft(payload: FundingDraftPayload) {
   return requestFundingJson<FundingDraftResponse>('/api/fundings/drafts', {
     method: 'POST',
     auth: true,
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, breweryId: normalizeBreweryId(payload.breweryId) }),
   });
 }
 

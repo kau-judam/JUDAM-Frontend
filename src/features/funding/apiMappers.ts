@@ -154,12 +154,13 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
 export function mergeFundingIntro(existing: FundingProject, intro: FundingIntroResponse): FundingProject {
   const sameProject = isSameFundingText(existing.title, intro.title) || isSameFundingText(existing.shortTitle, intro.title);
   if (!sameProject) return existing;
+  const introImages = normalizeFundingImageUrls(intro.images);
   return {
     ...existing,
     projectSummary: existing.projectSummary || intro.introduction,
     introduction: intro.introduction || existing.introduction,
     story: intro.story || existing.story,
-    images: intro.images?.length ? intro.images : existing.images,
+    images: introImages.length ? introImages : existing.images,
     updatedAt: new Date().toISOString(),
   };
 }

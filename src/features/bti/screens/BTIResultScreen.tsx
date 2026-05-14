@@ -74,6 +74,7 @@ export default function BTIResultScreen() {
   const displayType = getBtiDisplayType(resultCode);
   const result = resultCode ? getBtiResult(resultCode) : null;
   const characterImage = result ? BTI_CHARACTER_IMAGES[result.type] : null;
+  const hasCharacterImage = characterImage !== null && characterImage !== undefined;
   const isSpecialCharacterLayout = result ? SPECIAL_CHARACTER_LAYOUT_TYPES.has(result.type) : false;
   const tasteAxes = useMemo(
     () => TASTE_AXIS_CONFIG.map((axis) => {
@@ -171,7 +172,7 @@ export default function BTIResultScreen() {
         <LinearGradient colors={['#111111', '#2B2B2B']} style={styles.resultHero}>
           <Text style={styles.heroLabel}>당신의 술BTI는</Text>
           <Text style={styles.heroType}>{displayType}</Text>
-          {characterImage && (
+          {hasCharacterImage && (
             <Image
               source={characterImage}
               style={[styles.heroCharacter, isSpecialCharacterLayout && styles.heroCharacterSpecial]}

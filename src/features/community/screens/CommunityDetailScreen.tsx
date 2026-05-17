@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -18,6 +18,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useCommunity } from '@/contexts/CommunityContext';
+import {
+  createCommunityComment,
+  deleteCommunityComment,
+  deleteCommunityCommentLike,
+  deleteCommunityPost,
+  deleteCommunityPostLike,
+  fetchCommunityComments,
+  fetchCommunityPost,
+  registerCommunityCommentLike,
+  registerCommunityPostLike,
+  updateCommunityComment,
+} from '@/features/community/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const INITIAL_COMMENT_COUNT = 3;
@@ -38,10 +50,14 @@ interface CommunityPostDetail {
   title: string;
   content: string;
   image?: string;
+  imageUrls?: string[];
   likes: number;
+  liked?: boolean;
   comments: number;
   timestamp: string;
   category: string;
+  authorId?: string;
+  isMine?: boolean;
 }
 
 interface CommentReply {
@@ -53,6 +69,8 @@ interface CommentReply {
   timestamp: string;
   likes: number;
   liked: boolean;
+  userId?: string;
+  isMine?: boolean;
 }
 
 interface Comment {
@@ -64,6 +82,8 @@ interface Comment {
   timestamp: string;
   likes: number;
   liked: boolean;
+  userId?: string;
+  isMine?: boolean;
   replies?: CommentReply[];
 }
 
@@ -77,6 +97,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
     content:
       '처음으로 막걸리 담그기에 도전해봤는데요! 생각보다 어렵지 않았어요.\n\n국내산 쌀과 전통 누룩을 사용했고, 발효 과정에서 은은한 쌀 향이 정말 좋았습니다. 10일 정도 발효시킨 후 처음 맛봤을 때의 그 감동이란... 직접 만든 술이라 더 맛있게 느껴지는 것 같아요!\n\n다음에는 감귤을 넣어서 만들어볼 생각입니다. 혹시 과일 막걸리 만들어보신 분 계신가요?',
     image: 'https://images.unsplash.com/photo-1567697242574-e0c68f5e9b0e?w=800&h=600&fit=crop',
+    imageUrls: ['https://images.unsplash.com/photo-1567697242574-e0c68f5e9b0e?w=800&h=600&fit=crop'],
     likes: 47,
     comments: 3,
     timestamp: '2시간 전',
@@ -205,9 +226,12 @@ export default function CommunityDetailScreen() {
   const { posts, deletePost } = useCommunity();
   const numericId = Number(Array.isArray(id) ? id[0] : id) || 1;
   const contextPost = posts.find((item) => item.id === numericId);
-  const post = contextPost || mockPosts[numericId] || mockPosts[1];
+  const [apiPost, setApiPost] = useState<CommunityPostDetail | null>(null);
+  const [apiPostLoadFailed, setApiPostLoadFailed] = useState(false);
+  const fallbackPost = contextPost || mockPosts[numericId] || mockPosts[1];
+  const post = apiPost || fallbackPost;
   const isTemporaryUserPost = numericId === 1 && post.category === '자유게시판' && user?.type === 'user';
-  const isAuthor = !!user && (user.name === post.author || isTemporaryUserPost);
+  const isAuthor = !!user && Boolean((post.isMine ?? (post.authorId && post.authorId === user.id)) || user.name === post.author || isTemporaryUserPost);
 
   const [commentInput, setCommentInput] = useState('');
   const [liked, setLiked] = useState(false);
@@ -227,24 +251,86 @@ export default function CommunityDetailScreen() {
     )
   );
 
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchCommunityPost(numericId)
+      .then((response) => {
+        if (cancelled) return;
+        setApiPost(response.post);
+        setLiked(response.post.liked);
+        setLikeCount(response.post.likes);
+        setApiPostLoadFailed(false);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Failed to load community post detail from API', error);
+        setApiPostLoadFailed(true);
+        setLiked(fallbackPost.liked ?? false);
+        setLikeCount(fallbackPost.likes);
+      });
+
+    fetchCommunityComments(numericId, 0, 20)
+      .then((response) => {
+        if (cancelled) return;
+        setComments((prev) =>
+          response.comments.map((comment) => ({
+            ...comment,
+            replies: prev.find((item) => item.id === comment.id)?.replies || [],
+          }))
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Failed to load community comments from API', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackPost.liked, fallbackPost.likes, numericId, user]);
+
   const visibleComments = showAllComments ? comments : comments.slice(0, INITIAL_COMMENT_COUNT);
   const hasMoreComments = comments.length > INITIAL_COMMENT_COUNT;
   const getCommentReplies = (comment: Comment) => comment.replies || [];
+  const postImageUrls = post.imageUrls ?? (post.image ? [post.image] : []);
 
-  const handleLike = () => {
+  const handleLike = async () => {
     if (!user) {
       showLoginRequired('커뮤니티 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
-    setLiked((prev) => !prev);
-    setLikeCount((prev) => (liked ? prev - 1 : prev + 1));
+    if (apiPostLoadFailed || post.id > 1000000000000) {
+      setLiked((prev) => !prev);
+      setLikeCount((prev) => (liked ? prev - 1 : prev + 1));
+      return;
+    }
+
+    const previousLiked = liked;
+    const previousLikeCount = likeCount;
+    const nextLiked = !liked;
+    setLiked(nextLiked);
+    setLikeCount((prev) => Math.max(0, prev + (nextLiked ? 1 : -1)));
+
+    try {
+      const response = nextLiked ? await registerCommunityPostLike(post.id) : await deleteCommunityPostLike(post.id);
+      setLikeCount(response.data.like_count);
+    } catch (error) {
+      console.warn('Failed to update community post like from detail', error);
+      setLiked(previousLiked);
+      setLikeCount(previousLikeCount);
+    }
   };
 
-  const handleCommentLike = (commentId: number) => {
+  const handleCommentLike = async (commentId: number) => {
     if (!user) {
       showLoginRequired('댓글 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    if (!targetComment) return;
+    const nextLiked = !targetComment.liked;
+
     setComments((prev) =>
       prev.map((comment) =>
         comment.id === commentId
@@ -252,9 +338,25 @@ export default function CommunityDetailScreen() {
           : comment
       )
     );
+
+    if (apiPostLoadFailed || post.id > 1000000000000) return;
+
+    try {
+      const response = nextLiked
+        ? await registerCommunityCommentLike(post.id, commentId)
+        : await deleteCommunityCommentLike(post.id, commentId);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId ? { ...comment, liked: nextLiked, likes: response.data.like_count } : comment
+        )
+      );
+    } catch (error) {
+      console.warn('Failed to update community comment like', error);
+      setComments((prev) => prev.map((comment) => (comment.id === commentId ? targetComment : comment)));
+    }
   };
 
-  const handleCommentSubmit = () => {
+  const handleCommentSubmit = async () => {
     if (!commentInput.trim()) return;
     if (!user) {
       showLoginRequired('댓글 작성은 로그인 후 이용할 수 있어요.');
@@ -262,10 +364,20 @@ export default function CommunityDetailScreen() {
     }
 
     if (editingCommentId !== null) {
+      let nextContent = commentInput.trim();
+      if (!apiPostLoadFailed && post.id <= 1000000000000) {
+        try {
+          const response = await updateCommunityComment(post.id, editingCommentId, nextContent);
+          nextContent = response.comment.content;
+        } catch (error) {
+          console.warn('Failed to update community comment', error);
+          return;
+        }
+      }
       setComments((prev) =>
         prev.map((comment) =>
           comment.id === editingCommentId
-            ? { ...comment, content: commentInput.trim(), timestamp: '방금 전' }
+            ? { ...comment, content: nextContent, timestamp: '방금 전' }
             : comment
         )
       );
@@ -286,6 +398,29 @@ export default function CommunityDetailScreen() {
       liked: false,
     };
 
+    if (!apiPostLoadFailed && post.id <= 1000000000000) {
+      try {
+        const response = await createCommunityComment(post.id, commentInput.trim());
+        setComments((prev) => [
+          ...prev,
+          {
+            ...newComment,
+            id: response.comment.comment_id,
+            author: response.comment.nickname || user.name,
+            content: response.comment.content,
+            likes: response.comment.like_count,
+            userId: String(response.comment.user_id),
+            isMine: true,
+          },
+        ]);
+        setCommentInput('');
+        return;
+      } catch (error) {
+        console.warn('Failed to create community comment', error);
+        return;
+      }
+    }
+
     setComments((prev) => [...prev, newComment]);
     setCommentInput('');
   };
@@ -295,8 +430,16 @@ export default function CommunityDetailScreen() {
     router.push(`/community/create?editPostId=${post.id}` as any);
   };
 
-  const handlePostDelete = () => {
+  const handlePostDelete = async () => {
     setShowMenu(false);
+    if (!apiPostLoadFailed && post.id <= 1000000000000) {
+      try {
+        await deleteCommunityPost(post.id);
+      } catch (error) {
+        console.warn('Failed to delete community post', error);
+        return;
+      }
+    }
     deletePost(post.id);
     router.replace('/community' as any);
   };
@@ -307,7 +450,15 @@ export default function CommunityDetailScreen() {
     setCommentMenuTarget(null);
   };
 
-  const handleCommentDelete = (commentId: number) => {
+  const handleCommentDelete = async (commentId: number) => {
+    if (!apiPostLoadFailed && post.id <= 1000000000000) {
+      try {
+        await deleteCommunityComment(post.id, commentId);
+      } catch (error) {
+        console.warn('Failed to delete community comment', error);
+        return;
+      }
+    }
     setComments((prev) => prev.filter((comment) => comment.id !== commentId));
     if (editingCommentId === commentId) {
       setEditingCommentId(null);
@@ -341,6 +492,8 @@ export default function CommunityDetailScreen() {
       timestamp: '방금 전',
       likes: 0,
       liked: false,
+      userId: user.id,
+      isMine: true,
     };
     setComments((prev) =>
       prev.map((comment) =>
@@ -446,7 +599,13 @@ export default function CommunityDetailScreen() {
         <View style={styles.postBody}>
           <Text style={styles.postTitle}>{post.title}</Text>
           <Text style={styles.postContent}>{post.content}</Text>
-          {post.image && <Image source={{ uri: post.image }} style={styles.postImage} />}
+          {postImageUrls.length > 0 && (
+            <View style={styles.postImageList}>
+              {postImageUrls.slice(0, 5).map((uri) => (
+                <Image key={uri} source={{ uri }} style={styles.postImage} />
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.commentsSection}>
@@ -463,7 +622,7 @@ export default function CommunityDetailScreen() {
                         <Text style={styles.commentBreweryBadgeText}>양조장</Text>
                       </View>
                     )}
-                    {user?.name === comment.author && (
+                    {user && Boolean((comment.isMine ?? (comment.userId && comment.userId === user.id)) || user.name === comment.author) && (
                       <View style={styles.commentMenuWrap}>
                         <TouchableOpacity
                           onPress={() => setCommentMenuTarget((prev) => (prev === comment.id ? null : comment.id))}
@@ -665,6 +824,7 @@ const styles = StyleSheet.create({
   postBody: { paddingHorizontal: 16, paddingVertical: 18 },
   postTitle: { fontSize: 22, lineHeight: 30, fontWeight: '900', color: '#111', marginBottom: 12 },
   postContent: { fontSize: 16, lineHeight: 26, fontWeight: '600', color: '#111', marginBottom: 16 },
+  postImageList: { gap: 10, marginTop: 2 },
   postImage: { width: '100%', height: 240, borderRadius: 16, resizeMode: 'cover', backgroundColor: '#F3F4F6' },
   commentsSection: { borderTopWidth: 8, borderTopColor: '#F3F4F6', paddingHorizontal: 16, paddingVertical: 18 },
   commentHeader: { fontSize: 16, fontWeight: '900', color: '#111', marginBottom: 18 },

@@ -40,7 +40,7 @@ export default function CommunityCreateScreen() {
   const [selectedBoard, setSelectedBoard] = useState<Board>(initialBoard);
   const [title, setTitle] = useState(editingPost?.title || '');
   const [content, setContent] = useState(editingPost?.content || '');
-  const [imageUris, setImageUris] = useState<string[]>(editingPost?.image ? [editingPost.image] : []);
+  const [imageUris, setImageUris] = useState<string[]>(editingPost?.imageUrls ?? (editingPost?.image ? [editingPost.image] : []));
   const [notice, setNotice] = useState<NoticeState>(null);
   const imageCountLabel = `사진 추가 (${imageUris.length}/5)`;
 
@@ -118,6 +118,7 @@ export default function CommunityCreateScreen() {
       liked: editingPost?.liked || false,
       category: selectedBoard === '자유' ? '자유게시판' : '정보게시판',
       image: imageUris[0],
+      imageUrls: imageUris,
       tags: [selectedBoard],
     };
 

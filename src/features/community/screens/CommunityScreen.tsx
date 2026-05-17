@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,11 @@ import Animated, { FadeInUp, Layout } from 'react-native-reanimated';
 import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCommunity } from '@/contexts/CommunityContext';
+import {
+  deleteCommunityPostLike,
+  fetchCommunityPosts,
+  registerCommunityPostLike,
+} from '@/features/community/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const POSTS_PER_PAGE = 6;
@@ -43,13 +48,62 @@ export default function CommunityScreen() {
   const [sortOption, setSortOption] = useState<"인기순" | "최신순">("인기순");
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [apiPosts, setApiPosts] = useState(posts);
+  const [apiLoadFailed, setApiLoadFailed] = useState(false);
 
-  const handlePostLike = (postId: number) => {
+  useEffect(() => {
+    let cancelled = false;
+    const apiSort = sortOption === "인기순" ? 'popular' : 'newest';
+
+    fetchCommunityPosts({ sort: apiSort, page: 0, size: 20 })
+      .then((response) => {
+        if (cancelled) return;
+        setApiPosts(response.posts);
+        setApiLoadFailed(false);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Failed to load community posts from API', error);
+        setApiLoadFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sortOption, user]);
+
+  const handlePostLike = async (postId: number) => {
     if (!user) {
       showLoginRequired('커뮤니티 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
-    likePost(postId);
+    const localOnly = postId > 1000000000000;
+    if (apiLoadFailed || localOnly) {
+      likePost(postId);
+      return;
+    }
+
+    const targetPost = apiPosts.find((post) => post.id === postId);
+    if (!targetPost) return;
+    const nextLiked = !targetPost.liked;
+
+    setApiPosts((prev) =>
+      prev.map((post) =>
+        post.id === postId ? { ...post, liked: nextLiked, likes: Math.max(0, post.likes + (nextLiked ? 1 : -1)) } : post
+      )
+    );
+
+    try {
+      const response = nextLiked ? await registerCommunityPostLike(postId) : await deleteCommunityPostLike(postId);
+      setApiPosts((prev) =>
+        prev.map((post) =>
+          post.id === postId ? { ...post, liked: nextLiked, likes: response.data.like_count } : post
+        )
+      );
+    } catch (error) {
+      console.warn('Failed to update community post like', error);
+      setApiPosts((prev) => prev.map((post) => (post.id === postId ? targetPost : post)));
+    }
   };
 
   const handleCreatePost = () => {
@@ -60,7 +114,10 @@ export default function CommunityScreen() {
     router.push('/community/create' as any);
   };
 
-  const filteredPosts = posts.filter(p => {
+  const localOnlyPosts = posts.filter((post) => post.id > 1000000000000);
+  const sourcePosts = apiLoadFailed ? posts : [...localOnlyPosts, ...apiPosts];
+
+  const filteredPosts = sourcePosts.filter(p => {
     const catMatch = communityFilter === "전체" || p.category === communityFilter;
     const query = searchQuery.toLowerCase();
     const searchMatch = !query || p.title.toLowerCase().includes(query) || p.content.toLowerCase().includes(query) || p.author.toLowerCase().includes(query);

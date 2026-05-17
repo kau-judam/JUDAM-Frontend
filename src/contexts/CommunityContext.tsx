@@ -9,12 +9,15 @@ export interface Post {
   title: string;
   content: string;
   image?: string;
+  imageUrls?: string[];
   likes: number;
   comments: number;
   timestamp: string;
   liked: boolean;
   category: string;
   tags: string[];
+  authorId?: string;
+  isMine?: boolean;
 }
 
 interface CommunityContextType {
@@ -50,6 +53,7 @@ const initialPosts: Post[] = [
     content:
       "이번 주말에 양조장 투어를 진행합니다. 전통 누룩을 만드는 과정을 직접 보실 수 있어요. 댓글로 신청해주세요!",
     image: "https://images.unsplash.com/photo-1567697242574-e0c68f5e9b0e?w=800&h=600&fit=crop",
+    imageUrls: ["https://images.unsplash.com/photo-1567697242574-e0c68f5e9b0e?w=800&h=600&fit=crop"],
     likes: 127,
     comments: 23,
     timestamp: "5시간 전",

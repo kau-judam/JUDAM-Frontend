@@ -85,6 +85,505 @@ Common error body:
 }
 ```
 
+## Community Post APIs
+
+Source PDFs:
+- `5a518311-0c63-45bb-9029-e39115dbf59d_게시글_작성.pdf`
+- `98c61173-ead6-4d1e-858a-12f18a420d05_게시글_목록_조회.pdf`
+- `6d5e2b3b-b7ad-438e-8d63-dd352fdbc38e_게시글_상세_조회.pdf`
+- `a559f6ec-2508-4f2f-a048-bcd470d53335_게시글_수정.pdf`
+- `24f65445-e946-495b-8fb4-dabaaf256e55_게시글_삭제.pdf`
+- `7b5b5dc3-5590-497f-96e3-13e956b29eab_게시글_좋아요_등록.pdf`
+- `4a6fd0fb-830c-4d84-809e-d04641ccca92_게시글_좋아요_취소.pdf`
+- `ed40016b-75b5-47c0-a7a7-44f03d769a8b_게시글_댓글_목록_조회.pdf`
+- `668fa391-e36d-4e9b-85f8-a9f542d21238_게시글_댓글_작성.pdf`
+- `4f703c5e-b60b-4119-b3c7-39184105ac26_게시글_댓글_수정.pdf`
+- `b71fb3c8-4b85-4c1c-8574-b810d8e4db44_게시글_댓글_삭제.pdf`
+- `1fba1f2f-e654-439b-9d96-26530ce9c2cc_게시글_댓글_좋아요_등록.pdf`
+- `7341842d-95eb-4649-b8fb-231e598ef705_게시글_댓글_좋아요_취소.pdf`
+
+Base:
+- Same current server: `http://43.202.24.223:3000`
+- Endpoint prefix: `{baseURI}/api/posts`
+- Public read APIs may omit `Authorization`.
+- Authenticated read APIs may include `Authorization: Bearer {access_token}` to receive user-specific fields such as `is_liked`.
+- Write, update, delete, like, and comment mutation APIs require `Authorization: Bearer {access_token}`.
+
+Board types:
+- `ALL`: list filter only. Default when omitted.
+- `FREE`: 자유게시판.
+- `TASTING_REVIEW`: 시음 후기.
+- `RECIPE_DISCUSSION`: 레시피 토론.
+- `board_type` is required on create and cannot be changed on update.
+
+### Community Post Create
+
+Endpoint:
+```http
+POST {baseURI}/api/posts
+```
+
+Access:
+- Login required.
+- `Authorization: Bearer {access_token}` required.
+
+Request:
+- Body: `multipart/form-data`
+- Do not manually set `Content-Type`; the runtime must set the multipart boundary.
+
+```ts
+type CreateCommunityPostFormData = {
+  title: string;
+  content: string;
+  board_type: "FREE" | "TASTING_REVIEW" | "RECIPE_DISCUSSION";
+  images?: File[]; // same form field name repeated, max 5
+};
+```
+
+Response:
+```ts
+type CreateCommunityPostResponse = {
+  status: 201;
+  message: string;
+  post: {
+    post_id: number;
+    title: string;
+    board_type: "FREE" | "TASTING_REVIEW" | "RECIPE_DISCUSSION";
+    user_id: number;
+    nickname: string;
+    like_count: 0;
+    comment_count: 0;
+    image_urls: string[];
+    created_at: string;
+  };
+};
+```
+
+Notes:
+- Images are sent as files, not URLs. Backend uploads them to S3 and stores returned URLs in `POST_IMAGES`.
+- Maximum image count is 5.
+- React Native should append each image as `{ uri, name, type }` using the repeated field name `images`.
+- Initial `like_count` and `comment_count` are `0`.
+
+Errors:
+- `400`: required field missing.
+- `400`: images exceed 5.
+- `400`: invalid `board_type`.
+- `401`: invalid or expired token.
+- `500`: server error.
+
+### Community Post List
+
+Endpoint:
+```http
+GET {baseURI}/api/posts
+```
+
+Access:
+- Public.
+- `Authorization` optional.
+
+Query:
+- `board_type`: `ALL` default, `FREE`, `TASTING_REVIEW`, `RECIPE_DISCUSSION`
+- `sort`: `newest` default, `popular`
+- `page`: default `0`
+- `size`: default `20`
+
+Response:
+```ts
+type CommunityPostListResponse = {
+  posts: Array<{
+    post_id: number;
+    title: string;
+    board_type: "FREE" | "TASTING_REVIEW" | "RECIPE_DISCUSSION";
+    user_id: number;
+    nickname: string;
+    like_count: number;
+    comment_count: number;
+    thumbnail_url: string | null;
+    created_at: string;
+  }>;
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+};
+```
+
+Notes:
+- `sort=popular` sorts by `like_count DESC`.
+- `thumbnail_url` is the first image URL for the post, or `null`.
+- List response intentionally excludes `content`.
+
+Missing for current app UI:
+- The list response does not include `is_liked`, so heart state on cards cannot be hydrated from the list alone.
+- The list response does not include author profile image.
+
+### Community Post Detail
+
+Endpoint:
+```http
+GET {baseURI}/api/posts/{postId}
+```
+
+Access:
+- Public.
+- `Authorization` optional; if omitted, `is_liked` is `false`.
+
+Path:
+- `postId`: community post id.
+
+Response:
+```ts
+type CommunityPostDetailResponse = {
+  post: {
+    post_id: number;
+    title: string;
+    content: string;
+    board_type: "FREE" | "TASTING_REVIEW" | "RECIPE_DISCUSSION";
+    user_id: number;
+    nickname: string;
+    like_count: number;
+    comment_count: number;
+    is_liked: boolean;
+    image_urls: string[];
+    created_at: string;
+    updated_at: string | null;
+  };
+};
+```
+
+Notes:
+- `image_urls` are ordered by `POST_IMAGES.sequence ASC`.
+- `is_liked` is computed from `POST_LIKES(user_id, post_id)` when logged in.
+
+Errors:
+- `404`: post not found.
+- `500`: server error.
+
+### Community Post Update
+
+Endpoint:
+```http
+PUT {baseURI}/api/posts/{postId}
+```
+
+Access:
+- Login required.
+- Only the author can update.
+
+Request:
+```ts
+type UpdateCommunityPostRequest = {
+  title: string;
+  content: string;
+  image_urls: string[]; // complete replacement list, max 5
+};
+```
+
+Response:
+```ts
+type UpdateCommunityPostResponse = {
+  status: 200;
+  message: string;
+  post: {
+    post_id: number;
+    title: string;
+    content: string;
+    image_urls: string[];
+    updated_at: string;
+  };
+};
+```
+
+Notes:
+- `board_type` cannot be updated.
+- Existing `POST_IMAGES` rows are deleted and recreated from `image_urls`.
+- This update API accepts existing image URLs, not new multipart files. If the frontend needs to add newly selected local images during edit, a separate upload path or multipart update spec is still needed.
+
+Errors:
+- `400`: required field missing.
+- `401`: invalid or expired token.
+- `403`: not the author.
+- `404`: post not found.
+- `500`: server error.
+
+### Community Post Delete
+
+Endpoint:
+```http
+DELETE {baseURI}/api/posts/{postId}
+```
+
+Access:
+- Login required.
+- Only the author can delete.
+
+Response:
+```ts
+type DeleteCommunityPostResponse = {
+  status: 200;
+  message: string;
+};
+```
+
+Notes:
+- Backend deletes related `POST_IMAGES`, `COMMENTS`, and `POST_LIKES` by cascade or explicit deletion.
+
+Errors:
+- `401`: invalid or expired token.
+- `403`: not the author.
+- `404`: post not found.
+- `500`: server error.
+
+### Community Post Likes
+
+Register:
+```http
+POST {baseURI}/api/posts/{postId}/likes
+```
+
+Cancel:
+```http
+DELETE {baseURI}/api/posts/{postId}/likes
+```
+
+Access:
+- Login required.
+
+Response:
+```ts
+type CommunityPostLikeResponse = {
+  status: 200;
+  message: string;
+  data: {
+    post_id: number;
+    like_count: number;
+  };
+};
+```
+
+Notes:
+- `POST_LIKES(post_id, user_id)` has a unique constraint to prevent duplicates.
+- Register increments `POSTS.like_count`.
+- Cancel deletes the matching `POST_LIKES` row and decrements `POSTS.like_count`, clamped at `0`.
+
+Errors:
+- `400`: duplicate like, or no existing like history on cancel.
+- `401`: invalid or expired token.
+- `404`: post not found.
+- `500`: server error.
+
+### Community Post Comment List
+
+Endpoint:
+```http
+GET {baseURI}/api/posts/{postId}/comments
+```
+
+Access:
+- Public.
+- `Authorization` optional; if omitted, `is_liked` is `false`.
+
+Query:
+- `page`: default `0`
+- `size`: default `20`
+
+Response:
+```ts
+type CommunityPostCommentListResponse = {
+  comments: Array<{
+    comment_id: number;
+    user_id: number;
+    nickname: string;
+    content: string;
+    like_count: number;
+    is_liked: boolean;
+    created_at: string;
+    updated_at: string | null;
+  }>;
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+};
+```
+
+Notes:
+- Sorted by `created_at ASC`, oldest comments first.
+- `is_liked` is computed from `POST_COMMENT_LIKES(user_id, comment_id)` when logged in.
+
+Missing for current app UI:
+- No `is_mine` field is provided, so frontend must compare `user_id` with current user id or ask backend to add `is_mine`.
+- No author profile image or author type is provided.
+- No reply/nested comment API is included in these PDFs.
+
+Errors:
+- `404`: post not found.
+- `500`: server error.
+
+### Community Post Comment Create
+
+Endpoint:
+```http
+POST {baseURI}/api/posts/{postId}/comments
+```
+
+Access:
+- Login required.
+
+Request:
+```json
+{
+  "content": "댓글 내용"
+}
+```
+
+Response:
+```ts
+type CreateCommunityPostCommentResponse = {
+  status: 201;
+  message: string;
+  comment: {
+    comment_id: number;
+    post_id: number;
+    user_id: number;
+    nickname: string;
+    content: string;
+    like_count: 0;
+    created_at: string;
+  };
+};
+```
+
+Notes:
+- Successful creation increments `POSTS.comment_count`.
+- `user_id` and `nickname` are extracted from JWT.
+
+Errors:
+- `400`: empty comment content.
+- `401`: invalid or expired token.
+- `404`: post not found.
+- `500`: server error.
+
+### Community Post Comment Update
+
+Endpoint:
+```http
+PUT {baseURI}/api/posts/{postId}/comments/{commentId}
+```
+
+Access:
+- Login required.
+- Only the comment author can update.
+
+Request:
+```json
+{
+  "content": "수정된 댓글 내용"
+}
+```
+
+Response:
+```ts
+type UpdateCommunityPostCommentResponse = {
+  status: 200;
+  message: string;
+  comment: {
+    comment_id: number;
+    content: string;
+    updated_at: string;
+  };
+};
+```
+
+Errors:
+- `400`: empty comment content.
+- `401`: invalid or expired token.
+- `403`: not the author.
+- `404`: comment not found.
+- `500`: server error.
+
+### Community Post Comment Delete
+
+Endpoint:
+```http
+DELETE {baseURI}/api/posts/{postId}/comments/{commentId}
+```
+
+Access:
+- Login required.
+- Only the comment author can delete.
+
+Response:
+```ts
+type DeleteCommunityPostCommentResponse = {
+  status: 200;
+  message: string;
+};
+```
+
+Notes:
+- Successful deletion decrements `POSTS.comment_count`, clamped at `0`.
+- Related `POST_COMMENT_LIKES` rows are deleted by cascade or explicit deletion.
+
+Errors:
+- `401`: invalid or expired token.
+- `403`: not the author.
+- `404`: comment not found.
+- `500`: server error.
+
+### Community Post Comment Likes
+
+Register:
+```http
+POST {baseURI}/api/posts/{postId}/comments/{commentId}/likes
+```
+
+Cancel:
+```http
+DELETE {baseURI}/api/posts/{postId}/comments/{commentId}/likes
+```
+
+Access:
+- Login required.
+
+Response:
+```ts
+type CommunityPostCommentLikeResponse = {
+  status: 200;
+  message: string;
+  data: {
+    comment_id: number;
+    like_count: number;
+  };
+};
+```
+
+Notes:
+- `POST_COMMENT_LIKES(comment_id, user_id)` has a unique constraint to prevent duplicates.
+- Register increments `COMMENTS.like_count`.
+- Cancel deletes the matching row and decrements `COMMENTS.like_count`, clamped at `0`.
+
+Errors:
+- `400`: duplicate like, or no existing like history on cancel.
+- `401`: invalid or expired token.
+- `404`: comment not found.
+- `500`: server error.
+
+### Community API Gaps To Ask Backend
+
+These are the remaining items to confirm before connecting the bottom tab `[커뮤니티]` page end to end:
+
+- Post list needs `is_liked` if the card heart state should be accurate without fetching every detail page.
+- Post list/detail need `is_mine` or a stable current-user id comparison rule for edit/delete menu visibility.
+- Post list/detail/comment responses do not include author profile image; confirm whether the UI should show a placeholder or backend should add `profile_image_url`.
+- Comment list does not include `is_mine`; frontend can compare `user_id`, but only if auth context has the same numeric id used by backend.
+- There is no comment reply API in these PDFs. If current `[커뮤니티]` UI has nested replies, either hide replies or request reply list/create/update/delete/like specs.
+- Create post supports multipart file upload, but update post only accepts `image_urls`. Confirm how to upload newly added images during edit.
+- Confirm whether post update should also support image deletion/reorder via complete replacement only, as the PDF says.
+- Confirm whether `board_type` should map exactly to UI tabs: 자유게시판 `FREE`, 시음 후기 `TASTING_REVIEW`, 레시피 토론 `RECIPE_DISCUSSION`.
+- Confirm whether search is needed. The provided list API has no `keyword` query.
+- Confirm whether "popular" sorting by `like_count DESC` is enough, or whether comment count / recent activity should influence ranking.
+
 ## Funding Agreement Save
 
 Source:

@@ -15,10 +15,10 @@ import {
   ArrowRight,
   TrendingUp,
   BookOpen,
-  PenSquare,
+  Award,
   Mail,
   ChevronRight,
-  Megaphone,
+  MessageCircle,
   HelpCircle,
   LogOut,
   X,
@@ -29,6 +29,8 @@ import {
   Lock,
   UserRound,
   Scroll,
+  Utensils,
+  BadgeCheck,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -119,7 +121,7 @@ export default function MyPageScreen() {
           <View style={styles.statsGrid}>
              <StatItem icon={<TrendingUp size={18} color="#9CA3AF" />} label="참여 펀딩" val="-" />
              <StatItem icon={<BookOpen size={18} color="#9CA3AF" />} label="내 아카이브" val="-" />
-             <StatItem icon={<PenSquare size={18} color="#9CA3AF" />} label="작성 게시글" val="-" />
+             <StatItem icon={<Award size={18} color="#9CA3AF" />} label="뱃지" val="-" />
           </View>
 
           <View style={styles.sectionArea}>
@@ -156,7 +158,7 @@ export default function MyPageScreen() {
   };
   const fundedCount = isBrewery ? 6 : participatedFundings.length;
   const archiveCount = 12;
-  const activityCount = 5;
+  const badgeCount = 5;
 
   return (
     <View style={styles.container}>
@@ -174,8 +176,12 @@ export default function MyPageScreen() {
                     <Text style={styles.typeBadgeTxt}>{isBrewery ? "양조장 계정" : "일반 유저"}</Text>
                  </View>
               </View>
-              <TouchableOpacity style={styles.settingsBtn}>
-                 <Settings size={20} color="#6B7280" />
+              <TouchableOpacity
+                style={styles.profileViewBtn}
+                activeOpacity={0.85}
+                onPress={() => router.push('/mypage/profile' as any)}
+              >
+                 <Text style={styles.profileViewTxt}>프로필 보기</Text>
               </TouchableOpacity>
            </View>
 
@@ -215,15 +221,28 @@ export default function MyPageScreen() {
         <View style={styles.statsGrid}>
            <StatItem icon={<TrendingUp size={18} color="#4B5563" />} label="참여 펀딩" val={fundedCount.toString()} onPress={() => router.push('/mypage/funded' as any)} />
            <StatItem icon={<BookOpen size={18} color="#4B5563" />} label="내 아카이브" val={archiveCount.toString()} onPress={() => router.push('/mypage/archive' as any)} />
-           <StatItem icon={<PenSquare size={18} color="#4B5563" />} label="나의 활동" val={activityCount.toString()} onPress={() => router.push('/mypage/activity' as any)} />
+           <StatItem icon={<Award size={18} color="#4B5563" />} label="뱃지" val={badgeCount.toString()} onPress={() => router.push('/mypage/badge' as any)} />
         </View>
 
         {/* 4. Sections */}
         <View style={styles.sectionArea}>
-           <Text style={styles.sectionLabel}>기타</Text>
+           <Text style={styles.sectionLabel}>나의 활동</Text>
            <View style={styles.menuCard}>
-              <MenuItem icon={<Settings size={18} color="#6B7280" />} title="설정" />
-              <MenuItem icon={<Megaphone size={18} color="#6B7280" />} title="공지사항" />
+              <MenuItem icon={<Utensils size={18} color="#6B7280" />} title="레시피" onPress={() => router.push('/mypage/activity/recipe' as any)} />
+              <MenuItem icon={<TrendingUp size={18} color="#6B7280" />} title="펀딩" onPress={() => router.push('/mypage/activity/funding' as any)} />
+              <MenuItem icon={<MessageCircle size={18} color="#6B7280" />} title="커뮤니티" last onPress={() => router.push('/mypage/activity/community' as any)} />
+           </View>
+
+           <Text style={[styles.sectionLabel, { marginTop: 28 }]}>기타</Text>
+           <View style={styles.menuCard}>
+              <MenuItem icon={<Settings size={18} color="#6B7280" />} title="설정" onPress={() => router.push('/mypage/settings' as any)} />
+              {!isBrewery && (
+                <MenuItem
+                  icon={<BadgeCheck size={18} color="#6B7280" />}
+                  title="양조장 인증하기"
+                  onPress={() => router.push('/brewery/verification' as any)}
+                />
+              )}
               <MenuItem icon={<HelpCircle size={18} color="#6B7280" />} title="고객센터" onPress={() => setSupportVisible(true)} />
               <MenuItem icon={<Scroll size={18} color="#6B7280" />} title="약관 및 정책" onPress={() => router.push('/terms' as any)} />
               <MenuItem icon={<LogOut size={18} color="#EF4444" />} title="로그아웃" danger last onPress={logout} />
@@ -327,6 +346,8 @@ const styles = StyleSheet.create({
   typeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3F4F6', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, marginTop: 4 },
   typeBadgeTxt: { fontSize: 11, fontWeight: '700', color: '#6B7280' },
   settingsBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' },
+  profileViewBtn: { height: 24, borderRadius: 12, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 },
+  profileViewTxt: { fontSize: 11, fontWeight: '800', color: '#374151' },
   dashboardLink: { marginTop: 20 },
   dashboardInner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 20 },
   dashboardTxtBox: { flexDirection: 'row', alignItems: 'center', gap: 8 },

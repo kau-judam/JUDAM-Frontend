@@ -10,6 +10,7 @@ export interface User {
   name: string;
   email: string;
   phone?: string;
+  profileImage?: string;
   type: UserType;
   isBreweryVerified?: boolean;
   breweryName?: string;

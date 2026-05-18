@@ -86,7 +86,7 @@ export default function FundedProjectsScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryTop}>
             <View style={styles.summaryIconBox}>
-              <TrendingUp size={22} color="#FFFFFF" />
+              <TrendingUp size={18} color="#FFFFFF" />
             </View>
             <View>
               <Text style={styles.summaryCaption}>나의 펀딩 현황</Text>
@@ -204,7 +204,7 @@ function FundingParticipationCard({
               onFavoritePress();
             }}
           >
-            <Heart size={18} color="#FFFFFF" fill={favorite ? '#FFFFFF' : 'transparent'} />
+            <Heart size={15} color="#FFFFFF" fill={favorite ? '#FFFFFF' : 'transparent'} />
           </TouchableOpacity>
         </View>
 
@@ -237,11 +237,11 @@ function FundingParticipationCard({
 
           <View style={styles.myInfoRow}>
             <View style={styles.myInfoItem}>
-              <Users size={13} color="#9CA3AF" />
+              <Users size={11} color="#9CA3AF" />
               <Text style={styles.myInfoText}>{project.backers}명 참여</Text>
             </View>
             <View style={styles.myInfoItem}>
-              <Clock3 size={13} color="#9CA3AF" />
+              <Clock3 size={11} color="#9CA3AF" />
               <Text style={styles.myInfoText}>{project.myDate}</Text>
             </View>
             <Text style={styles.amountText} numberOfLines={1}>{project.myAmount.toLocaleString()}원</Text>
@@ -256,7 +256,7 @@ function FundingParticipationCard({
                 router.push(`/funding/order/${project.id}` as any);
               }}
             >
-              <Package size={15} color="#FFFFFF" />
+              <Package size={13} color="#FFFFFF" />
               <Text style={styles.deliveryText}>배송 내역</Text>
             </TouchableOpacity>
           )}
@@ -286,56 +286,56 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: { fontSize: 21, fontWeight: '900', color: '#111827' },
-  content: { paddingHorizontal: 16, paddingTop: 14 },
+  content: { paddingHorizontal: 24, paddingTop: 18 },
   summaryCard: {
     backgroundColor: '#111827',
     borderRadius: 18,
-    padding: 22,
-    marginBottom: 20,
+    padding: 18,
+    marginBottom: 18,
   },
-  summaryTop: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 },
+  summaryTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
   summaryIconBox: {
-    width: 50,
-    height: 50,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 13,
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  summaryCaption: { fontSize: 13, fontWeight: '700', color: '#D1D5DB', marginBottom: 2 },
-  summaryTitle: { fontSize: 20, fontWeight: '900', color: '#FFFFFF' },
+  summaryCaption: { fontSize: 11, fontWeight: '800', color: '#D1D5DB', marginBottom: 2 },
+  summaryTitle: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
   summaryStats: {
-    minHeight: 82,
+    minHeight: 64,
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.12)',
     flexDirection: 'row',
     alignItems: 'center',
   },
-  summaryStat: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 7 },
+  summaryStat: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5 },
   summaryStatBorder: {
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
   },
-  summaryStatLabel: { fontSize: 12, fontWeight: '800', color: '#D1D5DB' },
-  summaryStatValue: { fontSize: 20, fontWeight: '900', color: '#FFFFFF' },
-  list: { gap: 14 },
+  summaryStatLabel: { fontSize: 10, fontWeight: '800', color: '#D1D5DB' },
+  summaryStatValue: { fontSize: 16, fontWeight: '900', color: '#FFFFFF' },
+  list: { gap: 13 },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     borderWidth: 1,
     borderColor: '#EEF0F2',
-    padding: 14,
+    padding: 12,
     shadowColor: '#000000',
     shadowOpacity: 0.07,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  cardBody: { flexDirection: 'row', gap: 12 },
+  cardBody: { flexDirection: 'row', gap: 10 },
   thumbnailWrap: {
-    width: 104,
-    height: 104,
+    width: 88,
+    height: 88,
     borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: '#F3F4F6',
@@ -343,81 +343,81 @@ const styles = StyleSheet.create({
   thumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
   heartButton: {
     position: 'absolute',
-    left: 8,
-    bottom: 8,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    left: 7,
+    bottom: 7,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   cardInfo: { flex: 1, minWidth: 0, justifyContent: 'space-between' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 9 },
-  breweryName: { maxWidth: 62, fontSize: 11, fontWeight: '900', color: '#374151' },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
+  breweryName: { maxWidth: 58, fontSize: 10, fontWeight: '900', color: '#374151' },
   categoryBadge: {
-    maxWidth: 64,
-    paddingHorizontal: 7,
-    paddingVertical: 4,
+    maxWidth: 58,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
     borderRadius: 8,
     backgroundColor: '#F3F4F6',
   },
-  categoryText: { fontSize: 10, fontWeight: '900', color: '#4B5563' },
-  statusBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999 },
+  categoryText: { fontSize: 9, fontWeight: '900', color: '#4B5563' },
+  statusBadge: { marginLeft: 'auto', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 999 },
   statusActive: { backgroundColor: '#ECFDF5' },
   statusDone: { backgroundColor: '#F3F4F6' },
-  statusText: { fontSize: 10, fontWeight: '900' },
+  statusText: { fontSize: 9, fontWeight: '900' },
   statusActiveText: { color: '#059669' },
   statusDoneText: { color: '#4B5563' },
-  projectTitle: { fontSize: 16, fontWeight: '900', color: '#000000', lineHeight: 22, marginBottom: 10 },
-  progressHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 8 },
-  progressText: { fontSize: 28, fontWeight: '900', color: '#000000', letterSpacing: 0 },
-  daysText: { fontSize: 12, fontWeight: '900', color: '#000000', marginBottom: 4 },
-  progressBar: { height: 7, borderRadius: 4, backgroundColor: '#F1F2F4' },
+  projectTitle: { fontSize: 14, fontWeight: '900', color: '#000000', lineHeight: 19, marginBottom: 7 },
+  progressHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 6 },
+  progressText: { fontSize: 22, fontWeight: '900', color: '#000000', letterSpacing: 0 },
+  daysText: { fontSize: 10, fontWeight: '900', color: '#000000', marginBottom: 3 },
+  progressBar: { height: 5, borderRadius: 4, backgroundColor: '#F1F2F4' },
   progressIndicator: { backgroundColor: '#050505' },
   myInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 6,
-    marginTop: 12,
-    paddingTop: 10,
+    gap: 5,
+    marginTop: 9,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#F3F4F6',
   },
   myInfoItem: { flexDirection: 'row', alignItems: 'center', gap: 3, minWidth: 0, flexShrink: 1 },
-  myInfoText: { fontSize: 11, fontWeight: '700', color: '#8B95A1', flexShrink: 1 },
-  amountText: { marginLeft: 'auto', maxWidth: 66, textAlign: 'right', fontSize: 12, fontWeight: '900', color: '#111827' },
+  myInfoText: { fontSize: 10, fontWeight: '700', color: '#8B95A1', flexShrink: 1 },
+  amountText: { marginLeft: 'auto', maxWidth: 62, textAlign: 'right', fontSize: 11, fontWeight: '900', color: '#111827' },
   deliveryButton: {
-    height: 42,
+    height: 34,
     borderRadius: 11,
     backgroundColor: '#111827',
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 7,
-    marginTop: 14,
+    gap: 6,
+    marginTop: 10,
   },
-  deliveryText: { fontSize: 14, fontWeight: '900', color: '#FFFFFF' },
-  paginationWrap: { alignItems: 'center', paddingTop: 22, paddingBottom: 10, gap: 14 },
-  paginationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  deliveryText: { fontSize: 12, fontWeight: '900', color: '#FFFFFF' },
+  paginationWrap: { alignItems: 'center', paddingTop: 20, paddingBottom: 10, gap: 12 },
+  paginationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   pageControlButton: {
-    minWidth: 58,
-    height: 48,
+    minWidth: 48,
+    height: 38,
     borderRadius: 13,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E5E7EB',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
   },
   pageControlDisabled: { backgroundColor: '#F3F4F6', borderColor: '#F3F4F6' },
-  pageControlText: { fontSize: 15, fontWeight: '900', color: '#111827' },
+  pageControlText: { fontSize: 13, fontWeight: '900', color: '#111827' },
   pageControlTextDisabled: { color: '#A1AAB8' },
   pageNumberButton: {
-    width: 50,
-    height: 50,
+    width: 40,
+    height: 40,
     borderRadius: 13,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -434,9 +434,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
   },
-  pageNumberText: { fontSize: 16, fontWeight: '900', color: '#374151' },
+  pageNumberText: { fontSize: 14, fontWeight: '900', color: '#374151' },
   pageNumberTextActive: { color: '#FFFFFF' },
-  pageSummary: { fontSize: 13, fontWeight: '800', color: '#9CA3AF' },
+  pageSummary: { fontSize: 12, fontWeight: '800', color: '#9CA3AF' },
   emptyBox: { alignItems: 'center', paddingVertical: 72, gap: 12 },
   emptyText: { fontSize: 14, fontWeight: '700', color: '#9CA3AF' },
   emptyButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: '#111827' },

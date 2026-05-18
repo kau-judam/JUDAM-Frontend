@@ -89,7 +89,7 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.75}>
-          <ArrowLeft size={26} color="#111827" />
+          <ArrowLeft size={22} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>프로필</Text>
         <View style={styles.headerSpacer} />
@@ -105,11 +105,11 @@ export default function ProfileScreen() {
               {profileImage ? (
                 <Image source={{ uri: profileImage }} style={styles.avatarImage} />
               ) : (
-        <UserRound size={56} color="#9CA3AF" />
+                <UserRound size={42} color="#9CA3AF" />
               )}
             </View>
             <TouchableOpacity style={styles.cameraButton} onPress={pickProfileImage} activeOpacity={0.85}>
-              <Camera size={18} color="#FFFFFF" />
+              <Camera size={15} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
@@ -117,19 +117,19 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>계정 정보</Text>
         <View style={styles.card}>
           <InfoRow
-            icon={<UserRound size={20} color="#4B5563" />}
+            icon={<UserRound size={18} color="#4B5563" />}
             label="닉네임"
             value={displayName}
             onPress={() => openEdit('name')}
           />
           <InfoRow
-            icon={<Phone size={20} color="#4B5563" />}
+            icon={<Phone size={18} color="#4B5563" />}
             label="전화번호"
             value={user.phone || '전화번호 없음'}
             onPress={() => openEdit('phone')}
           />
           <InfoRow
-            icon={<Mail size={20} color="#4B5563" />}
+            icon={<Mail size={18} color="#4B5563" />}
             label="이메일"
             value={user.email || '이메일 없음'}
             onPress={() => openEdit('email')}
@@ -139,12 +139,12 @@ export default function ProfileScreen() {
 
         <View style={styles.card}>
           <InfoRow
-            icon={<Lock size={20} color="#4B5563" />}
+            icon={<Lock size={18} color="#4B5563" />}
             label="비밀번호"
             value="********"
             onPress={() => router.push('/mypage/profile/password' as any)}
           />
-          <InfoRow icon={<Hash size={22} color="#4B5563" />} label="사용자 고유 ID" value={user.id || user.uid} last />
+          <InfoRow icon={<Hash size={18} color="#4B5563" />} label="사용자 고유 ID" value={user.id || user.uid} last />
         </View>
       </ScrollView>
 
@@ -201,7 +201,7 @@ function InfoRow({
         <Text style={styles.infoValue} numberOfLines={1}>
           {value}
         </Text>
-        {onPress ? <ChevronRight size={22} color="#9CA3AF" /> : null}
+        {onPress ? <ChevronRight size={16} color="#D1D5DB" /> : null}
       </View>
     </TouchableOpacity>
   );
@@ -223,22 +223,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   backButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 24, fontWeight: '900', color: '#111827' },
+  headerTitle: { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '900', color: '#111827' },
   headerSpacer: { width: 44 },
-  content: { paddingHorizontal: 20, paddingTop: 16 },
+  content: { paddingHorizontal: 24, paddingTop: 22 },
   profileImageCard: {
-    minHeight: 220,
+    minHeight: 154,
     borderRadius: 24,
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#EEF0F3',
   },
-  avatarWrap: { width: 132, height: 132 },
+  avatarWrap: { width: 96, height: 96 },
   largeAvatar: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     backgroundColor: '#E5E7EB',
     justifyContent: 'center',
     alignItems: 'center',
@@ -247,11 +249,11 @@ const styles = StyleSheet.create({
   avatarImage: { width: '100%', height: '100%' },
   cameraButton: {
     position: 'absolute',
-    right: -2,
-    bottom: 4,
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    right: -1,
+    bottom: 2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: '#6B7280',
     justifyContent: 'center',
     alignItems: 'center',
@@ -261,11 +263,11 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 5,
   },
-  sectionTitle: { fontSize: 15, fontWeight: '700', color: '#6B7280', marginLeft: 6, marginBottom: 12 },
+  sectionTitle: { fontSize: 12, fontWeight: '800', color: '#9CA3AF', marginLeft: 4, marginBottom: 12 },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    marginBottom: 22,
+    borderRadius: 24,
+    marginBottom: 24,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#EEF0F3',
@@ -275,18 +277,18 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  infoRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18 },
+  infoRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 },
   infoBorder: { borderBottomWidth: 1, borderBottomColor: '#EEF0F3' },
-  infoLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
-  infoIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' },
-  infoLabel: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  infoLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  infoIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' },
+  infoLabel: { fontSize: 15, fontWeight: '700', color: '#111827' },
   infoRight: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '50%' },
-  infoValue: { flexShrink: 1, fontSize: 15, fontWeight: '700', color: '#6B7280', textAlign: 'right' },
+  infoValue: { flexShrink: 1, fontSize: 13, fontWeight: '700', color: '#6B7280', textAlign: 'right' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end' },
   modalDim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.38)' },
   sheet: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 24, paddingTop: 22 },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
-  sheetTitle: { fontSize: 20, fontWeight: '900', color: '#111827' },
+  sheetTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
   closeButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' },
   input: {
     minHeight: 52,

@@ -77,6 +77,7 @@ export default function FundingReviewWriteScreen() {
   const rawArchiveMode = Array.isArray(archiveMode) ? archiveMode[0] : archiveMode;
   const isArchiveMode = rawArchiveMode === 'funding' || rawArchiveMode === 'normal' || rawArchiveMode === '1' || rawArchiveMode === 'true';
   const isNormalArchiveMode = rawArchiveMode === 'normal';
+  const isFundingArchiveMode = rawArchiveMode === 'funding';
   const targetReviewId = Number(Array.isArray(reviewId) ? reviewId[0] : reviewId);
   const hasReviewIdParam = Number.isFinite(targetReviewId) && targetReviewId > 0;
   const project = useMemo(() => projects.find((item) => item.id === projectId) || null, [projectId, projects]);
@@ -191,6 +192,32 @@ export default function FundingReviewWriteScreen() {
     });
   };
 
+  const loadExistingFundingReview = () => {
+    if (!ownExistingReview) {
+      Alert.alert('불러올 후기가 없어요', '이 펀딩에 작성한 후기가 아직 없습니다.');
+      return;
+    }
+
+    setRating(ownExistingReview.rating);
+    setUploadedImages(ownExistingReview.images || []);
+    setImageFilesByUri({});
+    setReviewText(ownExistingReview.comment || '');
+    setMood(ownExistingReview.mood || '');
+    setPairing(ownExistingReview.pairing || '');
+    setShowRecordInReview(Boolean(ownExistingReview.showRecordInReview));
+
+    const presetTags = ownExistingReview.tags.filter((tag) => presetTagValues.has(tag));
+    const extraTags = ownExistingReview.tags.filter((tag) => !presetTagValues.has(tag));
+    const firstOpenSection = Object.entries(reviewPresetTags).find(([, tags]) =>
+      tags.some((tag) => presetTags.includes(tag))
+    )?.[0];
+    setSelectedTags(presetTags);
+    setCustomTags(extraTags);
+    setCustomInput('');
+    setOpenSection(firstOpenSection || '맛·향');
+    Alert.alert('후기를 불러왔어요', '작성해둔 펀딩 후기를 이 기록에 채웠습니다.');
+  };
+
   const handleSubmit = async () => {
     if (!user) {
       showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.');
@@ -210,6 +237,10 @@ export default function FundingReviewWriteScreen() {
     }
     if (!reviewText.trim()) {
       Alert.alert('상세 후기 입력', '후기 내용을 입력해주세요.');
+      return;
+    }
+    if (isArchiveMode && (!mood.trim() || !pairing.trim())) {
+      Alert.alert('그날의 기록 입력', '기분과 함께한 안주를 모두 입력해주세요.');
       return;
     }
 
@@ -308,24 +339,31 @@ export default function FundingReviewWriteScreen() {
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 36 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.projectCard}>
-          {isNormalArchiveMode ? (
-            <View style={styles.normalRecordIconBox}>
-              <BookOpen size={26} color="#FFF" />
+          <View style={styles.projectSummaryRow}>
+            {isNormalArchiveMode ? (
+              <View style={styles.normalRecordIconBox}>
+                <BookOpen size={26} color="#FFF" />
+              </View>
+            ) : (
+              <Image source={getFundingProjectImageSource(project)} style={styles.projectImage} />
+            )}
+            <View style={styles.projectInfo}>
+              <View style={[styles.projectMetaRow, isFundingArchiveMode && styles.projectMetaRowWithButton]}>
+                <Text style={styles.projectBadge}>{isNormalArchiveMode ? '일반 술' : '펀딩 술'}</Text>
+                <Text style={styles.projectCategory} numberOfLines={1}>
+                  {isNormalArchiveMode ? '직접 기록' : getFundingMainIngredientLabel(project)}
+                </Text>
+              </View>
+              <Text style={styles.projectTitle} numberOfLines={2}>{isNormalArchiveMode ? '새로운 술 기록' : project.title}</Text>
+              <Text style={styles.projectBrewery}>{isNormalArchiveMode ? '술 이름과 경험을 자유롭게 작성해주세요' : project.brewery}</Text>
+              {!isNormalArchiveMode && <Text style={styles.projectReward} numberOfLines={1}>{rewardName}</Text>}
             </View>
-          ) : (
-            <Image source={getFundingProjectImageSource(project)} style={styles.projectImage} />
-          )}
-          <View style={styles.projectInfo}>
-            <View style={styles.projectMetaRow}>
-              <Text style={styles.projectBadge}>{isNormalArchiveMode ? '일반 술' : '펀딩 술'}</Text>
-              <Text style={styles.projectCategory} numberOfLines={1}>
-                {isNormalArchiveMode ? '직접 기록' : getFundingMainIngredientLabel(project)}
-              </Text>
-            </View>
-            <Text style={styles.projectTitle} numberOfLines={2}>{isNormalArchiveMode ? '새로운 술 기록' : project.title}</Text>
-            <Text style={styles.projectBrewery}>{isNormalArchiveMode ? '술 이름과 경험을 자유롭게 작성해주세요' : project.brewery}</Text>
-            {!isNormalArchiveMode && <Text style={styles.projectReward} numberOfLines={1}>{rewardName}</Text>}
           </View>
+          {isFundingArchiveMode && (
+            <TouchableOpacity style={styles.projectLoadReviewButton} onPress={loadExistingFundingReview} activeOpacity={0.85}>
+              <Text style={styles.projectLoadReviewText}>불러오기</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {isNormalArchiveMode && (
@@ -382,7 +420,7 @@ export default function FundingReviewWriteScreen() {
         </View>
 
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>그날의 기록 (선택)</Text>
+          <Text style={styles.sectionTitle}>그날의 기록 {isArchiveMode ? '*' : '(선택)'}</Text>
           <Text style={styles.sectionSub}>아카이브에는 자동 기록되고, 아래 선택에 따라 후기에도 표시됩니다.</Text>
           <Text style={styles.fieldLabel}>어떤 기분이었나요?</Text>
           <TextInput style={styles.input} value={mood} onChangeText={setMood} placeholder="예: 설레고 기대됐어요" placeholderTextColor="#9CA3AF" />
@@ -489,16 +527,20 @@ const styles = StyleSheet.create({
   headerButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '900', color: '#111' },
   content: { padding: 16, gap: 16 },
-  projectCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 14, borderWidth: 1, borderColor: '#F3F4F6', flexDirection: 'row', gap: 12 },
+  projectCard: { position: 'relative', backgroundColor: '#FFF', borderRadius: 20, padding: 14, borderWidth: 1, borderColor: '#F3F4F6', gap: 12 },
+  projectSummaryRow: { flexDirection: 'row', gap: 12 },
   projectImage: { width: 66, height: 66, borderRadius: 14, backgroundColor: '#E5E7EB' },
   normalRecordIconBox: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
   projectInfo: { flex: 1, minWidth: 0, justifyContent: 'center' },
   projectMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
+  projectMetaRowWithButton: { paddingRight: 76 },
   projectBadge: { fontSize: 10, fontWeight: '900', color: '#FFF', backgroundColor: '#111', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
   projectCategory: { maxWidth: 128, fontSize: 11, fontWeight: '800', color: '#9CA3AF' },
   projectTitle: { fontSize: 14, lineHeight: 20, fontWeight: '900', color: '#111' },
   projectBrewery: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', marginTop: 3 },
   projectReward: { alignSelf: 'flex-start', fontSize: 11, fontWeight: '900', color: '#4B5563', backgroundColor: '#F3F4F6', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4, marginTop: 7, maxWidth: '100%' },
+  projectLoadReviewButton: { position: 'absolute', top: 14, right: 14, minHeight: 32, borderRadius: 11, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  projectLoadReviewText: { fontSize: 12, lineHeight: 15, fontWeight: '900', color: '#111827', includeFontPadding: false },
   sectionCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 18, borderWidth: 1, borderColor: '#F3F4F6' },
   sectionTitle: { fontSize: 14, fontWeight: '900', color: '#111', marginBottom: 12 },
   sectionSub: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', lineHeight: 18, marginTop: -6, marginBottom: 14 },

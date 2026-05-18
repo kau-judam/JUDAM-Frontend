@@ -37,6 +37,7 @@ import { showLoginRequired } from '@/utils/authPrompt';
 
 const ACTION_CONTROL_HEIGHT = 40;
 const SORT_BUTTON_WIDTH = 104;
+const RECIPE_PAGE_SIZE = 7;
 
 type SortOption = 'popular' | 'newest' | 'recommended';
 
@@ -58,6 +59,9 @@ export default function RecipeScreen() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
 
   const applyLocalInterestState = useCallback((items: Recipe[]) => applyRecipeInterestState(items), []);
 
@@ -68,6 +72,8 @@ export default function RecipeScreen() {
       setRecipes([]);
       setLoadError(false);
       setIsLoading(false);
+      setTotalPages(1);
+      setTotalElements(0);
       return;
     }
 
@@ -77,16 +83,22 @@ export default function RecipeScreen() {
     try {
       const response = await fetchRecipes({
         sort: sortOption === 'newest' ? 'newest' : 'popular',
+        page: page - 1,
+        size: RECIPE_PAGE_SIZE,
       });
       setRecipes(applyLocalInterestState(response.recipes));
+      setTotalPages(Math.max(1, response.totalPages || 1));
+      setTotalElements(response.totalElements || response.recipes.length);
     } catch (error) {
       console.warn('Failed to load recipes from API', error);
       setLoadError(true);
       setRecipes([]);
+      setTotalPages(1);
+      setTotalElements(0);
     } finally {
       setIsLoading(false);
     }
-  }, [applyLocalInterestState, isAuthReady, sortOption]);
+  }, [applyLocalInterestState, isAuthReady, page, sortOption]);
 
   useEffect(() => {
     loadRecipes();
@@ -160,6 +172,14 @@ export default function RecipeScreen() {
       return;
     }
     router.push(`/recipe/${recipeId}` as any);
+  };
+
+  const changePage = (nextPage: number) => {
+    if (nextPage < 1 || nextPage > totalPages || nextPage === page) return;
+    setPage(nextPage);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
   };
 
   const filteredRecipes = recipes.filter((recipe) => {
@@ -242,6 +262,7 @@ export default function RecipeScreen() {
                     style={styles.dropItem}
                     onPress={() => {
                       setSortOption(option);
+                      setPage(1);
                       setShowSortDropdown(false);
                     }}
                   >
@@ -290,6 +311,43 @@ export default function RecipeScreen() {
             </View>
           )}
         </View>
+        {totalPages > 1 && !isLoading && !loadError && sortOption !== 'recommended' && (
+          <View style={styles.paginationWrap}>
+            <View style={styles.paginationRow}>
+              <TouchableOpacity
+                style={[styles.pageControlButton, page === 1 && styles.pageControlDisabled]}
+                activeOpacity={0.8}
+                disabled={page === 1}
+                onPress={() => changePage(page - 1)}
+              >
+                <Text style={[styles.pageControlText, page === 1 && styles.pageControlTextDisabled]}>이전</Text>
+              </TouchableOpacity>
+
+              {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+                <TouchableOpacity
+                  key={pageNumber}
+                  style={[styles.pageNumberButton, page === pageNumber && styles.pageNumberActive]}
+                  activeOpacity={0.85}
+                  onPress={() => changePage(pageNumber)}
+                >
+                  <Text style={[styles.pageNumberText, page === pageNumber && styles.pageNumberTextActive]}>
+                    {pageNumber}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+              <TouchableOpacity
+                style={[styles.pageControlButton, page === totalPages && styles.pageControlDisabled]}
+                activeOpacity={0.8}
+                disabled={page === totalPages}
+                onPress={() => changePage(page + 1)}
+              >
+                <Text style={[styles.pageControlText, page === totalPages && styles.pageControlTextDisabled]}>다음</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.pageSummary}>총 {totalElements}개 레시피 · {page} / {totalPages} 페이지</Text>
+          </View>
+        )}
         <View style={{ height: 100 }} />
       </ScrollView>
     </View>
@@ -318,4 +376,15 @@ const styles = StyleSheet.create({
   stateTxt: { fontSize: 13, color: '#6B7280', fontWeight: '700' },
   emptyState: { paddingVertical: 80, alignItems: 'center' },
   emptyTxt: { fontSize: 14, color: '#9CA3AF', fontWeight: '600' },
+  paginationWrap: { alignItems: 'center', paddingTop: 20, paddingBottom: 6, gap: 12 },
+  paginationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' },
+  pageControlButton: { minWidth: 48, height: 38, borderRadius: 13, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  pageControlDisabled: { backgroundColor: '#F3F4F6', borderColor: '#F3F4F6' },
+  pageControlText: { fontSize: 13, fontWeight: '900', color: '#111827' },
+  pageControlTextDisabled: { color: '#A1AAB8' },
+  pageNumberButton: { width: 40, height: 40, borderRadius: 13, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
+  pageNumberActive: { backgroundColor: '#000000', borderColor: '#000000' },
+  pageNumberText: { fontSize: 14, fontWeight: '900', color: '#374151' },
+  pageNumberTextActive: { color: '#FFFFFF' },
+  pageSummary: { fontSize: 12, fontWeight: '800', color: '#9CA3AF' },
 });

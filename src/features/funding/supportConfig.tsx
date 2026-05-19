@@ -33,14 +33,7 @@ export const paymentMethods: {
   { id: 'account', title: '계좌이체', desc: '은행 선택 후 입금', icon: <Landmark size={20} color="#111" /> },
 ];
 
-export const mockAddresses: SupportAddress[] = [
-  { zipCode: '06234', address: '서울특별시 강남구 테헤란로 123' },
-  { zipCode: '06235', address: '서울특별시 강남구 테헤란로 456' },
-  { zipCode: '04524', address: '서울특별시 중구 세종대로 110' },
-  { zipCode: '03088', address: '서울특별시 종로구 종로 1' },
-  { zipCode: '13494', address: '경기도 성남시 분당구 판교역로 235' },
-  { zipCode: '63309', address: '제주특별자치도 제주시 첨단로 242' },
-];
+export const addressSuggestions: SupportAddress[] = [];
 
 export const bankOptions = ['국민은행', '신한은행', '우리은행', '하나은행', '농협은행', '카카오뱅크'];
 export const MAX_ADDITIONAL_SUPPORT = 10000000;

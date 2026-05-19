@@ -104,19 +104,7 @@ const projectTabs: { id: TabId; label: string }[] = [
   { id: 'verification', label: '인증 서류' },
 ];
 
-const aiImages = [
-  'https://images.unsplash.com/photo-1569529465841-dfecdab7503b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=900',
-  'https://images.unsplash.com/photo-1568213816046-0ee1c42bd559?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=900',
-];
-
-const mockAddresses: AddressItem[] = [
-  { zipCode: '06234', address: '서울특별시 강남구 테헤란로 123' },
-  { zipCode: '06235', address: '서울특별시 강남구 테헤란로 456' },
-  { zipCode: '04524', address: '서울특별시 중구 세종대로 110' },
-  { zipCode: '03088', address: '서울특별시 종로구 종로 1' },
-  { zipCode: '13494', address: '경기도 성남시 분당구 판교역로 235' },
-  { zipCode: '63309', address: '제주특별자치도 제주시 첨단로 242' },
-];
+const addressSuggestions: AddressItem[] = [];
 
 const BANK_OPTIONS = ['KB국민', '신한', '우리', '하나', '농협은행', 'IBK기업', '카카오뱅크', '토스뱅크', '케이뱅크', 'SC제일', '부산', '대구', '광주', '전북', '경남', '수협', '새마을금고', '신협'];
 const TEMP_SAVE_KEY = 'judam_project_temp_save';
@@ -144,14 +132,8 @@ const MAX_DOCUMENT_FILE_SIZE = 5 * 1024 * 1024;
 const IMAGE_THUMB_SIZE = 128;
 const IMAGE_THUMB_GAP = 12;
 const IMAGE_REORDER_STEP = IMAGE_THUMB_SIZE + IMAGE_THUMB_GAP;
-const DEFAULT_PROJECT_POLICY = `환불: 프로젝트 마감 후 즉시 양조 공정이 시작되므로 단순 변심 환불은 불가합니다. 단, 양조장의 사정으로 생산이 불가능해질 경우 100% 환불을 보장합니다.
-
-교환/AS: 주류 배송 특성상 파손된 상태로 수령 시, 사진과 함께 접수해주시면 즉시 새 제품으로 교환해 드립니다.
-
-성인인증: 본 프로젝트는 성인인증을 완료한 후원자만 참여 가능하며, 배송 시 대리 수령이 제한될 수 있습니다.`;
-const DEFAULT_EXPECTED_DIFFICULTIES = `품질 변동: AI 검토와 전문가의 관리를 거치나, 기온 변화에 따라 도수나 당도가 기획안과 ±1~2% 정도 차이가 날 수 있습니다.
-
-일정 지연: 술이 충분히 익지 않았을 경우, 최상의 맛을 위해 출고가 최대 10일 정도 지연될 수 있으며 이 경우 커뮤니티를 통해 즉시 공지하겠습니다.`;
+const DEFAULT_PROJECT_POLICY = '';
+const DEFAULT_EXPECTED_DIFFICULTIES = '';
 
 function digitsOnly(value: string) {
   return value.replace(/[^0-9]/g, '');
@@ -354,29 +336,30 @@ function getProjectIngredients(project: FundingProject) {
       origin: item.origin,
     }));
   }
-  return [
-    {
-      id: 1,
-      ingredient: project.mainIngredients || '국내산 쌀',
-      origin: project.location || '국내',
-    },
-    ...(project.subIngredients
-      ? [
-          {
-            id: 2,
-            ingredient: project.subIngredients,
-            origin: project.location || '국내',
-          },
-        ]
-      : []),
-  ];
+  const ingredients = [
+    project.mainIngredients
+      ? {
+          id: 1,
+          ingredient: project.mainIngredients,
+          origin: project.location || '',
+        }
+      : null,
+    project.subIngredients
+      ? {
+          id: 2,
+          ingredient: project.subIngredients,
+          origin: project.location || '',
+        }
+      : null,
+  ].filter((item): item is { id: number; ingredient: string; origin: string } => Boolean(item));
+  return ingredients.length > 0 ? ingredients : [{ id: 1, ingredient: '', origin: '' }];
 }
 
 function createProjectEditDraft(project: FundingProject, user: AuthUser | null) {
   const imageUris = getProjectImageUris(project);
   const alcoholContent = stripAlcoholUnit(project.alcoholContent);
   const volume = stripVolumeUnit(project.bottleSize || project.volume);
-  const breweryName = project.brewery || user?.breweryName || '양조장';
+  const breweryName = project.brewery || user?.breweryName || '';
 
   return {
     basicInfo: {
@@ -425,19 +408,19 @@ function createProjectEditDraft(project: FundingProject, user: AuthUser | null) 
       name: breweryName,
       profileImage: project.breweryProfileImage || imageUris[0] || '',
       bio: project.breweryBio || `${breweryName}의 전통주 프로젝트입니다.`,
-      phone: user?.phone || '010-1234-5678',
-      accountBank: '신한',
-      accountNumber: '12345678901234',
+      phone: user?.phone || '',
+      accountBank: '',
+      accountNumber: '',
     },
     taxInfo: {
       businessType: 'corporation',
       businessName: breweryName,
-      businessNumber: user?.businessNumber || '123-45-67890',
-      ceoName: user?.name && user.name !== breweryName ? user.name : '이주담',
-      address: project.location || user?.breweryLocation || '지역 미정',
-      businessCategory: '제조업',
-      businessItem: `${project.category || '전통주'} 제조`,
-      email: user?.email || 'brewery@judam.co.kr',
+      businessNumber: user?.businessNumber || '',
+      ceoName: user?.name && user.name !== breweryName ? user.name : '',
+      address: project.location || user?.breweryLocation || '',
+      businessCategory: '',
+      businessItem: '',
+      email: user?.email || '',
     },
     uploadedFiles: {
       profileImage: (project.breweryProfileImage || imageUris[0]) ? '기존 프로필 이미지' : '',
@@ -768,7 +751,7 @@ export default function BreweryProjectCreateScreen() {
       ? `예상 발송 시작일은 펀딩 종료일로부터 최소 30일 이후(${minimumDeliveryDateText} 이후)로 입력해주세요.`
       : '';
   const filteredAddresses = useMemo(
-    () => mockAddresses.filter((item) => item.address.includes(addressSearch) || item.zipCode.includes(addressSearch)),
+    () => addressSuggestions.filter((item) => item.address.includes(addressSearch) || item.zipCode.includes(addressSearch)),
     [addressSearch]
   );
 
@@ -1274,15 +1257,15 @@ export default function BreweryProjectCreateScreen() {
 
   const loadBreweryInfo = () => {
     if (!user || user.type !== 'brewery') return;
-    const loadedBreweryName = user.breweryName || '술샘양조장';
-    const loadedAddress = [user.breweryLocation || '경기도 양평군 용문면 누룩길 12', user.breweryLocationDetail].filter(Boolean).join(' ');
-    const loadedCeoName = user.name && user.name !== loadedBreweryName ? user.name : '이주담';
+    const loadedBreweryName = user.breweryName || '';
+    const loadedAddress = [user.breweryLocation, user.breweryLocationDetail].filter(Boolean).join(' ');
+    const loadedCeoName = user.name && user.name !== loadedBreweryName ? user.name : '';
 
     setCreatorInfo((prev) => ({
       ...prev,
       name: loadedBreweryName,
-      profileImage: aiImages[0],
-      bio: '지역 농산물과 전통 누룩을 바탕으로 계절의 향을 담은 막걸리를 빚는 소규모 양조장입니다.',
+      profileImage: '',
+      bio: '',
       phone: '',
       accountBank: '',
       accountNumber: '',
@@ -1291,16 +1274,16 @@ export default function BreweryProjectCreateScreen() {
       ...prev,
       businessType: 'corporation',
       businessName: loadedBreweryName,
-      businessNumber: user.businessNumber || '123-45-67890',
+      businessNumber: user.businessNumber || '',
       ceoName: loadedCeoName,
       address: loadedAddress,
-      businessCategory: '제조업',
-      businessItem: '탁주 제조',
-      email: user.email || 'brewery@judam.co.kr',
+      businessCategory: '',
+      businessItem: '',
+      email: user.email || '',
     }));
     setUploadedFiles((prev) => ({
       ...prev,
-      profileImage: 'brewery_profile_sample.jpg',
+      profileImage: '',
       idCard: '',
     }));
     setPhoneVerified(false);
@@ -1352,16 +1335,7 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleGenerateAiImage = () => {
-    if (basicInfo.images.length >= 5) {
-      showAlert('대표 이미지는 최대 5개까지 등록할 수 있습니다.');
-      return;
-    }
-    const nextIndex = basicInfo.images.length;
-    setBasicInfo((prev) => ({
-      ...prev,
-      images: [...prev.images, aiImages[nextIndex % aiImages.length]],
-    }));
-    showAlert('AI 컨셉 이미지가 생성되었습니다.');
+    showAlert('AI 이미지 생성 API 연결 후 사용할 수 있습니다. 지금은 직접 이미지를 업로드해주세요.');
   };
 
   const moveProjectImage = (fromIndex: number, toIndex: number) => {
@@ -1584,7 +1558,7 @@ export default function BreweryProjectCreateScreen() {
   const buildProjectPayload = (mode: 'create' | 'edit'): Omit<FundingProject, 'id'> => {
     const budgetItems = parseBudgetItems(projectPlan.budget);
     const scheduleItems = parseScheduleItems(projectPlan.schedule);
-    const image = basicInfo.images[0] || editProject?.image || aiImages[0];
+    const image = basicInfo.images[0] || editProject?.image || '';
     const quantity = Number(fundingInfo.bottleQuantity) || editProject?.targetQuantity || editProject?.totalQuantity || 0;
     const goalAmount = Number(fundingInfo.goalAmount) || editProject?.goalAmount || 0;
     const projectCategory = '막걸리';
@@ -1593,9 +1567,9 @@ export default function BreweryProjectCreateScreen() {
     return {
       title: basicInfo.title,
       shortTitle: basicInfo.shortTitle,
-      brewery: creatorInfo.name || user?.breweryName || editProject?.brewery || '양조장',
+      brewery: creatorInfo.name || user?.breweryName || editProject?.brewery || '',
       breweryLogo: editProject?.breweryLogo || '🍶',
-      location: taxInfo.address || editProject?.location || user?.breweryLocation || '지역 미정',
+      location: taxInfo.address || editProject?.location || user?.breweryLocation || '',
       category: projectCategory,
       creatorId: editProject?.creatorId || user?.id,
       breweryId: editProject?.breweryId || user?.uid,
@@ -1608,7 +1582,7 @@ export default function BreweryProjectCreateScreen() {
       goalAmount,
       currentAmount: mode === 'edit' ? editProject?.currentAmount || 0 : 0,
       backers: mode === 'edit' ? editProject?.backers || 0 : 0,
-      daysLeft: Number(fundingInfo.duration) || editProject?.daysLeft || 30,
+      daysLeft: Number(fundingInfo.duration) || editProject?.daysLeft || 0,
       status: mode === 'edit' ? editProject?.status || '심사 중' : TEMP_CREATED_PROJECT_STATUS,
       startDate: fundingInfo.startDate,
       endDate: endDateText,
@@ -1831,7 +1805,7 @@ export default function BreweryProjectCreateScreen() {
             required
             value={basicInfo.title}
             onChangeText={(value) => setBasicInfo((prev) => ({ ...prev, title: value }))}
-            placeholder="봄을 담은 벚꽃 막걸리 프로젝트"
+            placeholder="프로젝트명을 입력하세요"
             maxLength={50}
             counter={`${basicInfo.title.length}/50자`}
           />
@@ -3270,7 +3244,7 @@ function AddressModal({ visible, insetsTop, search, results, onChangeSearch, onC
             </>
           )}
           <View style={styles.addressGuideBox}>
-            <Text style={styles.addressGuideText}>현재는 프론트 mock 주소 목록만 사용합니다.</Text>
+            <Text style={styles.addressGuideText}>주소 검색 API 연결 전까지 입력한 주소를 그대로 사용할 수 있습니다.</Text>
           </View>
         </ScrollView>
       </View>

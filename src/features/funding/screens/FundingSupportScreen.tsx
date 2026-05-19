@@ -65,7 +65,7 @@ import {
   getPrimaryRewardItem,
   getRecentShippingKey,
   messageOptions,
-  mockAddresses,
+  addressSuggestions,
   paymentMethods,
   type InfoModalType,
   type PaymentMethod,
@@ -265,7 +265,7 @@ export default function FundingSupportScreen() {
   const totalAmount = rewardAmount + shippingFee + extraAmount;
   const progressPercentage = project && project.goalAmount > 0 ? Math.min((project.currentAmount / project.goalAmount) * 100, 100) : 0;
   const filteredAddresses = useMemo(
-    () => mockAddresses.filter((addr) => addr.address.includes(addressSearch) || addr.zipCode.includes(addressSearch)),
+    () => addressSuggestions.filter((addr) => addr.address.includes(addressSearch) || addr.zipCode.includes(addressSearch)),
     [addressSearch]
   );
   const canSubmit = Boolean(selectedPaymentMethod && agreeTerms && agreeRefund && !isProcessing);
@@ -1094,7 +1094,7 @@ function AddressModal({
   visible: boolean;
   insetsTop: number;
   search: string;
-  results: typeof mockAddresses;
+  results: typeof addressSuggestions;
   onChangeSearch: (text: string) => void;
   onClose: () => void;
   onSelect: (zipCode: string, address: string) => void;

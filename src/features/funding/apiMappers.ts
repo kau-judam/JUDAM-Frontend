@@ -227,7 +227,7 @@ export function mapBreweryLogs(logs: FundingBreweryLogItem[]): JournalEntry[] {
     title: log.title,
     content: log.content,
     images: normalizeFundingImageUrls(log.imageUrls),
-    likes: 0,
+    likes: log.likeCount || 0,
     comments: [],
   }));
 }

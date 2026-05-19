@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import SafeStorage from "@/utils/storage";
-import { getFundingApiErrorMessage, likeFundingProject, unlikeFundingProject } from "@/features/funding/api";
+import {
+  getFundingApiErrorMessage,
+  getMyLikedFundings,
+  likeFundingProject,
+  unlikeFundingProject,
+} from "@/features/funding/api";
 
 interface FavoritesContextType {
   favoriteFundings: number[];
@@ -23,6 +28,15 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
         const saved = await SafeStorage.getItem("favoriteFundings");
         if (saved) {
           setFavoriteFundings(JSON.parse(saved));
+        }
+        try {
+          const response = await getMyLikedFundings();
+          setFavoriteFundings(response.content.map((funding) => funding.fundingId));
+        } catch (apiError) {
+          const message = getFundingApiErrorMessage(apiError, "");
+          if (message && message !== "로그인 정보가 필요합니다. 다시 로그인해주세요.") {
+            console.warn(message);
+          }
         }
       } catch (e) {
         console.error("Failed to load favorites from SafeStorage", e);
@@ -53,10 +67,19 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
     setFavoriteFundings((prev) => (wasFavorite ? prev.filter((id) => id !== fundingId) : [...prev, fundingId]));
 
     try {
+      let response;
       if (wasFavorite) {
-        await unlikeFundingProject(fundingId);
+        response = await unlikeFundingProject(fundingId);
       } else {
-        await likeFundingProject(fundingId);
+        response = await likeFundingProject(fundingId);
+      }
+      if (response.fundingId) {
+        setFavoriteFundings((prev) => {
+          const next = response.liked
+            ? Array.from(new Set([...prev, response.fundingId]))
+            : prev.filter((id) => id !== response.fundingId);
+          return next;
+        });
       }
     } catch (error) {
       const message = getFundingApiErrorMessage(error, "펀딩 찜 상태를 저장하지 못했습니다.");

@@ -61,6 +61,7 @@ import {
   getFundingSupportOptions,
   isFundingApiMissingEndpointError,
   type FundingReportReason,
+  type FundingSupportOption,
 } from '@/features/funding/api';
 import {
   mapBreweryLogs,
@@ -148,6 +149,18 @@ const DEFAULT_TASTE_PROFILE = {
 
 type FundingQuestionComment = typeof initialComments[number];
 
+function getSupportOptionLimit(option: FundingSupportOption | null | undefined) {
+  const limits = [option?.maxPerUser, option?.remainingStock, option?.stock]
+    .filter((value): value is number => typeof value === 'number' && value > 0);
+  return limits.length > 0 ? Math.min(...limits) : null;
+}
+
+function getSupportOptionStockLabel(option: FundingSupportOption) {
+  if (typeof option.remainingStock === 'number') return `${option.remainingStock.toLocaleString()}개 남음`;
+  if (typeof option.stock === 'number') return `총 ${option.stock.toLocaleString()}개`;
+  return '';
+}
+
 function todayText() {
   const today = new Date();
   return `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, '0')}. ${String(today.getDate()).padStart(2, '0')}`;
@@ -234,6 +247,7 @@ export default function FundingDetailScreen() {
   const [feedbackModal, setFeedbackModal] = useState<{ title: string; body: string } | null>(null);
   const [reviewEditPrompt, setReviewEditPrompt] = useState<FundingReview | null>(null);
   const [showFundingOptionModal, setShowFundingOptionModal] = useState(false);
+  const [supportOptions, setSupportOptions] = useState<FundingSupportOption[]>([]);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [supportOptionId, setSupportOptionId] = useState(1);
   const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
@@ -293,6 +307,7 @@ export default function FundingDetailScreen() {
     setLikedJournalComments(new Set());
     setLikedJournalReplies(new Set());
     setShowFundingOptionModal(false);
+    setSupportOptions([]);
     setSelectedQuantity(1);
     setSupportOptionId(1);
   }, [projectId]);
@@ -427,11 +442,17 @@ export default function FundingDetailScreen() {
     getFundingSupportOptions(projectId)
       .then((response) => {
         const currentProject = projectRef.current;
-        const option = response.supportOptions[0];
+        const options = response.supportOptions;
+        const option = options.find((item) => normalizeSupportOptionId(item.optionId) === supportOptionId) || options[0];
         if (!mounted || !currentProject || !option) return;
         const optionId = normalizeSupportOptionId(option.optionId);
         if (optionId === null) return;
+        setSupportOptions(options);
         setSupportOptionId(optionId);
+        const quantityLimit = getSupportOptionLimit(option);
+        if (quantityLimit !== null) {
+          setSelectedQuantity((prev) => Math.min(Math.max(1, prev), quantityLimit));
+        }
         mergeProject(projectId, mergeSupportOption(currentProject, option));
       })
       .catch((error) => {
@@ -441,7 +462,7 @@ export default function FundingDetailScreen() {
     return () => {
       mounted = false;
     };
-  }, [mergeProject, projectId, showFundingOptionModal]);
+  }, [mergeProject, projectId, showFundingOptionModal, supportOptionId]);
 
   const userTasteProfile = useMemo(() => getTasteProfileFromSulbti(user?.sulbti), [user?.sulbti]);
   const projectBudget = useMemo(() => project?.budget || DEFAULT_PROJECT_BUDGET, [project?.budget]);
@@ -514,7 +535,12 @@ export default function FundingDetailScreen() {
   const bottleSize = getProjectBottleSize(project);
   const alcoholContent = getProjectAlcoholContent(project);
   const estimatedDelivery = getProjectEstimatedDelivery(project);
-  const optionTotalAmount = unitPrice * selectedQuantity + shippingFee;
+  const selectedSupportOption =
+    supportOptions.find((option) => normalizeSupportOptionId(option.optionId) === supportOptionId) || null;
+  const selectedSupportOptionPrice = selectedSupportOption?.price ?? unitPrice;
+  const selectedSupportOptionName = selectedSupportOption?.name || project.rewardItems?.[0] || `${project.title} ${bottleSize} x 1`;
+  const selectedSupportOptionLimit = getSupportOptionLimit(selectedSupportOption);
+  const optionTotalAmount = selectedSupportOptionPrice * selectedQuantity + shippingFee;
   const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
   const supportButtonLabel =
     isOwnBreweryProject
@@ -545,6 +571,24 @@ export default function FundingDetailScreen() {
   const handleConfirmFundingOption = () => {
     setShowFundingOptionModal(false);
     router.push(`/funding/support?id=${project.id}&quantity=${selectedQuantity}&optionId=${supportOptionId}` as any);
+  };
+
+  const handleSelectSupportOption = (option: FundingSupportOption) => {
+    const optionId = normalizeSupportOptionId(option.optionId);
+    if (optionId === null) return;
+    setSupportOptionId(optionId);
+    const quantityLimit = getSupportOptionLimit(option);
+    if (quantityLimit !== null) {
+      setSelectedQuantity((prev) => Math.min(Math.max(1, prev), quantityLimit));
+    }
+    mergeProject(project.id, mergeSupportOption(project, option));
+  };
+
+  const handleIncreaseQuantity = () => {
+    setSelectedQuantity((prev) => {
+      const next = prev + 1;
+      return selectedSupportOptionLimit === null ? next : Math.min(next, selectedSupportOptionLimit);
+    });
   };
 
   const handleTabChange = (nextTab: "소개" | "양조일지" | "Q&A" | "후기") => {
@@ -1795,7 +1839,7 @@ export default function FundingDetailScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.optionBody}>
+            <ScrollView style={styles.optionBodyScroll} contentContainerStyle={styles.optionBody} showsVerticalScrollIndicator={false}>
               <View style={styles.optionProjectBox}>
                 <Image source={getFundingProjectImageSource(project)} style={styles.optionProjectImg} />
                 <View style={{ flex: 1 }}>
@@ -1803,6 +1847,40 @@ export default function FundingDetailScreen() {
                   <Text style={styles.optionProjectTitle} numberOfLines={2}>{project.title}</Text>
                 </View>
               </View>
+
+              {supportOptions.length > 0 && (
+                <View style={styles.supportOptionList}>
+                  <Text style={styles.supportOptionSectionTitle}>후원 옵션</Text>
+                  {supportOptions.map((option) => {
+                    const optionId = normalizeSupportOptionId(option.optionId);
+                    const selected = optionId === supportOptionId;
+                    const stockLabel = getSupportOptionStockLabel(option);
+                    return (
+                      <TouchableOpacity
+                        key={`${option.optionId}-${option.name}`}
+                        style={[styles.supportOptionCard, selected && styles.supportOptionCardSelected]}
+                        onPress={() => handleSelectSupportOption(option)}
+                        activeOpacity={0.84}
+                      >
+                        <View style={styles.supportOptionTop}>
+                          <Text style={[styles.supportOptionName, selected && styles.supportOptionNameSelected]} numberOfLines={2}>
+                            {option.name}
+                          </Text>
+                          <Text style={styles.supportOptionPrice}>{option.price.toLocaleString()}원</Text>
+                        </View>
+                        {option.description ? (
+                          <Text style={styles.supportOptionDesc} numberOfLines={2}>{option.description}</Text>
+                        ) : null}
+                        {(stockLabel || option.maxPerUser) ? (
+                          <Text style={styles.supportOptionMeta}>
+                            {[stockLabel, option.maxPerUser ? `1인 최대 ${option.maxPerUser}개` : ''].filter(Boolean).join(' · ')}
+                          </Text>
+                        ) : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
 
               <View style={styles.optionSpecGrid}>
                 <View style={styles.optionSpecCard}>
@@ -1823,15 +1901,26 @@ export default function FundingDetailScreen() {
                   <Text style={styles.quantityValue}>{selectedQuantity}</Text>
                   <Text style={styles.quantityUnit}>병</Text>
                 </View>
-                <TouchableOpacity style={styles.quantityControl} onPress={() => setSelectedQuantity(selectedQuantity + 1)}>
+                <TouchableOpacity
+                  style={[
+                    styles.quantityControl,
+                    selectedSupportOptionLimit !== null && selectedQuantity >= selectedSupportOptionLimit && styles.quantityControlDisabled,
+                  ]}
+                  onPress={handleIncreaseQuantity}
+                  disabled={selectedSupportOptionLimit !== null && selectedQuantity >= selectedSupportOptionLimit}
+                >
                   <Plus size={20} color="#4B5563" />
                 </TouchableOpacity>
               </View>
 
               <View style={styles.optionPriceBox}>
                 <View style={styles.optionPriceRow}>
+                  <Text style={styles.optionPriceLabel}>선택 옵션</Text>
+                  <Text style={styles.optionPriceValue} numberOfLines={1}>{selectedSupportOptionName}</Text>
+                </View>
+                <View style={styles.optionPriceRow}>
                   <Text style={styles.optionPriceLabel}>상품 금액</Text>
-                  <Text style={styles.optionPriceValue}>{(unitPrice * selectedQuantity).toLocaleString()}원</Text>
+                  <Text style={styles.optionPriceValue}>{(selectedSupportOptionPrice * selectedQuantity).toLocaleString()}원</Text>
                 </View>
                 <View style={styles.optionPriceRow}>
                   <Text style={styles.optionPriceLabel}>배송비</Text>
@@ -1855,7 +1944,7 @@ export default function FundingDetailScreen() {
               <TouchableOpacity style={styles.optionConfirmBtn} onPress={handleConfirmFundingOption}>
                 <Text style={styles.optionConfirmTxt}>후원하기</Text>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           </Animated.View>
         </View>
       </Modal>
@@ -2272,22 +2361,34 @@ const styles = StyleSheet.create({
   mainSupportBtn: { flex: 1, height: 56, backgroundColor: '#111', borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   mainSupportTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   optionOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 16 },
-  optionModal: { backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden' },
+  optionModal: { backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden', maxHeight: '88%' },
   optionHeader: { paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   optionTitle: { fontSize: 18, fontWeight: '900', color: '#111' },
   optionClose: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center' },
   optionCloseTxt: { fontSize: 24, color: '#6B7280', marginTop: -2 },
+  optionBodyScroll: { flexGrow: 0 },
   optionBody: { padding: 20, gap: 16 },
   optionProjectBox: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   optionProjectImg: { width: 64, height: 64, borderRadius: 12, backgroundColor: '#E5E7EB' },
   optionBrewery: { fontSize: 12, color: '#6B7280', fontWeight: '700', marginBottom: 4 },
   optionProjectTitle: { fontSize: 14, color: '#111', fontWeight: '900', lineHeight: 20 },
+  supportOptionList: { gap: 8 },
+  supportOptionSectionTitle: { fontSize: 13, color: '#111', fontWeight: '900' },
+  supportOptionCard: { borderWidth: 1.5, borderColor: '#E5E7EB', backgroundColor: '#FFF', borderRadius: 14, padding: 13, gap: 6 },
+  supportOptionCardSelected: { borderColor: '#111', backgroundColor: '#F9FAFB' },
+  supportOptionTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  supportOptionName: { flex: 1, fontSize: 14, color: '#374151', fontWeight: '900', lineHeight: 20 },
+  supportOptionNameSelected: { color: '#111' },
+  supportOptionPrice: { fontSize: 14, color: '#111', fontWeight: '900' },
+  supportOptionDesc: { fontSize: 12, color: '#6B7280', fontWeight: '700', lineHeight: 18 },
+  supportOptionMeta: { fontSize: 11, color: '#9CA3AF', fontWeight: '800' },
   optionSpecGrid: { flexDirection: 'row', gap: 8 },
   optionSpecCard: { flex: 1, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, padding: 12 },
   optionSpecLabel: { fontSize: 12, color: '#6B7280', fontWeight: '700', marginBottom: 4 },
   optionSpecValue: { fontSize: 14, color: '#111', fontWeight: '900' },
   quantityBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#E5E7EB' },
   quantityControl: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
+  quantityControlDisabled: { opacity: 0.35 },
   quantityCenter: { alignItems: 'center' },
   quantityValue: { fontSize: 26, color: '#111', fontWeight: '900' },
   quantityUnit: { fontSize: 12, color: '#6B7280', fontWeight: '700' },

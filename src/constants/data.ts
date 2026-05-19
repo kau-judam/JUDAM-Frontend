@@ -90,6 +90,7 @@ export interface FundingProject {
   popularRank?: number;
   creatorId?: string;
   breweryId?: string;
+  liked?: boolean;
   favoriteCount?: number;
   goalAmount: number;
   currentAmount: number;

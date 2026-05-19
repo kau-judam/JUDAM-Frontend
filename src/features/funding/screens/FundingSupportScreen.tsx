@@ -3,7 +3,6 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
-  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -13,7 +12,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as ExpoLinking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import {
   Check,
   ChevronDown,
@@ -35,6 +36,8 @@ import type { FundingProject } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import {
+  completeFundingPayment,
+  confirmTossPayment,
   createFundingOrder,
   getFundingApiErrorMessage,
   getFundingOrderDetail,
@@ -42,6 +45,7 @@ import {
   getFundingSupportOptions,
   isFundingApiMissingEndpointError,
   requestFundingPayment,
+  type FundingSupportOption,
 } from '@/features/funding/api';
 import { mergeSupportOption, normalizeSupportOptionId } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
@@ -70,6 +74,43 @@ import {
 import SafeStorage from '@/utils/storage';
 import { formatPhoneNumber, isValidEmail, isValidPhone } from '@/utils/validation';
 
+function getSupportOptionLimit(option: FundingSupportOption | null | undefined) {
+  const limits = [option?.maxPerUser, option?.remainingStock, option?.stock]
+    .filter((value): value is number => typeof value === 'number' && value > 0);
+  return limits.length > 0 ? Math.min(...limits) : null;
+}
+
+function getSupportOptionStockLabel(option: FundingSupportOption | null | undefined) {
+  if (!option) return '';
+  if (typeof option.remainingStock === 'number') return `${option.remainingStock.toLocaleString()}개 남음`;
+  if (typeof option.stock === 'number') return `총 ${option.stock.toLocaleString()}개`;
+  return '';
+}
+
+function getTossQueryParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getTossReturnUrls(orderId: number, amount: number) {
+  const queryParams = {
+    orderId: String(orderId),
+    amount: String(amount),
+  };
+  return {
+    successUrl: ExpoLinking.createURL('/funding/payment/success', { queryParams }),
+    failUrl: ExpoLinking.createURL('/funding/payment/fail', { queryParams }),
+    returnUrl: ExpoLinking.createURL('/funding/payment'),
+  };
+}
+
+function getTossSuccessParams(url: string) {
+  const parsed = ExpoLinking.parse(url);
+  const paymentKey = getTossQueryParam(parsed.queryParams?.paymentKey);
+  const orderId = getTossQueryParam(parsed.queryParams?.orderId);
+  const amount = Number(getTossQueryParam(parsed.queryParams?.amount));
+  return { paymentKey, orderId, amount };
+}
+
 export default function FundingSupportScreen() {
   const insets = useSafeAreaInsets();
   const { id, quantity: quantityParam, optionId: optionIdParam } = useLocalSearchParams();
@@ -84,6 +125,7 @@ export default function FundingSupportScreen() {
   const rawOptionId = Array.isArray(optionIdParam) ? optionIdParam[0] : optionIdParam;
   const [quantity, setQuantity] = useState(getInitialQuantity(quantityParam));
   const [selectedSupportOptionId, setSelectedSupportOptionId] = useState(Math.max(1, Number(rawOptionId) || 1));
+  const [supportOptions, setSupportOptions] = useState<FundingSupportOption[]>([]);
   const [additionalSupport, setAdditionalSupport] = useState('0');
   const [supportMessage, setSupportMessage] = useState('');
   const [showMessageOptions, setShowMessageOptions] = useState(false);
@@ -162,6 +204,7 @@ export default function FundingSupportScreen() {
   useEffect(() => {
     setQuantity(getInitialQuantity(quantityParam));
     setSelectedSupportOptionId(Math.max(1, Number(rawOptionId) || 1));
+    setSupportOptions([]);
     setAdditionalSupport('0');
     setSupportMessage('');
     setShowMessageOptions(false);
@@ -184,11 +227,17 @@ export default function FundingSupportScreen() {
       .then((response) => {
         const currentProject = projectRef.current;
         if (!mounted || !currentProject) return;
-        const option = response.supportOptions.find((item) => normalizeSupportOptionId(item.optionId) === selectedSupportOptionId) || response.supportOptions[0];
+        const options = response.supportOptions;
+        const option = options.find((item) => normalizeSupportOptionId(item.optionId) === selectedSupportOptionId) || options[0];
         if (!option) return;
         const optionId = normalizeSupportOptionId(option.optionId);
         if (optionId === null) return;
+        setSupportOptions(options);
         setSelectedSupportOptionId(optionId);
+        const quantityLimit = getSupportOptionLimit(option);
+        if (quantityLimit !== null) {
+          setQuantity((prev) => Math.min(Math.max(1, prev), quantityLimit));
+        }
         mergeProject(project.id, mergeSupportOption(currentProject, option));
       })
       .catch((error) => {
@@ -200,9 +249,13 @@ export default function FundingSupportScreen() {
     };
   }, [mergeProject, project?.id, selectedSupportOptionId]);
 
-  const unitPrice = project ? getProjectUnitPrice(project) : 0;
+  const selectedSupportOption =
+    supportOptions.find((option) => normalizeSupportOptionId(option.optionId) === selectedSupportOptionId) || null;
+  const selectedSupportOptionLimit = getSupportOptionLimit(selectedSupportOption);
+  const selectedSupportOptionStockLabel = getSupportOptionStockLabel(selectedSupportOption);
+  const unitPrice = selectedSupportOption?.price ?? (project ? getProjectUnitPrice(project) : 0);
   const shippingFee = project ? getProjectShippingFee(project) : 0;
-  const primaryRewardItem = project ? getPrimaryRewardItem(project) : '';
+  const primaryRewardItem = selectedSupportOption?.name || (project ? getPrimaryRewardItem(project) : '');
   const bottleSize = project ? getProjectBottleSize(project) : '';
   const alcoholContent = project ? getProjectAlcoholContent(project) : '';
   const estimatedDelivery = project ? getProjectEstimatedDelivery(project) : '';
@@ -290,22 +343,61 @@ export default function FundingSupportScreen() {
         additionalSupportAmount: extraAmount,
         message: supportMessage.trim() || undefined,
         adultVerified: agreeTerms,
+        privacyAgreed: agreeTerms,
+        privacyThirdPartyAgreed: agreeTerms,
+        thirdPartyAgreed: agreeTerms,
+        termsAgreed: agreeTerms,
         noticeAgreed: agreeRefund,
+        refundPolicyAgreed: agreeRefund,
       });
-      const payment = await requestFundingPayment(order.orderId, {
-        paymentMethod: selectedPaymentMethod === 'toss' ? 'EASY_PAY' : 'BANK_TRANSFER',
-        paymentProvider: selectedPaymentMethod === 'toss' ? 'TOSS' : 'BANK',
-        amount: order.totalAmount,
-      });
-      if (payment.paymentUrl) {
-        await Linking.openURL(payment.paymentUrl);
+      const paymentAmount = Number(order.totalAmount);
+      if (!order.orderId || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+        throw new Error('주문 금액을 확인하지 못했습니다. 다시 시도해주세요.');
       }
-      try {
-        await getFundingPaymentInfo(order.orderId);
-      } catch (paymentInfoError) {
-        if (!isFundingApiMissingEndpointError(paymentInfoError)) {
-          console.warn(getFundingApiErrorMessage(paymentInfoError, '결제 정보를 불러오지 못했습니다.'));
+      let paidAmount = fundingAmount;
+      if (selectedPaymentMethod === 'toss') {
+        const tossUrls = getTossReturnUrls(order.orderId, paymentAmount);
+        const payment = await requestFundingPayment(order.orderId, {
+          paymentMethod: 'EASY_PAY',
+          paymentProvider: 'TOSS',
+          amount: paymentAmount,
+          orderName: `${project.title} ${primaryRewardItem}`.trim(),
+          customerName: shippingInfo.recipientName.trim() || user.name,
+          successUrl: tossUrls.successUrl,
+          failUrl: tossUrls.failUrl,
+        });
+        if (!payment.paymentUrl) {
+          throw new Error('토스 결제창 주소를 확인하지 못했습니다. 백엔드 결제 요청 API를 확인해주세요.');
         }
+        const browserResult = await WebBrowser.openAuthSessionAsync(payment.paymentUrl, tossUrls.returnUrl);
+        if (browserResult.type !== 'success' || !browserResult.url) {
+          throw new Error('토스 결제가 완료되지 않았습니다.');
+        }
+        const tossParams = getTossSuccessParams(browserResult.url);
+        if (!tossParams.paymentKey || !tossParams.orderId || !Number.isFinite(tossParams.amount)) {
+          throw new Error('토스 결제 승인 정보를 확인하지 못했습니다.');
+        }
+        const confirmedPayment = await confirmTossPayment({
+          paymentKey: tossParams.paymentKey,
+          orderId: tossParams.orderId,
+          amount: tossParams.amount,
+        });
+        paidAmount = confirmedPayment.paidAmount || tossParams.amount || paymentAmount;
+      } else {
+        await requestFundingPayment(order.orderId, {
+          paymentMethod: 'BANK_TRANSFER',
+          paymentProvider: 'BANK',
+          amount: paymentAmount,
+        });
+        try {
+          await getFundingPaymentInfo(order.orderId);
+        } catch (paymentInfoError) {
+          if (!isFundingApiMissingEndpointError(paymentInfoError)) {
+            console.warn(getFundingApiErrorMessage(paymentInfoError, '결제 정보를 불러오지 못했습니다.'));
+          }
+        }
+        const completedPayment = await completeFundingPayment(order.orderId);
+        paidAmount = completedPayment.paidAmount || fundingAmount;
       }
       try {
         await getFundingOrderDetail(order.orderId);
@@ -318,8 +410,8 @@ export default function FundingSupportScreen() {
       } catch (storageError) {
         console.warn('Failed to save recent shipping info.', storageError);
       }
-      addParticipation(project.id, fundingAmount);
-      updateProjectFunding(project.id, fundingAmount);
+      addParticipation(project.id, paidAmount);
+      updateProjectFunding(project.id, paidAmount);
       setShowSuccessModal(true);
     } catch (error) {
       Alert.alert('알림', getFundingApiErrorMessage(error, '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.'));
@@ -438,6 +530,14 @@ export default function FundingSupportScreen() {
               <View style={styles.dot} />
               <Text style={styles.rewardItemText}>{primaryRewardItem}</Text>
             </View>
+            {selectedSupportOption?.description ? (
+              <Text style={styles.rewardDescription}>{selectedSupportOption.description}</Text>
+            ) : null}
+            {(selectedSupportOptionStockLabel || selectedSupportOption?.maxPerUser) ? (
+              <Text style={styles.rewardMetaText}>
+                {[selectedSupportOptionStockLabel, selectedSupportOption?.maxPerUser ? `1인 최대 ${selectedSupportOption.maxPerUser}개` : ''].filter(Boolean).join(' · ')}
+              </Text>
+            ) : null}
             <View style={styles.rewardSpecGrid}>
               <View style={styles.rewardSpecBox}>
                 <Text style={styles.rewardSpecLabel}>용량</Text>
@@ -472,7 +572,19 @@ export default function FundingSupportScreen() {
               <Text style={styles.quantityValue}>{quantity}</Text>
               <Text style={styles.quantityUnit}>병</Text>
             </View>
-            <TouchableOpacity disabled={isProcessing} style={[styles.quantityBtn, isProcessing && styles.disabledControl]} onPress={() => setQuantity(quantity + 1)}>
+            <TouchableOpacity
+              disabled={isProcessing || (selectedSupportOptionLimit !== null && quantity >= selectedSupportOptionLimit)}
+              style={[
+                styles.quantityBtn,
+                (isProcessing || (selectedSupportOptionLimit !== null && quantity >= selectedSupportOptionLimit)) && styles.disabledControl,
+              ]}
+              onPress={() =>
+                setQuantity((prev) => {
+                  const next = prev + 1;
+                  return selectedSupportOptionLimit === null ? next : Math.min(next, selectedSupportOptionLimit);
+                })
+              }
+            >
               <Text style={styles.quantityBtnText}>+</Text>
             </TouchableOpacity>
           </View>
@@ -1222,6 +1334,8 @@ const styles = StyleSheet.create({
   rewardItemRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#111', marginTop: 8 },
   rewardItemText: { flex: 1, fontSize: 14, color: '#374151', lineHeight: 22, fontWeight: '700' },
+  rewardDescription: { fontSize: 12, color: '#6B7280', lineHeight: 18, fontWeight: '700' },
+  rewardMetaText: { fontSize: 11, color: '#9CA3AF', fontWeight: '800' },
   rewardSpecGrid: { flexDirection: 'row', gap: 8, marginTop: 6 },
   rewardSpecBox: { flex: 1, minHeight: 58, borderRadius: 14, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 10, paddingVertical: 9, justifyContent: 'center' },
   rewardSpecLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '800', marginBottom: 4 },

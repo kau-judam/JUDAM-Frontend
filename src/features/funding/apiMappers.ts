@@ -44,6 +44,26 @@ function getVolumeFromDescription(description?: string) {
   return description?.match(/\d+\s?ml/i)?.[0].replace(/\s/g, '') || undefined;
 }
 
+function getAlcoholFromDescription(description?: string) {
+  return description?.match(/\d+(?:\.\d+)?\s?%/)?.[0].replace(/\s/g, '') || undefined;
+}
+
+function formatVolumeSpec(value?: number | string | null) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return `${value}ml`;
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return /\d+\s?ml/i.test(trimmed) ? trimmed.replace(/\s/g, '') : `${trimmed}ml`;
+}
+
+function formatAlcoholSpec(value?: number | string | null) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return `${value}%`;
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.includes('%') ? trimmed.replace(/\s/g, '') : `${trimmed}%`;
+}
+
 function normalizeText(value?: string) {
   return (value || '').replace(/\s/g, '').toLowerCase();
 }
@@ -78,7 +98,8 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     popularRank: existing?.popularRank,
     creatorId: existing?.creatorId,
     breweryId: existing?.breweryId,
-    favoriteCount: existing?.favoriteCount,
+    liked: item.liked ?? existing?.liked,
+    favoriteCount: item.likeCount ?? existing?.favoriteCount,
     goalAmount: item.targetAmount || existing?.goalAmount || 1,
     currentAmount: item.currentAmount ?? existing?.currentAmount ?? 0,
     backers: existing?.backers || 0,
@@ -120,7 +141,14 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
 
 export function mergeFundingDetail(existing: FundingProject, detail: FundingDetailResponse): FundingProject {
   const supportOption = detail.supportOptions?.[0];
-  const bottleSize = getVolumeFromDescription(supportOption?.description);
+  const bottleSize =
+    formatVolumeSpec(detail.bottleSize) ||
+    formatVolumeSpec(detail.volume) ||
+    getVolumeFromDescription(supportOption?.description);
+  const alcoholContent =
+    formatAlcoholSpec(detail.alcoholContent) ||
+    formatAlcoholSpec(detail.alcoholPercentage) ||
+    getAlcoholFromDescription(supportOption?.description);
   const thumbnailUrl = normalizeFundingImageUrl(detail.thumbnailUrl);
   const sameProject =
     detail.fundingId === existing.id ||
@@ -144,6 +172,10 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     pricePerBottle: sameProject ? supportOption?.price ?? existing.pricePerBottle : existing.pricePerBottle,
     rewardItems: sameProject && supportOption ? [supportOption.name] : existing.rewardItems,
     bottleSize: sameProject ? bottleSize || existing.bottleSize : existing.bottleSize,
+    volume: sameProject ? bottleSize || existing.volume : existing.volume,
+    alcoholContent: sameProject ? alcoholContent || existing.alcoholContent : existing.alcoholContent,
+    liked: sameProject ? detail.liked ?? existing.liked : existing.liked,
+    favoriteCount: sameProject ? detail.likeCount ?? existing.favoriteCount : existing.favoriteCount,
     tasteProfile: sameProject && detail.tasteProfile
       ? {
           sweetness: normalizeTasteValue(detail.tasteProfile.sweetness),
@@ -218,11 +250,14 @@ export function mapFundingReview(projectId: number, item: FundingReviewItem): Fu
 
 export function mergeSupportOption(existing: FundingProject, option: FundingSupportOption): FundingProject {
   const bottleSize = getVolumeFromDescription(option.description);
+  const alcoholContent = getAlcoholFromDescription(option.description);
   return {
     ...existing,
     pricePerBottle: option.price,
     rewardItems: [option.name],
     bottleSize: bottleSize || existing.bottleSize,
+    volume: bottleSize || existing.volume,
+    alcoholContent: alcoholContent || existing.alcoholContent,
     updatedAt: new Date().toISOString(),
   };
 }

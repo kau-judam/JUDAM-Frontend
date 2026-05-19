@@ -47,7 +47,10 @@ import { useAuth, type User as AuthUser } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import {
   createFundingDraft,
+  deleteFundingDraft,
   getFundingApiErrorMessage,
+  getFundingDraftList,
+  getFundingDraftPreview,
   saveFundingBasicInfo,
   saveFundingBreweryInfo,
   saveFundingLegalInfo,
@@ -55,9 +58,12 @@ import {
   saveFundingPlan,
   saveFundingSchedule,
   saveFundingTasteProfile,
+  submitFundingDraft,
   uploadFundingDocument,
   type FundingDocumentType,
+  type FundingDraftPreviewResponse,
   updateFundingDraft,
+  updateFundingProjectApi,
 } from '@/features/funding/api';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { FIXED_PROJECT_SHIPPING_FEE } from '@/features/funding/supportConfig';
@@ -116,8 +122,7 @@ const BANK_OPTIONS = ['KB국민', '신한', '우리', '하나', '농협은행', 
 const TEMP_SAVE_KEY = 'judam_project_temp_save';
 const DOCUMENT_PICKER_TYPES = ['application/pdf', 'image/*'];
 const DOCUMENT_FILE_KEYS: DocumentFileKey[] = ['idCard', 'businessLicense', 'salesPermit', 'alcoholPermit', 'manufacturingLicense'];
-// TODO: 백엔드 제출/심사 API가 붙으면 새 프로젝트 기본 상태를 다시 심사 흐름으로 전환한다.
-const TEMP_CREATED_PROJECT_STATUS: ProjectStatus = '진행 중';
+const TEMP_CREATED_PROJECT_STATUS: ProjectStatus = '심사 중';
 const EMPTY_UPLOADED_FILES: Record<FileKey, UploadedFileValue> = {
   profileImage: '',
   idCard: '',
@@ -163,6 +168,12 @@ function formatProjectPhone(value: string) {
   if (digits.length <= 3) return digits;
   if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
   return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+}
+
+function formatBusinessRegistrationNumber(value: string) {
+  const digits = digitsOnly(value).slice(0, 10);
+  if (digits.length !== 10) return value.trim();
+  return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
 }
 
 function isValidProjectPhone(value: string) {
@@ -439,6 +450,132 @@ function createProjectEditDraft(project: FundingProject, user: AuthUser | null) 
   };
 }
 
+function formatBudgetPlanForDraft(items?: { category: string; amount: number }[]) {
+  if (!items?.length) return '';
+  return items.map((item) => `- ${item.category}: ${item.amount}만원`).join('\n');
+}
+
+function formatSchedulePlanForDraft(items?: { step: string; description: string; date: string }[]) {
+  if (!items?.length) return '';
+  return items.map((item) => `- ${item.date}: ${item.description}`).join('\n');
+}
+
+function tasteScaleToPercent(value?: number) {
+  if (typeof value !== 'number') return 50;
+  if (value <= 5) return Math.max(0, Math.min(100, value * 20));
+  return Math.max(0, Math.min(100, value));
+}
+
+function getUploadedFilesFromPreviewDocuments(documents?: FundingDraftPreviewResponse['documents']) {
+  const files = { ...EMPTY_UPLOADED_FILES };
+  documents?.forEach((document) => {
+    const fileName = document.fileName || '기존 제출 서류';
+    if (document.documentType === 'BUSINESS_REGISTRATION') files.businessLicense = fileName;
+    if (document.documentType === 'MAIL_ORDER_BUSINESS') files.salesPermit = fileName;
+    if (document.documentType === 'LIQUOR_LICENSE') {
+      files.alcoholPermit = files.alcoholPermit || fileName;
+      files.manufacturingLicense = files.manufacturingLicense || fileName;
+    }
+    if (document.documentType === 'BANK_ACCOUNT_COPY') files.idCard = files.idCard || fileName;
+    if (document.documentType === 'ETC') files.idCard = files.idCard || fileName;
+  });
+  return files;
+}
+
+function createProjectDraftFromServerPreview(preview: FundingDraftPreviewResponse, user: AuthUser | null) {
+  const basicInfo = preview.basicInfo || {};
+  const schedule = preview.schedule || {};
+  const legalInfo = preview.legalInfo || {};
+  const tasteProfile = preview.tasteProfile || {};
+  const plan = preview.plan || {};
+  const breweryInfo = preview.breweryInfo || {};
+  const notices = preview.notices || {};
+  const rawMaterials = legalInfo.rawMaterials?.length
+    ? legalInfo.rawMaterials
+    : [{ name: basicInfo.mainIngredient || '', origin: '' }];
+  const subIngredients = basicInfo.subIngredients || [];
+  const thumbnailUrl = basicInfo.thumbnailUrl || '';
+  const alcoholContent = String(legalInfo.alcoholPercentage || basicInfo.alcoholPercentage || '');
+  const breweryName = breweryInfo.breweryName || user?.breweryName || '';
+
+  return {
+    timestamp: preview.documents?.[0]?.createdAt || new Date().toISOString(),
+    basicInfo: {
+      category: basicInfo.category || '막걸리',
+      title: basicInfo.title || '',
+      shortTitle: basicInfo.shortTitle || '',
+      mainIngredient: basicInfo.mainIngredient || '',
+      subIngredient: subIngredients[0] || '',
+      alcoholContent,
+      summary: basicInfo.summary || '',
+      images: thumbnailUrl ? [thumbnailUrl] : [],
+      tags: normalizeProjectTags(tasteProfile.flavorNotes),
+    },
+    fundingInfo: {
+      pricePerBottle: schedule.pricePerBottle ? String(schedule.pricePerBottle) : '',
+      bottleQuantity: schedule.totalQuantity ? String(schedule.totalQuantity) : '',
+      goalAmount: schedule.targetAmount ? String(schedule.targetAmount) : '',
+      startDate: normalizeProjectDate(schedule.fundingStartDate),
+      duration: schedule.fundingPeriodDays ? String(schedule.fundingPeriodDays) : '30',
+      expectedDeliveryDate: normalizeProjectDate(schedule.expectedDeliveryDate),
+    },
+    productInfo: {
+      productType: legalInfo.productType || basicInfo.category || '막걸리',
+      volume: legalInfo.volume ? String(legalInfo.volume) : '',
+      alcoholContent,
+      ingredients: rawMaterials.map((item, index) => ({
+        id: index + 1,
+        ingredient: item.name || '',
+        origin: item.origin || '',
+      })),
+    },
+    tasteProfile: {
+      sweetness: tasteScaleToPercent(tasteProfile.sweetness),
+      aroma: tasteScaleToPercent(tasteProfile.alcoholIntensity),
+      acidity: tasteScaleToPercent(tasteProfile.acidity),
+      body: tasteScaleToPercent(tasteProfile.body),
+      carbonation: tasteScaleToPercent(tasteProfile.carbonation),
+    },
+    projectPlan: {
+      introduction: plan.introduction || '',
+      videoUrl: '',
+      budget: formatBudgetPlanForDraft(plan.budgetPlan),
+      schedule: formatSchedulePlanForDraft(plan.schedulePlan),
+    },
+    creatorInfo: {
+      name: breweryName,
+      profileImage: thumbnailUrl,
+      bio: breweryName ? `${breweryName}의 전통주 프로젝트입니다.` : '',
+      phone: breweryInfo.contactPhone || user?.phone || '',
+      accountBank: breweryInfo.bankName || '',
+      accountNumber: breweryInfo.accountNumber || '',
+    },
+    taxInfo: {
+      businessType: 'corporation',
+      businessName: breweryName,
+      businessNumber: breweryInfo.businessRegistrationNumber || '',
+      ceoName: breweryInfo.representativeName || breweryInfo.accountHolder || '',
+      address: breweryInfo.businessAddress || '',
+      businessCategory: '제조업',
+      businessItem: `${basicInfo.category || '전통주'} 제조`,
+      email: breweryInfo.contactEmail || user?.email || '',
+    },
+    trustInfo: {
+      projectPolicy: [notices.refundPolicy, notices.exchangePolicy, notices.adultVerificationNotice].filter(Boolean).join('\n\n') || DEFAULT_PROJECT_POLICY,
+      expectedDifficulties: notices.riskNotice || DEFAULT_EXPECTED_DIFFICULTIES,
+    },
+    uploadedFiles: getUploadedFilesFromPreviewDocuments(preview.documents),
+    phoneVerified: Boolean(breweryInfo.contactPhone),
+    accountVerified: Boolean(breweryInfo.bankName && breweryInfo.accountNumber),
+    serverDraft: {
+      draftId: preview.draftId,
+      status: preview.status,
+      progressRate: preview.progressRate,
+      message: preview.message,
+    },
+  };
+}
+
 export default function BreweryProjectCreateScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
@@ -577,6 +714,30 @@ export default function BreweryProjectCreateScreen() {
   useEffect(() => {
     const loadTempSaveMeta = async () => {
       const saved = await SafeStorage.getItem(tempSaveKey);
+      if (!saved && !isEditMode) {
+        try {
+          const breweryId = Number(user?.id);
+          const response = await getFundingDraftList(Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1);
+          const draft = response.drafts.find((item) => item.status === 'DRAFT');
+          if (!draft) return;
+          const timestamp = draft.updatedAt || draft.createdAt || new Date().toISOString();
+          await SafeStorage.setItem(tempSaveKey, JSON.stringify({
+            timestamp,
+            serverDraft: {
+              draftId: draft.draftId,
+              breweryId: draft.breweryId,
+              status: draft.status,
+              progressRate: draft.progressRate,
+              message: response.message,
+            },
+          }));
+          setTempSaveTimestamp(timestamp);
+          setHasTempSave(true);
+        } catch (error) {
+          console.warn(getFundingApiErrorMessage(error, '서버 임시저장 목록을 불러오지 못했습니다.'));
+        }
+        return;
+      }
       if (!saved) return;
       try {
         const parsed = JSON.parse(saved);
@@ -587,7 +748,7 @@ export default function BreweryProjectCreateScreen() {
       }
     };
     void loadTempSaveMeta();
-  }, [tempSaveKey]);
+  }, [isEditMode, tempSaveKey, user?.id]);
 
   const today = useMemo(() => {
     const value = new Date();
@@ -754,7 +915,7 @@ export default function BreweryProjectCreateScreen() {
       breweryId: getBreweryId(),
       title: basicInfo.title.trim() || undefined,
       shortTitle: basicInfo.shortTitle.trim() || undefined,
-      category: 'MAKGEOLLI',
+      category: basicInfo.category.trim() || '막걸리',
       mainIngredient: basicInfo.mainIngredient.trim() || undefined,
       subIngredient: basicInfo.subIngredient.trim() || undefined,
       alcoholPercentage: Number.isFinite(alcoholPercentage) && basicInfo.alcoholContent.trim() ? alcoholPercentage : undefined,
@@ -768,8 +929,12 @@ export default function BreweryProjectCreateScreen() {
     return {
       title: basicInfo.title.trim() || undefined,
       shortTitle: basicInfo.shortTitle.trim() || undefined,
+      category: basicInfo.category.trim() || '막걸리',
+      mainIngredient: basicInfo.mainIngredient.trim() || undefined,
+      subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : undefined,
       summary: basicInfo.summary.trim() || undefined,
       alcoholPercentage: Number.isFinite(alcoholPercentage) && basicInfo.alcoholContent.trim() ? alcoholPercentage : undefined,
+      thumbnailUrl: basicInfo.images[0] || undefined,
     };
   };
 
@@ -811,7 +976,7 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const getDraftId = (draft: any) => {
-    const value = Number(draft?.serverDraft?.draftId);
+    const value = Number(draft?.serverDraft?.draftId || draft?.draftId);
     return Number.isFinite(value) && value > 0 ? value : null;
   };
 
@@ -853,7 +1018,7 @@ export default function BreweryProjectCreateScreen() {
     await saveFundingBasicInfo(draftId, {
       title: basicInfo.title.trim(),
       shortTitle: basicInfo.shortTitle.trim() || undefined,
-      category: 'MAKGEOLLI',
+      category: basicInfo.category.trim() || '막걸리',
       mainIngredient: basicInfo.mainIngredient.trim(),
       subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
       alcoholPercentage: Number(basicInfo.alcoholContent),
@@ -895,7 +1060,7 @@ export default function BreweryProjectCreateScreen() {
     await saveFundingBreweryInfo(draftId, {
       breweryName: creatorInfo.name.trim(),
       representativeName: taxInfo.ceoName.trim(),
-      businessRegistrationNumber: taxInfo.businessNumber.trim(),
+      businessRegistrationNumber: formatBusinessRegistrationNumber(taxInfo.businessNumber),
       businessAddress: taxInfo.address.trim(),
       contactEmail: taxInfo.email.trim(),
       contactPhone: creatorInfo.phone.trim(),
@@ -913,6 +1078,7 @@ export default function BreweryProjectCreateScreen() {
 
   const uploadProjectDocumentsToApi = async (draftId: number) => {
     for (const key of DOCUMENT_FILE_KEYS) {
+      if (typeof uploadedFiles[key] === 'string' && uploadedFiles[key]) continue;
       const file = getLocalUploadFile(uploadedFiles[key]);
       if (!file) {
         throw new Error('선택한 서류 파일 정보를 찾을 수 없습니다. 서류를 다시 선택해주세요.');
@@ -1005,14 +1171,48 @@ export default function BreweryProjectCreateScreen() {
       showAlert('불러올 임시저장 내용이 없습니다.');
       return;
     }
-    applyDraftPayload(draft);
-    setTempSaveTimestamp(draft.timestamp || '');
-    setHasTempSave(true);
-    setShowTempSaveModal(false);
-    showAlert('임시저장 내용을 불러왔습니다.');
+    const draftId = getDraftId(draft);
+    try {
+      if (draftId) {
+        const preview = await getFundingDraftPreview(draftId);
+        const serverDraft = createProjectDraftFromServerPreview(preview, user);
+        await SafeStorage.setItem(tempSaveKey, JSON.stringify(serverDraft));
+        applyDraftPayload(serverDraft);
+        setTempSaveTimestamp(serverDraft.timestamp || '');
+      } else {
+        applyDraftPayload(draft);
+        setTempSaveTimestamp(draft.timestamp || '');
+      }
+      setHasTempSave(true);
+      setShowTempSaveModal(false);
+      showAlert('임시저장 내용을 불러왔습니다.');
+    } catch (error) {
+      if (draft.basicInfo) {
+        applyDraftPayload(draft);
+        setTempSaveTimestamp(draft.timestamp || '');
+        setHasTempSave(true);
+        setShowTempSaveModal(false);
+        showAlert('기기에 저장된 임시저장 내용을 불러왔습니다. 서버 임시저장은 불러오지 못했어요.');
+        return;
+      }
+      showAlert(getFundingApiErrorMessage(error, '임시저장 내용을 불러오지 못했습니다.'));
+    }
   };
 
   const deleteSavedDraft = async () => {
+    const draft = await getSavedDraft();
+    const draftId = getDraftId(draft);
+    if (draftId && !isEditMode) {
+      try {
+        await deleteFundingDraft(draftId);
+      } catch (error) {
+        const message = getFundingApiErrorMessage(error, '');
+        if (!message.includes('찾을 수 없습니다') && !message.includes('404')) {
+          showAlert(message || '서버 임시저장 삭제 중 문제가 발생했습니다.');
+          return;
+        }
+      }
+    }
     await SafeStorage.removeItem(tempSaveKey);
     setHasTempSave(false);
     setTempSaveTimestamp('');
@@ -1450,18 +1650,31 @@ export default function BreweryProjectCreateScreen() {
     setShowSubmitConfirm(true);
   };
 
+  const handleOpenPreview = () => {
+    setShowPreview(true);
+    if (isEditMode) return;
+    void (async () => {
+      try {
+        const draftId = await ensureServerDraft();
+        await getFundingDraftPreview(draftId);
+      } catch (error) {
+        console.warn(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버와 동기화하지 못했습니다.'));
+      }
+    })();
+  };
+
   const confirmSubmit = async () => {
     setShowSubmitConfirm(false);
     setIsSubmitting(true);
     setSubmitSyncWarning('');
     try {
       let convertedFunding: Awaited<ReturnType<typeof createRecipeFunding>>['funding'] | null = null;
-      let serverSyncWarning = '';
       if (!isEditMode) {
         try {
           const draftId = await ensureServerDraft();
           await saveProjectSectionsToApi(draftId);
           await uploadProjectDocumentsToApi(draftId);
+          await submitFundingDraft(draftId);
           if (sourceRecipeId && Number.isFinite(sourceRecipeId)) {
             const response = await createRecipeFunding(sourceRecipeId, {
               title: basicInfo.title,
@@ -1473,10 +1686,23 @@ export default function BreweryProjectCreateScreen() {
             convertedFunding = response.funding;
           }
         } catch (error) {
-          serverSyncWarning = getFundingApiErrorMessage(error, '서버 동기화 중 문제가 발생했습니다.')
+          const serverSyncError = getFundingApiErrorMessage(error, '서버 동기화 중 문제가 발생했습니다.')
             .replace(/펀딩 프로젝트 임시저장/g, '펀딩 프로젝트 제출 준비')
             .replace(/임시저장/g, '제출 준비');
+          throw new Error(serverSyncError);
         }
+      }
+      if (isEditMode && editProjectId) {
+        await updateFundingProjectApi(editProjectId, {
+          title: basicInfo.title.trim(),
+          description: projectPlan.introduction.trim() || basicInfo.summary.trim(),
+          thumbnailUrl: basicInfo.images[0] || undefined,
+          goalAmount: Number(fundingInfo.goalAmount),
+          startDate: fundingInfo.startDate,
+          endDate: endDateText,
+          pricePerBottle: Number(fundingInfo.pricePerBottle),
+          shippingFee: FIXED_PROJECT_SHIPPING_FEE,
+        });
       }
       const payload = buildProjectPayload(isEditMode ? 'edit' : 'create');
       if (!isEditMode && convertedFunding) {
@@ -1494,7 +1720,7 @@ export default function BreweryProjectCreateScreen() {
         void SafeStorage.removeItem(tempSaveKey);
         setHasTempSave(false);
         setTempSaveTimestamp('');
-        setSubmitSyncWarning(serverSyncWarning ? `앱에는 프로젝트가 생성되었습니다. 다만 서버 동기화는 실패했어요.\n\n${serverSyncWarning}` : '');
+        setSubmitSyncWarning('');
         setShowSubmitSuccess(true);
         return;
       }
@@ -1507,7 +1733,7 @@ export default function BreweryProjectCreateScreen() {
       void SafeStorage.removeItem(tempSaveKey);
       setHasTempSave(false);
       setTempSaveTimestamp('');
-      setSubmitSyncWarning(serverSyncWarning ? `앱에는 프로젝트가 생성되었습니다. 다만 서버 동기화는 실패했어요.\n\n${serverSyncWarning}` : '');
+      setSubmitSyncWarning('');
       setShowSubmitSuccess(true);
     } catch (error) {
       const message = getFundingApiErrorMessage(error, '펀딩 프로젝트 제출 중 문제가 발생했습니다.')
@@ -2244,7 +2470,7 @@ export default function BreweryProjectCreateScreen() {
               <X size={24} color="#111" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{isEditMode ? '펀딩 프로젝트 수정' : '펀딩 프로젝트 만들기'}</Text>
-            <TouchableOpacity style={styles.headerIcon} onPress={() => setShowPreview(true)}>
+            <TouchableOpacity style={styles.headerIcon} onPress={handleOpenPreview}>
               <Eye size={20} color="#111" />
             </TouchableOpacity>
           </View>
@@ -2286,8 +2512,8 @@ export default function BreweryProjectCreateScreen() {
         </View>
       </KeyboardAvoidingView>
       <SimpleModal visible={showAlertModal} icon="alert" title="알림" body={alertMessage} primaryLabel="확인" onPrimary={() => setShowAlertModal(false)} />
-      <ConfirmModal visible={showSubmitConfirm} title={isEditMode ? '수정 내용을 반영하시겠습니까?' : '제출 하시겠습니까?'} body={isEditMode ? '수정한 내용이 기존 펀딩 게시글에 바로 반영됩니다.' : '제출하면 펀딩 게시글이 생성되고 임시 승인 상태로 바로 후원할 수 있습니다.'} onCancel={() => setShowSubmitConfirm(false)} onConfirm={confirmSubmit} />
-      <SimpleModal visible={showSubmitSuccess} icon="success" title={isEditMode ? '수정이 완료되었습니다' : '성공적으로 업로드 되었습니다'} body={submitSyncWarning || (isEditMode ? '수정한 내용이 펀딩 게시글에 반영되었습니다.' : '펀딩 게시글이 생성되었습니다. 현재 테스트를 위해 바로 후원 가능한 상태로 표시됩니다.')} primaryLabel="게시글 확인" onPrimary={handleSubmitSuccessClose} />
+      <ConfirmModal visible={showSubmitConfirm} title={isEditMode ? '수정 내용을 반영하시겠습니까?' : '제출 하시겠습니까?'} body={isEditMode ? '수정한 내용이 기존 펀딩 게시글에 바로 반영됩니다.' : '제출하면 펀딩 프로젝트 심사 요청이 접수됩니다.'} onCancel={() => setShowSubmitConfirm(false)} onConfirm={confirmSubmit} />
+      <SimpleModal visible={showSubmitSuccess} icon="success" title={isEditMode ? '수정이 완료되었습니다' : '성공적으로 제출되었습니다'} body={submitSyncWarning || (isEditMode ? '수정한 내용이 펀딩 게시글에 반영되었습니다.' : '펀딩 프로젝트 심사 요청이 접수되었습니다.')} primaryLabel="게시글 확인" onPrimary={handleSubmitSuccessClose} />
       <TempSaveModal
         visible={showTempSaveModal}
         mode={tempSaveMode}

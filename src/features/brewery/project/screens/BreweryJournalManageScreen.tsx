@@ -210,11 +210,11 @@ export default function BreweryJournalManageScreen() {
       }
 
       const nextEntry: JournalEntry = {
-        id: response.breweryLogId,
+        id: response.breweryLogId || editingEntry?.id || Date.now(),
         stage: selectedStage,
         date: editingEntry?.date || todayText(),
         title: response.title || title.trim(),
-        content: content.trim(),
+        content: response.content || content.trim(),
         images: response.imageUrls?.length ? response.imageUrls : images.length > 0 ? images : undefined,
         videoUrl: videoUrl.trim() || undefined,
         likes: editingEntry?.likes || 0,

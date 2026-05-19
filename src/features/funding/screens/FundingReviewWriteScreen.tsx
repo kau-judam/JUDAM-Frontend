@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
-import { canAccessFundingReviews } from '@/features/funding/permissions';
+import { canAccessFundingReviews, isTemporarySansaReviewTestProject } from '@/features/funding/permissions';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { createFundingReview, getFundingApiErrorMessage, type FundingUploadFile } from '@/features/funding/api';
 import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
@@ -82,6 +82,7 @@ export default function FundingReviewWriteScreen() {
   const hasReviewIdParam = Number.isFinite(targetReviewId) && targetReviewId > 0;
   const project = useMemo(() => projects.find((item) => item.id === projectId) || null, [projectId, projects]);
   const hasParticipated = Boolean(user) && participatedFundings.some((item) => item.fundingId === projectId);
+  const canBypassParticipationForReview = isTemporarySansaReviewTestProject(project);
   const canWriteForProjectStatus = canAccessFundingReviews(project);
   const requestedReview = useMemo(
     () => (hasReviewIdParam ? fundingReviews.find((item) => item.projectId === projectId && item.id === targetReviewId) || null : null),
@@ -94,7 +95,7 @@ export default function FundingReviewWriteScreen() {
   const editableReview = hasReviewIdParam ? requestedReview : ownExistingReview;
   const isEditMode = Boolean(editableReview && isFundingReviewOwnedByUser(editableReview, user));
   const reviewParamBlocked = hasReviewIdParam && (!requestedReview || !isFundingReviewOwnedByUser(requestedReview, user));
-  const canUseReviewForm = Boolean(user) && (isArchiveMode || (hasParticipated && canWriteForProjectStatus)) && !reviewParamBlocked;
+  const canUseReviewForm = Boolean(user) && (isArchiveMode || ((hasParticipated || canBypassParticipationForReview) && canWriteForProjectStatus)) && !reviewParamBlocked;
   const headerTitle = isArchiveMode
     ? isEditMode
       ? '나의 술 기록 수정'

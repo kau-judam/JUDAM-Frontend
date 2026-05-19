@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
-import { fundingProjects, FundingProject, JournalEntry, ProjectStatus } from "@/constants/data";
-import { fundingReviews as seedFundingReviews, FundingReview } from "@/features/funding/reviews";
+import { FundingProject, JournalEntry, ProjectStatus } from "@/constants/data";
+import type { FundingReview } from "@/features/funding/reviews";
 import type { MyFundingOrderItem } from "@/features/funding/api";
 
 interface ParticipatedFunding {
@@ -29,23 +29,12 @@ interface FundingContextType {
   updateProjectFunding: (projectId: number, amount: number) => void;
 }
 
-const initialParticipations: ParticipatedFunding[] = [
-  { fundingId: 1, amount: 50000, date: "2026.03.15" },
-  { fundingId: 2, amount: 35000, date: "2026.02.28" },
-  { fundingId: 3, amount: 80000, date: "2026.03.22" },
-  { fundingId: 4, amount: 120000, date: "2026.01.05" },
-  { fundingId: 5, amount: 45000, date: "2026.01.10" },
-  { fundingId: 6, amount: 62000, date: "2025.12.20" },
-];
-
 const FundingContext = createContext<FundingContextType | undefined>(undefined);
 
 export function FundingProvider({ children }: { children: ReactNode }) {
-  const [projects, setProjects] = useState<FundingProject[]>(fundingProjects);
-  const [participatedFundings, setParticipatedFundings] = useState<ParticipatedFunding[]>(
-    initialParticipations
-  );
-  const [fundingReviews, setFundingReviews] = useState<FundingReview[]>(seedFundingReviews);
+  const [projects, setProjects] = useState<FundingProject[]>([]);
+  const [participatedFundings, setParticipatedFundings] = useState<ParticipatedFunding[]>([]);
+  const [fundingReviews, setFundingReviews] = useState<FundingReview[]>([]);
 
   const addParticipation = (fundingId: number, amount: number) => {
     const today = new Date();

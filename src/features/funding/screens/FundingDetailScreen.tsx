@@ -60,6 +60,7 @@ import {
   getFundingShareLink,
   getFundingSupportOptions,
   isFundingApiMissingEndpointError,
+  type FundingDetailResponse,
   type FundingReportReason,
   type FundingSupportOption,
 } from '@/features/funding/api';
@@ -94,60 +95,38 @@ import {
 import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/funding/reviews';
 import { normalizeFundingImageUrl } from '@/features/funding/imageUrls';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
-import { canAccessFundingReviews } from '@/features/funding/permissions';
+import { canAccessFundingReviews, isTemporarySansaReviewTestProject } from '@/features/funding/permissions';
 import { showLoginRequired } from '@/utils/authPrompt';
+import SafeStorage from '@/utils/storage';
 
 const HERO_IMAGE_HEIGHT = 256;
-const initialComments = [
-  {
-    id: 1,
-    userName: "김주담",
-    content: "정말 기대되는 프로젝트예요! 언제쯤 배송이 가능할까요?",
-    date: "2026. 03. 25",
-    likes: 12,
-    isBrewery: false,
-    replies: [
-      { id: 101, userName: "꽃샘양조장", content: "안녕하세요! 펀딩 마감 후 약 45일 이내에 배송 예정입니다. 감사합니다!", date: "2026. 03. 25", likes: 8, isBrewery: true },
-    ],
-  },
-  { id: 2, userName: "이술사", content: "알코올 도수가 궁금합니다. 혹시 알려주실 수 있나요?", date: "2026. 03. 24", likes: 5, isBrewery: false, replies: [] },
-];
+type FundingQuestionComment = {
+  id: number;
+  serverQuestionId?: number;
+  userName: string;
+  content: string;
+  date: string;
+  likes: number;
+  isBrewery: boolean;
+  replies: {
+    id: number;
+    userName: string;
+    content: string;
+    date: string;
+    likes: number;
+    isBrewery: boolean;
+  }[];
+};
+
+const initialComments: FundingQuestionComment[] = [];
 
 const initialCommentIds = new Set(initialComments.map((comment) => comment.id));
 const JOURNALS_PER_STAGE = 1;
-const DEFAULT_PROJECT_BUDGET = [
-  { item: "원료비", amount: 180 },
-  { item: "양조 인건비", amount: 150 },
-  { item: "병입 및 포장 비용", amount: 100 },
-  { item: "배송비", amount: 80 },
-  { item: "디자인 및 마케팅", amount: 60 },
-  { item: "플랫폼 수수료 7%", amount: 40 },
-];
-const DEFAULT_PROJECT_SCHEDULE = [
-  { date: "3월 20일", description: "펀딩 시작 및 원료 준비 완료" },
-  { date: "4월 18일", description: "펀딩 종료 및 최종 레시피 확정" },
-  { date: "4월 25일", description: "양조 시작" },
-  { date: "5월 25일", description: "발효 완료 및 숙성" },
-  { date: "6월 1일", description: "병입 및 라벨링 작업" },
-  { date: "6월 15일", description: "배송 시작" },
-];
-const DEFAULT_PROJECT_POLICY_TEXT = `환불: 프로젝트 마감 후 즉시 양조 공정이 시작되므로 단순 변심 환불은 불가합니다. 단, 양조장의 사정으로 생산이 불가능해질 경우 100% 환불을 보장합니다.
-
-교환/AS: 주류 배송 특성상 파손된 상태로 수령 시, 사진과 함께 접수해주시면 즉시 새 제품으로 교환해 드립니다.
-
-성인인증: 본 프로젝트는 성인인증을 완료한 후원자만 참여 가능하며, 배송 시 대리 수령이 제한될 수 있습니다.`;
-const DEFAULT_EXPECTED_DIFFICULTIES_TEXT = `품질 변동: AI 검토와 전문가의 관리를 거치나, 기온 변화에 따라 도수나 당도가 기획안과 ±1~2% 정도 차이가 날 수 있습니다.
-
-일정 지연: 술이 충분히 익지 않았을 경우, 최상의 맛을 위해 출고가 최대 10일 정도 지연될 수 있으며 이 경우 커뮤니티를 통해 즉시 공지하겠습니다.`;
-const DEFAULT_TASTE_PROFILE = {
-  sweetness: 70,
-  aroma: 55,
-  acidity: 80,
-  body: 65,
-  carbonation: 75,
-};
-
-type FundingQuestionComment = typeof initialComments[number];
+const DEFAULT_PROJECT_BUDGET: NonNullable<FundingProject['budget']> = [];
+const DEFAULT_PROJECT_SCHEDULE: NonNullable<FundingProject['schedule']> = [];
+const DEFAULT_PROJECT_POLICY_TEXT = '';
+const DEFAULT_EXPECTED_DIFFICULTIES_TEXT = '';
+const QNA_LOCAL_ID_OFFSET = 1_000_000_000;
 
 function getSupportOptionLimit(option: FundingSupportOption | null | undefined) {
   const limits = [option?.maxPerUser, option?.remainingStock, option?.stock]
@@ -161,9 +140,107 @@ function getSupportOptionStockLabel(option: FundingSupportOption) {
   return '';
 }
 
+function createFundingProjectFromDetail(detail: FundingDetailResponse): FundingProject {
+  return mergeFundingDetail(
+    {
+      id: detail.fundingId,
+      title: detail.title || '',
+      brewery: detail.breweryName || '',
+      location: '',
+      category: '막걸리',
+      image: '',
+      goalAmount: detail.targetAmount || 1,
+      currentAmount: detail.currentAmount || 0,
+      backers: detail.supporterCount || 0,
+      daysLeft: 0,
+      status: '진행 중',
+      endDate: detail.endDate,
+      journals: [],
+    },
+    detail
+  );
+}
+
 function todayText() {
   const today = new Date();
   return `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, '0')}. ${String(today.getDate()).padStart(2, '0')}`;
+}
+
+function getJournalInteractionStorageKey(projectId: number, userId?: string) {
+  return `judam_funding_journal_interactions:${projectId}:${userId || 'guest'}`;
+}
+
+type StoredJournalInteractions = {
+  likedJournals?: string[];
+  likedJournalComments?: string[];
+  likedJournalReplies?: string[];
+};
+
+type StoredQnaInteractions = {
+  comments?: FundingQuestionComment[];
+  likedComments?: number[];
+  likedReplies?: number[];
+};
+
+function getQnaInteractionStorageKey(projectId: number, userId?: string) {
+  return `judam_funding_qna_interactions:${projectId}:${userId || 'guest'}`;
+}
+
+function mergeStoredQnaComments(apiComments: FundingQuestionComment[], stored?: StoredQnaInteractions | null) {
+  if (!stored?.comments?.length) return withUniqueQnaCommentIds(apiComments);
+  const normalizedApiComments = withUniqueQnaCommentIds(apiComments);
+  const storedById = new Map(stored.comments.map((comment) => [getQnaCommentServerKey(comment), comment]));
+  const apiIds = new Set(normalizedApiComments.map(getQnaCommentServerKey));
+  const merged = normalizedApiComments.map((comment) => {
+    const storedComment = storedById.get(getQnaCommentServerKey(comment));
+    if (!storedComment) return comment;
+    return {
+      ...comment,
+      likes: storedComment.likes ?? comment.likes,
+      replies: storedComment.replies || comment.replies,
+    };
+  });
+  const localOnly = stored.comments.filter((comment) => !apiIds.has(getQnaCommentServerKey(comment)));
+  return withUniqueQnaCommentIds([...merged, ...localOnly]);
+}
+
+function getQnaCommentServerKey(comment: FundingQuestionComment) {
+  return String(comment.serverQuestionId || comment.id);
+}
+
+function createLocalQnaCommentId(baseId: number, index: number) {
+  const safeBaseId = Number.isFinite(baseId) ? Math.abs(Math.trunc(baseId)) % 100000 : 0;
+  return QNA_LOCAL_ID_OFFSET + safeBaseId * 1000 + index;
+}
+
+function getUniqueQnaCommentId(serverQuestionId: number | undefined, usedIds: Set<number>, index: number) {
+  const normalizedServerId = Number.isFinite(serverQuestionId) && serverQuestionId && serverQuestionId > 0
+    ? Math.trunc(serverQuestionId)
+    : undefined;
+  if (normalizedServerId && !usedIds.has(normalizedServerId)) return normalizedServerId;
+  let nextId = createLocalQnaCommentId(normalizedServerId || Date.now(), index);
+  while (usedIds.has(nextId)) {
+    nextId += 1;
+  }
+  return nextId;
+}
+
+function withUniqueQnaCommentIds(comments: FundingQuestionComment[]) {
+  const usedIds = new Set<number>();
+  return comments.map((comment, index) => {
+    const serverQuestionId = comment.serverQuestionId || (comment.id < QNA_LOCAL_ID_OFFSET ? comment.id : undefined);
+    const id = getUniqueQnaCommentId(serverQuestionId, usedIds, index + 1);
+    usedIds.add(id);
+    return { ...comment, id, serverQuestionId };
+  });
+}
+
+function getQnaCommentRenderKey(comment: FundingQuestionComment, index: number) {
+  return `${comment.serverQuestionId || 'local'}-${comment.id}-${index}`;
+}
+
+function getQnaReplyRenderKey(comment: FundingQuestionComment, replyId: number, index: number) {
+  return `${comment.id}-${replyId}-${index}`;
 }
 
 function getInitialTab(tab?: string | string[]) {
@@ -222,7 +299,7 @@ export default function FundingDetailScreen() {
   const { width: viewportWidth } = useWindowDimensions();
   const { user } = useAuth();
   const { favoriteFundings, isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
-  const { projects, participatedFundings, updateProjectJournals, fundingReviews, mergeProject, mergeFundingReviews } = useFunding();
+  const { projects, participatedFundings, updateProjectJournals, fundingReviews, mergeProject, mergeProjects, mergeFundingReviews } = useFunding();
   const projectRef = useRef<(typeof projects)[number] | null>(null);
   const rawProjectId = Array.isArray(id) ? id[0] : id;
   const projectId = Number(rawProjectId);
@@ -251,6 +328,7 @@ export default function FundingDetailScreen() {
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [supportOptionId, setSupportOptionId] = useState(1);
   const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
 
   // Q&A State
   const [comments, setComments] = useState<FundingQuestionComment[]>([]);
@@ -261,14 +339,16 @@ export default function FundingDetailScreen() {
   const [likedReplies, setLikedReplies] = useState<Set<number>>(new Set());
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set([1]));
   const [expandedJournalStages, setExpandedJournalStages] = useState<Set<BrewingStage>>(new Set());
-  const [expandedJournalComments, setExpandedJournalComments] = useState<Set<number>>(new Set());
+  const [expandedJournalComments, setExpandedJournalComments] = useState<Set<string>>(new Set());
   const [expandedJournalReplies, setExpandedJournalReplies] = useState<Set<string>>(new Set());
   const [replyingToJournalComment, setReplyingToJournalComment] = useState<string | null>(null);
-  const [journalCommentDrafts, setJournalCommentDrafts] = useState<Record<number, string>>({});
+  const [journalCommentDrafts, setJournalCommentDrafts] = useState<Record<string, string>>({});
   const [journalReplyDrafts, setJournalReplyDrafts] = useState<Record<string, string>>({});
-  const [likedJournals, setLikedJournals] = useState<Set<number>>(new Set());
+  const [likedJournals, setLikedJournals] = useState<Set<string>>(new Set());
   const [likedJournalComments, setLikedJournalComments] = useState<Set<string>>(new Set());
   const [likedJournalReplies, setLikedJournalReplies] = useState<Set<string>>(new Set());
+  const qnaInteractionsLoadedRef = useRef(false);
+  const journalInteractionsLoadedRef = useRef(false);
 
   useEffect(() => {
     setActiveTab(getInitialTab(tab));
@@ -296,6 +376,7 @@ export default function FundingDetailScreen() {
     setReplyContent("");
     setLikedComments(new Set());
     setLikedReplies(new Set());
+    qnaInteractionsLoadedRef.current = false;
     setExpandedComments(new Set([1]));
     setExpandedJournalStages(new Set());
     setExpandedJournalComments(new Set());
@@ -314,22 +395,83 @@ export default function FundingDetailScreen() {
 
   useEffect(() => {
     let mounted = true;
-    if (!Number.isFinite(projectId) || !projectRef.current) return;
+    journalInteractionsLoadedRef.current = false;
+    setLikedJournals(new Set());
+    setLikedJournalComments(new Set());
+    setLikedJournalReplies(new Set());
 
-    getFundingDetail(projectId)
-      .then((detail) => {
-        const currentProject = projectRef.current;
-        if (!mounted || !currentProject) return;
-        mergeProject(projectId, mergeFundingDetail(currentProject, detail));
+    if (!Number.isFinite(projectId) || !user?.id) {
+      journalInteractionsLoadedRef.current = true;
+      return () => {
+        mounted = false;
+      };
+    }
+
+    SafeStorage.getItem(getJournalInteractionStorageKey(projectId, user.id))
+      .then((value) => {
+        if (!mounted || !value) return;
+        const parsed = JSON.parse(value) as StoredJournalInteractions;
+        const nextLikedJournals = new Set(parsed.likedJournals || []);
+        const nextLikedJournalComments = new Set(parsed.likedJournalComments || []);
+        const nextLikedJournalReplies = new Set(parsed.likedJournalReplies || []);
+        setLikedJournals(nextLikedJournals);
+        setLikedJournalComments(nextLikedJournalComments);
+        setLikedJournalReplies(nextLikedJournalReplies);
+        updateProjectJournals(
+          projectId,
+          (projectRef.current?.journals || []).map((entry) =>
+            nextLikedJournals.has(getJournalMergeKey(entry)) && (entry.likes || 0) === 0
+              ? { ...entry, likes: 1 }
+              : entry
+          )
+        );
       })
-      .catch((error) => {
-        console.warn(getFundingApiErrorMessage(error, '펀딩 상세 정보를 불러오지 못했습니다.'));
+      .catch(() => undefined)
+      .finally(() => {
+        if (mounted) journalInteractionsLoadedRef.current = true;
       });
 
     return () => {
       mounted = false;
     };
-  }, [mergeProject, projectId]);
+  }, [projectId, updateProjectJournals, user?.id]);
+
+  useEffect(() => {
+    if (!journalInteractionsLoadedRef.current || !Number.isFinite(projectId) || !user?.id) return;
+    const payload: StoredJournalInteractions = {
+      likedJournals: Array.from(likedJournals),
+      likedJournalComments: Array.from(likedJournalComments),
+      likedJournalReplies: Array.from(likedJournalReplies),
+    };
+    SafeStorage.setItem(getJournalInteractionStorageKey(projectId, user.id), JSON.stringify(payload)).catch(() => undefined);
+  }, [likedJournalComments, likedJournalReplies, likedJournals, projectId, user?.id]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!Number.isFinite(projectId)) return;
+
+    setIsDetailLoading(true);
+    getFundingDetail(projectId)
+      .then((detail) => {
+        const currentProject = projectRef.current;
+        if (!mounted) return;
+        if (currentProject) {
+          mergeProject(projectId, mergeFundingDetail(currentProject, detail));
+        } else {
+          mergeProjects([createFundingProjectFromDetail(detail)]);
+        }
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '펀딩 상세 정보를 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (mounted) setIsDetailLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [mergeProject, mergeProjects, projectId]);
 
   useEffect(() => {
     let mounted = true;
@@ -359,9 +501,21 @@ export default function FundingDetailScreen() {
         const currentProject = projectRef.current;
         if (!mounted || !currentProject) return;
         const apiJournals = mapBreweryLogs(response.logs);
+        const existingJournalsByKey = new Map((currentProject.journals || []).map((journal) => [getJournalMergeKey(journal), journal]));
         const mergedJournals = apiJournals.map((journal) => {
-          const existingJournal = (currentProject.journals || []).find((item) => item.id === journal.id);
-          return existingJournal ? { ...journal, likes: existingJournal.likes, comments: existingJournal.comments } : journal;
+          const existingJournal = existingJournalsByKey.get(getJournalMergeKey(journal));
+          const journalKey = getJournalMergeKey(journal);
+          const preservedLikes = existingJournal?.likes || journal.likes || 0;
+          return existingJournal
+            ? {
+                ...journal,
+                likes: likedJournals.has(journalKey) ? Math.max(1, preservedLikes) : preservedLikes,
+                comments: existingJournal.comments,
+              }
+            : {
+                ...journal,
+                likes: likedJournals.has(journalKey) ? Math.max(1, journal.likes || 0) : journal.likes,
+              };
         });
         const apiJournalKeys = new Set(apiJournals.map(getJournalMergeKey));
         const localOnlyJournals = (currentProject.journals || []).filter((journal) => !apiJournalKeys.has(getJournalMergeKey(journal)));
@@ -374,17 +528,19 @@ export default function FundingDetailScreen() {
     return () => {
       mounted = false;
     };
-  }, [activeTab, projectId, updateProjectJournals]);
+  }, [activeTab, likedJournals, projectId, updateProjectJournals]);
 
   useEffect(() => {
     let mounted = true;
     if (!Number.isFinite(projectId) || activeTab !== "Q&A") return;
+    qnaInteractionsLoadedRef.current = false;
 
     getFundingQuestions(projectId, { page: 0, size: 20 })
-      .then((response) => {
+      .then(async (response) => {
         if (!mounted) return;
         const apiComments: FundingQuestionComment[] = response.content.map((item) => ({
           id: item.questionId,
+          serverQuestionId: item.questionId,
           userName: item.writerNickname,
           content: item.content || item.title,
           date: new Date(item.createdAt).toLocaleDateString("ko-KR"),
@@ -392,30 +548,54 @@ export default function FundingDetailScreen() {
           isBrewery: false,
           replies: [],
         }));
-        setComments((prev) => {
-          const apiCommentIds = new Set(apiComments.map((comment) => comment.id));
-          const preservedLocalComments = prev.filter((comment) => !initialCommentIds.has(comment.id));
-          const prevById = new Map(preservedLocalComments.map((comment) => [comment.id, comment]));
-          const merged = apiComments.map((comment) => {
-            const existingComment = prevById.get(comment.id);
-            return existingComment ? { ...comment, likes: existingComment.likes, replies: existingComment.replies } : comment;
-          });
-          const localOnly = preservedLocalComments.filter((comment) => !apiCommentIds.has(comment.id));
-          return [...merged, ...localOnly];
-        });
+        let stored: StoredQnaInteractions | null = null;
+        try {
+          const saved = await SafeStorage.getItem(getQnaInteractionStorageKey(projectId, user?.id));
+          stored = saved ? JSON.parse(saved) as StoredQnaInteractions : null;
+        } catch {
+          stored = null;
+        }
+        if (!mounted) return;
+        setLikedComments(new Set(stored?.likedComments || []));
+        setLikedReplies(new Set(stored?.likedReplies || []));
+        setComments(mergeStoredQnaComments(apiComments, stored));
+        qnaInteractionsLoadedRef.current = true;
       })
-      .catch((error) => {
+      .catch(async (error) => {
         if (isFundingApiMissingEndpointError(error)) {
-          setComments((prev) => (prev.length > 0 ? prev : initialComments));
+          try {
+            const saved = await SafeStorage.getItem(getQnaInteractionStorageKey(projectId, user?.id));
+            const stored = saved ? JSON.parse(saved) as StoredQnaInteractions : null;
+            if (!mounted) return;
+            setLikedComments(new Set(stored?.likedComments || []));
+            setLikedReplies(new Set(stored?.likedReplies || []));
+            setComments(withUniqueQnaCommentIds(stored?.comments || []));
+            qnaInteractionsLoadedRef.current = true;
+          } catch {
+            if (!mounted) return;
+            setComments((prev) => prev.filter((comment) => !initialCommentIds.has(comment.id)));
+            qnaInteractionsLoadedRef.current = true;
+          }
           return;
         }
         console.warn(getFundingApiErrorMessage(error, 'Q&A를 불러오지 못했습니다.'));
+        qnaInteractionsLoadedRef.current = true;
       });
 
     return () => {
       mounted = false;
     };
-  }, [activeTab, projectId]);
+  }, [activeTab, projectId, user?.id]);
+
+  useEffect(() => {
+    if (!qnaInteractionsLoadedRef.current || !Number.isFinite(projectId) || activeTab !== "Q&A") return;
+    const payload: StoredQnaInteractions = {
+      comments,
+      likedComments: Array.from(likedComments),
+      likedReplies: Array.from(likedReplies),
+    };
+    SafeStorage.setItem(getQnaInteractionStorageKey(projectId, user?.id), JSON.stringify(payload)).catch(() => undefined);
+  }, [activeTab, comments, likedComments, likedReplies, projectId, user?.id]);
 
   useEffect(() => {
     let mounted = true;
@@ -469,8 +649,9 @@ export default function FundingDetailScreen() {
   const projectSchedule = useMemo(() => project?.schedule || DEFAULT_PROJECT_SCHEDULE, [project?.schedule]);
   const projectPolicyText = project?.projectPolicy || DEFAULT_PROJECT_POLICY_TEXT;
   const expectedDifficultiesText = project?.expectedDifficulties || DEFAULT_EXPECTED_DIFFICULTIES_TEXT;
-  const tasteProfile = useMemo(() => project?.tasteProfile || DEFAULT_TASTE_PROFILE, [project?.tasteProfile]);
+  const tasteProfile = useMemo(() => project?.tasteProfile || null, [project?.tasteProfile]);
   const tasteItems = useMemo(() => {
+    if (!tasteProfile) return [];
     return [
       { label: "단맛", value: tasteProfile.sweetness },
       { label: "잔향", value: tasteProfile.aroma },
@@ -500,6 +681,7 @@ export default function FundingDetailScreen() {
     () => (project ? canAccessFundingReviews(project) : false),
     [project]
   );
+  const canBypassParticipationForReview = isTemporarySansaReviewTestProject(project);
   const heroImageSources = useMemo(
     () => (project ? getFundingProjectImageSources(project) : []),
     [project]
@@ -520,8 +702,10 @@ export default function FundingDetailScreen() {
   if (!project) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ fontSize: 18, color: '#6B7280', marginBottom: 16 }}>프로젝트를 찾을 수 없습니다.</Text>
-        <Button label="목록으로 돌아가기" onPress={() => router.replace('/funding' as any)} />
+        <Text style={{ fontSize: 18, color: '#6B7280', marginBottom: 16 }}>
+          {isDetailLoading ? '프로젝트 정보를 불러오는 중입니다.' : '프로젝트를 찾을 수 없습니다.'}
+        </Text>
+        {!isDetailLoading && <Button label="목록으로 돌아가기" onPress={() => router.replace('/funding' as any)} />}
       </View>
     );
   }
@@ -609,8 +793,11 @@ export default function FundingDetailScreen() {
         content,
         isPrivate: false,
       });
-      const comment = {
-        id: response.questionId,
+      const serverQuestionId = response.questionId > 0 ? response.questionId : undefined;
+      const usedCommentIds = new Set(comments.map((comment) => comment.id));
+      const comment: FundingQuestionComment = {
+        id: getUniqueQnaCommentId(serverQuestionId, usedCommentIds, comments.length + 1),
+        serverQuestionId,
         userName: user?.name || "나",
         content,
         date: new Date().toLocaleDateString("ko-KR"),
@@ -618,7 +805,7 @@ export default function FundingDetailScreen() {
         isBrewery: user?.type === "brewery",
         replies: [],
       };
-      setComments([comment, ...comments]);
+      setComments((prev) => withUniqueQnaCommentIds([comment, ...prev]));
       setNewComment("");
     } catch (error) {
       setFeedbackModal({
@@ -635,8 +822,10 @@ export default function FundingDetailScreen() {
       return;
     }
     const content = replyContent.trim();
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    const serverQuestionId = targetComment?.serverQuestionId || targetComment?.id || commentId;
     try {
-      const response = await createFundingReply(project.id, commentId, { content });
+      const response = await createFundingReply(project.id, serverQuestionId, { content });
       const newReply = {
         id: response.replyId,
         userName: user?.name || "나",
@@ -645,7 +834,7 @@ export default function FundingDetailScreen() {
         likes: 0,
         isBrewery: user?.type === "brewery",
       };
-      setComments(comments.map(c => c.id === commentId ? { ...c, replies: [...c.replies, newReply] } : c));
+      setComments((prev) => prev.map(c => c.id === commentId ? { ...c, replies: [...c.replies, newReply] } : c));
       setReplyContent("");
       setReplyingTo(null);
       setExpandedComments(new Set([...expandedComments, commentId]));
@@ -732,38 +921,40 @@ export default function FundingDetailScreen() {
     });
   };
 
-  const toggleJournalComments = (journalId: number) => {
+  const toggleJournalComments = (journalKey: string) => {
     setExpandedJournalComments((prev) => {
       const next = new Set(prev);
-      if (next.has(journalId)) next.delete(journalId);
-      else next.add(journalId);
+      if (next.has(journalKey)) next.delete(journalKey);
+      else next.add(journalKey);
       return next;
     });
   };
 
-  const handleJournalLike = (journalId: number) => {
+  const handleJournalLike = (journalKey: string) => {
     if (!user) {
       showLoginRequired('양조일지 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
 
-    const isLiked = likedJournals.has(journalId);
+    const isLiked = likedJournals.has(journalKey);
     updateProjectJournals(
       project.id,
       journals.map((entry) =>
-        entry.id === journalId ? { ...entry, likes: Math.max(0, (entry.likes || 0) + (isLiked ? -1 : 1)) } : entry
+        getJournalMergeKey(entry) === journalKey
+          ? { ...entry, likes: Math.max(0, (entry.likes || 0) + (isLiked ? -1 : 1)) }
+          : entry
       )
     );
     setLikedJournals((prev) => {
       const next = new Set(prev);
-      if (next.has(journalId)) next.delete(journalId);
-      else next.add(journalId);
+      if (next.has(journalKey)) next.delete(journalKey);
+      else next.add(journalKey);
       return next;
     });
   };
 
-  const handleAddJournalComment = (journalId: number) => {
-    const content = journalCommentDrafts[journalId]?.trim();
+  const handleAddJournalComment = (targetJournal: JournalEntry, journalKey: string) => {
+    const content = journalCommentDrafts[journalKey]?.trim();
     if (!content) return;
     if (!user) {
       showLoginRequired('양조일지 댓글은 로그인 후 이용할 수 있어요.');
@@ -773,7 +964,7 @@ export default function FundingDetailScreen() {
     const commentIds = journals.flatMap((entry) => (entry.comments || []).map((comment) => comment.id));
     const nextComment: JournalComment = {
       id: Math.max(0, ...commentIds) + 1,
-      journalId,
+      journalId: targetJournal.id,
       userName: user.name || "사용자",
       isBrewery: user.type === "brewery",
       content,
@@ -785,29 +976,29 @@ export default function FundingDetailScreen() {
     updateProjectJournals(
       project.id,
       journals.map((entry) =>
-        entry.id === journalId ? { ...entry, comments: [...(entry.comments || []), nextComment] } : entry
+        getJournalMergeKey(entry) === journalKey ? { ...entry, comments: [...(entry.comments || []), nextComment] } : entry
       )
     );
-    setJournalCommentDrafts((prev) => ({ ...prev, [journalId]: "" }));
+    setJournalCommentDrafts((prev) => ({ ...prev, [journalKey]: "" }));
     setExpandedJournalComments((prev) => {
       const next = new Set(prev);
-      next.add(journalId);
+      next.add(journalKey);
       return next;
     });
   };
 
-  const handleJournalCommentLike = (journalId: number, commentId: number) => {
+  const handleJournalCommentLike = (journalKey: string, commentId: number) => {
     if (!user) {
       showLoginRequired('양조일지 댓글 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
 
-    const likeKey = `${journalId}:${commentId}`;
+    const likeKey = `${journalKey}:${commentId}`;
     const isLiked = likedJournalComments.has(likeKey);
     updateProjectJournals(
       project.id,
       journals.map((entry) => {
-        if (entry.id !== journalId) return entry;
+        if (getJournalMergeKey(entry) !== journalKey) return entry;
         return {
           ...entry,
           comments: (entry.comments || []).map((comment) =>
@@ -826,19 +1017,19 @@ export default function FundingDetailScreen() {
     });
   };
 
-  const handleJournalReplyOpen = (journalId: number, commentId: number) => {
+  const handleJournalReplyOpen = (journalKey: string, commentId: number) => {
     if (!user) {
       showLoginRequired('양조일지 댓글 답글은 로그인 후 이용할 수 있어요.');
       return;
     }
 
-    const replyKey = `${journalId}:${commentId}`;
+    const replyKey = `${journalKey}:${commentId}`;
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
     setReplyingToJournalComment(replyingToJournalComment === replyKey ? null : replyKey);
   };
 
-  const handleAddJournalReply = (journalId: number, commentId: number) => {
-    const replyKey = `${journalId}:${commentId}`;
+  const handleAddJournalReply = (journalKey: string, commentId: number) => {
+    const replyKey = `${journalKey}:${commentId}`;
     const content = journalReplyDrafts[replyKey]?.trim();
     if (!content) return;
     if (!user) {
@@ -862,7 +1053,7 @@ export default function FundingDetailScreen() {
     updateProjectJournals(
       project.id,
       journals.map((entry) => {
-        if (entry.id !== journalId) return entry;
+        if (getJournalMergeKey(entry) !== journalKey) return entry;
         return {
           ...entry,
           comments: (entry.comments || []).map((comment) =>
@@ -876,18 +1067,18 @@ export default function FundingDetailScreen() {
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
   };
 
-  const handleJournalReplyLike = (journalId: number, commentId: number, replyId: number) => {
+  const handleJournalReplyLike = (journalKey: string, commentId: number, replyId: number) => {
     if (!user) {
       showLoginRequired('양조일지 댓글 답글 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
 
-    const likeKey = `${journalId}:${commentId}:${replyId}`;
+    const likeKey = `${journalKey}:${commentId}:${replyId}`;
     const isLiked = likedJournalReplies.has(likeKey);
     updateProjectJournals(
       project.id,
       journals.map((entry) => {
-        if (entry.id !== journalId) return entry;
+        if (getJournalMergeKey(entry) !== journalKey) return entry;
         return {
           ...entry,
           comments: (entry.comments || []).map((comment) => {
@@ -925,7 +1116,7 @@ export default function FundingDetailScreen() {
       return;
     }
     const hasParticipated = participatedFundings.some((item) => item.fundingId === project.id);
-    if (!hasParticipated) {
+    if (!hasParticipated && !canBypassParticipationForReview) {
       setFeedbackModal({
         title: '후기 작성 불가',
         body: '해당 펀딩에 참여하지 않았습니다.',
@@ -1185,7 +1376,7 @@ export default function FundingDetailScreen() {
                          <View style={styles.ingRow}>
                             <View style={{ flex: 1 }}>
                                <Text style={styles.ingLab}>메인재료</Text>
-                               <Text style={styles.ingVal}>{project.mainIngredients || "국내산 쌀, 전통 누룩"}</Text>
+                               <Text style={styles.ingVal}>{project.mainIngredients || "재료 안내 예정"}</Text>
                             </View>
                             <View style={{ flex: 1 }}>
                                <Text style={styles.ingLab}>서브재료</Text>
@@ -1243,7 +1434,7 @@ export default function FundingDetailScreen() {
                       <View style={styles.priceContent}>
                          <View>
                             <Text style={styles.priceLab}>총 판매 수량</Text>
-                            <Text style={styles.priceVal}>{(project.totalQuantity || 500).toLocaleString()}<Text style={{ fontSize: 20, fontWeight: 'normal' }}>병</Text></Text>
+                            <Text style={styles.priceVal}>{project.totalQuantity ? project.totalQuantity.toLocaleString() : '안내 예정'}<Text style={{ fontSize: 20, fontWeight: 'normal' }}>{project.totalQuantity ? '병' : ''}</Text></Text>
                          </View>
                          <Text style={styles.priceSub}>목표 수량</Text>
                       </View>
@@ -1258,111 +1449,128 @@ export default function FundingDetailScreen() {
                 {/* Budget Section */}
                 <View style={styles.sectionCard}>
                    <Text style={styles.sectionHeaderTitle}>프로젝트 예산</Text>
-                   {projectBudget.map((item) => (
-                     <View key={item.item} style={styles.budgetRow}>
-                       <Text style={styles.budgetLab}>{item.item}</Text>
-                       <Text style={styles.budgetVal}>{item.amount.toLocaleString()}만원</Text>
-                     </View>
-                   ))}
-                   <View style={[styles.budgetRow, styles.budgetTotal]}>
-                     <Text style={styles.budgetTotalLab}>총 목표 금액</Text>
-                     <Text style={styles.budgetTotalVal}>{totalBudgetAmount.toLocaleString()}만원</Text>
-                   </View>
-                   <Text style={styles.budgetGuide}>목표 금액을 초과 달성하는 경우, 추가 금액은 리워드 품질 향상과 더 많은 후원자 분들께 제품을 전달하는 데 사용됩니다.</Text>
+                   {projectBudget.length > 0 ? (
+                     <>
+                       {projectBudget.map((item) => (
+                         <View key={item.item} style={styles.budgetRow}>
+                           <Text style={styles.budgetLab}>{item.item}</Text>
+                           <Text style={styles.budgetVal}>{item.amount.toLocaleString()}만원</Text>
+                         </View>
+                       ))}
+                       <View style={[styles.budgetRow, styles.budgetTotal]}>
+                         <Text style={styles.budgetTotalLab}>총 목표 금액</Text>
+                         <Text style={styles.budgetTotalVal}>{totalBudgetAmount.toLocaleString()}만원</Text>
+                       </View>
+                       <Text style={styles.budgetGuide}>목표 금액을 초과 달성하는 경우, 추가 금액은 리워드 품질 향상과 더 많은 후원자 분들께 제품을 전달하는 데 사용됩니다.</Text>
+                     </>
+                   ) : (
+                     <Text style={styles.emptySectionText}>등록된 예산 정보가 없습니다.</Text>
+                   )}
                 </View>
 
                 {/* Schedule Section */}
                 <View style={styles.sectionCard}>
                    <Text style={styles.sectionHeaderTitle}>프로젝트 일정</Text>
-                   <View style={{ gap: 16 }}>
-                     {projectSchedule.map((item, index) => (
-                       <View key={`${item.date}-${item.description}`} style={styles.schRow}>
-                         <Text style={styles.schDate}>{item.date}</Text>
-                         <Text style={[styles.schDesc, index === projectSchedule.length - 1 && { fontWeight: '700', color: '#111' }]}>{item.description}</Text>
+                   {projectSchedule.length > 0 ? (
+                     <>
+                       <View style={{ gap: 16 }}>
+                         {projectSchedule.map((item, index) => (
+                           <View key={`${item.date}-${item.description}`} style={styles.schRow}>
+                             <Text style={styles.schDate}>{item.date}</Text>
+                             <Text style={[styles.schDesc, index === projectSchedule.length - 1 && { fontWeight: '700', color: '#111' }]}>{item.description}</Text>
+                           </View>
+                         ))}
                        </View>
-                     ))}
-                   </View>
-                   <View style={styles.schAlert}>
-                      <Text style={styles.schAlertTxt}>💡 발효는 자연 과정이므로 기후 조건에 따라 일정이 1-2주 지연될 수 있습니다. 지연 시 양조 일지와 커뮤니티를 통해 실시간으로 소통하겠습니다.</Text>
-                   </View>
+                       <View style={styles.schAlert}>
+                          <Text style={styles.schAlertTxt}>💡 발효는 자연 과정이므로 기후 조건에 따라 일정이 1-2주 지연될 수 있습니다. 지연 시 양조 일지와 커뮤니티를 통해 실시간으로 소통하겠습니다.</Text>
+                       </View>
+                     </>
+                   ) : (
+                     <Text style={styles.emptySectionText}>등록된 일정 정보가 없습니다.</Text>
+                   )}
                 </View>
 
                 {/* Taste Profile (SVG Radar Chart) */}
                 <View style={styles.sectionCard}>
                    <Text style={styles.sectionHeaderTitle}>맛 지표</Text>
                    <Text style={styles.sectionSub}>양조장이 예상하는 이 전통주의 맛 프로필입니다.</Text>
-                   
-                   <View style={styles.radarContainer}>
-                      <Svg viewBox="0 0 400 400" width="100%" height="250">
-                        {[1, 0.75, 0.5, 0.25].map((scale) => (
-                          <Polygon
-                            key={scale}
-                            points={[
-                              [200, 200 - 150 * scale],
-                              [200 + 142.5 * scale, 200 - 46.35 * scale],
-                              [200 + 88.1 * scale, 200 + 121.35 * scale],
-                              [200 - 88.1 * scale, 200 + 121.35 * scale],
-                              [200 - 142.5 * scale, 200 - 46.35 * scale],
-                            ].map(p => p.join(',')).join(' ')}
-                            fill="none"
-                            stroke="#E5E7EB"
-                            strokeWidth="1"
-                          />
-                        ))}
-                        {[
-                          [200, 50],
-                          [342.5, 153.65],
-                          [288.1, 321.35],
-                          [111.9, 321.35],
-                          [57.5, 153.65],
-                        ].map((point, i) => (
-                          <Line
-                            key={`line-${i}`}
-                            x1="200" y1="200" x2={point[0]} y2={point[1]}
-                            stroke="#E5E7EB" strokeWidth="1"
-                          />
-                        ))}
-                        <Polygon
-                          points={[
-                            [200, 200 - (tasteProfile.sweetness / 100) * 150],
-                            [200 + (tasteProfile.aroma / 100) * 142.5, 200 - (tasteProfile.aroma / 100) * 46.35],
-                            [200 + (tasteProfile.acidity / 100) * 88.1, 200 + (tasteProfile.acidity / 100) * 121.35],
-                            [200 - (tasteProfile.body / 100) * 88.1, 200 + (tasteProfile.body / 100) * 121.35],
-                            [200 - (tasteProfile.carbonation / 100) * 142.5, 200 - (tasteProfile.carbonation / 100) * 46.35],
-                          ].map(p => p.join(',')).join(' ')}
-                          fill="rgba(0, 0, 0, 0.2)"
-                          stroke="rgba(0, 0, 0, 0.8)"
-                          strokeWidth="2"
-                        />
-                        {[
-                          { x: 200, y: 200 - (tasteProfile.sweetness / 100) * 150 },
-                          { x: 200 + (tasteProfile.aroma / 100) * 142.5, y: 200 - (tasteProfile.aroma / 100) * 46.35 },
-                          { x: 200 + (tasteProfile.acidity / 100) * 88.1, y: 200 + (tasteProfile.acidity / 100) * 121.35 },
-                          { x: 200 - (tasteProfile.body / 100) * 88.1, y: 200 + (tasteProfile.body / 100) * 121.35 },
-                          { x: 200 - (tasteProfile.carbonation / 100) * 142.5, y: 200 - (tasteProfile.carbonation / 100) * 46.35 },
-                        ].map((point, i) => (
-                          <Circle key={`circle-${i}`} cx={point.x} cy={point.y} r="4" fill="black" />
-                        ))}
-                        <SvgText x="200" y="35" textAnchor="middle" fontSize="14" fontWeight="bold" fill="#374151">단맛</SvgText>
-                        <SvgText x="360" y="158" textAnchor="start" fontSize="14" fontWeight="bold" fill="#374151">잔향</SvgText>
-                        <SvgText x="295" y="345" textAnchor="start" fontSize="14" fontWeight="bold" fill="#374151">산미</SvgText>
-                        <SvgText x="105" y="345" textAnchor="end" fontSize="14" fontWeight="bold" fill="#374151">바디감</SvgText>
-                        <SvgText x="40" y="158" textAnchor="end" fontSize="14" fontWeight="bold" fill="#374151">탄산감</SvgText>
-                      </Svg>
-                   </View>
-                   <View style={styles.tasteGrid}>
-                      {tasteItems.map(t => (
-                        <View key={t.label} style={styles.tasteItemBox}>
-                           <Text style={styles.tasteLab}>{t.label}</Text>
-                           <View style={styles.tasteRowWrap}>
-                              <View style={styles.tasteBarBg}>
-                                 <View style={[styles.tasteBarFill, { width: `${t.value}%` }]} />
-                              </View>
-                              <Text style={styles.tasteVal}>{t.value}%</Text>
-                           </View>
-                        </View>
-                      ))}
-                   </View>
+                   {tasteProfile ? (
+                     <>
+                       <View style={styles.radarContainer}>
+                          <Svg viewBox="0 0 400 400" width="100%" height="250">
+                            {[1, 0.75, 0.5, 0.25].map((scale) => (
+                              <Polygon
+                                key={scale}
+                                points={[
+                                  [200, 200 - 150 * scale],
+                                  [200 + 142.5 * scale, 200 - 46.35 * scale],
+                                  [200 + 88.1 * scale, 200 + 121.35 * scale],
+                                  [200 - 88.1 * scale, 200 + 121.35 * scale],
+                                  [200 - 142.5 * scale, 200 - 46.35 * scale],
+                                ].map(p => p.join(',')).join(' ')}
+                                fill="none"
+                                stroke="#E5E7EB"
+                                strokeWidth="1"
+                              />
+                            ))}
+                            {[
+                              [200, 50],
+                              [342.5, 153.65],
+                              [288.1, 321.35],
+                              [111.9, 321.35],
+                              [57.5, 153.65],
+                            ].map((point, i) => (
+                              <Line
+                                key={`line-${i}`}
+                                x1="200" y1="200" x2={point[0]} y2={point[1]}
+                                stroke="#E5E7EB" strokeWidth="1"
+                              />
+                            ))}
+                            <Polygon
+                              points={[
+                                [200, 200 - (tasteProfile.sweetness / 100) * 150],
+                                [200 + (tasteProfile.aroma / 100) * 142.5, 200 - (tasteProfile.aroma / 100) * 46.35],
+                                [200 + (tasteProfile.acidity / 100) * 88.1, 200 + (tasteProfile.acidity / 100) * 121.35],
+                                [200 - (tasteProfile.body / 100) * 88.1, 200 + (tasteProfile.body / 100) * 121.35],
+                                [200 - (tasteProfile.carbonation / 100) * 142.5, 200 - (tasteProfile.carbonation / 100) * 46.35],
+                              ].map(p => p.join(',')).join(' ')}
+                              fill="rgba(0, 0, 0, 0.2)"
+                              stroke="rgba(0, 0, 0, 0.8)"
+                              strokeWidth="2"
+                            />
+                            {[
+                              { x: 200, y: 200 - (tasteProfile.sweetness / 100) * 150 },
+                              { x: 200 + (tasteProfile.aroma / 100) * 142.5, y: 200 - (tasteProfile.aroma / 100) * 46.35 },
+                              { x: 200 + (tasteProfile.acidity / 100) * 88.1, y: 200 + (tasteProfile.acidity / 100) * 121.35 },
+                              { x: 200 - (tasteProfile.body / 100) * 88.1, y: 200 + (tasteProfile.body / 100) * 121.35 },
+                              { x: 200 - (tasteProfile.carbonation / 100) * 142.5, y: 200 - (tasteProfile.carbonation / 100) * 46.35 },
+                            ].map((point, i) => (
+                              <Circle key={`circle-${i}`} cx={point.x} cy={point.y} r="4" fill="black" />
+                            ))}
+                            <SvgText x="200" y="35" textAnchor="middle" fontSize="14" fontWeight="bold" fill="#374151">단맛</SvgText>
+                            <SvgText x="360" y="158" textAnchor="start" fontSize="14" fontWeight="bold" fill="#374151">잔향</SvgText>
+                            <SvgText x="295" y="345" textAnchor="start" fontSize="14" fontWeight="bold" fill="#374151">산미</SvgText>
+                            <SvgText x="105" y="345" textAnchor="end" fontSize="14" fontWeight="bold" fill="#374151">바디감</SvgText>
+                            <SvgText x="40" y="158" textAnchor="end" fontSize="14" fontWeight="bold" fill="#374151">탄산감</SvgText>
+                          </Svg>
+                       </View>
+                       <View style={styles.tasteGrid}>
+                          {tasteItems.map(t => (
+                            <View key={t.label} style={styles.tasteItemBox}>
+                               <Text style={styles.tasteLab}>{t.label}</Text>
+                               <View style={styles.tasteRowWrap}>
+                                  <View style={styles.tasteBarBg}>
+                                     <View style={[styles.tasteBarFill, { width: `${t.value}%` }]} />
+                                  </View>
+                                  <Text style={styles.tasteVal}>{t.value}%</Text>
+                               </View>
+                            </View>
+                          ))}
+                       </View>
+                     </>
+                   ) : (
+                     <Text style={styles.emptySectionText}>등록된 맛 지표가 없습니다.</Text>
+                   )}
                 </View>
 
                 {/* Guide Section */}
@@ -1387,14 +1595,18 @@ export default function FundingDetailScreen() {
                    <View style={{ marginBottom: 32, paddingTop: 24, borderTopWidth: 1, borderTopColor: '#E5E7EB' }}>
                      <Text style={styles.guideHeading}>📄 프로젝트 정책</Text>
                      <View style={styles.guideBoxPlain}>
-                        <Text style={styles.guideBoxTxt}>{projectPolicyText}</Text>
+                        <Text style={projectPolicyText ? styles.guideBoxTxt : styles.emptySectionText}>
+                          {projectPolicyText || '등록된 프로젝트 정책이 없습니다.'}
+                        </Text>
                      </View>
                    </View>
 
                    <View style={{ paddingTop: 24, borderTopWidth: 1, borderTopColor: '#E5E7EB' }}>
                      <Text style={styles.guideHeading}>⚠️ 예상되는 어려움</Text>
                      <View style={styles.guideBoxPlain}>
-                        <Text style={styles.guideBoxTxt}>{expectedDifficultiesText}</Text>
+                        <Text style={expectedDifficultiesText ? styles.guideBoxTxt : styles.emptySectionText}>
+                          {expectedDifficultiesText || '등록된 리스크 안내가 없습니다.'}
+                        </Text>
                      </View>
                    </View>
                 </View>
@@ -1423,9 +1635,10 @@ export default function FundingDetailScreen() {
                                 {hasStageEntries ? (
                                   <View style={styles.journalEntries}>
                                     {visibleEntries.map((entry, entryIndex) => {
+                                      const journalKey = getJournalMergeKey(entry);
                                       const entryComments = entry.comments || [];
-                                      const commentsOpen = expandedJournalComments.has(entry.id);
-                                      const isJournalLiked = likedJournals.has(entry.id);
+                                      const commentsOpen = expandedJournalComments.has(journalKey);
+                                      const isJournalLiked = likedJournals.has(journalKey);
                                       return (
                                         <View key={`${stage.id}-${entry.id}-${entryIndex}`} style={styles.journalEntryCard}>
                                           <View style={styles.journalEntryHeader}>
@@ -1452,11 +1665,11 @@ export default function FundingDetailScreen() {
                                           ) : null}
 
                                           <View style={styles.journalActionRow}>
-                                            <TouchableOpacity style={styles.journalActionButton} onPress={() => handleJournalLike(entry.id)}>
+                                            <TouchableOpacity style={styles.journalActionButton} onPress={() => handleJournalLike(journalKey)}>
                                               <Heart size={16} color={isJournalLiked ? "#EF4444" : "#9CA3AF"} fill={isJournalLiked ? "#EF4444" : "transparent"} />
                                               <Text style={[styles.journalActionText, isJournalLiked && styles.journalActionTextActive]}>{entry.likes || 0}</Text>
                                             </TouchableOpacity>
-                                            <TouchableOpacity style={styles.journalActionButton} onPress={() => toggleJournalComments(entry.id)}>
+                                            <TouchableOpacity style={styles.journalActionButton} onPress={() => toggleJournalComments(journalKey)}>
                                               <MessageCircle size={16} color="#9CA3AF" />
                                               <Text style={styles.journalActionText}>{entryComments.length}</Text>
                                               {commentsOpen ? <ChevronUp size={14} color="#9CA3AF" /> : <ChevronDown size={14} color="#9CA3AF" />}
@@ -1469,14 +1682,14 @@ export default function FundingDetailScreen() {
                                                 <View style={styles.journalCommentInputRow}>
                                                   <TextInput
                                                     style={styles.journalCommentInput}
-                                                    value={journalCommentDrafts[entry.id] || ""}
-                                                    onChangeText={(text) => setJournalCommentDrafts((prev) => ({ ...prev, [entry.id]: text }))}
+                                                    value={journalCommentDrafts[journalKey] || ""}
+                                                    onChangeText={(text) => setJournalCommentDrafts((prev) => ({ ...prev, [journalKey]: text }))}
                                                     placeholder="댓글을 입력하세요..."
                                                     placeholderTextColor="#9CA3AF"
                                                     returnKeyType="send"
-                                                    onSubmitEditing={() => handleAddJournalComment(entry.id)}
+                                                    onSubmitEditing={() => handleAddJournalComment(entry, journalKey)}
                                                   />
-                                                  <TouchableOpacity style={styles.journalCommentSend} onPress={() => handleAddJournalComment(entry.id)}>
+                                                  <TouchableOpacity style={styles.journalCommentSend} onPress={() => handleAddJournalComment(entry, journalKey)}>
                                                     <Send size={15} color="#FFF" />
                                                   </TouchableOpacity>
                                                 </View>
@@ -1489,8 +1702,8 @@ export default function FundingDetailScreen() {
                                               {entryComments.length > 0 ? (
                                                 <View style={styles.journalCommentList}>
                                                   {entryComments.map((comment) => {
-                                                    const commentLikeKey = `${entry.id}:${comment.id}`;
-                                                    const replyKey = `${entry.id}:${comment.id}`;
+                                                    const commentLikeKey = `${journalKey}:${comment.id}`;
+                                                    const replyKey = `${journalKey}:${comment.id}`;
                                                     const isCommentLiked = likedJournalComments.has(commentLikeKey);
                                                     const commentReplies = comment.replies || [];
                                                     const repliesOpen = expandedJournalReplies.has(replyKey);
@@ -1503,11 +1716,11 @@ export default function FundingDetailScreen() {
                                                         </View>
                                                         <Text style={styles.journalCommentText}>{comment.content}</Text>
                                                         <View style={styles.journalCommentActions}>
-                                                          <TouchableOpacity style={styles.journalCommentAction} onPress={() => handleJournalCommentLike(entry.id, comment.id)}>
+                                                          <TouchableOpacity style={styles.journalCommentAction} onPress={() => handleJournalCommentLike(journalKey, comment.id)}>
                                                             <Heart size={13} color={isCommentLiked ? "#EF4444" : "#9CA3AF"} fill={isCommentLiked ? "#EF4444" : "transparent"} />
                                                             <Text style={[styles.journalCommentLikeText, isCommentLiked && styles.journalActionTextActive]}>{comment.likes || 0}</Text>
                                                           </TouchableOpacity>
-                                                          <TouchableOpacity style={styles.journalCommentAction} onPress={() => handleJournalReplyOpen(entry.id, comment.id)}>
+                                                          <TouchableOpacity style={styles.journalCommentAction} onPress={() => handleJournalReplyOpen(journalKey, comment.id)}>
                                                             <MessageCircle size={13} color="#9CA3AF" />
                                                             <Text style={styles.journalCommentLikeText}>답글</Text>
                                                           </TouchableOpacity>
@@ -1532,7 +1745,7 @@ export default function FundingDetailScreen() {
                                                         {repliesOpen && commentReplies.length > 0 && (
                                                           <View style={styles.journalReplyList}>
                                                             {commentReplies.map((reply) => {
-                                                              const replyLikeKey = `${entry.id}:${comment.id}:${reply.id}`;
+                                                              const replyLikeKey = `${journalKey}:${comment.id}:${reply.id}`;
                                                               const isReplyLiked = likedJournalReplies.has(replyLikeKey);
                                                               return (
                                                                 <View key={reply.id} style={styles.journalReplyCard}>
@@ -1542,7 +1755,7 @@ export default function FundingDetailScreen() {
                                                                     <Text style={styles.commentDate}>{reply.date}</Text>
                                                                   </View>
                                                                   <Text style={styles.journalCommentText}>{reply.content}</Text>
-                                                                  <TouchableOpacity style={styles.journalCommentAction} onPress={() => handleJournalReplyLike(entry.id, comment.id, reply.id)}>
+                                                                  <TouchableOpacity style={styles.journalCommentAction} onPress={() => handleJournalReplyLike(journalKey, comment.id, reply.id)}>
                                                                     <Heart size={12} color={isReplyLiked ? "#EF4444" : "#9CA3AF"} fill={isReplyLiked ? "#EF4444" : "transparent"} />
                                                                     <Text style={[styles.journalCommentLikeText, isReplyLiked && styles.journalActionTextActive]}>{reply.likes || 0}</Text>
                                                                   </TouchableOpacity>
@@ -1561,10 +1774,10 @@ export default function FundingDetailScreen() {
                                                               placeholder="답글을 입력하세요..."
                                                               placeholderTextColor="#9CA3AF"
                                                               returnKeyType="send"
-                                                              onSubmitEditing={() => handleAddJournalReply(entry.id, comment.id)}
+                                                              onSubmitEditing={() => handleAddJournalReply(journalKey, comment.id)}
                                                               autoFocus
                                                             />
-                                                            <TouchableOpacity style={styles.journalReplySend} onPress={() => handleAddJournalReply(entry.id, comment.id)}>
+                                                            <TouchableOpacity style={styles.journalReplySend} onPress={() => handleAddJournalReply(journalKey, comment.id)}>
                                                               <Send size={14} color="#FFF" />
                                                             </TouchableOpacity>
                                                           </View>
@@ -1630,7 +1843,7 @@ export default function FundingDetailScreen() {
 
                    <View style={styles.commentList}>
                       {comments.map((c, index) => (
-                        <View key={c.id} style={[styles.commentCard, index === comments.length - 1 && { borderBottomWidth: 0 }]}>
+                        <View key={getQnaCommentRenderKey(c, index)} style={[styles.commentCard, index === comments.length - 1 && { borderBottomWidth: 0 }]}>
                            <View style={styles.commentTop}>
                               <LinearGradient colors={['#E5E7EB', '#D1D5DB']} style={styles.commentAvatar}>
                                  <Text style={styles.avatarTxt}>{c.userName[0]}</Text>
@@ -1664,8 +1877,8 @@ export default function FundingDetailScreen() {
 
                            {expandedComments.has(c.id) && c.replies.length > 0 && (
                              <View style={styles.repliesWrapper}>
-                               {c.replies.map(r => (
-                                 <View key={r.id} style={styles.replyCard}>
+                               {c.replies.map((r, replyIndex) => (
+                                 <View key={getQnaReplyRenderKey(c, r.id, replyIndex)} style={styles.replyCard}>
                                     <LinearGradient colors={['#F3F4F6', '#E5E7EB']} style={styles.replyAvatar}>
                                        <Text style={styles.replyAvatarTxt}>{r.userName[0]}</Text>
                                     </LinearGradient>
@@ -1940,11 +2153,12 @@ export default function FundingDetailScreen() {
                   <Text style={styles.deliveryNoticeTxt}>{estimatedDelivery}</Text>
                 </View>
               </View>
-
+            </ScrollView>
+            <View style={styles.optionFooter}>
               <TouchableOpacity style={styles.optionConfirmBtn} onPress={handleConfirmFundingOption}>
                 <Text style={styles.optionConfirmTxt}>후원하기</Text>
               </TouchableOpacity>
-            </ScrollView>
+            </View>
           </Animated.View>
         </View>
       </Modal>
@@ -2202,6 +2416,7 @@ const styles = StyleSheet.create({
   sectionCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 24, marginBottom: 24, borderWidth: 1, borderColor: '#E5E7EB' },
   sectionHeaderTitle: { fontSize: 20, fontWeight: '800', color: '#111', marginBottom: 16 },
   sectionSub: { fontSize: 14, color: '#4B5563', marginBottom: 24 },
+  emptySectionText: { fontSize: 13, color: '#9CA3AF', lineHeight: 20, fontWeight: '700' },
   recipeSummaryGrid: { marginBottom: 24, gap: 12 },
   ingCard: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#E5E7EB' },
   ingRow: { flexDirection: 'row' },
@@ -2366,8 +2581,9 @@ const styles = StyleSheet.create({
   optionTitle: { fontSize: 18, fontWeight: '900', color: '#111' },
   optionClose: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center' },
   optionCloseTxt: { fontSize: 24, color: '#6B7280', marginTop: -2 },
-  optionBodyScroll: { flexGrow: 0 },
-  optionBody: { padding: 20, gap: 16 },
+  optionBodyScroll: { flexShrink: 1 },
+  optionBody: { padding: 20, gap: 16, paddingBottom: 20 },
+  optionFooter: { padding: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', backgroundColor: '#FFF' },
   optionProjectBox: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   optionProjectImg: { width: 64, height: 64, borderRadius: 12, backgroundColor: '#E5E7EB' },
   optionBrewery: { fontSize: 12, color: '#6B7280', fontWeight: '700', marginBottom: 4 },

@@ -19,6 +19,7 @@ export interface User {
   businessNumber?: string;
   sulbti?: string;
   sulbtiProfile?: BtiTasteAxisValues;
+  sulbtiFoodPairing?: string[];
 }
 
 interface AuthContextType {

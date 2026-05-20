@@ -13,6 +13,18 @@ export type BtiAnswers = Record<number, BtiAnswer>;
 type BtiTypeInput = string | string[] | null | undefined;
 export type BtiTasteAxisKey = 'sweetness' | 'body' | 'carbonation' | 'tradition' | 'alcohol';
 export type BtiTasteAxisValues = Partial<Record<BtiTasteAxisKey, number>>;
+export type BtiSurveyPayload = Record<`q${number}`, number | number[]>;
+
+export type BtiSurveyTasteVector = {
+  sweetness: number;
+  body: number;
+  carbonation: number;
+  flavor: number;
+  alcohol: number;
+  acidity?: number;
+  aroma_intensity?: number;
+  finish?: number;
+};
 
 export interface BtiResultProfile {
   type: string;
@@ -227,9 +239,13 @@ const BTI_DOSAGE_SUFFIXES = ['M', 'B'];
 
 export function normalizeBtiTasteAxisValue(value?: number | null) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-  if (value > 5) {
+  if (value > 10) {
     const percentValue = Math.max(0, Math.min(100, value));
     return Math.max(1, Math.min(5, Math.round((percentValue / 100) * 4 + 1)));
+  }
+  if (value > 5) {
+    const tenPointValue = Math.max(0, Math.min(10, value));
+    return Math.max(1, Math.min(5, Math.round((tenPointValue / 10) * 4 + 1)));
   }
   return Math.max(1, Math.min(5, value));
 }
@@ -282,6 +298,71 @@ export function buildAnswersWithCustomInputs(
     if (list.includes(trimmed)) return nextAnswers;
     return { ...nextAnswers, [questionId]: [...list, trimmed] };
   }, answers);
+}
+
+function getRequiredBtiAnswer(answers: BtiAnswers, question: BtiQuestion) {
+  const answer = answers[question.id];
+  if (question.type === 'multiple') {
+    return Array.isArray(answer) ? answer : [];
+  }
+  if (typeof answer === 'number' && Number.isFinite(answer)) return answer;
+  throw new Error(`Missing answer for q${question.id}`);
+}
+
+function mapMultipleAnswerToApiValues(question: BtiQuestion, answer: string[]) {
+  const selectedValues = answer
+    .map((item) => question.options.indexOf(item))
+    .filter((index) => index >= 0)
+    .map((index) => index + 1);
+  const hasCustomAnswer = answer.some((item) => !question.options.includes(item));
+  const values = hasCustomAnswer ? [...selectedValues, question.options.length + 1] : selectedValues;
+  return Array.from(new Set(values));
+}
+
+export function buildBtiSurveyPayload(answers: BtiAnswers): BtiSurveyPayload {
+  return BTI_QUESTIONS.reduce<Partial<BtiSurveyPayload>>((payload, question) => {
+    const answer = getRequiredBtiAnswer(answers, question);
+    payload[`q${question.id}`] = Array.isArray(answer)
+      ? mapMultipleAnswerToApiValues(question, answer)
+      : answer;
+    return payload;
+  }, {}) as BtiSurveyPayload;
+}
+
+function normalizeTasteVectorValue(value?: number | null) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 5;
+  return Math.max(0, Math.min(10, value));
+}
+
+function tasteVectorValueToAxisValue(value?: number | null) {
+  return Math.max(1, Math.min(5, Math.round((normalizeTasteVectorValue(value) / 10) * 4 + 1)));
+}
+
+export function getSulbtiCodeFromTasteVector(tasteVector: BtiSurveyTasteVector) {
+  const sweetness = normalizeTasteVectorValue(tasteVector.sweetness);
+  const body = normalizeTasteVectorValue(tasteVector.body);
+  const carbonation = normalizeTasteVectorValue(tasteVector.carbonation);
+  const flavor = normalizeTasteVectorValue(tasteVector.flavor);
+  const alcohol = normalizeTasteVectorValue(tasteVector.alcohol);
+
+  const baseCode = [
+    sweetness >= 5 ? 'S' : 'D',
+    body >= 5 ? 'H' : 'L',
+    carbonation >= 5 ? 'F' : 'M',
+    flavor >= 5 ? 'U' : 'C',
+  ].join('');
+  const dosageSuffix = alcohol >= 5 ? 'B' : 'M';
+  return `${baseCode}-${dosageSuffix}`;
+}
+
+export function getBtiTasteAxisValuesFromTasteVector(tasteVector: BtiSurveyTasteVector): BtiTasteAxisValues {
+  return {
+    sweetness: tasteVectorValueToAxisValue(tasteVector.sweetness),
+    body: tasteVectorValueToAxisValue(tasteVector.body),
+    carbonation: tasteVectorValueToAxisValue(tasteVector.carbonation),
+    tradition: 6 - tasteVectorValueToAxisValue(tasteVector.flavor),
+    alcohol: tasteVectorValueToAxisValue(tasteVector.alcohol),
+  };
 }
 
 export function calculateSulbti(answers: BtiAnswers) {

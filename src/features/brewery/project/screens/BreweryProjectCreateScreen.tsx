@@ -739,16 +739,19 @@ export default function BreweryProjectCreateScreen() {
     return value;
   }, []);
   const startDate = parseDate(fundingInfo.startDate);
-  const duration = Math.max(1, Number(fundingInfo.duration) || 1);
+  const durationInput = Number(fundingInfo.duration);
+  const duration = Math.max(1, Number.isFinite(durationInput) ? durationInput : 1);
   const endDate = startDate ? addDays(startDate, duration) : null;
   const endDateText = endDate ? formatDate(endDate) : '';
   const deliveryDate = parseDate(fundingInfo.expectedDeliveryDate);
-  const minimumDeliveryDate = endDate ? addDays(endDate, 30) : null;
-  const minimumDeliveryDateText = minimumDeliveryDate ? formatDate(minimumDeliveryDate) : '';
   const startDateWarning = startDate && startDate < today ? '펀딩 시작일은 오늘 이후 날짜로 입력해주세요.' : '';
+  const durationWarning =
+    fundingInfo.duration && (!Number.isInteger(durationInput) || durationInput < 1 || durationInput > 365)
+      ? '프로젝트 기간은 1일부터 365일까지 입력해주세요.'
+      : '';
   const deliveryDateWarning =
-    minimumDeliveryDate && deliveryDate && deliveryDate < minimumDeliveryDate
-      ? `예상 발송 시작일은 펀딩 종료일로부터 최소 30일 이후(${minimumDeliveryDateText} 이후)로 입력해주세요.`
+    endDate && deliveryDate && deliveryDate <= endDate
+      ? '예상 발송 시작일은 펀딩 종료일 이후여야 합니다.'
       : '';
   const filteredAddresses = useMemo(
     () => addressSuggestions.filter((item) => item.address.includes(addressSearch) || item.zipCode.includes(addressSearch)),
@@ -787,6 +790,9 @@ export default function BreweryProjectCreateScreen() {
     [
       projectPlan.introduction,
       creatorInfo.name,
+      creatorInfo.phone,
+      creatorInfo.accountBank,
+      creatorInfo.accountNumber,
       phoneVerified,
       accountVerified,
       taxInfo.businessType,
@@ -811,6 +817,9 @@ export default function BreweryProjectCreateScreen() {
     accountVerified,
     basicInfo,
     creatorInfo.name,
+    creatorInfo.phone,
+    creatorInfo.accountBank,
+    creatorInfo.accountNumber,
     fundingInfo,
     phoneVerified,
     productInfo,
@@ -820,7 +829,7 @@ export default function BreweryProjectCreateScreen() {
     uploadedFiles,
   ]);
 
-  const hasBlockingDateWarning = Boolean((!isEditMode && startDateWarning) || deliveryDateWarning);
+  const hasBlockingDateWarning = Boolean((!isEditMode && startDateWarning) || durationWarning || deliveryDateWarning);
   const canSubmit = progress >= 100 && !hasBlockingDateWarning;
   const canSendPhoneVerification = isValidProjectPhone(creatorInfo.phone);
   const exitRoute = isEditMode && editProjectId ? `/funding/${editProjectId}` : '/funding';
@@ -921,23 +930,11 @@ export default function BreweryProjectCreateScreen() {
     };
   };
 
-  const toTasteScale = (value: number) => Math.max(1, Math.min(5, Math.round(value / 20)));
-
-  const getAlcoholIntensity = () => {
-    const alcohol = Number(productInfo.alcoholContent || basicInfo.alcoholContent) || 0;
-    if (alcohol <= 5) return 1;
-    if (alcohol <= 7) return 2;
-    if (alcohol <= 9) return 3;
-    if (alcohol <= 12) return 4;
-    return 5;
-  };
-
   const getBudgetPlanForApi = () => {
     const parsed = parseBudgetItems(projectPlan.budget)
       .filter((item) => item.item.trim())
       .map((item) => ({ category: item.item, amount: item.amount || Number(fundingInfo.goalAmount) || 1 }));
-    if (parsed.length > 0) return parsed;
-    return [{ category: '제품 생산 및 품질 관리', amount: Number(fundingInfo.goalAmount) || 1 }];
+    return parsed.length > 0 ? parsed : null;
   };
 
   const getSchedulePlanForApi = () => {
@@ -948,14 +945,47 @@ export default function BreweryProjectCreateScreen() {
         description: item.description,
         date: normalizeProjectDate(item.date) || fundingInfo.startDate,
       }));
-    if (parsed.length > 0) return parsed;
-    return [
-      {
-        step: '펀딩 진행',
-        description: `${fundingInfo.duration}일 동안 펀딩을 진행합니다.`,
-        date: fundingInfo.startDate,
-      },
-    ];
+    return parsed.length > 0 ? parsed : null;
+  };
+
+  const getBreweryInfoForApi = () => {
+    const breweryName = creatorInfo.name.trim() || taxInfo.businessName.trim() || user?.breweryName || '';
+    const representativeName = taxInfo.ceoName.trim();
+    const businessRegistrationNumber = formatBusinessRegistrationNumber(taxInfo.businessNumber);
+    const businessNumberDigits = digitsOnly(businessRegistrationNumber);
+    const businessAddress = taxInfo.address.trim();
+    const contactEmail = taxInfo.email.trim() || user?.email || '';
+    const contactPhone = creatorInfo.phone.trim();
+    const bankName = creatorInfo.accountBank.trim();
+    const accountNumber = creatorInfo.accountNumber.trim();
+    const accountHolder = representativeName || breweryName;
+    const missingFields: string[] = [];
+
+    if (!breweryName) missingFields.push('창작자/양조장 이름');
+    if (!representativeName) missingFields.push('대표자 성명');
+    if (businessNumberDigits.length !== 10) missingFields.push('사업자 등록번호 10자리');
+    if (!businessAddress) missingFields.push('사업장 소재지');
+    if (!contactEmail) missingFields.push('이메일 주소');
+    if (!isValidProjectPhone(contactPhone)) missingFields.push('휴대폰 번호');
+    if (!bankName) missingFields.push('은행');
+    if (!accountNumber) missingFields.push('계좌번호');
+    if (!accountHolder) missingFields.push('예금주');
+
+    if (missingFields.length > 0) {
+      throw new Error(`양조장 정보에서 ${missingFields.join(', ')}을(를) 확인해주세요.`);
+    }
+
+    return {
+      breweryName,
+      representativeName,
+      businessRegistrationNumber,
+      businessAddress,
+      contactEmail,
+      contactPhone,
+      bankName,
+      accountNumber,
+      accountHolder,
+    };
   };
 
   const getDraftId = (draft: any) => {
@@ -1013,7 +1043,6 @@ export default function BreweryProjectCreateScreen() {
       totalQuantity: Number(fundingInfo.bottleQuantity),
       fundingStartDate: fundingInfo.startDate,
       fundingPeriodDays: Number(fundingInfo.duration),
-      fundingEndDate: endDateText,
       expectedDeliveryDate: fundingInfo.expectedDeliveryDate,
     });
     await saveFundingLegalInfo(draftId, {
@@ -1028,11 +1057,11 @@ export default function BreweryProjectCreateScreen() {
         })),
     });
     await saveFundingTasteProfile(draftId, {
-      sweetness: toTasteScale(tasteProfile.sweetness),
-      acidity: toTasteScale(tasteProfile.acidity),
-      body: toTasteScale(tasteProfile.body),
-      carbonation: toTasteScale(tasteProfile.carbonation),
-      alcoholIntensity: getAlcoholIntensity(),
+      sweetness: tasteProfile.sweetness,
+      acidity: tasteProfile.acidity,
+      body: tasteProfile.body,
+      carbonation: tasteProfile.carbonation,
+      alcoholIntensity: tasteProfile.aroma,
       flavorNotes: getReadyTags(),
     });
     await saveFundingPlan(draftId, {
@@ -1040,17 +1069,7 @@ export default function BreweryProjectCreateScreen() {
       budgetPlan: getBudgetPlanForApi(),
       schedulePlan: getSchedulePlanForApi(),
     });
-    await saveFundingBreweryInfo(draftId, {
-      breweryName: creatorInfo.name.trim(),
-      representativeName: taxInfo.ceoName.trim(),
-      businessRegistrationNumber: formatBusinessRegistrationNumber(taxInfo.businessNumber),
-      businessAddress: taxInfo.address.trim(),
-      contactEmail: taxInfo.email.trim(),
-      contactPhone: creatorInfo.phone.trim(),
-      bankName: creatorInfo.accountBank.trim(),
-      accountNumber: creatorInfo.accountNumber.trim(),
-      accountHolder: taxInfo.ceoName.trim() || creatorInfo.name.trim(),
-    });
+    await saveFundingBreweryInfo(draftId, getBreweryInfoForApi());
     await saveFundingNotices(draftId, {
       refundPolicy: trustInfo.projectPolicy.trim(),
       exchangePolicy: trustInfo.projectPolicy.trim(),
@@ -1988,7 +2007,8 @@ export default function BreweryProjectCreateScreen() {
             placeholder="펀딩 기간을 입력하세요"
             keyboardType="number-pad"
             suffix="일"
-            helper="1일부터 365일까지 입력 가능합니다."
+            helper={durationWarning || '1일부터 365일까지 입력 가능합니다.'}
+            warning={Boolean(durationWarning)}
           />
           <View style={styles.formGroup}>
             <Text style={styles.label}>펀딩 종료일</Text>
@@ -2010,7 +2030,7 @@ export default function BreweryProjectCreateScreen() {
             onOpenCalendar={() => setDatePickerTarget('expectedDeliveryDate')}
             placeholder="YYYY-MM-DD"
             keyboardType="numbers-and-punctuation"
-            helper={deliveryDateWarning || '펀딩 종료일로부터 최소 30일 이후 날짜를 입력해주세요.'}
+            helper={deliveryDateWarning || '펀딩 종료일 이후 날짜를 입력해주세요.'}
             warning={Boolean(deliveryDateWarning)}
           />
           <View style={styles.summaryBox}>

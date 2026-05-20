@@ -127,6 +127,8 @@ const DEFAULT_PROJECT_SCHEDULE: NonNullable<FundingProject['schedule']> = [];
 const DEFAULT_PROJECT_POLICY_TEXT = '';
 const DEFAULT_EXPECTED_DIFFICULTIES_TEXT = '';
 const QNA_LOCAL_ID_OFFSET = 1_000_000_000;
+const JOURNAL_LOCAL_COMMENT_ID_OFFSET = 2_000_000_000;
+const JOURNAL_LOCAL_REPLY_ID_OFFSET = 3_000_000_000;
 
 function getSupportOptionLimit(option: FundingSupportOption | null | undefined) {
   const limits = [option?.maxPerUser, option?.remainingStock, option?.stock]
@@ -225,14 +227,31 @@ function getUniqueQnaCommentId(serverQuestionId: number | undefined, usedIds: Se
   return nextId;
 }
 
+function getUniqueLocalQnaCommentId(usedIds: Set<number>, index: number) {
+  return getUniqueQnaCommentId(undefined, usedIds, index);
+}
+
+function getUniqueLocalId(usedIds: Set<number>, offset: number) {
+  let nextId = offset + (Date.now() % 1_000_000_000);
+  while (usedIds.has(nextId)) {
+    nextId += 1;
+  }
+  return nextId;
+}
+
 function withUniqueQnaCommentIds(comments: FundingQuestionComment[]) {
   const usedIds = new Set<number>();
   return comments.map((comment, index) => {
     const serverQuestionId = comment.serverQuestionId || (comment.id < QNA_LOCAL_ID_OFFSET ? comment.id : undefined);
-    const id = getUniqueQnaCommentId(serverQuestionId, usedIds, index + 1);
+    const canKeepLocalId = comment.id >= QNA_LOCAL_ID_OFFSET && !usedIds.has(comment.id);
+    const id = canKeepLocalId ? comment.id : getUniqueQnaCommentId(serverQuestionId, usedIds, index + 1);
     usedIds.add(id);
     return { ...comment, id, serverQuestionId };
   });
+}
+
+function getQnaReplyLikeKey(commentId: number, replyId: number) {
+  return commentId * 10000 + replyId;
 }
 
 function getQnaCommentRenderKey(comment: FundingQuestionComment, index: number) {
@@ -795,8 +814,9 @@ export default function FundingDetailScreen() {
       });
       const serverQuestionId = response.questionId > 0 ? response.questionId : undefined;
       const usedCommentIds = new Set(comments.map((comment) => comment.id));
+      const localCommentId = getUniqueLocalQnaCommentId(usedCommentIds, comments.length + 1);
       const comment: FundingQuestionComment = {
-        id: getUniqueQnaCommentId(serverQuestionId, usedCommentIds, comments.length + 1),
+        id: localCommentId,
         serverQuestionId,
         userName: user?.name || "나",
         content,
@@ -806,6 +826,12 @@ export default function FundingDetailScreen() {
         replies: [],
       };
       setComments((prev) => withUniqueQnaCommentIds([comment, ...prev]));
+      setLikedComments((prev) => {
+        if (!prev.has(localCommentId)) return prev;
+        const next = new Set(prev);
+        next.delete(localCommentId);
+        return next;
+      });
       setNewComment("");
     } catch (error) {
       setFeedbackModal({
@@ -826,8 +852,10 @@ export default function FundingDetailScreen() {
     const serverQuestionId = targetComment?.serverQuestionId || targetComment?.id || commentId;
     try {
       const response = await createFundingReply(project.id, serverQuestionId, { content });
+      const usedReplyIds = new Set(comments.flatMap((comment) => comment.replies.map((reply) => reply.id)));
+      const localReplyId = getUniqueLocalId(usedReplyIds, QNA_LOCAL_ID_OFFSET);
       const newReply = {
-        id: response.replyId,
+        id: response.replyId > 0 && !usedReplyIds.has(response.replyId) ? response.replyId : localReplyId,
         userName: user?.name || "나",
         content,
         date: new Date().toLocaleDateString("ko-KR"),
@@ -835,6 +863,13 @@ export default function FundingDetailScreen() {
         isBrewery: user?.type === "brewery",
       };
       setComments((prev) => prev.map(c => c.id === commentId ? { ...c, replies: [...c.replies, newReply] } : c));
+      const replyLikeKey = getQnaReplyLikeKey(commentId, newReply.id);
+      setLikedReplies((prev) => {
+        if (!prev.has(replyLikeKey)) return prev;
+        const next = new Set(prev);
+        next.delete(replyLikeKey);
+        return next;
+      });
       setReplyContent("");
       setReplyingTo(null);
       setExpandedComments(new Set([...expandedComments, commentId]));
@@ -852,16 +887,18 @@ export default function FundingDetailScreen() {
       showLoginRequired('펀딩 Q&A 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    const isAlreadyLiked = Boolean(targetComment && likedComments.has(commentId) && (targetComment.likes || 0) > 0);
     const newLiked = new Set(likedComments);
     let diff = 0;
-    if (newLiked.has(commentId)) {
+    if (isAlreadyLiked) {
       newLiked.delete(commentId);
       diff = -1;
     } else {
       newLiked.add(commentId);
       diff = 1;
     }
-    setComments(comments.map(c => c.id === commentId ? { ...c, likes: c.likes + diff } : c));
+    setComments(comments.map(c => c.id === commentId ? { ...c, likes: Math.max(0, (c.likes || 0) + diff) } : c));
     setLikedComments(newLiked);
   };
 
@@ -870,10 +907,12 @@ export default function FundingDetailScreen() {
       showLoginRequired('펀딩 Q&A 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
-    const uniqueId = commentId * 10000 + replyId;
+    const uniqueId = getQnaReplyLikeKey(commentId, replyId);
+    const targetReply = comments.find((comment) => comment.id === commentId)?.replies.find((reply) => reply.id === replyId);
+    const isAlreadyLiked = Boolean(targetReply && likedReplies.has(uniqueId) && (targetReply.likes || 0) > 0);
     const newLiked = new Set(likedReplies);
     let diff = 0;
-    if (newLiked.has(uniqueId)) {
+    if (isAlreadyLiked) {
       newLiked.delete(uniqueId);
       diff = -1;
     } else {
@@ -882,7 +921,7 @@ export default function FundingDetailScreen() {
     }
     setComments(comments.map(c => c.id === commentId ? {
       ...c,
-      replies: c.replies.map(r => r.id === replyId ? { ...r, likes: r.likes + diff } : r)
+      replies: c.replies.map(r => r.id === replyId ? { ...r, likes: Math.max(0, (r.likes || 0) + diff) } : r)
     } : c));
     setLikedReplies(newLiked);
   };
@@ -936,7 +975,8 @@ export default function FundingDetailScreen() {
       return;
     }
 
-    const isLiked = likedJournals.has(journalKey);
+    const targetJournal = journals.find((entry) => getJournalMergeKey(entry) === journalKey);
+    const isLiked = Boolean(targetJournal && likedJournals.has(journalKey) && (targetJournal.likes || 0) > 0);
     updateProjectJournals(
       project.id,
       journals.map((entry) =>
@@ -961,9 +1001,10 @@ export default function FundingDetailScreen() {
       return;
     }
 
-    const commentIds = journals.flatMap((entry) => (entry.comments || []).map((comment) => comment.id));
+    const commentIds = new Set(journals.flatMap((entry) => (entry.comments || []).map((comment) => comment.id)));
+    const commentId = getUniqueLocalId(commentIds, JOURNAL_LOCAL_COMMENT_ID_OFFSET);
     const nextComment: JournalComment = {
-      id: Math.max(0, ...commentIds) + 1,
+      id: commentId,
       journalId: targetJournal.id,
       userName: user.name || "사용자",
       isBrewery: user.type === "brewery",
@@ -979,6 +1020,13 @@ export default function FundingDetailScreen() {
         getJournalMergeKey(entry) === journalKey ? { ...entry, comments: [...(entry.comments || []), nextComment] } : entry
       )
     );
+    setLikedJournalComments((prev) => {
+      const likeKey = `${journalKey}:${commentId}`;
+      if (!prev.has(likeKey)) return prev;
+      const next = new Set(prev);
+      next.delete(likeKey);
+      return next;
+    });
     setJournalCommentDrafts((prev) => ({ ...prev, [journalKey]: "" }));
     setExpandedJournalComments((prev) => {
       const next = new Set(prev);
@@ -994,7 +1042,10 @@ export default function FundingDetailScreen() {
     }
 
     const likeKey = `${journalKey}:${commentId}`;
-    const isLiked = likedJournalComments.has(likeKey);
+    const targetComment = journals
+      .find((entry) => getJournalMergeKey(entry) === journalKey)
+      ?.comments.find((comment) => comment.id === commentId);
+    const isLiked = Boolean(targetComment && likedJournalComments.has(likeKey) && (targetComment.likes || 0) > 0);
     updateProjectJournals(
       project.id,
       journals.map((entry) => {
@@ -1037,11 +1088,12 @@ export default function FundingDetailScreen() {
       return;
     }
 
-    const replyIds = journals.flatMap((entry) =>
+    const replyIds = new Set(journals.flatMap((entry) =>
       (entry.comments || []).flatMap((comment) => (comment.replies || []).map((reply) => reply.id))
-    );
+    ));
+    const replyId = getUniqueLocalId(replyIds, JOURNAL_LOCAL_REPLY_ID_OFFSET);
     const nextReply: JournalReply = {
-      id: Math.max(0, ...replyIds) + 1,
+      id: replyId,
       commentId,
       userName: user.name || "사용자",
       isBrewery: user.type === "brewery",
@@ -1062,6 +1114,13 @@ export default function FundingDetailScreen() {
         };
       })
     );
+    setLikedJournalReplies((prev) => {
+      const likeKey = `${journalKey}:${commentId}:${replyId}`;
+      if (!prev.has(likeKey)) return prev;
+      const next = new Set(prev);
+      next.delete(likeKey);
+      return next;
+    });
     setJournalReplyDrafts((prev) => ({ ...prev, [replyKey]: "" }));
     setReplyingToJournalComment(null);
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
@@ -1074,7 +1133,11 @@ export default function FundingDetailScreen() {
     }
 
     const likeKey = `${journalKey}:${commentId}:${replyId}`;
-    const isLiked = likedJournalReplies.has(likeKey);
+    const targetReply = journals
+      .find((entry) => getJournalMergeKey(entry) === journalKey)
+      ?.comments.find((comment) => comment.id === commentId)
+      ?.replies.find((reply) => reply.id === replyId);
+    const isLiked = Boolean(targetReply && likedJournalReplies.has(likeKey) && (targetReply.likes || 0) > 0);
     updateProjectJournals(
       project.id,
       journals.map((entry) => {
@@ -1638,7 +1701,7 @@ export default function FundingDetailScreen() {
                                       const journalKey = getJournalMergeKey(entry);
                                       const entryComments = entry.comments || [];
                                       const commentsOpen = expandedJournalComments.has(journalKey);
-                                      const isJournalLiked = likedJournals.has(journalKey);
+                                      const isJournalLiked = likedJournals.has(journalKey) && (entry.likes || 0) > 0;
                                       return (
                                         <View key={`${stage.id}-${entry.id}-${entryIndex}`} style={styles.journalEntryCard}>
                                           <View style={styles.journalEntryHeader}>
@@ -1704,7 +1767,7 @@ export default function FundingDetailScreen() {
                                                   {entryComments.map((comment) => {
                                                     const commentLikeKey = `${journalKey}:${comment.id}`;
                                                     const replyKey = `${journalKey}:${comment.id}`;
-                                                    const isCommentLiked = likedJournalComments.has(commentLikeKey);
+                                                    const isCommentLiked = likedJournalComments.has(commentLikeKey) && (comment.likes || 0) > 0;
                                                     const commentReplies = comment.replies || [];
                                                     const repliesOpen = expandedJournalReplies.has(replyKey);
                                                     return (
@@ -1746,7 +1809,7 @@ export default function FundingDetailScreen() {
                                                           <View style={styles.journalReplyList}>
                                                             {commentReplies.map((reply) => {
                                                               const replyLikeKey = `${journalKey}:${comment.id}:${reply.id}`;
-                                                              const isReplyLiked = likedJournalReplies.has(replyLikeKey);
+                                                              const isReplyLiked = likedJournalReplies.has(replyLikeKey) && (reply.likes || 0) > 0;
                                                               return (
                                                                 <View key={reply.id} style={styles.journalReplyCard}>
                                                                   <View style={styles.journalCommentMeta}>
@@ -1860,8 +1923,8 @@ export default function FundingDetailScreen() {
 
                            <View style={styles.commentActions}>
                               <TouchableOpacity style={styles.commentAction} onPress={() => toggleCommentLike(c.id)}>
-                                 <ThumbsUp size={16} color={likedComments.has(c.id) ? "#111" : "#9CA3AF"} fill={likedComments.has(c.id) ? "#111" : "transparent"} />
-                                 <Text style={[styles.actionTxt, likedComments.has(c.id) && { color: "#111" }]}>{c.likes}</Text>
+                                 <ThumbsUp size={16} color={likedComments.has(c.id) && (c.likes || 0) > 0 ? "#111" : "#9CA3AF"} fill={likedComments.has(c.id) && (c.likes || 0) > 0 ? "#111" : "transparent"} />
+                                 <Text style={[styles.actionTxt, likedComments.has(c.id) && (c.likes || 0) > 0 && { color: "#111" }]}>{c.likes || 0}</Text>
                               </TouchableOpacity>
                               <TouchableOpacity style={styles.commentAction} onPress={() => handleReplyOpen(c.id)}>
                                  <MessageCircle size={16} color="#9CA3AF" />
@@ -1890,8 +1953,8 @@ export default function FundingDetailScreen() {
                                        </View>
                                        <Text style={styles.commentTxt}>{r.content}</Text>
                                        <TouchableOpacity style={styles.replyLikeBtn} onPress={() => toggleReplyLike(c.id, r.id)}>
-                                          <ThumbsUp size={12} color={likedReplies.has(c.id * 10000 + r.id) ? "#111" : "#9CA3AF"} fill={likedReplies.has(c.id * 10000 + r.id) ? "#111" : "transparent"} />
-                                          <Text style={[styles.replyLikeTxt, likedReplies.has(c.id * 10000 + r.id) && { color: "#111" }]}>{r.likes}</Text>
+                                          <ThumbsUp size={12} color={likedReplies.has(getQnaReplyLikeKey(c.id, r.id)) && (r.likes || 0) > 0 ? "#111" : "#9CA3AF"} fill={likedReplies.has(getQnaReplyLikeKey(c.id, r.id)) && (r.likes || 0) > 0 ? "#111" : "transparent"} />
+                                          <Text style={[styles.replyLikeTxt, likedReplies.has(getQnaReplyLikeKey(c.id, r.id)) && (r.likes || 0) > 0 && { color: "#111" }]}>{r.likes || 0}</Text>
                                        </TouchableOpacity>
                                     </View>
                                  </View>
@@ -2583,7 +2646,7 @@ const styles = StyleSheet.create({
   optionCloseTxt: { fontSize: 24, color: '#6B7280', marginTop: -2 },
   optionBodyScroll: { flexShrink: 1 },
   optionBody: { padding: 20, gap: 16, paddingBottom: 20 },
-  optionFooter: { padding: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', backgroundColor: '#FFF' },
+  optionFooter: { padding: 20, paddingTop: 12, paddingBottom: 30, borderTopWidth: 1, borderTopColor: '#F3F4F6', backgroundColor: '#FFF' },
   optionProjectBox: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   optionProjectImg: { width: 64, height: 64, borderRadius: 12, backgroundColor: '#E5E7EB' },
   optionBrewery: { fontSize: 12, color: '#6B7280', fontWeight: '700', marginBottom: 4 },

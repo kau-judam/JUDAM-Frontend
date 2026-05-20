@@ -11,6 +11,15 @@ type SurveyConvertEnvelope = {
 export type SurveyConvertData = {
   status: string;
   taste_vector: BtiSurveyTasteVector;
+  bti_code?: string;
+  character_name?: string;
+  experience_level?: string;
+  preferred_abv?: string;
+  preferred_body?: string;
+  preferred_fruit?: string;
+  preferred_food_pairing?: string[];
+  preferred_aroma?: string[];
+  taste_profile_summary?: string;
   food_pairing?: string[];
 };
 

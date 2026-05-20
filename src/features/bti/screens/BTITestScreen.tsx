@@ -25,7 +25,7 @@ import {
   buildAnswersWithCustomInputs,
   buildBtiSurveyPayload,
   getBtiTasteAxisValuesFromTasteVector,
-  getSulbtiCodeFromTasteVector,
+  getSulbtiCodeFromSurveyResult,
   resolveSulbtiCode,
 } from '@/features/bti/data';
 
@@ -120,12 +120,12 @@ export default function BTITestScreen() {
       }
       const surveyPayload = buildBtiSurveyPayload(mergedAnswers);
       const conversion = await convertBtiSurvey(surveyPayload, user.id);
-      const resultType = resolveSulbtiCode(getSulbtiCodeFromTasteVector(conversion.taste_vector));
+      const resultType = resolveSulbtiCode(getSulbtiCodeFromSurveyResult(conversion.bti_code, conversion.taste_vector));
       if (!resultType) throw new Error('Invalid sulbti result');
       await updateUser({
         sulbti: resultType,
         sulbtiProfile: getBtiTasteAxisValuesFromTasteVector(conversion.taste_vector),
-        sulbtiFoodPairing: conversion.food_pairing,
+        sulbtiFoodPairing: conversion.food_pairing || conversion.preferred_food_pairing,
       });
       router.replace(`/bti-result/${resultType}` as any);
     } catch (error) {

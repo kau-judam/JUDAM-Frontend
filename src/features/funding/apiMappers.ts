@@ -249,8 +249,8 @@ export function mapFundingReview(projectId: number, item: FundingReviewItem): Fu
 }
 
 export function mergeSupportOption(existing: FundingProject, option: FundingSupportOption): FundingProject {
-  const bottleSize = getVolumeFromDescription(option.description);
-  const alcoholContent = getAlcoholFromDescription(option.description);
+  const bottleSize = formatVolumeSpec(option.volume) || getVolumeFromDescription(option.description);
+  const alcoholContent = formatAlcoholSpec(option.alcohol) || formatAlcoholSpec(option.alcoholPercentage) || getAlcoholFromDescription(option.description);
   return {
     ...existing,
     pricePerBottle: option.price,

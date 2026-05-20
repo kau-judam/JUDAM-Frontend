@@ -18,6 +18,10 @@ type FundingAgreementPayload = {
   isSettlementInfoAgreed: boolean;
   isFeePolicyAgreed: boolean;
   isResponsibilityAgreed: boolean;
+  isLicenseAgreed?: boolean;
+  isIpPolicyAgreed?: boolean;
+  isRecipeLicenseAgreed?: boolean;
+  allRequiredTermsAgreed?: boolean;
 };
 
 type FundingAgreementResponse = {
@@ -184,7 +188,7 @@ type FundingSchedulePayload = {
   totalQuantity: number;
   fundingStartDate: string;
   fundingPeriodDays: number;
-  fundingEndDate: string;
+  fundingEndDate?: string;
   expectedDeliveryDate: string;
 };
 
@@ -206,8 +210,8 @@ type FundingTasteProfilePayload = {
 
 type FundingPlanPayload = {
   introduction: string;
-  budgetPlan: { category: string; amount: number }[];
-  schedulePlan: { step: string; description: string; date: string }[];
+  budgetPlan?: { category: string; amount: number }[] | null;
+  schedulePlan?: { step: string; description: string; date: string }[] | null;
 };
 
 type FundingBreweryInfoPayload = {
@@ -659,6 +663,9 @@ export type FundingSupportOption = {
   name: string;
   price: number;
   description: string;
+  volume?: string | number;
+  alcohol?: string | number;
+  alcoholPercentage?: string | number;
   stock?: number;
   remainingStock?: number;
   maxPerUser?: number;
@@ -1300,11 +1307,65 @@ export function isFundingApiMissingEndpointError(error: unknown) {
 }
 
 export async function saveFundingAgreement(payload: FundingAgreementPayload) {
-  return requestFundingJson<FundingAgreementResponse>('/api/fundings/agreements', {
-    method: 'POST',
-    auth: true,
-    body: JSON.stringify({ ...payload, breweryId: normalizeBreweryId(payload.breweryId) }),
-  });
+  const breweryId = normalizeBreweryId(payload.breweryId);
+  const baseBody = {
+    breweryId,
+    isAdultConfirmed: payload.isAdultConfirmed,
+    isContactInfoAgreed: payload.isContactInfoAgreed,
+    isSettlementInfoAgreed: payload.isSettlementInfoAgreed,
+    isFeePolicyAgreed: payload.isFeePolicyAgreed,
+    isResponsibilityAgreed: payload.isResponsibilityAgreed,
+  };
+  const requestBodies: Record<string, unknown>[] = [
+    baseBody,
+    {
+      ...baseBody,
+      isLicenseAgreed: payload.isLicenseAgreed,
+      isIpPolicyAgreed: payload.isIpPolicyAgreed,
+      isRecipeLicenseAgreed: payload.isRecipeLicenseAgreed,
+      allRequiredTermsAgreed: payload.allRequiredTermsAgreed,
+    },
+    {
+      brewery_id: breweryId,
+      is_adult_confirmed: payload.isAdultConfirmed,
+      is_contact_info_agreed: payload.isContactInfoAgreed,
+      is_settlement_info_agreed: payload.isSettlementInfoAgreed,
+      is_fee_policy_agreed: payload.isFeePolicyAgreed,
+      is_responsibility_agreed: payload.isResponsibilityAgreed,
+      is_license_agreed: payload.isLicenseAgreed,
+      is_ip_policy_agreed: payload.isIpPolicyAgreed,
+      is_recipe_license_agreed: payload.isRecipeLicenseAgreed,
+      all_required_terms_agreed: payload.allRequiredTermsAgreed,
+    },
+    {
+      breweryId,
+      agreedTerms: {
+        age: payload.isAdultConfirmed,
+        contact: payload.isContactInfoAgreed,
+        settlement: payload.isSettlementInfoAgreed,
+        fee: payload.isFeePolicyAgreed,
+        responsibility: payload.isResponsibilityAgreed,
+        license: payload.isLicenseAgreed,
+        ip: payload.isIpPolicyAgreed,
+      },
+      agreedTermIds: ['age', 'contact', 'settlement', 'fee', 'responsibility', 'license', 'ip'],
+      allAgreed: payload.allRequiredTermsAgreed,
+    },
+  ];
+
+  let lastError: unknown = null;
+  for (const body of requestBodies) {
+    try {
+      return await requestFundingJson<FundingAgreementResponse>('/api/fundings/agreements', {
+        method: 'POST',
+        auth: true,
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 export async function createFundingDraft(payload: FundingDraftPayload) {
@@ -1409,12 +1470,60 @@ export async function saveFundingPlan(draftId: number, payload: FundingPlanPaylo
 }
 
 export async function saveFundingBreweryInfo(draftId: number, payload: FundingBreweryInfoPayload) {
-  const result = await requestFundingJson<unknown>(`/api/fundings/drafts/${draftId}/brewery-info`, {
-    method: 'PATCH',
-    auth: true,
-    body: JSON.stringify(payload),
-  });
-  return normalizeFundingSectionResponse(result);
+  const digitsOnly = (value: string) => value.replace(/\D/g, '');
+  const compactPayload = {
+    ...payload,
+    contactPhone: digitsOnly(payload.contactPhone) || payload.contactPhone,
+    accountNumber: digitsOnly(payload.accountNumber) || payload.accountNumber,
+  };
+  const requestBodies: Record<string, unknown>[] = [
+    payload,
+    compactPayload,
+    {
+      brewery_name: payload.breweryName,
+      representative_name: payload.representativeName,
+      business_registration_number: payload.businessRegistrationNumber,
+      business_address: payload.businessAddress,
+      contact_email: payload.contactEmail,
+      contact_phone: payload.contactPhone,
+      bank_name: payload.bankName,
+      account_number: payload.accountNumber,
+      account_holder: payload.accountHolder,
+    },
+    {
+      breweryName: payload.breweryName,
+      creatorName: payload.breweryName,
+      representativeName: payload.representativeName,
+      ceoName: payload.representativeName,
+      businessRegistrationNumber: payload.businessRegistrationNumber,
+      businessNumber: payload.businessRegistrationNumber,
+      businessAddress: payload.businessAddress,
+      address: payload.businessAddress,
+      contactEmail: payload.contactEmail,
+      email: payload.contactEmail,
+      contactPhone: payload.contactPhone,
+      phone: payload.contactPhone,
+      bankName: payload.bankName,
+      bank: payload.bankName,
+      accountNumber: payload.accountNumber,
+      accountHolder: payload.accountHolder,
+    },
+  ];
+
+  let lastError: unknown = null;
+  for (const body of requestBodies) {
+    try {
+      const result = await requestFundingJson<unknown>(`/api/fundings/drafts/${draftId}/brewery-info`, {
+        method: 'PATCH',
+        auth: true,
+        body: JSON.stringify(body),
+      });
+      return normalizeFundingSectionResponse(result);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 export async function saveFundingNotices(draftId: number, payload: FundingNoticesPayload) {

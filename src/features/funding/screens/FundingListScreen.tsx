@@ -21,7 +21,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  Sparkles,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp } from 'react-native-reanimated';
@@ -311,7 +310,6 @@ export default function FundingListScreen() {
                     onPress={() => handleSortPress(option)}
                     activeOpacity={0.75}
                   >
-                    {option === "추천순" && <Sparkles size={13} color={selected ? "#FFF" : "#6B7280"} />}
                     <Text style={[styles.sortChipTxt, selected && styles.sortChipTxtActive]}>{option}</Text>
                   </TouchableOpacity>
                 );

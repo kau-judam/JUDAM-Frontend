@@ -13,7 +13,10 @@ export type BtiAnswers = Record<number, BtiAnswer>;
 type BtiTypeInput = string | string[] | null | undefined;
 export type BtiTasteAxisKey = 'sweetness' | 'body' | 'carbonation' | 'tradition' | 'alcohol';
 export type BtiTasteAxisValues = Partial<Record<BtiTasteAxisKey, number>>;
-export type BtiSurveyPayload = Record<`q${number}`, number | number[]>;
+export type BtiSurveyPayload = Record<`q${number}`, number | number[]> & {
+  q24_custom?: string;
+  q25_custom?: string;
+};
 
 export type BtiSurveyTasteVector = {
   sweetness: number;
@@ -309,22 +312,29 @@ function getRequiredBtiAnswer(answers: BtiAnswers, question: BtiQuestion) {
   throw new Error(`Missing answer for q${question.id}`);
 }
 
-function mapMultipleAnswerToApiValues(question: BtiQuestion, answer: string[]) {
-  const selectedValues = answer
+function getMultipleAnswerParts(question: BtiQuestion, answer: string[]) {
+  const values = answer
     .map((item) => question.options.indexOf(item))
     .filter((index) => index >= 0)
     .map((index) => index + 1);
-  const hasCustomAnswer = answer.some((item) => !question.options.includes(item));
-  const values = hasCustomAnswer ? [...selectedValues, question.options.length + 1] : selectedValues;
-  return Array.from(new Set(values));
+  const customValues = answer.filter((item) => !question.options.includes(item));
+  return {
+    values: Array.from(new Set(values)),
+    customText: customValues.join(', '),
+  };
 }
 
 export function buildBtiSurveyPayload(answers: BtiAnswers): BtiSurveyPayload {
   return BTI_QUESTIONS.reduce<Partial<BtiSurveyPayload>>((payload, question) => {
     const answer = getRequiredBtiAnswer(answers, question);
-    payload[`q${question.id}`] = Array.isArray(answer)
-      ? mapMultipleAnswerToApiValues(question, answer)
-      : answer;
+    if (Array.isArray(answer)) {
+      const { values, customText } = getMultipleAnswerParts(question, answer);
+      payload[`q${question.id}`] = values;
+      if (customText && question.id === 24) payload.q24_custom = customText;
+      if (customText && question.id === 25) payload.q25_custom = customText;
+      return payload;
+    }
+    payload[`q${question.id}`] = answer;
     return payload;
   }, {}) as BtiSurveyPayload;
 }
@@ -353,6 +363,17 @@ export function getSulbtiCodeFromTasteVector(tasteVector: BtiSurveyTasteVector) 
   ].join('');
   const dosageSuffix = alcohol >= 5 ? 'B' : 'M';
   return `${baseCode}-${dosageSuffix}`;
+}
+
+export function getSulbtiCodeFromSurveyResult(btiCode: string | undefined, tasteVector: BtiSurveyTasteVector) {
+  const resolvedCode = resolveSulbtiCode(btiCode);
+  if (resolvedCode?.includes('-')) return resolvedCode;
+  const baseCode = resolveBtiType(resolvedCode || btiCode);
+  if (baseCode) {
+    const dosageSuffix = normalizeTasteVectorValue(tasteVector.alcohol) >= 5 ? 'B' : 'M';
+    return `${baseCode}-${dosageSuffix}`;
+  }
+  return getSulbtiCodeFromTasteVector(tasteVector);
 }
 
 export function getBtiTasteAxisValuesFromTasteVector(tasteVector: BtiSurveyTasteVector): BtiTasteAxisValues {

@@ -114,10 +114,20 @@ export default function BreweryProjectTermsScreen() {
         isSettlementInfoAgreed: agreedTerms.includes('settlement'),
         isFeePolicyAgreed: agreedTerms.includes('fee'),
         isResponsibilityAgreed: agreedTerms.includes('responsibility'),
+        isLicenseAgreed: agreedTerms.includes('license'),
+        isIpPolicyAgreed: agreedTerms.includes('ip'),
+        isRecipeLicenseAgreed: agreedTerms.includes('ip'),
+        allRequiredTermsAgreed: allTermIds.every((termId) => agreedTerms.includes(termId)),
       });
       router.push(getProjectCreateRoute() as any);
     } catch (error) {
-      Alert.alert('약관 동의 저장 실패', getFundingApiErrorMessage(error, '약관 동의 저장 중 문제가 발생했습니다.'));
+      const message = getFundingApiErrorMessage(error, '약관 동의 저장 중 문제가 발생했습니다.');
+      if (message.includes('필수 약관') && allTermIds.every((termId) => agreedTerms.includes(termId))) {
+        console.warn('Funding agreement API rejected a locally complete agreement:', message);
+        router.push(getProjectCreateRoute() as any);
+        return;
+      }
+      Alert.alert('약관 동의 저장 실패', message);
     } finally {
       setIsSubmitting(false);
     }

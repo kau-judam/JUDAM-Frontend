@@ -17,8 +17,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCommunity } from '@/contexts/CommunityContext';
+import {
+  createCommunityPost,
+  type CommunityBoardType,
+  updateCommunityPost,
+} from '@/features/community/api';
 
 const BOARDS = ['자유', '정보'] as const;
+const BOARD_TYPE_BY_INDEX: CommunityBoardType[] = ['FREE', 'INFO'];
 
 type Board = (typeof BOARDS)[number];
 type NoticeState = {
@@ -34,9 +40,8 @@ export default function CommunityCreateScreen() {
   const { posts, addPost, updatePost } = useCommunity();
   const rawEditPostId = Array.isArray(editPostId) ? editPostId[0] : editPostId;
   const editingPost = posts.find((post) => post.id === Number(rawEditPostId));
-  const initialBoard = editingPost?.tags?.[0] && BOARDS.includes(editingPost.tags[0] as Board)
-    ? (editingPost.tags[0] as Board)
-    : BOARDS[0];
+  const editingBoardType = editingPost?.tags?.[0] === 'INFO' ? 'INFO' : 'FREE';
+  const initialBoard = editingBoardType === 'INFO' ? BOARDS[1] : BOARDS[0];
   const [selectedBoard, setSelectedBoard] = useState<Board>(initialBoard);
   const [title, setTitle] = useState(editingPost?.title || '');
   const [content, setContent] = useState(editingPost?.content || '');
@@ -100,42 +105,84 @@ export default function CommunityCreateScreen() {
     setImageUris((prev) => prev.filter((item) => item !== uri));
   };
 
-  const handleSubmit = () => {
+  const getSelectedBoardType = (): CommunityBoardType => {
+    const selectedIndex = BOARDS.findIndex((board) => board === selectedBoard);
+    return BOARD_TYPE_BY_INDEX[selectedIndex] ?? 'FREE';
+  };
+
+  const handleSubmit = async () => {
     if (!title.trim() || !content.trim()) {
-      showNotice('제목과 내용을 모두 입력해주세요.');
+      showNotice('제목과 내용을 모두 입력해 주세요.');
       return;
     }
 
+    const boardType = getSelectedBoardType();
+    const trimmedTitle = title.trim();
+    const trimmedContent = content.trim();
+
     const postPayload = {
-      author: user?.name || '나',
+      author: user?.name || '사용자',
       authorType: user?.type || 'user',
-      avatar: editingPost?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop',
-      title: title.trim(),
-      content: content.trim(),
+      avatar: editingPost?.avatar || user?.profileImage || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop',
+      title: trimmedTitle,
+      content: trimmedContent,
       likes: editingPost?.likes || 0,
       comments: editingPost?.comments || 0,
       timestamp: editingPost?.timestamp || '방금',
       liked: editingPost?.liked || false,
-      category: selectedBoard === '자유' ? '자유게시판' : '정보게시판',
+      category: boardType === 'FREE' ? '자유게시판' : '정보게시판',
       image: imageUris[0],
       imageUrls: imageUris,
-      tags: [selectedBoard],
+      tags: [boardType],
+      authorId: user?.id,
+      isMine: true,
     };
 
     if (editingPost) {
+      if (imageUris.some((uri) => /^https?:\/\//i.test(uri))) {
+        showNotice(
+          '이미지가 있는 게시글 수정은 아직 연결할 수 없습니다.',
+          '현재 수정 API는 파일만 받을 수 있어서 기존 서버 이미지를 유지한 채 제목/내용만 수정하는 방식이 필요합니다.'
+        );
+        return;
+      }
+      try {
+        await updateCommunityPost(editingPost.id, {
+          title: trimmedTitle,
+          content: trimmedContent,
+          images: imageUris,
+        });
+      } catch (error) {
+        console.warn('Failed to update community post', error);
+        showNotice('게시글 수정에 실패했습니다.', '잠시 후 다시 시도해 주세요.');
+        return;
+      }
       updatePost(editingPost.id, postPayload);
       showNotice('게시글이 수정되었습니다.', undefined, () => router.replace(`/community/${editingPost.id}` as any));
       return;
     }
 
-    addPost({
-      id: Date.now(),
-      ...postPayload,
-    });
+    try {
+      const response = await createCommunityPost({
+        title: trimmedTitle,
+        content: trimmedContent,
+        boardType,
+        images: imageUris,
+      });
+      addPost({
+        id: response.post.post_id,
+        ...postPayload,
+        image: response.post.image_urls?.[0] || imageUris[0],
+        imageUrls: response.post.image_urls || imageUris,
+      });
+    } catch (error) {
+      console.warn('Failed to create community post', error);
+      showNotice('게시글 등록에 실패했습니다.', '잠시 후 다시 시도해 주세요.');
+      return;
+    }
 
     showNotice('게시글이 등록되었습니다!', undefined, () => router.replace('/community' as any));
   };
-
   return (
     <View style={styles.container}>
       <View style={[styles.header, { height: insets.top + 56, paddingTop: insets.top }]}>

@@ -20,10 +20,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCommunity } from '@/contexts/CommunityContext';
 import {
   createCommunityComment,
+  createCommunityCommentReply,
   deleteCommunityComment,
   deleteCommunityCommentLike,
   deleteCommunityPost,
   deleteCommunityPostLike,
+  fetchCommunityCommentReplies,
   fetchCommunityComments,
   fetchCommunityPost,
   registerCommunityCommentLike,
@@ -84,6 +86,7 @@ interface Comment {
   liked: boolean;
   userId?: string;
   isMine?: boolean;
+  replyCount?: number;
   replies?: CommentReply[];
 }
 
@@ -277,6 +280,7 @@ export default function CommunityDetailScreen() {
           response.comments.map((comment) => ({
             ...comment,
             replies: prev.find((item) => item.id === comment.id)?.replies || [],
+            replyCount: comment.replyCount,
           }))
         );
       })
@@ -294,6 +298,22 @@ export default function CommunityDetailScreen() {
   const hasMoreComments = comments.length > INITIAL_COMMENT_COUNT;
   const getCommentReplies = (comment: Comment) => comment.replies || [];
   const postImageUrls = post.imageUrls ?? (post.image ? [post.image] : []);
+
+  const loadCommentReplies = async (commentId: number) => {
+    if (apiPostLoadFailed || post.id > 1000000000000) return;
+    try {
+      const response = await fetchCommunityCommentReplies(post.id, commentId, 0, 20);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId
+            ? { ...comment, replies: response.replies, replyCount: response.totalElements }
+            : comment
+        )
+      );
+    } catch (error) {
+      console.warn('Failed to load community comment replies', error);
+    }
+  };
 
   const handleLike = async () => {
     if (!user) {
@@ -467,20 +487,24 @@ export default function CommunityDetailScreen() {
     setCommentMenuTarget(null);
   };
 
-  const handleReplyOpen = (commentId: number) => {
+  const handleReplyOpen = async (commentId: number) => {
     if (!user) {
-      showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
+      showLoginRequired('답글 작성은 로그인이 필요합니다.');
       return;
     }
+    const targetComment = comments.find((comment) => comment.id === commentId);
     setReplyInput('');
     setExpandedComments((prev) => new Set([...prev, commentId]));
     setReplyingTo((prev) => (prev === commentId ? null : commentId));
+    if (!targetComment?.replies?.length && (targetComment?.replyCount ?? 0) > 0) {
+      await loadCommentReplies(commentId);
+    }
   };
 
-  const handleReplySubmit = (commentId: number) => {
+  const handleReplySubmit = async (commentId: number) => {
     if (!replyInput.trim()) return;
     if (!user) {
-      showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
+      showLoginRequired('답글 작성은 로그인이 필요합니다.');
       return;
     }
     const newReply: CommentReply = {
@@ -489,15 +513,35 @@ export default function CommunityDetailScreen() {
       authorType: user.type || 'user',
       avatar: person3,
       content: replyInput.trim(),
-      timestamp: '방금 전',
+      timestamp: '방금',
       likes: 0,
       liked: false,
       userId: user.id,
       isMine: true,
     };
+
+    if (!apiPostLoadFailed && post.id <= 1000000000000) {
+      try {
+        const response = await createCommunityCommentReply(post.id, commentId, replyInput.trim());
+        newReply.id = response.reply.comment_id;
+        newReply.author = response.reply.nickname || user.name;
+        newReply.content = response.reply.content;
+        newReply.userId = String(response.reply.user_id);
+      } catch (error) {
+        console.warn('Failed to create community comment reply', error);
+        return;
+      }
+    }
+
     setComments((prev) =>
       prev.map((comment) =>
-        comment.id === commentId ? { ...comment, replies: [...getCommentReplies(comment), newReply] } : comment
+        comment.id === commentId
+          ? {
+              ...comment,
+              replies: [...getCommentReplies(comment), newReply],
+              replyCount: Math.max(comment.replyCount ?? 0, getCommentReplies(comment).length + 1),
+            }
+          : comment
       )
     );
     setReplyInput('');
@@ -505,11 +549,16 @@ export default function CommunityDetailScreen() {
     setExpandedComments((prev) => new Set([...prev, commentId]));
   };
 
-  const handleReplyLike = (commentId: number, replyId: number) => {
+  const handleReplyLike = async (commentId: number, replyId: number) => {
     if (!user) {
-      showLoginRequired('답글 좋아요는 로그인 후 이용할 수 있어요.');
+      showLoginRequired('답글 좋아요는 로그인이 필요합니다.');
       return;
     }
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    const targetReply = targetComment?.replies?.find((reply) => reply.id === replyId);
+    if (!targetReply) return;
+    const nextLiked = !targetReply.liked;
+
     setComments((prev) =>
       prev.map((comment) =>
         comment.id === commentId
@@ -517,22 +566,59 @@ export default function CommunityDetailScreen() {
               ...comment,
               replies: getCommentReplies(comment).map((reply) =>
                 reply.id === replyId
-                  ? { ...reply, liked: !reply.liked, likes: reply.liked ? reply.likes - 1 : reply.likes + 1 }
+                  ? { ...reply, liked: nextLiked, likes: Math.max(0, reply.likes + (nextLiked ? 1 : -1)) }
                   : reply
               ),
             }
           : comment
       )
     );
+
+    if (apiPostLoadFailed || post.id > 1000000000000) return;
+
+    try {
+      const response = nextLiked
+        ? await registerCommunityCommentLike(post.id, replyId)
+        : await deleteCommunityCommentLike(post.id, replyId);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                replies: getCommentReplies(comment).map((reply) =>
+                  reply.id === replyId ? { ...reply, liked: nextLiked, likes: response.data.like_count } : reply
+                ),
+              }
+            : comment
+        )
+      );
+    } catch (error) {
+      console.warn('Failed to update community reply like', error);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                replies: getCommentReplies(comment).map((reply) => (reply.id === replyId ? targetReply : reply)),
+              }
+            : comment
+        )
+      );
+    }
   };
 
-  const toggleExpandComment = (commentId: number) => {
+  const toggleExpandComment = async (commentId: number) => {
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    const willOpen = !expandedComments.has(commentId);
     setExpandedComments((prev) => {
       const next = new Set(prev);
       if (next.has(commentId)) next.delete(commentId);
       else next.add(commentId);
       return next;
     });
+    if (willOpen && !targetComment?.replies?.length && (targetComment?.replyCount ?? 0) > 0) {
+      await loadCommentReplies(commentId);
+    }
   };
 
   return (
@@ -656,10 +742,10 @@ export default function CommunityDetailScreen() {
                     <MessageCircle size={15} color="#9CA3AF" />
                     <Text style={styles.commentAction}>답글</Text>
                   </TouchableOpacity>
-                  {getCommentReplies(comment).length > 0 && (
+                  {(getCommentReplies(comment).length > 0 || (comment.replyCount ?? 0) > 0) && (
                     <TouchableOpacity style={styles.commentActionButton} onPress={() => toggleExpandComment(comment.id)}>
                       {expandedComments.has(comment.id) ? <ChevronUp size={15} color="#9CA3AF" /> : <ChevronDown size={15} color="#9CA3AF" />}
-                      <Text style={styles.commentAction}>{getCommentReplies(comment).length}개 답글</Text>
+                      <Text style={styles.commentAction}>{Math.max(getCommentReplies(comment).length, comment.replyCount ?? 0)}개 답글</Text>
                     </TouchableOpacity>
                   )}
                 </View>

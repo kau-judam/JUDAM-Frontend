@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   Modal,
   ScrollView,
   StyleSheet,
@@ -13,6 +12,7 @@ import { AlertCircle, Check, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import { getFundingApiErrorMessage, saveFundingAgreement } from '@/features/funding/api';
 
 interface TermItem {
@@ -20,6 +20,13 @@ interface TermItem {
   title: string;
   detail: string;
 }
+
+type TermsAlert = {
+  title: string;
+  body: string;
+  tone?: FundingAlertTone;
+  buttons?: FundingAlertButton[];
+};
 
 const termsData: TermItem[] = [
   {
@@ -78,6 +85,7 @@ export default function BreweryProjectTermsScreen() {
   const [agreedTerms, setAgreedTerms] = useState<string[]>([]);
   const [modalTerm, setModalTerm] = useState<TermItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [alertModal, setAlertModal] = useState<TermsAlert | null>(null);
 
   const allTermIds = termsData.map((term) => term.id);
   const allAgreed = agreedTerms.length === allTermIds.length;
@@ -127,7 +135,11 @@ export default function BreweryProjectTermsScreen() {
         router.push(getProjectCreateRoute() as any);
         return;
       }
-      Alert.alert('약관 동의 저장 실패', message);
+      setAlertModal({
+        title: '약관 동의 저장 실패',
+        body: message,
+        tone: 'warning',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -300,6 +312,15 @@ export default function BreweryProjectTermsScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <FundingAlertModal
+        visible={Boolean(alertModal)}
+        title={alertModal?.title || ''}
+        body={alertModal?.body || ''}
+        tone={alertModal?.tone}
+        buttons={alertModal?.buttons}
+        onClose={() => setAlertModal(null)}
+      />
     </View>
   );
 }

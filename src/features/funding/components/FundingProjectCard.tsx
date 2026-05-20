@@ -31,7 +31,7 @@ function FundingProjectCard({
   onPress,
   onFavoritePress,
 }: FundingProjectCardProps) {
-  const progressPercentage = Math.min((project.currentAmount / project.goalAmount) * 100, 100);
+  const progressPercentage = project.goalAmount > 0 ? Math.min((project.currentAmount / project.goalAmount) * 100, 100) : 0;
   const completed = isCompletedFundingStatus(project.status);
   const showMatch = showTasteMatch && Boolean(tasteProfile);
 

@@ -8,7 +8,6 @@ import {
   Dimensions,
   Image,
   TextInput,
-  Alert,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -29,6 +28,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
+import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import { getFundingList, getFundingApiErrorMessage } from '@/features/funding/api';
 import { mergeFundingListItem } from '@/features/funding/apiMappers';
@@ -44,10 +44,15 @@ import {
   type FundingSortOption,
   type FundingStatusFilter,
 } from '@/features/funding/recommendation';
-import { showLoginRequired } from '@/utils/authPrompt';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const FUNDING_ITEMS_PER_PAGE = 5;
+type FundingListAlert = {
+  title: string;
+  body: string;
+  tone?: FundingAlertTone;
+  buttons?: FundingAlertButton[];
+};
 
 function getFundingApiStatus(status: FundingStatusFilter) {
   if (status === "진행중인 프로젝트") return "ONGOING";
@@ -75,11 +80,23 @@ export default function FundingListScreen() {
   const [selectedSort, setSelectedSort] = useState<FundingSortOption>("인기순");
   const [showDropdown, setShowDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [alertModal, setAlertModal] = useState<FundingListAlert | null>(null);
 
   const isBreweryAccount = user?.type === "brewery";
   const isVerifiedBrewery = isBreweryAccount && user?.isBreweryVerified;
   const userTasteProfile = useMemo(() => getTasteProfileFromSulbti(user?.sulbti), [user?.sulbti]);
   const isTasteSortActive = selectedSort === "추천순" && Boolean(userTasteProfile);
+  const showLoginPrompt = (message: string) => {
+    setAlertModal({
+      title: '로그인이 필요합니다',
+      body: message,
+      tone: 'info',
+      buttons: [
+        { label: '로그인하기', onPress: () => router.push('/login' as any) },
+        { label: '닫기', variant: 'secondary' },
+      ],
+    });
+  };
 
   useEffect(() => {
     setCurrentPage(1);
@@ -173,7 +190,7 @@ export default function FundingListScreen() {
 
   const handleHeroAction = () => {
     if (!user) {
-      showLoginRequired('펀딩 프로젝트 등록은 로그인 후 이용할 수 있어요.');
+      showLoginPrompt('펀딩 프로젝트 등록은 로그인 후 이용할 수 있어요.');
       return;
     }
     if (isVerifiedBrewery) {
@@ -185,7 +202,7 @@ export default function FundingListScreen() {
 
   const handleFavoritePress = (projectId: number) => {
     if (!user) {
-      showLoginRequired('펀딩 좋아요는 로그인 후 이용할 수 있어요.');
+      showLoginPrompt('펀딩 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
     toggleFavoriteFunding(projectId);
@@ -194,14 +211,19 @@ export default function FundingListScreen() {
   const handleSortPress = (option: FundingSortOption) => {
     if (option === "추천순") {
       if (!user) {
-        showLoginRequired('술BTI 맞춤 추천은 로그인 후 이용할 수 있어요.');
+        showLoginPrompt('술BTI 맞춤 추천은 로그인 후 이용할 수 있어요.');
         return;
       }
       if (!userTasteProfile) {
-        Alert.alert('술BTI 결과가 필요합니다', '마이페이지에서 술BTI 검사를 완료하면 취향에 맞는 펀딩을 추천받을 수 있어요.', [
-          { text: '확인', style: 'cancel' },
-          { text: '마이페이지로 이동', onPress: () => router.push('/mypage' as any) },
-        ]);
+        setAlertModal({
+          title: '술BTI 결과가 필요합니다',
+          body: '마이페이지에서 술BTI 검사를 완료하면 취향에 맞는\n펀딩을 추천받을 수 있어요.',
+          tone: 'info',
+          buttons: [
+            { label: '마이페이지로 이동', onPress: () => router.push('/mypage' as any) },
+            { label: '닫기', variant: 'secondary' },
+          ],
+        });
         return;
       }
     }
@@ -417,6 +439,14 @@ export default function FundingListScreen() {
           </View>
         </View>
       </ScrollView>
+      <FundingAlertModal
+        visible={Boolean(alertModal)}
+        title={alertModal?.title || ''}
+        body={alertModal?.body || ''}
+        tone={alertModal?.tone}
+        buttons={alertModal?.buttons}
+        onClose={() => setAlertModal(null)}
+      />
     </View>
   );
 }

@@ -41,6 +41,7 @@ import { Button } from '@/components/ui/button';
 import { getFundingApiErrorMessage, getMyFundingOrders, isFundingApiMissingEndpointError } from '@/features/funding/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 import { getBtiResult, resolveBtiType, resolveSulbtiCode } from '@/features/bti/data';
+import { getMyPageApiErrorMessage, getMyPageProfile } from '@/features/mypage/api';
 
 const FAQ_ITEMS = [
   { id: 1, q: "펀딩 취소·환불은 어떻게 하나요?", a: "펀딩 취소는 마감일 전까지 마이페이지에서 직접 취소하실 수 있습니다. 단, 제조가 시작된 경우 취소가 불가할 수 있습니다." },
@@ -49,7 +50,7 @@ const FAQ_ITEMS = [
 
 export default function MyPageScreen() {
   const insets = useSafeAreaInsets();
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const { participatedFundings, mergeParticipationsFromOrders } = useFunding();
   const [supportVisible, setSupportVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
@@ -57,6 +58,26 @@ export default function MyPageScreen() {
   useEffect(() => {
     if (!user) return;
     let mounted = true;
+    getMyPageProfile()
+      .then((profile) => {
+        if (!mounted) return;
+        const nextUser = {
+          id: profile.userId || user.id,
+          uid: profile.userId || user.uid,
+          name: profile.nickname || user.name,
+          email: profile.email || user.email,
+          phone: profile.phoneNumber || undefined,
+          profileImage: profile.profileImageUrl || undefined,
+        };
+        const changed = Object.entries(nextUser).some(([key, value]) => user[key as keyof typeof user] !== value);
+        if (changed) {
+          updateUser(nextUser);
+        }
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '프로필 정보를 불러오지 못했습니다.'));
+      });
+
     getMyFundingOrders({ page: 0, size: 20 })
       .then((response) => {
         if (!mounted) return;
@@ -70,7 +91,7 @@ export default function MyPageScreen() {
     return () => {
       mounted = false;
     };
-  }, [mergeParticipationsFromOrders, user]);
+  }, [mergeParticipationsFromOrders, updateUser, user]);
 
   if (!user) {
     return (

@@ -169,58 +169,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
   },
 };
 
-const initialComments: Comment[] = [
-  {
-    id: 1,
-    author: '양조장지기',
-    authorType: 'brewery',
-    avatar: person4,
-    content: '첫 도전치고 정말 잘 만드셨네요! 감귤 막걸리는 감귤을 너무 많이 넣으면 쓴맛이 날 수 있으니 조금씩 넣어보시는 걸 추천드려요.',
-    timestamp: '1시간 전',
-    likes: 8,
-    liked: false,
-  },
-  {
-    id: 2,
-    author: '막걸리마스터',
-    authorType: 'user',
-    avatar: person5,
-    content: '저도 과일 막걸리 여러 번 만들어봤는데 딸기가 제일 맛있더라구요! 다음 시즌에 도전해보세요.',
-    timestamp: '45분 전',
-    likes: 3,
-    liked: false,
-  },
-  {
-    id: 3,
-    author: '술BTI초보',
-    authorType: 'user',
-    avatar: person6,
-    content: '우와 대단하세요! 저도 도전해보고 싶은데 어디서 누룩을 구매하셨나요?',
-    timestamp: '30분 전',
-    likes: 1,
-    liked: false,
-  },
-  {
-    id: 4,
-    author: '전통주팬',
-    authorType: 'user',
-    avatar: person1,
-    content: '발효 온도 관리가 핵심이죠! 저는 20도 유지했더니 정말 깔끔하게 나왔어요.',
-    timestamp: '20분 전',
-    likes: 5,
-    liked: false,
-  },
-  {
-    id: 5,
-    author: '청주러버',
-    authorType: 'user',
-    avatar: person2,
-    content: '감귤 막걸리 만들어봤는데 껍질째 넣으면 향이 훨씬 풍부해요! 한번 시도해보세요.',
-    timestamp: '10분 전',
-    likes: 2,
-    liked: false,
-  },
-];
+const initialComments: Comment[] = [];
 
 export default function CommunityDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -245,14 +194,9 @@ export default function CommunityDetailScreen() {
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyInput, setReplyInput] = useState('');
-  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set([1]));
-  const [comments, setComments] = useState<Comment[]>(() =>
-    initialComments.map((comment) =>
-      numericId === 1 && comment.id === 1 && user
-        ? { ...comment, author: user.name, authorType: 'user', avatar: person1 }
-        : comment
-    )
-  );
+  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
+  const [comments, setComments] = useState<Comment[]>(initialComments);
+  const [isCommentsLoading, setIsCommentsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -273,6 +217,7 @@ export default function CommunityDetailScreen() {
         setLikeCount(fallbackPost.likes);
       });
 
+    setIsCommentsLoading(true);
     fetchCommunityComments(numericId, 0, 20)
       .then((response) => {
         if (cancelled) return;
@@ -287,6 +232,11 @@ export default function CommunityDetailScreen() {
       .catch((error) => {
         if (cancelled) return;
         console.warn('Failed to load community comments from API', error);
+        setComments([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsCommentsLoading(false);
       });
 
     return () => {
@@ -696,7 +646,15 @@ export default function CommunityDetailScreen() {
 
         <View style={styles.commentsSection}>
           <Text style={styles.commentHeader}>댓글 {comments.length}</Text>
-          {visibleComments.map((comment, index) => (
+          {isCommentsLoading ? (
+            <View style={styles.commentStateBox}>
+              <Text style={styles.commentStateText}>댓글을 불러오고 있어요.</Text>
+            </View>
+          ) : comments.length === 0 ? (
+            <View style={styles.commentStateBox}>
+              <Text style={styles.commentStateText}>댓글이 없습니다.</Text>
+            </View>
+          ) : visibleComments.map((comment, index) => (
             <Animated.View key={comment.id} entering={FadeInUp.delay(index * 45)} style={styles.commentItem}>
               <Image source={getAvatarSource(comment.avatar)} style={styles.commentAvatar} />
               <View style={styles.commentContentWrap}>
@@ -795,7 +753,7 @@ export default function CommunityDetailScreen() {
             </Animated.View>
           ))}
 
-          {hasMoreComments && !showAllComments && (
+          {hasMoreComments && !showAllComments && !isCommentsLoading && (
             <TouchableOpacity style={styles.moreButton} onPress={() => setShowAllComments(true)}>
               <ChevronDown size={16} color="#6B7280" />
               <Text style={styles.moreButtonText}>댓글 {comments.length - INITIAL_COMMENT_COUNT}개 더보기</Text>
@@ -914,6 +872,8 @@ const styles = StyleSheet.create({
   postImage: { width: '100%', height: 240, borderRadius: 16, resizeMode: 'cover', backgroundColor: '#F3F4F6' },
   commentsSection: { borderTopWidth: 8, borderTopColor: '#F3F4F6', paddingHorizontal: 16, paddingVertical: 18 },
   commentHeader: { fontSize: 16, fontWeight: '900', color: '#111', marginBottom: 18 },
+  commentStateBox: { paddingVertical: 28, alignItems: 'center' },
+  commentStateText: { fontSize: 14, color: '#9CA3AF', fontWeight: '700' },
   commentItem: { flexDirection: 'row', gap: 12, marginBottom: 18 },
   commentAvatar: { width: 40, height: 40, borderRadius: 20 },
   commentContentWrap: { flex: 1 },

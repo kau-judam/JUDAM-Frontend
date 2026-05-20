@@ -15,15 +15,21 @@ import * as ImagePicker from 'expo-image-picker';
 import { ArrowLeft, Camera, ChevronRight, Hash, Lock, Mail, Phone, UserRound, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAuth, type User } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { showLoginRequired } from '@/utils/authPrompt';
+import {
+  checkMyPageNickname,
+  getMyPageApiErrorMessage,
+  getMyPageProfile,
+  updateMyPageNickname,
+  updateMyPagePhone,
+} from '@/features/mypage/api';
 
-type EditableField = 'name' | 'phone' | 'email';
+type EditableField = 'name' | 'phone';
 
-const FIELD_META: Record<EditableField, { title: string; placeholder: string; keyboardType?: 'default' | 'email-address' | 'phone-pad' }> = {
-  name: { title: '닉네임 변경', placeholder: '새로운 닉네임을 입력하세요' },
-  phone: { title: '전화번호 변경', placeholder: '새로운 전화번호를 입력하세요', keyboardType: 'phone-pad' },
-  email: { title: '이메일 변경', placeholder: '새로운 이메일을 입력하세요', keyboardType: 'email-address' },
+const FIELD_META: Record<EditableField, { title: string; placeholder: string; keyboardType?: 'default' | 'phone-pad' }> = {
+  name: { title: '닉네임 변경', placeholder: '새 닉네임을 입력하세요' },
+  phone: { title: '전화번호 변경', placeholder: '새 전화번호를 입력하세요', keyboardType: 'phone-pad' },
 };
 
 export default function ProfileScreen() {
@@ -31,24 +37,49 @@ export default function ProfileScreen() {
   const { user, updateUser } = useAuth();
   const [editingField, setEditingField] = useState<EditableField | null>(null);
   const [draftValue, setDraftValue] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!user) {
       showLoginRequired('프로필은 로그인 후 이용할 수 있어요.');
       router.replace('/login' as any);
+      return;
     }
-  }, [user]);
 
-  if (!user) {
-    return null;
-  }
+    let mounted = true;
+    getMyPageProfile()
+      .then((profile) => {
+        if (!mounted) return;
+        const nextUser = {
+          id: profile.userId || user.id,
+          uid: profile.userId || user.uid,
+          name: profile.nickname || user.name,
+          email: profile.email || user.email,
+          phone: profile.phoneNumber || undefined,
+          profileImage: profile.profileImageUrl || undefined,
+        };
+        const changed = Object.entries(nextUser).some(([key, value]) => user[key as keyof typeof user] !== value);
+        if (changed) {
+          updateUser(nextUser);
+        }
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '프로필 정보를 불러오지 못했습니다.'));
+      });
 
-  const displayName = getDisplayName(user);
+    return () => {
+      mounted = false;
+    };
+  }, [updateUser, user]);
+
+  if (!user) return null;
+
+  const displayName = user.type === 'brewery' ? user.breweryName || user.name : user.name;
   const profileImage = user.profileImage;
 
   const openEdit = (field: EditableField) => {
     setEditingField(field);
-    setDraftValue(String(user[field] ?? ''));
+    setDraftValue(field === 'phone' ? user.phone ?? '' : displayName);
   };
 
   const closeEdit = () => {
@@ -57,15 +88,41 @@ export default function ProfileScreen() {
   };
 
   const saveEdit = async () => {
-    if (!editingField) return;
+    if (!editingField || saving) return;
     const value = draftValue.trim();
     if (!value) {
       Alert.alert('입력 확인', `${FIELD_META[editingField].title.replace(' 변경', '')}을 입력해주세요.`);
       return;
     }
-    await updateUser({ [editingField]: value } as Partial<User>);
-    Alert.alert('저장 완료', `${FIELD_META[editingField].title.replace(' 변경', '')}이 변경되었습니다.`);
-    closeEdit();
+
+    try {
+      setSaving(true);
+      if (editingField === 'name') {
+        if (value !== displayName) {
+          const check = await checkMyPageNickname(value);
+          if (!check.isAvailable) {
+            Alert.alert('닉네임 확인', '이미 사용 중인 닉네임입니다.');
+            return;
+          }
+        }
+        const result = await updateMyPageNickname(value);
+        await updateUser({ name: result.nickname, breweryName: user.type === 'brewery' ? result.nickname : user.breweryName });
+      } else {
+        const phoneNumber = value.replace(/\D/g, '');
+        if (!phoneNumber) {
+          Alert.alert('전화번호 확인', '전화번호는 숫자를 포함해야 합니다.');
+          return;
+        }
+        const result = await updateMyPagePhone(phoneNumber);
+        await updateUser({ phone: result.phoneNumber });
+      }
+      Alert.alert('저장 완료', `${FIELD_META[editingField].title.replace(' 변경', '')}이 변경되었습니다.`);
+      closeEdit();
+    } catch (error) {
+      Alert.alert('저장 실패', getMyPageApiErrorMessage(error, '프로필 정보를 저장하지 못했습니다.'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const pickProfileImage = async () => {
@@ -95,18 +152,11 @@ export default function ProfileScreen() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 96 }]}
-      >
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 96 }]}>
         <View style={styles.profileImageCard}>
           <View style={styles.avatarWrap}>
             <View style={styles.largeAvatar}>
-              {profileImage ? (
-                <Image source={{ uri: profileImage }} style={styles.avatarImage} />
-              ) : (
-                <UserRound size={42} color="#9CA3AF" />
-              )}
+              {profileImage ? <Image source={{ uri: profileImage }} style={styles.avatarImage} /> : <UserRound size={42} color="#9CA3AF" />}
             </View>
             <TouchableOpacity style={styles.cameraButton} onPress={pickProfileImage} activeOpacity={0.85}>
               <Camera size={15} color="#FFFFFF" />
@@ -116,34 +166,13 @@ export default function ProfileScreen() {
 
         <Text style={styles.sectionTitle}>계정 정보</Text>
         <View style={styles.card}>
-          <InfoRow
-            icon={<UserRound size={18} color="#4B5563" />}
-            label="닉네임"
-            value={displayName}
-            onPress={() => openEdit('name')}
-          />
-          <InfoRow
-            icon={<Phone size={18} color="#4B5563" />}
-            label="전화번호"
-            value={user.phone || '전화번호 없음'}
-            onPress={() => openEdit('phone')}
-          />
-          <InfoRow
-            icon={<Mail size={18} color="#4B5563" />}
-            label="이메일"
-            value={user.email || '이메일 없음'}
-            onPress={() => openEdit('email')}
-            last
-          />
+          <InfoRow icon={<UserRound size={18} color="#4B5563" />} label="닉네임" value={displayName} onPress={() => openEdit('name')} />
+          <InfoRow icon={<Phone size={18} color="#4B5563" />} label="전화번호" value={user.phone || '전화번호 없음'} onPress={() => openEdit('phone')} />
+          <InfoRow icon={<Mail size={18} color="#4B5563" />} label="이메일" value={user.email || '이메일 없음'} last />
         </View>
 
         <View style={styles.card}>
-          <InfoRow
-            icon={<Lock size={18} color="#4B5563" />}
-            label="비밀번호"
-            value="********"
-            onPress={() => router.push('/mypage/profile/password' as any)}
-          />
+          <InfoRow icon={<Lock size={18} color="#4B5563" />} label="비밀번호" value="********" onPress={() => router.push('/mypage/profile/password' as any)} />
           <InfoRow icon={<Hash size={18} color="#4B5563" />} label="사용자 고유 ID" value={user.id || user.uid} last />
         </View>
       </ScrollView>
@@ -165,11 +194,10 @@ export default function ProfileScreen() {
               placeholder={editingField ? FIELD_META[editingField].placeholder : ''}
               placeholderTextColor="#9CA3AF"
               keyboardType={editingField ? FIELD_META[editingField].keyboardType ?? 'default' : 'default'}
-              secureTextEntry={false}
               autoCapitalize="none"
             />
-            <TouchableOpacity style={styles.saveButton} onPress={saveEdit} activeOpacity={0.85}>
-              <Text style={styles.saveButtonText}>저장</Text>
+            <TouchableOpacity style={[styles.saveButton, saving && styles.disabledButton]} onPress={saveEdit} activeOpacity={0.85} disabled={saving}>
+              <Text style={styles.saveButtonText}>{saving ? '저장 중...' : '저장'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -205,10 +233,6 @@ function InfoRow({
       </View>
     </TouchableOpacity>
   );
-}
-
-function getDisplayName(user: User) {
-  return user.type === 'brewery' ? user.breweryName || user.name : user.name;
 }
 
 const styles = StyleSheet.create({
@@ -302,5 +326,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   saveButton: { height: 54, borderRadius: 14, backgroundColor: '#111827', justifyContent: 'center', alignItems: 'center', marginTop: 16 },
+  disabledButton: { opacity: 0.6 },
   saveButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
 });

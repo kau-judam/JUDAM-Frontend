@@ -2119,3 +2119,125 @@ Frontend connection:
 - Replaced the temporary brewery token again with a backend-provided access token containing `role: "BREWERY"`, expiring at `2026-05-21 12:58:19 KST`. This token is suitable for brewery-authenticated recipe create testing.
 - Direct server verification with the new brewery token succeeded for both `POST /api/recipes` multipart without image and `POST /api/recipes/brewery` JSON without image, returning `201`. If the app still shows `500` or `Network request failed`, focus on app-side file upload/image asset state. `RecipeCreateScreen` now clears both preview and `imageAsset` when the image remove button is pressed and logs create payload metadata before submit.
 - Follow-up direct verification with the same brewery token and a tiny 1x1 PNG attached as multipart `image` returned `500 서버 내부 오류`. Because the same endpoint succeeds without `image`, the remaining issue is backend-side multipart file handling/S3 upload/AI image pipeline, not the frontend text fields or token.
+## My Page Profile APIs
+
+Source:
+- User-provided backend note on 2026-05-20.
+
+Base URL:
+```http
+http://43.202.24.223:3000
+```
+
+Common auth:
+- All endpoints require `Authorization: Bearer {accessToken}`.
+- If the token is missing or expired, backend returns `401`.
+
+### Get My Profile
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/profile
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "내 정보 조회 성공",
+  "data": {
+    "userId": "1",
+    "profileImageUrl": null,
+    "nickname": "주담러",
+    "phoneNumber": null,
+    "email": "test@test.com",
+    "loginType": "kakao"
+  }
+}
+```
+
+### Check Nickname
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/profile/nickname/check?nickname=닉네임
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "사용 가능한 닉네임입니다.",
+  "data": {
+    "nickname": "새닉네임",
+    "isAvailable": true
+  }
+}
+```
+
+### Update Nickname
+
+Endpoint:
+```http
+PATCH {baseURI}/api/mypage/profile/nickname
+```
+
+Request:
+```json
+{
+  "nickname": "새닉네임"
+}
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "닉네임 수정 성공",
+  "data": {
+    "nickname": "새닉네임"
+  }
+}
+```
+
+### Update Phone Number
+
+Endpoint:
+```http
+PATCH {baseURI}/api/mypage/profile/phone
+```
+
+Request:
+```json
+{
+  "phoneNumber": "01012345678"
+}
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "전화번호 수정 성공",
+  "data": {
+    "phoneNumber": "01012345678"
+  }
+}
+```
+
+Error:
+```json
+{
+  "status": 401,
+  "message": "유효하지 않거나 만료된 토큰입니다."
+}
+```
+
+Frontend connection:
+- Connected on 2026-05-20.
+- API client: `src/features/mypage/api.ts`.
+- Screens:
+  - `src/features/mypage/screens/MyPageScreen.tsx` calls profile lookup when the `[마이]` bottom tab is opened and syncs the local auth user.
+  - `src/features/mypage/screens/ProfileScreen.tsx` calls profile lookup on entry, checks nickname availability before nickname update, and calls phone update with digits-only `phoneNumber`.
+- Email is displayed from profile lookup, but it is read-only because no email update endpoint was provided.
+- Profile image remains local-only because no profile image upload/update endpoint was provided.

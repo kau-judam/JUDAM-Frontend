@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Image, GestureResponderEvent, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Heart, Sparkles } from 'lucide-react-native';
+import { Heart } from 'lucide-react-native';
 
 import { Progress } from '@/components/ui/progress';
 import {
@@ -67,7 +67,6 @@ function FundingProjectCard({
           <Text style={styles.projectTitle} numberOfLines={2}>{project.title}</Text>
           {showMatch && (
             <View style={styles.matchBadge}>
-              <Sparkles size={12} color="#111" />
               <Text style={styles.matchBadgeTxt}>내 술BTI와 {getTasteMatchScore(project, tasteProfile)}% 매칭</Text>
             </View>
           )}

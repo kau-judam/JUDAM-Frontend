@@ -20,10 +20,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useCommunity } from '@/contexts/CommunityContext';
 import {
   createCommunityComment,
+  createCommunityCommentReply,
   deleteCommunityComment,
   deleteCommunityCommentLike,
   deleteCommunityPost,
   deleteCommunityPostLike,
+  fetchCommunityCommentReplies,
   fetchCommunityComments,
   fetchCommunityPost,
   registerCommunityCommentLike,
@@ -84,6 +86,7 @@ interface Comment {
   liked: boolean;
   userId?: string;
   isMine?: boolean;
+  replyCount?: number;
   replies?: CommentReply[];
 }
 
@@ -166,58 +169,7 @@ const mockPosts: Record<number, CommunityPostDetail> = {
   },
 };
 
-const initialComments: Comment[] = [
-  {
-    id: 1,
-    author: '양조장지기',
-    authorType: 'brewery',
-    avatar: person4,
-    content: '첫 도전치고 정말 잘 만드셨네요! 감귤 막걸리는 감귤을 너무 많이 넣으면 쓴맛이 날 수 있으니 조금씩 넣어보시는 걸 추천드려요.',
-    timestamp: '1시간 전',
-    likes: 8,
-    liked: false,
-  },
-  {
-    id: 2,
-    author: '막걸리마스터',
-    authorType: 'user',
-    avatar: person5,
-    content: '저도 과일 막걸리 여러 번 만들어봤는데 딸기가 제일 맛있더라구요! 다음 시즌에 도전해보세요.',
-    timestamp: '45분 전',
-    likes: 3,
-    liked: false,
-  },
-  {
-    id: 3,
-    author: '술BTI초보',
-    authorType: 'user',
-    avatar: person6,
-    content: '우와 대단하세요! 저도 도전해보고 싶은데 어디서 누룩을 구매하셨나요?',
-    timestamp: '30분 전',
-    likes: 1,
-    liked: false,
-  },
-  {
-    id: 4,
-    author: '전통주팬',
-    authorType: 'user',
-    avatar: person1,
-    content: '발효 온도 관리가 핵심이죠! 저는 20도 유지했더니 정말 깔끔하게 나왔어요.',
-    timestamp: '20분 전',
-    likes: 5,
-    liked: false,
-  },
-  {
-    id: 5,
-    author: '청주러버',
-    authorType: 'user',
-    avatar: person2,
-    content: '감귤 막걸리 만들어봤는데 껍질째 넣으면 향이 훨씬 풍부해요! 한번 시도해보세요.',
-    timestamp: '10분 전',
-    likes: 2,
-    liked: false,
-  },
-];
+const initialComments: Comment[] = [];
 
 export default function CommunityDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -242,14 +194,9 @@ export default function CommunityDetailScreen() {
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyInput, setReplyInput] = useState('');
-  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set([1]));
-  const [comments, setComments] = useState<Comment[]>(() =>
-    initialComments.map((comment) =>
-      numericId === 1 && comment.id === 1 && user
-        ? { ...comment, author: user.name, authorType: 'user', avatar: person1 }
-        : comment
-    )
-  );
+  const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set());
+  const [comments, setComments] = useState<Comment[]>(initialComments);
+  const [isCommentsLoading, setIsCommentsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -270,6 +217,7 @@ export default function CommunityDetailScreen() {
         setLikeCount(fallbackPost.likes);
       });
 
+    setIsCommentsLoading(true);
     fetchCommunityComments(numericId, 0, 20)
       .then((response) => {
         if (cancelled) return;
@@ -277,12 +225,18 @@ export default function CommunityDetailScreen() {
           response.comments.map((comment) => ({
             ...comment,
             replies: prev.find((item) => item.id === comment.id)?.replies || [],
+            replyCount: comment.replyCount,
           }))
         );
       })
       .catch((error) => {
         if (cancelled) return;
         console.warn('Failed to load community comments from API', error);
+        setComments([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsCommentsLoading(false);
       });
 
     return () => {
@@ -294,6 +248,22 @@ export default function CommunityDetailScreen() {
   const hasMoreComments = comments.length > INITIAL_COMMENT_COUNT;
   const getCommentReplies = (comment: Comment) => comment.replies || [];
   const postImageUrls = post.imageUrls ?? (post.image ? [post.image] : []);
+
+  const loadCommentReplies = async (commentId: number) => {
+    if (apiPostLoadFailed || post.id > 1000000000000) return;
+    try {
+      const response = await fetchCommunityCommentReplies(post.id, commentId, 0, 20);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId
+            ? { ...comment, replies: response.replies, replyCount: response.totalElements }
+            : comment
+        )
+      );
+    } catch (error) {
+      console.warn('Failed to load community comment replies', error);
+    }
+  };
 
   const handleLike = async () => {
     if (!user) {
@@ -467,20 +437,24 @@ export default function CommunityDetailScreen() {
     setCommentMenuTarget(null);
   };
 
-  const handleReplyOpen = (commentId: number) => {
+  const handleReplyOpen = async (commentId: number) => {
     if (!user) {
-      showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
+      showLoginRequired('답글 작성은 로그인이 필요합니다.');
       return;
     }
+    const targetComment = comments.find((comment) => comment.id === commentId);
     setReplyInput('');
     setExpandedComments((prev) => new Set([...prev, commentId]));
     setReplyingTo((prev) => (prev === commentId ? null : commentId));
+    if (!targetComment?.replies?.length && (targetComment?.replyCount ?? 0) > 0) {
+      await loadCommentReplies(commentId);
+    }
   };
 
-  const handleReplySubmit = (commentId: number) => {
+  const handleReplySubmit = async (commentId: number) => {
     if (!replyInput.trim()) return;
     if (!user) {
-      showLoginRequired('답글은 로그인 후 이용할 수 있어요.');
+      showLoginRequired('답글 작성은 로그인이 필요합니다.');
       return;
     }
     const newReply: CommentReply = {
@@ -489,15 +463,35 @@ export default function CommunityDetailScreen() {
       authorType: user.type || 'user',
       avatar: person3,
       content: replyInput.trim(),
-      timestamp: '방금 전',
+      timestamp: '방금',
       likes: 0,
       liked: false,
       userId: user.id,
       isMine: true,
     };
+
+    if (!apiPostLoadFailed && post.id <= 1000000000000) {
+      try {
+        const response = await createCommunityCommentReply(post.id, commentId, replyInput.trim());
+        newReply.id = response.reply.comment_id;
+        newReply.author = response.reply.nickname || user.name;
+        newReply.content = response.reply.content;
+        newReply.userId = String(response.reply.user_id);
+      } catch (error) {
+        console.warn('Failed to create community comment reply', error);
+        return;
+      }
+    }
+
     setComments((prev) =>
       prev.map((comment) =>
-        comment.id === commentId ? { ...comment, replies: [...getCommentReplies(comment), newReply] } : comment
+        comment.id === commentId
+          ? {
+              ...comment,
+              replies: [...getCommentReplies(comment), newReply],
+              replyCount: Math.max(comment.replyCount ?? 0, getCommentReplies(comment).length + 1),
+            }
+          : comment
       )
     );
     setReplyInput('');
@@ -505,11 +499,16 @@ export default function CommunityDetailScreen() {
     setExpandedComments((prev) => new Set([...prev, commentId]));
   };
 
-  const handleReplyLike = (commentId: number, replyId: number) => {
+  const handleReplyLike = async (commentId: number, replyId: number) => {
     if (!user) {
-      showLoginRequired('답글 좋아요는 로그인 후 이용할 수 있어요.');
+      showLoginRequired('답글 좋아요는 로그인이 필요합니다.');
       return;
     }
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    const targetReply = targetComment?.replies?.find((reply) => reply.id === replyId);
+    if (!targetReply) return;
+    const nextLiked = !targetReply.liked;
+
     setComments((prev) =>
       prev.map((comment) =>
         comment.id === commentId
@@ -517,22 +516,59 @@ export default function CommunityDetailScreen() {
               ...comment,
               replies: getCommentReplies(comment).map((reply) =>
                 reply.id === replyId
-                  ? { ...reply, liked: !reply.liked, likes: reply.liked ? reply.likes - 1 : reply.likes + 1 }
+                  ? { ...reply, liked: nextLiked, likes: Math.max(0, reply.likes + (nextLiked ? 1 : -1)) }
                   : reply
               ),
             }
           : comment
       )
     );
+
+    if (apiPostLoadFailed || post.id > 1000000000000) return;
+
+    try {
+      const response = nextLiked
+        ? await registerCommunityCommentLike(post.id, replyId)
+        : await deleteCommunityCommentLike(post.id, replyId);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                replies: getCommentReplies(comment).map((reply) =>
+                  reply.id === replyId ? { ...reply, liked: nextLiked, likes: response.data.like_count } : reply
+                ),
+              }
+            : comment
+        )
+      );
+    } catch (error) {
+      console.warn('Failed to update community reply like', error);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId
+            ? {
+                ...comment,
+                replies: getCommentReplies(comment).map((reply) => (reply.id === replyId ? targetReply : reply)),
+              }
+            : comment
+        )
+      );
+    }
   };
 
-  const toggleExpandComment = (commentId: number) => {
+  const toggleExpandComment = async (commentId: number) => {
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    const willOpen = !expandedComments.has(commentId);
     setExpandedComments((prev) => {
       const next = new Set(prev);
       if (next.has(commentId)) next.delete(commentId);
       else next.add(commentId);
       return next;
     });
+    if (willOpen && !targetComment?.replies?.length && (targetComment?.replyCount ?? 0) > 0) {
+      await loadCommentReplies(commentId);
+    }
   };
 
   return (
@@ -610,7 +646,15 @@ export default function CommunityDetailScreen() {
 
         <View style={styles.commentsSection}>
           <Text style={styles.commentHeader}>댓글 {comments.length}</Text>
-          {visibleComments.map((comment, index) => (
+          {isCommentsLoading ? (
+            <View style={styles.commentStateBox}>
+              <Text style={styles.commentStateText}>댓글을 불러오고 있어요.</Text>
+            </View>
+          ) : comments.length === 0 ? (
+            <View style={styles.commentStateBox}>
+              <Text style={styles.commentStateText}>댓글이 없습니다.</Text>
+            </View>
+          ) : visibleComments.map((comment, index) => (
             <Animated.View key={comment.id} entering={FadeInUp.delay(index * 45)} style={styles.commentItem}>
               <Image source={getAvatarSource(comment.avatar)} style={styles.commentAvatar} />
               <View style={styles.commentContentWrap}>
@@ -656,10 +700,10 @@ export default function CommunityDetailScreen() {
                     <MessageCircle size={15} color="#9CA3AF" />
                     <Text style={styles.commentAction}>답글</Text>
                   </TouchableOpacity>
-                  {getCommentReplies(comment).length > 0 && (
+                  {(getCommentReplies(comment).length > 0 || (comment.replyCount ?? 0) > 0) && (
                     <TouchableOpacity style={styles.commentActionButton} onPress={() => toggleExpandComment(comment.id)}>
                       {expandedComments.has(comment.id) ? <ChevronUp size={15} color="#9CA3AF" /> : <ChevronDown size={15} color="#9CA3AF" />}
-                      <Text style={styles.commentAction}>{getCommentReplies(comment).length}개 답글</Text>
+                      <Text style={styles.commentAction}>{Math.max(getCommentReplies(comment).length, comment.replyCount ?? 0)}개 답글</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -709,7 +753,7 @@ export default function CommunityDetailScreen() {
             </Animated.View>
           ))}
 
-          {hasMoreComments && !showAllComments && (
+          {hasMoreComments && !showAllComments && !isCommentsLoading && (
             <TouchableOpacity style={styles.moreButton} onPress={() => setShowAllComments(true)}>
               <ChevronDown size={16} color="#6B7280" />
               <Text style={styles.moreButtonText}>댓글 {comments.length - INITIAL_COMMENT_COUNT}개 더보기</Text>
@@ -828,6 +872,8 @@ const styles = StyleSheet.create({
   postImage: { width: '100%', height: 240, borderRadius: 16, resizeMode: 'cover', backgroundColor: '#F3F4F6' },
   commentsSection: { borderTopWidth: 8, borderTopColor: '#F3F4F6', paddingHorizontal: 16, paddingVertical: 18 },
   commentHeader: { fontSize: 16, fontWeight: '900', color: '#111', marginBottom: 18 },
+  commentStateBox: { paddingVertical: 28, alignItems: 'center' },
+  commentStateText: { fontSize: 14, color: '#9CA3AF', fontWeight: '700' },
   commentItem: { flexDirection: 'row', gap: 12, marginBottom: 18 },
   commentAvatar: { width: 40, height: 40, borderRadius: 20 },
   commentContentWrap: { flex: 1 },

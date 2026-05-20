@@ -4,7 +4,6 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import {
   Animated,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -45,6 +44,7 @@ import { Progress } from '@/components/ui/progress';
 import type { FundingProject, BudgetItem, ScheduleItem, ProjectStatus } from '@/constants/data';
 import { useAuth, type User as AuthUser } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import FundingAlertModal from '@/features/funding/components/FundingAlertModal';
 import {
   createFundingDraft,
   deleteFundingDraft,
@@ -590,6 +590,7 @@ export default function BreweryProjectCreateScreen() {
   const [hasTempSave, setHasTempSave] = useState(false);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
+  const [showProfileImagePickerModal, setShowProfileImagePickerModal] = useState(false);
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [showBankModal, setShowBankModal] = useState(false);
@@ -1504,11 +1505,7 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleProfileImageUpload = () => {
-    Alert.alert('프로필 이미지 업로드', '이미지를 등록할 방식을 선택해주세요.', [
-      { text: '갤러리에서 선택', onPress: () => { void handlePickProfileFromLibrary(); } },
-      { text: '카메라로 촬영', onPress: () => { void handleTakeProfilePhoto(); } },
-      { text: '취소', style: 'cancel' },
-    ]);
+    setShowProfileImagePickerModal(true);
   };
 
   const handleDocumentUpload = async (key: FileKey) => {
@@ -2506,6 +2503,18 @@ export default function BreweryProjectCreateScreen() {
         </View>
       </KeyboardAvoidingView>
       <SimpleModal visible={showAlertModal} icon="alert" title="알림" body={alertMessage} primaryLabel="확인" onPrimary={() => setShowAlertModal(false)} />
+      <FundingAlertModal
+        visible={showProfileImagePickerModal}
+        title="프로필 이미지 업로드"
+        body="이미지를 등록할 방식을 선택해주세요."
+        tone="info"
+        buttons={[
+          { label: '갤러리에서 선택', onPress: () => { void handlePickProfileFromLibrary(); } },
+          { label: '카메라로 촬영', variant: 'secondary', onPress: () => { void handleTakeProfilePhoto(); } },
+          { label: '취소', variant: 'secondary' },
+        ]}
+        onClose={() => setShowProfileImagePickerModal(false)}
+      />
       <ConfirmModal visible={showSubmitConfirm} title={isEditMode ? '수정 내용을 반영하시겠습니까?' : '제출 하시겠습니까?'} body={isEditMode ? '수정한 내용이 기존 펀딩 게시글에 바로 반영됩니다.' : '제출하면 펀딩 프로젝트 심사 요청이 접수됩니다.'} onCancel={() => setShowSubmitConfirm(false)} onConfirm={confirmSubmit} />
       <SimpleModal visible={showSubmitSuccess} icon="success" title={isEditMode ? '수정이 완료되었습니다' : '성공적으로 제출되었습니다'} body={submitSyncWarning || (isEditMode ? '수정한 내용이 펀딩 게시글에 반영되었습니다.' : '펀딩 프로젝트 심사 요청이 접수되었습니다.')} primaryLabel="게시글 확인" onPrimary={handleSubmitSuccessClose} />
       <TempSaveModal

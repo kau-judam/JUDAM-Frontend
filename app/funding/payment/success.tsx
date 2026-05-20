@@ -86,11 +86,19 @@ export default function TossPaymentSuccessScreen() {
       <Text style={styles.title}>{isLoading ? '결제 승인 중' : isSuccess ? '후원이 완료되었습니다' : '결제 승인 실패'}</Text>
       <Text style={styles.body}>{message}</Text>
       <View style={styles.buttonGroup}>
-        <TouchableOpacity style={styles.primaryButton} onPress={() => router.replace('/mypage/funded' as any)} disabled={isLoading}>
-          <Text style={styles.primaryButtonText}>후원 내역 보기</Text>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => router.replace(isSuccess ? '/mypage/funded' as any : '/funding' as any)}
+          disabled={isLoading}
+        >
+          <Text style={styles.primaryButtonText}>{isSuccess ? '후원 내역 보기' : '펀딩으로 이동'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => router.replace('/funding' as any)} disabled={isLoading}>
-          <Text style={styles.secondaryButtonText}>펀딩으로 이동</Text>
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => (isSuccess ? router.replace('/funding' as any) : router.back())}
+          disabled={isLoading}
+        >
+          <Text style={styles.secondaryButtonText}>{isSuccess ? '펀딩으로 이동' : '이전 화면으로'}</Text>
         </TouchableOpacity>
       </View>
     </View>

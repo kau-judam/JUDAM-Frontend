@@ -96,7 +96,6 @@ import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/fundi
 import { normalizeFundingImageUrl } from '@/features/funding/imageUrls';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { canAccessFundingReviews, isTemporarySansaReviewTestProject } from '@/features/funding/permissions';
-import { showLoginRequired } from '@/utils/authPrompt';
 import SafeStorage from '@/utils/storage';
 
 const HERO_IMAGE_HEIGHT = 256;
@@ -348,6 +347,13 @@ export default function FundingDetailScreen() {
   const [supportOptionId, setSupportOptionId] = useState(1);
   const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+
+  const showLoginRequired = (message: string) => {
+    setFeedbackModal({
+      title: '로그인이 필요합니다',
+      body: message,
+    });
+  };
 
   // Q&A State
   const [comments, setComments] = useState<FundingQuestionComment[]>([]);
@@ -729,7 +735,7 @@ export default function FundingDetailScreen() {
     );
   }
 
-  const progressPercentage = Math.min((project.currentAmount / project.goalAmount) * 100, 100);
+  const progressPercentage = project.goalAmount > 0 ? Math.min((project.currentAmount / project.goalAmount) * 100, 100) : 0;
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified;
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
   const canManageOwnBreweryProject = Boolean(isBrewery && isOwnBreweryProject);
@@ -2639,12 +2645,12 @@ const styles = StyleSheet.create({
   mainSupportBtn: { flex: 1, height: 56, backgroundColor: '#111', borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   mainSupportTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   optionOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 16 },
-  optionModal: { backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden', maxHeight: '88%' },
+  optionModal: { backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden', height: '80%', maxHeight: '88%' },
   optionHeader: { paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   optionTitle: { fontSize: 18, fontWeight: '900', color: '#111' },
   optionClose: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center' },
   optionCloseTxt: { fontSize: 24, color: '#6B7280', marginTop: -2 },
-  optionBodyScroll: { flexShrink: 1 },
+  optionBodyScroll: { flex: 1 },
   optionBody: { padding: 20, gap: 16, paddingBottom: 20 },
   optionFooter: { padding: 20, paddingTop: 12, paddingBottom: 30, borderTopWidth: 1, borderTopColor: '#F3F4F6', backgroundColor: '#FFF' },
   optionProjectBox: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },

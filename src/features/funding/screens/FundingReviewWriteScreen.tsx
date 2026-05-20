@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -20,12 +19,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import { canAccessFundingReviews, isTemporarySansaReviewTestProject } from '@/features/funding/permissions';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { createFundingReview, getFundingApiErrorMessage, type FundingUploadFile } from '@/features/funding/api';
 import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
-import { showLoginRequired } from '@/utils/authPrompt';
+
+type ReviewAlert = {
+  title: string;
+  body: string;
+  tone?: FundingAlertTone;
+  buttons?: FundingAlertButton[];
+};
 
 function getReviewImageFileName(uri: string, index: number) {
   const rawName = uri.split('/').pop()?.split('?')[0];
@@ -120,9 +126,21 @@ export default function FundingReviewWriteScreen() {
   const [mood, setMood] = useState('');
   const [pairing, setPairing] = useState('');
   const [showRecordInReview, setShowRecordInReview] = useState(false);
+  const [alertModal, setAlertModal] = useState<ReviewAlert | null>(null);
 
   const allTags = [...selectedTags, ...customTags];
   const rewardName = project?.rewardItems?.[0] || `${project?.bottleSize || '375ml'} 1병`;
+
+  const showReviewAlert = (title: string, body: string, tone: FundingAlertTone = 'info', buttons?: FundingAlertButton[]) => {
+    setAlertModal({ title, body, tone, buttons });
+  };
+
+  const showLoginPrompt = (message: string) => {
+    showReviewAlert('로그인이 필요합니다', message, 'info', [
+      { label: '로그인하기', onPress: () => router.push('/login' as any) },
+      { label: '닫기', variant: 'secondary' },
+    ]);
+  };
 
   useEffect(() => {
     if (!editableReview || !isEditMode) return;
@@ -160,7 +178,7 @@ export default function FundingReviewWriteScreen() {
   const pickImages = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('권한 필요', '후기 사진을 첨부하려면 갤러리 접근 권한이 필요합니다.');
+      showReviewAlert('권한 필요', '후기 사진을 첨부하려면 갤러리 접근 권한이 필요합니다.', 'warning');
       return;
     }
 
@@ -195,7 +213,7 @@ export default function FundingReviewWriteScreen() {
 
   const loadExistingFundingReview = () => {
     if (!ownExistingReview) {
-      Alert.alert('불러올 후기가 없어요', '이 펀딩에 작성한 후기가 아직 없습니다.');
+      showReviewAlert('불러올 후기가 없어요', '이 펀딩에 작성한 후기가 아직 없습니다.', 'info');
       return;
     }
 
@@ -216,32 +234,32 @@ export default function FundingReviewWriteScreen() {
     setCustomTags(extraTags);
     setCustomInput('');
     setOpenSection(firstOpenSection || '맛·향');
-    Alert.alert('후기를 불러왔어요', '작성해둔 펀딩 후기를 이 기록에 채웠습니다.');
+    showReviewAlert('후기를 불러왔어요', '작성해둔 펀딩 후기를 이 기록에 채웠습니다.', 'success');
   };
 
   const handleSubmit = async () => {
     if (!user) {
-      showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.');
+      showLoginPrompt('후기 작성은 로그인 후 이용할 수 있어요.');
       return;
     }
     if (!isArchiveMode && !canWriteForProjectStatus) {
-      Alert.alert('후기 작성 불가', '후기는 성사된 펀딩에서만 작성할 수 있습니다.');
+      showReviewAlert('후기 작성 불가', '후기는 성사된 펀딩에서만 작성할 수 있습니다.', 'warning');
       return;
     }
     if (rating === 0) {
-      Alert.alert('별점 입력', '별점을 입력해주세요.');
+      showReviewAlert('별점 입력', '별점을 입력해주세요.', 'warning');
       return;
     }
     if (isNormalArchiveMode && !normalDrinkName.trim()) {
-      Alert.alert('술 이름 입력', '기록할 술 이름을 입력해주세요.');
+      showReviewAlert('술 이름 입력', '기록할 술 이름을 입력해주세요.', 'warning');
       return;
     }
     if (!reviewText.trim()) {
-      Alert.alert('상세 후기 입력', '후기 내용을 입력해주세요.');
+      showReviewAlert('상세 후기 입력', '후기 내용을 입력해주세요.', 'warning');
       return;
     }
     if (isArchiveMode && (!mood.trim() || !pairing.trim())) {
-      Alert.alert('그날의 기록 입력', '기분과 함께한 안주를 모두 입력해주세요.');
+      showReviewAlert('그날의 기록 입력', '기분과 함께한 안주를 모두 입력해주세요.', 'warning');
       return;
     }
 
@@ -275,20 +293,20 @@ export default function FundingReviewWriteScreen() {
           ? updateFundingReview(editableReview.id, reviewPayload)
           : addFundingReview(reviewPayload);
       if (!savedReview) {
-        Alert.alert('알림', '후기를 저장하지 못했습니다. 다시 시도해주세요.');
+        showReviewAlert('알림', '후기를 저장하지 못했습니다. 다시 시도해주세요.', 'warning');
         return;
       }
       if (isArchiveMode) {
-        Alert.alert('저장 완료', '나의 술 기록이 저장되었습니다.', [
-          { text: '확인', onPress: () => router.replace('/mypage/archive' as any) },
+        showReviewAlert('저장 완료', '나의 술 기록이 저장되었습니다.', 'success', [
+          { label: '확인', onPress: () => router.replace('/mypage/archive' as any) },
         ]);
         return;
       }
-      Alert.alert(isEditMode ? '후기가 수정되었습니다!' : '후기가 등록되었습니다!', isEditMode ? '수정한 내용이 후기 게시글에 반영되었습니다.' : '소중한 후기를 남겨주셔서 감사합니다.', [
-        { text: '확인', onPress: () => router.replace(`/funding/${projectId}/review/${savedReview.id}` as any) },
+      showReviewAlert(isEditMode ? '후기가 수정되었습니다!' : '후기가 등록되었습니다!', isEditMode ? '수정한 내용이 후기 게시글에 반영되었습니다.' : '소중한 후기를 남겨주셔서 감사합니다.', 'success', [
+        { label: '확인', onPress: () => router.replace(`/funding/${projectId}/review/${savedReview.id}` as any) },
       ]);
     } catch (error) {
-      Alert.alert('알림', getFundingApiErrorMessage(error, '후기를 저장하지 못했습니다. 다시 시도해주세요.'));
+      showReviewAlert('알림', getFundingApiErrorMessage(error, '후기를 저장하지 못했습니다. 다시 시도해주세요.'), 'warning');
     } finally {
       setIsLoading(false);
     }
@@ -321,8 +339,8 @@ export default function FundingReviewWriteScreen() {
               ? '이 펀딩 프로젝트에 참여한 사용자만 리뷰를 작성할 수 있습니다.'
               : '후기 작성은 로그인 후 이용할 수 있습니다.'}
         </Text>
-        <TouchableOpacity style={styles.noticeButton} onPress={() => (user ? router.back() : showLoginRequired('후기 작성은 로그인 후 이용할 수 있어요.'))}>
-          <Text style={styles.noticeButtonText}>{user ? '돌아가기' : '로그인 안내 보기'}</Text>
+        <TouchableOpacity style={styles.noticeButton} onPress={() => (user ? router.back() : router.push('/login' as any))}>
+          <Text style={styles.noticeButtonText}>{user ? '돌아가기' : '로그인하기'}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -518,6 +536,15 @@ export default function FundingReviewWriteScreen() {
           {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>{isEditMode ? '후기 수정하기' : '후기 등록하기'}</Text>}
         </TouchableOpacity>
       </ScrollView>
+
+      <FundingAlertModal
+        visible={Boolean(alertModal)}
+        title={alertModal?.title || ''}
+        body={alertModal?.body || ''}
+        tone={alertModal?.tone}
+        buttons={alertModal?.buttons}
+        onClose={() => setAlertModal(null)}
+      />
     </KeyboardAvoidingView>
   );
 }

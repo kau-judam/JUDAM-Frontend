@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -35,6 +34,7 @@ import { getFundingProjectImageSource, isSupportableFundingStatus } from '@/cons
 import type { FundingProject } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import {
   completeFundingPayment,
   confirmTossPayment,
@@ -73,6 +73,13 @@ import {
 } from '@/features/funding/supportConfig';
 import SafeStorage from '@/utils/storage';
 import { formatPhoneNumber, isValidEmail, isValidPhone } from '@/utils/validation';
+
+type FundingSupportAlert = {
+  title: string;
+  body: string;
+  tone?: FundingAlertTone;
+  buttons?: FundingAlertButton[];
+};
 
 function getSupportOptionLimit(option: FundingSupportOption | null | undefined) {
   const limits = [option?.maxPerUser, option?.remainingStock, option?.stock]
@@ -141,6 +148,7 @@ export default function FundingSupportScreen() {
   const [infoModal, setInfoModal] = useState<InfoModalType>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [alertModal, setAlertModal] = useState<FundingSupportAlert | null>(null);
   const [accountBank, setAccountBank] = useState('');
   const [depositorName, setDepositorName] = useState(user?.name || '');
   const [recentShippingInfo, setRecentShippingInfo] = useState<ShippingInfo | null>(null);
@@ -320,7 +328,11 @@ export default function FundingSupportScreen() {
   const handlePayment = () => {
     if (!canSubmit || !project || isProcessing) return;
     if (!validateForm()) {
-      Alert.alert('입력 정보를 확인해주세요', '표시된 항목을 확인한 뒤 다시 진행해주세요.');
+      setAlertModal({
+        title: '입력 정보를 확인해주세요',
+        body: '표시된 항목을 확인한 뒤 다시 진행해주세요.',
+        tone: 'warning',
+      });
       return;
     }
     setShowConfirmModal(true);
@@ -414,7 +426,11 @@ export default function FundingSupportScreen() {
       updateProjectFunding(project.id, paidAmount);
       setShowSuccessModal(true);
     } catch (error) {
-      Alert.alert('알림', getFundingApiErrorMessage(error, '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.'));
+      setAlertModal({
+        title: '후원 진행 안내',
+        body: getFundingApiErrorMessage(error, '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.'),
+        tone: 'warning',
+      });
     } finally {
       setIsProcessing(false);
     }
@@ -931,6 +947,15 @@ export default function FundingSupportScreen() {
       <InfoModal
         type={infoModal}
         onClose={() => setInfoModal(null)}
+      />
+
+      <FundingAlertModal
+        visible={Boolean(alertModal)}
+        title={alertModal?.title || ''}
+        body={alertModal?.body || ''}
+        tone={alertModal?.tone}
+        buttons={alertModal?.buttons}
+        onClose={() => setAlertModal(null)}
       />
     </KeyboardAvoidingView>
   );

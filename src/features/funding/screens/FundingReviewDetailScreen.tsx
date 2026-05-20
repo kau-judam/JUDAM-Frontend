@@ -16,8 +16,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import { fundingReviewComments, type FundingReviewComment } from '@/features/funding/reviews';
-import { showLoginRequired } from '@/utils/authPrompt';
+
+type ReviewDetailAlert = {
+  title: string;
+  body: string;
+  tone?: FundingAlertTone;
+  buttons?: FundingAlertButton[];
+};
 
 export default function FundingReviewDetailScreen() {
   const insets = useSafeAreaInsets();
@@ -39,6 +46,19 @@ export default function FundingReviewDetailScreen() {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(review?.likes || 0);
   const [comments, setComments] = useState<FundingReviewComment[]>(initialReviewComments);
+  const [alertModal, setAlertModal] = useState<ReviewDetailAlert | null>(null);
+
+  const showLoginRequired = (message: string) => {
+    setAlertModal({
+      title: '로그인이 필요합니다',
+      body: message,
+      tone: 'info',
+      buttons: [
+        { label: '로그인하기', onPress: () => router.push('/login' as any) },
+        { label: '닫기', variant: 'secondary' },
+      ],
+    });
+  };
 
   useEffect(() => {
     setComments(initialReviewComments);
@@ -259,6 +279,14 @@ export default function FundingReviewDetailScreen() {
           </TouchableOpacity>
         )}
       </View>
+      <FundingAlertModal
+        visible={Boolean(alertModal)}
+        title={alertModal?.title || ''}
+        body={alertModal?.body || ''}
+        tone={alertModal?.tone}
+        buttons={alertModal?.buttons}
+        onClose={() => setAlertModal(null)}
+      />
     </KeyboardAvoidingView>
   );
 }

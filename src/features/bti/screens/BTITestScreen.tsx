@@ -17,12 +17,15 @@ import { ArrowLeft, Check, ChevronRight, Lock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { convertBtiSurvey } from '@/features/bti/api';
 import {
   BTI_QUESTIONS,
   BtiAnswers,
   BtiQuestion,
   buildAnswersWithCustomInputs,
-  calculateSulbti,
+  buildBtiSurveyPayload,
+  getBtiTasteAxisValuesFromTasteVector,
+  getSulbtiCodeFromTasteVector,
   resolveSulbtiCode,
 } from '@/features/bti/data';
 
@@ -112,9 +115,18 @@ export default function BTITestScreen() {
       if (!BTI_QUESTIONS.every(isQuestionComplete)) {
         throw new Error('INCOMPLETE_BTI_ANSWERS');
       }
-      const resultType = resolveSulbtiCode(calculateSulbti(mergedAnswers));
+      if (!user) {
+        throw new Error('LOGIN_REQUIRED');
+      }
+      const surveyPayload = buildBtiSurveyPayload(mergedAnswers);
+      const conversion = await convertBtiSurvey(surveyPayload, user.id);
+      const resultType = resolveSulbtiCode(getSulbtiCodeFromTasteVector(conversion.taste_vector));
       if (!resultType) throw new Error('Invalid sulbti result');
-      await updateUser({ sulbti: resultType });
+      await updateUser({
+        sulbti: resultType,
+        sulbtiProfile: getBtiTasteAxisValuesFromTasteVector(conversion.taste_vector),
+        sulbtiFoodPairing: conversion.food_pairing,
+      });
       router.replace(`/bti-result/${resultType}` as any);
     } catch (error) {
       setIsSubmitting(false);

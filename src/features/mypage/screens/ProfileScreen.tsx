@@ -32,6 +32,7 @@ import {
   checkMyPageNickname,
   getMyPageApiErrorMessage,
   getMyPageProfile,
+  updateMyPageProfileImage,
   updateMyPageNickname,
   updateMyPagePhone,
 } from '@/features/mypage/api';
@@ -53,7 +54,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!user) {
-      showLoginRequired('프로필은 로그인 후 이용할 수 있어요.');
+      showLoginRequired('?꾨줈?꾩? 濡쒓렇?????댁슜?????덉뼱??');
       router.replace('/login' as any);
       return;
     }
@@ -74,7 +75,7 @@ export default function ProfileScreen() {
         if (changed) updateUser(nextUser);
       })
       .catch((error) => {
-        console.warn(getMyPageApiErrorMessage(error, '프로필 정보를 불러오지 못했습니다.'));
+        console.warn(getMyPageApiErrorMessage(error, '?꾨줈???뺣낫瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??'));
       });
 
     return () => {
@@ -119,17 +120,17 @@ export default function ProfileScreen() {
   const handleCheckNickname = async () => {
     const nickname = draftValue.trim();
     if (nickname.length < 2 || nickname.length > 12) {
-      Alert.alert('닉네임 확인', '닉네임은 2자 이상 12자 이하로 입력해주세요.');
+      Alert.alert('?됰꽕???뺤씤', '?됰꽕?꾩? 2???댁긽 12???댄븯濡??낅젰?댁＜?몄슂.');
       return;
     }
     if (!/^[가-힣a-zA-Z0-9]+$/.test(nickname)) {
-      Alert.alert('닉네임 확인', '닉네임에는 특수문자를 사용할 수 없습니다.');
+      Alert.alert('?됰꽕???뺤씤', '?됰꽕?꾩뿉???뱀닔臾몄옄瑜??ъ슜?????놁뒿?덈떎.');
       return;
     }
     if (nickname === displayName) {
       setIsNicknameChecked(true);
       setIsNicknameAvailable(true);
-      Alert.alert('닉네임 확인', '현재 사용 중인 닉네임입니다.');
+      Alert.alert('?됰꽕???뺤씤', '?꾩옱 ?ъ슜 以묒씤 ?됰꽕?꾩엯?덈떎.');
       return;
     }
 
@@ -138,9 +139,9 @@ export default function ProfileScreen() {
       const result = await checkMyPageNickname(nickname);
       setIsNicknameChecked(true);
       setIsNicknameAvailable(result.isAvailable);
-      Alert.alert('닉네임 확인', result.isAvailable ? '사용 가능한 닉네임입니다.' : '이미 사용 중인 닉네임입니다.');
+      Alert.alert('?됰꽕???뺤씤', result.isAvailable ? '?ъ슜 媛?ν븳 ?됰꽕?꾩엯?덈떎.' : '?대? ?ъ슜 以묒씤 ?됰꽕?꾩엯?덈떎.');
     } catch (error) {
-      Alert.alert('확인 실패', getMyPageApiErrorMessage(error, '닉네임 중복 확인에 실패했습니다.'));
+      Alert.alert('?뺤씤 ?ㅽ뙣', getMyPageApiErrorMessage(error, '?됰꽕??以묐났 ?뺤씤???ㅽ뙣?덉뒿?덈떎.'));
     } finally {
       setSaving(false);
     }
@@ -148,29 +149,29 @@ export default function ProfileScreen() {
 
   const handlePhoneVerification = () => {
     if (!isValidPhone(draftValue)) {
-      Alert.alert('전화번호 확인', '전화번호를 정확히 입력해주세요.');
+      Alert.alert('?꾪솕踰덊샇 ?뺤씤', '?꾪솕踰덊샇瑜??뺥솗???낅젰?댁＜?몄슂.');
       return;
     }
     setIsPhoneVerified(true);
-    Alert.alert('인증 완료', '전화번호 인증이 완료되었습니다.');
+    Alert.alert('?몄쬆 ?꾨즺', '?꾪솕踰덊샇 ?몄쬆???꾨즺?섏뿀?듬땲??');
   };
 
   const handleEmailVerification = () => {
     const email = draftValue.trim().toLowerCase();
     if (!isValidEmail(email)) {
-      Alert.alert('이메일 확인', '올바른 이메일 형식이 아닙니다.');
+      Alert.alert('?대찓???뺤씤', '?щ컮瑜??대찓???뺤떇???꾨떃?덈떎.');
       return;
     }
     setDraftValue(email);
     setIsEmailVerified(true);
-    Alert.alert('인증 완료', '이메일 인증 UI가 완료 상태로 표시됩니다.');
+    Alert.alert('?몄쬆 ?꾨즺', '?대찓???몄쬆 UI媛 ?꾨즺 ?곹깭濡??쒖떆?⑸땲??');
   };
 
   const saveEdit = async () => {
     if (!editingField || saving) return;
     const value = draftValue.trim();
     if (!value) {
-      Alert.alert('입력 확인', '변경할 값을 입력해주세요.');
+      Alert.alert('?낅젰 ?뺤씤', '蹂寃쏀븷 媛믪쓣 ?낅젰?댁＜?몄슂.');
       return;
     }
 
@@ -178,7 +179,7 @@ export default function ProfileScreen() {
       setSaving(true);
       if (editingField === 'nickname') {
         if (!isNicknameChecked || !isNicknameAvailable) {
-          Alert.alert('닉네임 확인', '닉네임 중복 확인을 완료해주세요.');
+          Alert.alert('?됰꽕???뺤씤', '?됰꽕??以묐났 ?뺤씤???꾨즺?댁＜?몄슂.');
           return;
         }
         const result = await updateMyPageNickname(value);
@@ -190,7 +191,7 @@ export default function ProfileScreen() {
 
       if (editingField === 'phone') {
         if (!isPhoneVerified) {
-          Alert.alert('전화번호 인증', '전화번호 인증을 완료해주세요.');
+          Alert.alert('?꾪솕踰덊샇 ?몄쬆', '?꾪솕踰덊샇 ?몄쬆???꾨즺?댁＜?몄슂.');
           return;
         }
         const phoneNumber = value.replace(/\D/g, '');
@@ -199,14 +200,14 @@ export default function ProfileScreen() {
       }
 
       if (editingField === 'email') {
-        Alert.alert('저장 불가', '이메일 수정 API가 아직 제공되지 않았습니다. 현재는 인증 UI만 확인할 수 있어요.');
+        Alert.alert('???遺덇?', '?대찓???섏젙 API媛 ?꾩쭅 ?쒓났?섏? ?딆븯?듬땲?? ?꾩옱???몄쬆 UI留??뺤씤?????덉뼱??');
         return;
       }
 
-      Alert.alert('저장 완료', '프로필 정보가 변경되었습니다.');
+      Alert.alert('????꾨즺', '?꾨줈???뺣낫媛 蹂寃쎈릺?덉뒿?덈떎.');
       closeEdit();
     } catch (error) {
-      Alert.alert('저장 실패', getMyPageApiErrorMessage(error, '프로필 정보를 저장하지 못했습니다.'));
+      Alert.alert('????ㅽ뙣', getMyPageApiErrorMessage(error, '?꾨줈???뺣낫瑜???ν븯吏 紐삵뻽?듬땲??'));
     } finally {
       setSaving(false);
     }
@@ -224,11 +225,25 @@ export default function ProfileScreen() {
       aspect: [1, 1],
       quality: 0.85,
     });
-    if (result.canceled || !result.assets[0]?.uri) return;
-    await updateUser({ profileImage: result.assets[0].uri });
-    Alert.alert('저장 완료', '프로필 사진은 앱 안에서만 변경되었습니다. 서버 저장 API는 아직 없습니다.');
-  };
+    if (result.canceled) return;
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return;
 
+    try {
+      setSaving(true);
+      const response = await updateMyPageProfileImage({
+        uri: asset.uri,
+        name: asset.fileName || asset.uri.split('/').pop() || `profile-${Date.now()}.jpg`,
+        type: asset.mimeType || 'image/jpeg',
+      });
+      await updateUser({ profileImage: response.profileImageUrl });
+      Alert.alert('저장 완료', '프로필 이미지가 변경되었습니다.');
+    } catch (error) {
+      Alert.alert('저장 실패', getMyPageApiErrorMessage(error, '프로필 이미지를 저장하지 못했습니다.'));
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -249,7 +264,7 @@ export default function ProfileScreen() {
               <Camera size={15} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.imageHelpText}>이미지 서버 저장은 API 제공 후 연결됩니다.</Text>
+          <Text style={styles.imageHelpText}>이미지는 서버에 저장되고 프로필에 반영됩니다.</Text>
         </View>
 
         <Text style={styles.sectionTitle}>계정 정보</Text>

@@ -29,6 +29,36 @@ type MyFundingProject = FundingProject & {
 
 const PAGE_SIZE = 3;
 const DELIVERY_ORDER_PROJECT_ID = 5;
+const DUMMY_DELIVERY_PROJECT_ID = 9001;
+
+const DUMMY_DELIVERY_PROJECT: MyFundingProject = {
+  id: DUMMY_DELIVERY_PROJECT_ID,
+  title: '달빛 담은 배 막걸리 배송 더미',
+  brewery: '주담 테스트 양조장',
+  location: '충북 충주',
+  category: '막걸리',
+  shortTitle: '달빛 담은 배 막걸리',
+  shortDescription: '배송조회 확인용 참여 펀딩 더미 데이터',
+  image: '',
+  localImage: require('../../../../newpicutre/funding3.jpg'),
+  goalAmount: 3000000,
+  currentAmount: 3600000,
+  backers: 128,
+  daysLeft: 0,
+  status: '펀딩 성공' as FundingProject['status'],
+  startDate: '2026.04.01',
+  endDate: '2026.05.10',
+  pricePerBottle: 32000,
+  bottleSize: '500ml',
+  alcoholContent: '6%',
+  estimatedDelivery: '2026.06.05',
+  rewardItems: ['달빛 담은 배 막걸리 1병'],
+  shippingFee: 3000,
+  mainIngredients: '쌀, 배',
+  tags: ['테스트', '배송조회'],
+  myAmount: 35000,
+  myDate: '2026.05.21',
+};
 
 function formatManwon(amount: number) {
   return `${Math.round(amount / 10000).toLocaleString()}만원`;
@@ -46,7 +76,7 @@ export default function FundedProjectsScreen() {
   const [page, setPage] = useState(1);
 
   const myFundings = useMemo<MyFundingProject[]>(() => {
-    return participatedFundings
+    const realFundings = participatedFundings
       .map((participation) => {
         const project = projects.find((item) => item.id === participation.fundingId);
         if (!project) return null;
@@ -57,9 +87,10 @@ export default function FundedProjectsScreen() {
         };
       })
       .filter((item): item is MyFundingProject => Boolean(item));
+    return [DUMMY_DELIVERY_PROJECT, ...realFundings];
   }, [participatedFundings, projects]);
 
-  const totalAmount = participatedFundings.reduce((sum, item) => sum + item.amount, 0);
+  const totalAmount = myFundings.reduce((sum, item) => sum + item.myAmount, 0);
   const activeCount = myFundings.filter((project) => !isCompletedFundingStatus(project.status)).length;
   const doneCount = myFundings.filter((project) => isCompletedFundingStatus(project.status)).length;
   const totalPages = Math.max(1, Math.ceil(myFundings.length / PAGE_SIZE));
@@ -90,7 +121,7 @@ export default function FundedProjectsScreen() {
             </View>
             <View>
               <Text style={styles.summaryCaption}>나의 펀딩 현황</Text>
-              <Text style={styles.summaryTitle}>총 {participatedFundings.length}개 프로젝트 참여</Text>
+              <Text style={styles.summaryTitle}>총 {myFundings.length}개 프로젝트 참여</Text>
             </View>
           </View>
 
@@ -185,7 +216,9 @@ function FundingParticipationCard({
   const progress = Math.min(Math.round((project.currentAmount / project.goalAmount) * 100), 100);
   const completed = isCompletedFundingStatus(project.status);
   const statusLabel = getFundingStatusLabel(project.status);
-  const showDeliveryButton = project.id === DELIVERY_ORDER_PROJECT_ID && isSuccessProject(project);
+  const showDeliveryButton =
+    project.id === DUMMY_DELIVERY_PROJECT_ID ||
+    (project.id === DELIVERY_ORDER_PROJECT_ID && isSuccessProject(project));
 
   return (
     <TouchableOpacity

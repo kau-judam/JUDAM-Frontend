@@ -9,7 +9,7 @@ interface ParticipatedFunding {
   date: string;
 }
 
-type FundingReviewInput = Omit<FundingReview, "id" | "date" | "timestamp" | "likes"> & { id?: number };
+type FundingReviewInput = Omit<FundingReview, "id" | "date" | "timestamp" | "likes"> & { id?: number; date?: string };
 
 interface FundingContextType {
   projects: FundingProject[];
@@ -92,7 +92,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     const nextReview: FundingReview = {
       ...review,
       id: review.id || Math.max(0, ...fundingReviews.map((item) => item.id)) + 1,
-      date,
+      date: review.date || date,
       timestamp: "방금 전",
       likes: 0,
     };

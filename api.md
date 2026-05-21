@@ -2240,4 +2240,56 @@ Frontend connection:
   - `src/features/mypage/screens/MyPageScreen.tsx` calls profile lookup when the `[마이]` bottom tab is opened and syncs the local auth user.
   - `src/features/mypage/screens/ProfileScreen.tsx` calls profile lookup on entry, checks nickname availability before nickname update, and calls phone update with digits-only `phoneNumber`.
 - Email is displayed from profile lookup, but it is read-only because no email update endpoint was provided.
-- Profile image remains local-only because no profile image upload/update endpoint was provided.
+- Profile image update is connected through `PATCH /api/mypage/profile/image`.
+
+### Update Profile Image
+
+Endpoint:
+```http
+PATCH {baseURI}/api/mypage/profile/image
+```
+
+Request:
+- Body: `multipart/form-data`
+- File field name: `image`
+
+Headers:
+```http
+Authorization: Bearer {accessToken}
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "프로필 이미지 수정 성공",
+  "data": {
+    "profileImageUrl": "S3 업로드 URL"
+  }
+}
+```
+
+Notes:
+- Uploaded images are stored in S3 and `users.profile_image` is updated.
+- Later `GET /api/mypage/profile` returns the changed `profileImageUrl`.
+- Do not manually set `Content-Type`; React Native/fetch must set the multipart boundary automatically.
+
+Errors:
+```json
+{
+  "status": 400,
+  "message": "프로필 이미지 파일을 첨부해주세요."
+}
+```
+
+```json
+{
+  "status": 401,
+  "message": "유효하지 않거나 만료된 토큰입니다."
+}
+```
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `updateMyPageProfileImage`.
+- Screen: `src/features/mypage/screens/ProfileScreen.tsx` profile image picker.

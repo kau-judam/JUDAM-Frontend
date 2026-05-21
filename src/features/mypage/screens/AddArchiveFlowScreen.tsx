@@ -24,6 +24,24 @@ import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels'
 type Step = 'select-type' | 'select-funding';
 
 const ARCHIVE_REVIEW_PROJECT_ID = 5;
+const ARCHIVE_DUMMY_FUNDING_PROJECT: FundingProject = {
+  id: -1001,
+  title: '아카이브 테스트 펀딩 전통주',
+  brewery: '주담 테스트 양조장',
+  location: '서울',
+  category: '막걸리',
+  image: '',
+  localImage: require('../../../../newpicutre/funding3.jpg'),
+  goalAmount: 3000000,
+  currentAmount: 3000000,
+  backers: 128,
+  daysLeft: 0,
+  status: '완료' as FundingProject['status'],
+  bottleSize: '375ml',
+  alcoholContent: '6%',
+  rewardItems: ['테스트 리워드 1병'],
+  mainIngredients: '쌀',
+};
 
 export default function AddArchiveFlowScreen() {
   const insets = useSafeAreaInsets();
@@ -38,7 +56,7 @@ export default function AddArchiveFlowScreen() {
     () => projects.find((project) => project.id === ARCHIVE_REVIEW_PROJECT_ID) || null,
     [projects]
   );
-  const fundingOptions = completedFundingProjects.length > 0 ? completedFundingProjects : fallbackProject ? [fallbackProject] : [];
+  const fundingOptions = completedFundingProjects.length > 0 ? completedFundingProjects : fallbackProject ? [fallbackProject] : [ARCHIVE_DUMMY_FUNDING_PROJECT];
 
   const currentStep = step === 'select-type' ? 1 : 2;
   const totalSteps = step === 'select-type' ? 2 : 3;
@@ -53,11 +71,11 @@ export default function AddArchiveFlowScreen() {
   };
 
   const goNormalReview = () => {
-    router.push(`/archive/review/${ARCHIVE_REVIEW_PROJECT_ID}?archiveMode=normal` as any);
+    router.push('/mypage/archive/write?type=normal' as any);
   };
 
   const goFundingReview = (projectId: number) => {
-    router.push(`/archive/review/${projectId}?archiveMode=funding` as any);
+    router.push(`/mypage/archive/write?type=funding&fundingId=${projectId}` as any);
   };
 
   return (

@@ -42,7 +42,7 @@ import { Button } from '@/components/ui/button';
 import { getFundingApiErrorMessage, getMyFundingOrders, isFundingApiMissingEndpointError } from '@/features/funding/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 import { getBtiResult, resolveBtiType, resolveSulbtiCode } from '@/features/bti/data';
-import { getMyPageApiErrorMessage, getMyPageProfile } from '@/features/mypage/api';
+import { getMyPageApiErrorMessage, getMyPageProfile, getMyPageSummary, MyPageSummary } from '@/features/mypage/api';
 
 const FAQ_ITEMS = [
   { id: 1, q: "펀딩 취소·환불은 어떻게 하나요?", a: "펀딩 취소는 마감일 전까지 마이페이지에서 직접 취소하실 수 있습니다. 단, 제조가 시작된 경우 취소가 불가할 수 있습니다." },
@@ -55,6 +55,7 @@ export default function MyPageScreen() {
   const { participatedFundings, mergeParticipationsFromOrders } = useFunding();
   const [supportVisible, setSupportVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [summary, setSummary] = useState<MyPageSummary | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -87,6 +88,19 @@ export default function MyPageScreen() {
       .catch((error) => {
         if (isFundingApiMissingEndpointError(error)) return;
         console.warn(getFundingApiErrorMessage(error, "후원 내역을 불러오지 못했습니다."));
+      });
+
+    getMyPageSummary()
+      .then((nextSummary) => {
+        if (!mounted) return;
+        setSummary(nextSummary);
+        const summaryType = nextSummary.sulbti?.hasResult ? resolveSulbtiCode(nextSummary.sulbti.type) : null;
+        if (summaryType && summaryType !== resolveSulbtiCode(user.sulbti)) {
+          updateUser({ sulbti: summaryType });
+        }
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '마이페이지 요약 정보를 불러오지 못했습니다.'));
       });
 
     return () => {
@@ -191,7 +205,8 @@ export default function MyPageScreen() {
 
   const initial = user.name?.[0] || 'U';
   const isBrewery = user.type === 'brewery';
-  const savedBtiCode = resolveSulbtiCode(user.sulbti);
+  const summaryBtiCode = summary?.sulbti?.hasResult ? resolveSulbtiCode(summary.sulbti.type) : null;
+  const savedBtiCode = resolveSulbtiCode(user.sulbti) || summaryBtiCode;
   const savedBtiType = resolveBtiType(savedBtiCode);
   const btiResult = savedBtiCode ? getBtiResult(savedBtiCode) : null;
   const openBtiResultOrTest = () => {
@@ -200,9 +215,9 @@ export default function MyPageScreen() {
   const startBtiTest = () => {
     router.push('/bti-test' as any);
   };
-  const fundedCount = isBrewery ? 6 : participatedFundings.length;
-  const archiveCount = 12;
-  const badgeCount = 5;
+  const fundedCount = summary?.participatedFundingCount ?? (isBrewery ? 6 : participatedFundings.length);
+  const archiveCount = summary?.archiveCount ?? 12;
+  const badgeCount = summary?.badgeCount ?? 5;
 
   return (
     <View style={styles.container}>

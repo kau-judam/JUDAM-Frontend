@@ -260,6 +260,11 @@ type UpdateFundingProjectResponse = {
 };
 
 export type FundingDocumentType =
+  | 'idCard'
+  | 'businessLicense'
+  | 'salesPermit'
+  | 'alcoholPermit'
+  | 'manufacturingLicense'
   | 'BUSINESS_REGISTRATION'
   | 'MAIL_ORDER_BUSINESS'
   | 'LIQUOR_LICENSE'
@@ -1316,13 +1321,24 @@ export async function saveFundingAgreement(payload: FundingAgreementPayload) {
     isFeePolicyAgreed: payload.isFeePolicyAgreed,
     isResponsibilityAgreed: payload.isResponsibilityAgreed,
   };
+  const fullBody = {
+    ...baseBody,
+    isLicenseAgreed: payload.isLicenseAgreed,
+    isIpPolicyAgreed: payload.isIpPolicyAgreed,
+    isRecipeLicenseAgreed: payload.isRecipeLicenseAgreed,
+    allRequiredTermsAgreed: payload.allRequiredTermsAgreed,
+  };
   const requestBodies: Record<string, unknown>[] = [
-    baseBody,
+    fullBody,
     {
-      ...baseBody,
-      isLicenseAgreed: payload.isLicenseAgreed,
-      isIpPolicyAgreed: payload.isIpPolicyAgreed,
-      isRecipeLicenseAgreed: payload.isRecipeLicenseAgreed,
+      breweryId,
+      age: payload.isAdultConfirmed,
+      contact: payload.isContactInfoAgreed,
+      settlement: payload.isSettlementInfoAgreed,
+      fee: payload.isFeePolicyAgreed,
+      responsibility: payload.isResponsibilityAgreed,
+      license: payload.isLicenseAgreed,
+      ip: payload.isIpPolicyAgreed,
       allRequiredTermsAgreed: payload.allRequiredTermsAgreed,
     },
     {
@@ -1351,6 +1367,7 @@ export async function saveFundingAgreement(payload: FundingAgreementPayload) {
       agreedTermIds: ['age', 'contact', 'settlement', 'fee', 'responsibility', 'license', 'ip'],
       allAgreed: payload.allRequiredTermsAgreed,
     },
+    baseBody,
   ];
 
   let lastError: unknown = null;

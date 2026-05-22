@@ -24,12 +24,10 @@ import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels'
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
 import {
   createMyPageArchiveWithImages,
-  deleteMyPageArchiveImage,
   getMyPageApiErrorMessage,
   getMyPageArchiveDetail,
   getMyPageArchiveTags,
-  uploadMyPageArchiveImages,
-  updateMyPageArchive,
+  updateMyPageArchiveWithImages,
   type MyPageImageUploadFile,
 } from '@/features/mypage/api';
 
@@ -389,27 +387,32 @@ export default function ArchiveWriteScreen() {
     let saved = null;
     try {
       if (isEditMode && Number.isFinite(targetEditId)) {
-        const updatedArchive = await updateMyPageArchive(targetEditId, {
-          recordDate: formatArchiveApiDate(recordYear, recordMonth, recordDay),
-          tastingNote: reviewText.trim(),
-          tagIds: getArchiveTagIds(selectedTags, tagIdByName),
-        });
         const newImages = uploadedImages.filter(isLocalArchiveImage).map(getArchiveImageFile);
         const deletedServerImageIds = Object.entries(serverImageIdsByUrl)
           .filter(([imageUrl]) => !uploadedImages.includes(imageUrl))
           .map(([, imageId]) => imageId);
-        if (deletedServerImageIds.length > 0) {
-          await Promise.all(deletedServerImageIds.map((imageId) => deleteMyPageArchiveImage(targetEditId, imageId)));
-        }
-        const uploadedServerImages = newImages.length > 0
-          ? await uploadMyPageArchiveImages(targetEditId, newImages)
-          : [];
+        const updatedArchive = await updateMyPageArchiveWithImages(targetEditId, {
+          archiveType: archiveKind === 'funding' ? 'FUNDING' : 'NORMAL',
+          customName: rewardName || undefined,
+          category: '탁주',
+          abv: archiveKind === 'normal' ? parseAbv(drinkAlcohol) : parseAbv(project?.alcoholContent || ''),
+          rating,
+          recordDate: formatArchiveApiDate(recordYear, recordMonth, recordDay),
+          tastingNote: reviewText.trim(),
+          mood: mood.trim(),
+          pairing: pairing.trim(),
+          tagIds: getArchiveTagIds(selectedTags, tagIdByName),
+          customTags,
+          deleteImageIds: deletedServerImageIds,
+          images: newImages,
+        });
         saved = addFundingReview({
           ...payload,
-          id: Number(updatedArchive.archiveId || targetEditId),
-          images: [
-            ...uploadedImages.filter((image) => !isLocalArchiveImage(image)),
-            ...uploadedServerImages.map((image) => image.imageUrl),
+          id: updatedArchive.archiveId || targetEditId,
+          images: updatedArchive.images.map((image) => image.imageUrl),
+          tags: [
+            ...(archiveKind === 'normal' && updatedArchive.abv ? [`${updatedArchive.abv}%`] : []),
+            ...updatedArchive.tags.map((tag) => tag.name),
           ],
         });
       } else if (isEditMode && editingArchive) {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ImageSourcePropType,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Search,
   MessageCircle,
@@ -52,32 +53,34 @@ export default function CommunityScreen() {
   const [isApiLoading, setIsApiLoading] = useState(true);
   const [apiLoadFailed, setApiLoadFailed] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadCommunityPosts = useCallback(() => {
+    let isActive = true;
     const apiSort = sortOption === "인기순" ? 'popular' : 'newest';
     setIsApiLoading(true);
 
     fetchCommunityPosts({ sort: apiSort, page: 0, size: 20 })
       .then((response) => {
-        if (cancelled) return;
+        if (!isActive) return;
         setApiPosts(response.posts);
         setApiLoadFailed(false);
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (!isActive) return;
         console.warn('Failed to load community posts from API', error);
         setApiPosts([]);
         setApiLoadFailed(true);
       })
       .finally(() => {
-        if (cancelled) return;
+        if (!isActive) return;
         setIsApiLoading(false);
       });
 
     return () => {
-      cancelled = true;
+      isActive = false;
     };
-  }, [sortOption, user]);
+  }, [sortOption]);
+
+  useFocusEffect(loadCommunityPosts);
 
   const handlePostLike = async (postId: number) => {
     if (!user) {

@@ -105,6 +105,8 @@ export type MyPageArchive = {
   rating: number | null;
   tastingNote: string | null;
   recordDate: string | null;
+  mood?: string | null;
+  pairing?: string | null;
   createdAt: string;
   updatedAt: string;
   tags: MyPageArchiveTag[];
@@ -142,6 +144,23 @@ export type UpdateMyPageArchivePayload = {
   recordDate?: string;
   tastingNote?: string;
   tagIds?: (number | string)[];
+};
+
+export type UpdateMyPageArchiveWithImagesPayload = {
+  archiveType?: 'NORMAL' | 'FUNDING';
+  customName?: string;
+  alcoholId?: number | string;
+  category?: string;
+  abv?: number | string;
+  rating?: number | string;
+  tastingNote?: string;
+  recordDate?: string;
+  mood?: string;
+  pairing?: string;
+  tagIds?: (number | string)[];
+  customTags?: string[];
+  deleteImageIds?: (number | string)[];
+  images?: MyPageImageUploadFile[];
 };
 
 export type MyPageArchiveTagGroup = {
@@ -389,6 +408,43 @@ export async function updateMyPageArchive(archiveId: string | number, payload: U
     body: JSON.stringify(payload),
   });
   return unwrapMyPageData<Partial<MyPageArchive>>(response);
+}
+
+export async function updateMyPageArchiveWithImages(
+  archiveId: string | number,
+  payload: UpdateMyPageArchiveWithImagesPayload
+) {
+  const formData = new FormData();
+  if (payload.archiveType) formData.append('archiveType', payload.archiveType);
+  if (payload.customName) formData.append('customName', payload.customName);
+  if (payload.alcoholId !== undefined) formData.append('alcoholId', String(payload.alcoholId));
+  if (payload.category) formData.append('category', payload.category);
+  if (payload.abv !== undefined) formData.append('abv', String(payload.abv));
+  if (payload.rating !== undefined) formData.append('rating', String(payload.rating));
+  if (payload.tastingNote) formData.append('tastingNote', payload.tastingNote);
+  if (payload.recordDate) formData.append('recordDate', payload.recordDate);
+  if (payload.mood) formData.append('mood', payload.mood);
+  if (payload.pairing) formData.append('pairing', payload.pairing);
+  if (payload.tagIds) formData.append('tagIds', JSON.stringify(payload.tagIds));
+  if (payload.customTags) formData.append('customTags', JSON.stringify(payload.customTags));
+  if (payload.deleteImageIds) formData.append('deleteImageIds', JSON.stringify(payload.deleteImageIds));
+
+  (payload.images || []).slice(0, 3).forEach((image, index) => {
+    const imageName = image.name || image.uri.split('/').pop() || `archive-update-${archiveId}-${index + 1}.jpg`;
+    const imageType = image.type || 'image/jpeg';
+    formData.append('images', {
+      uri: image.uri,
+      name: imageName,
+      type: imageType,
+    } as unknown as Blob);
+  });
+
+  const response = await requestMyPageForm<MyPageApiEnvelope<MyPageArchive>>(
+    `/api/mypage/archives/${archiveId}/with-images`,
+    formData,
+    { method: 'PATCH' }
+  );
+  return unwrapMyPageData<MyPageArchive>(response);
 }
 
 export async function deleteMyPageArchive(archiveId: string | number) {

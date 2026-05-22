@@ -120,11 +120,11 @@ const EMPTY_UPLOADED_FILES: Record<FileKey, UploadedFileValue> = {
   manufacturingLicense: '',
 };
 const DOCUMENT_TYPE_BY_FILE_KEY: Record<DocumentFileKey, FundingDocumentType> = {
-  idCard: 'ETC',
-  businessLicense: 'BUSINESS_REGISTRATION',
-  salesPermit: 'MAIL_ORDER_BUSINESS',
-  alcoholPermit: 'LIQUOR_LICENSE',
-  manufacturingLicense: 'LIQUOR_LICENSE',
+  idCard: 'idCard',
+  businessLicense: 'businessLicense',
+  salesPermit: 'salesPermit',
+  alcoholPermit: 'alcoholPermit',
+  manufacturingLicense: 'manufacturingLicense',
 };
 const SUPPORTED_DOCUMENT_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
 const SUPPORTED_DOCUMENT_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
@@ -453,14 +453,15 @@ function getUploadedFilesFromPreviewDocuments(documents?: FundingDraftPreviewRes
   const files = { ...EMPTY_UPLOADED_FILES };
   documents?.forEach((document) => {
     const fileName = document.fileName || '기존 제출 서류';
-    if (document.documentType === 'BUSINESS_REGISTRATION') files.businessLicense = fileName;
-    if (document.documentType === 'MAIL_ORDER_BUSINESS') files.salesPermit = fileName;
+    if (document.documentType === 'businessLicense' || document.documentType === 'BUSINESS_REGISTRATION') files.businessLicense = fileName;
+    if (document.documentType === 'salesPermit' || document.documentType === 'MAIL_ORDER_BUSINESS') files.salesPermit = fileName;
+    if (document.documentType === 'alcoholPermit') files.alcoholPermit = fileName;
+    if (document.documentType === 'manufacturingLicense') files.manufacturingLicense = fileName;
     if (document.documentType === 'LIQUOR_LICENSE') {
       files.alcoholPermit = files.alcoholPermit || fileName;
       files.manufacturingLicense = files.manufacturingLicense || fileName;
     }
-    if (document.documentType === 'BANK_ACCOUNT_COPY') files.idCard = files.idCard || fileName;
-    if (document.documentType === 'ETC') files.idCard = files.idCard || fileName;
+    if (document.documentType === 'idCard' || document.documentType === 'BANK_ACCOUNT_COPY' || document.documentType === 'ETC') files.idCard = files.idCard || fileName;
   });
   return files;
 }

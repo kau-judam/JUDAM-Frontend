@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { convertBtiSurvey } from '@/features/bti/api';
+import { saveMyPageSulbti } from '@/features/mypage/api';
 import {
   BTI_QUESTIONS,
   BtiAnswers,
@@ -31,6 +32,11 @@ import {
 
 const QUESTIONS_PER_PAGE = 5;
 const TOTAL_PAGES = Math.ceil(BTI_QUESTIONS.length / QUESTIONS_PER_PAGE);
+
+function clampBtiScore(value?: number) {
+  if (!Number.isFinite(value)) return 3;
+  return Math.max(1, Math.min(5, Math.round(value || 3)));
+}
 
 export default function BTITestScreen() {
   const insets = useSafeAreaInsets();
@@ -122,9 +128,18 @@ export default function BTITestScreen() {
       const conversion = await convertBtiSurvey(surveyPayload, user.id);
       const resultType = resolveSulbtiCode(getSulbtiCodeFromSurveyResult(conversion.bti_code, conversion.taste_vector));
       if (!resultType) throw new Error('Invalid sulbti result');
+      const tasteScores = getBtiTasteAxisValuesFromTasteVector(conversion.taste_vector);
+      await saveMyPageSulbti({
+        type: resultType.split('-')[0],
+        sweetnessScore: clampBtiScore(tasteScores.sweetness),
+        bodyScore: clampBtiScore(tasteScores.body),
+        carbonationScore: clampBtiScore(tasteScores.carbonation),
+        flavorScore: clampBtiScore(6 - (tasteScores.tradition || 3)),
+        abvScore: clampBtiScore(tasteScores.alcohol),
+      });
       await updateUser({
         sulbti: resultType,
-        sulbtiProfile: getBtiTasteAxisValuesFromTasteVector(conversion.taste_vector),
+        sulbtiProfile: tasteScores,
         sulbtiFoodPairing: conversion.food_pairing || conversion.preferred_food_pairing,
       });
       router.replace(`/bti-result/${resultType}` as any);

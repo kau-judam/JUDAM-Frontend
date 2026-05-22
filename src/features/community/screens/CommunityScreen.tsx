@@ -48,12 +48,14 @@ export default function CommunityScreen() {
   const [sortOption, setSortOption] = useState<"인기순" | "최신순">("인기순");
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [apiPosts, setApiPosts] = useState(posts);
+  const [apiPosts, setApiPosts] = useState<typeof posts>([]);
+  const [isApiLoading, setIsApiLoading] = useState(true);
   const [apiLoadFailed, setApiLoadFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const apiSort = sortOption === "인기순" ? 'popular' : 'newest';
+    setIsApiLoading(true);
 
     fetchCommunityPosts({ sort: apiSort, page: 0, size: 20 })
       .then((response) => {
@@ -64,7 +66,12 @@ export default function CommunityScreen() {
       .catch((error) => {
         if (cancelled) return;
         console.warn('Failed to load community posts from API', error);
+        setApiPosts([]);
         setApiLoadFailed(true);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsApiLoading(false);
       });
 
     return () => {
@@ -115,7 +122,7 @@ export default function CommunityScreen() {
   };
 
   const localOnlyPosts = posts.filter((post) => post.id > 1000000000000);
-  const sourcePosts = apiLoadFailed ? posts : [...localOnlyPosts, ...apiPosts];
+  const sourcePosts = apiLoadFailed ? localOnlyPosts : [...localOnlyPosts, ...apiPosts];
 
   const filteredPosts = sourcePosts.filter(p => {
     const catMatch = communityFilter === "전체" || p.category === communityFilter;
@@ -194,7 +201,11 @@ export default function CommunityScreen() {
       {/* 2. Feed Section */}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.feedContent}>
          {/* Post Cards */}
-         {pagedPosts.length === 0 ? (
+         {isApiLoading ? (
+           <View style={styles.emptyState}>
+              <Text style={styles.emptyTxt}>게시글 목록을 불러오고 있어요.</Text>
+           </View>
+         ) : pagedPosts.length === 0 ? (
            <View style={styles.emptyState}>
               <Text style={styles.emptyTxt}>게시글이 없습니다.</Text>
            </View>
@@ -238,7 +249,7 @@ export default function CommunityScreen() {
          )}
 
          {/* Pagination */}
-         {totalPages > 1 && (
+         {totalPages > 1 && !isApiLoading && (
            <View style={styles.pagination}>
               <TouchableOpacity 
                 disabled={currentPage === 1} 

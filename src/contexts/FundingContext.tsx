@@ -9,7 +9,7 @@ interface ParticipatedFunding {
   date: string;
 }
 
-type FundingReviewInput = Omit<FundingReview, "id" | "date" | "timestamp" | "likes"> & { id?: number };
+type FundingReviewInput = Omit<FundingReview, "id" | "date" | "timestamp" | "likes"> & { id?: number; date?: string };
 
 interface FundingContextType {
   projects: FundingProject[];
@@ -21,6 +21,7 @@ interface FundingContextType {
   updateProject: (projectId: number, project: Partial<Omit<FundingProject, "id">>) => FundingProject | null;
   addFundingReview: (review: FundingReviewInput) => FundingReview;
   updateFundingReview: (reviewId: number, review: Partial<FundingReviewInput>) => FundingReview | null;
+  deleteFundingReview: (reviewId: number) => void;
   mergeProjects: (incomingProjects: FundingProject[]) => void;
   mergeProject: (projectId: number, project: Partial<Omit<FundingProject, "id">>) => void;
   mergeFundingReviews: (projectId: number, reviews: FundingReview[]) => void;
@@ -92,7 +93,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     const nextReview: FundingReview = {
       ...review,
       id: review.id || Math.max(0, ...fundingReviews.map((item) => item.id)) + 1,
-      date,
+      date: review.date || date,
       timestamp: "방금 전",
       likes: 0,
     };
@@ -124,12 +125,16 @@ export function FundingProvider({ children }: { children: ReactNode }) {
       ...currentReview,
       ...review,
       id: reviewId,
-      date: currentReview.date,
+      date: review.date || currentReview.date,
       timestamp: "방금 수정",
       likes: currentReview.likes,
     };
     setFundingReviews((prev) => prev.map((item) => (item.id === reviewId ? updatedReview : item)));
     return updatedReview;
+  };
+
+  const deleteFundingReview = (reviewId: number) => {
+    setFundingReviews((prev) => prev.filter((item) => item.id !== reviewId));
   };
 
   const mergeProjects = useCallback((incomingProjects: FundingProject[]) => {
@@ -236,6 +241,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
         updateProject,
         addFundingReview,
         updateFundingReview,
+        deleteFundingReview,
         mergeProjects,
         mergeProject,
         mergeFundingReviews,

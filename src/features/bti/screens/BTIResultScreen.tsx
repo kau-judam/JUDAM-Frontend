@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   Alert,
   Image,
@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { getBtiDisplayType, getBtiResult, normalizeBtiTasteAxisValue, resolveSulbtiCode } from '@/features/bti/data';
+import { getMyPageApiErrorMessage, getMyPageSulbti } from '@/features/mypage/api';
 
 const BTI_CHARACTER_IMAGES: Record<string, ImageSourcePropType> = {
   SHFC: require('@/assets/images/BTI/1.png'),
@@ -67,7 +68,36 @@ function getAxisPosition(value: number, highSide: 'left' | 'right') {
 export default function BTIResultScreen() {
   const insets = useSafeAreaInsets();
   const { type } = useLocalSearchParams<{ type: string }>();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
+  const userId = user?.id;
+
+  useEffect(() => {
+    if (!userId) return;
+    let mounted = true;
+    getMyPageSulbti()
+      .then((result) => {
+        if (!mounted || !result.hasResult || !result.type) return;
+        updateUser({
+          sulbti: result.type,
+          sulbtiProfile: result.scores
+            ? {
+              sweetness: result.scores.sweetness,
+              body: result.scores.body,
+              carbonation: result.scores.carbonation,
+              tradition: 6 - result.scores.flavor,
+              alcohol: result.scores.abv,
+            }
+            : undefined,
+        });
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '술BTI 결과를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [updateUser, userId]);
   const savedCode = resolveSulbtiCode(user?.sulbti);
   const routeCode = resolveSulbtiCode(type);
   const resultCode = savedCode || routeCode;

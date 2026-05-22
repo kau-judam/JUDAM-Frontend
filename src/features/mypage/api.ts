@@ -1,0 +1,282 @@
+import SafeStorage from '@/utils/storage';
+
+export const JUDAM_MYPAGE_API_BASE_URL = 'http://43.202.24.223:3000';
+
+type MyPageApiErrorBody = {
+  status?: number;
+  message?: string;
+};
+
+type MyPageApiEnvelope<T> = MyPageApiErrorBody & {
+  data?: T;
+};
+
+export type MyPageProfile = {
+  userId: string;
+  profileImageUrl: string | null;
+  nickname: string;
+  phoneNumber: string | null;
+  email: string;
+  loginType: string;
+};
+
+export type NicknameCheckResult = {
+  nickname: string;
+  isAvailable: boolean;
+};
+
+export type MyPageImageUploadFile = {
+  uri: string;
+  name?: string | null;
+  type?: string | null;
+};
+
+export type MyPageSummary = {
+  participatedFundingCount: number;
+  archiveCount: number;
+  badgeCount: number;
+  sulbti: {
+    hasResult: boolean;
+    type: string | null;
+    title: string | null;
+    summary: string | null;
+    tags: string[];
+  };
+};
+
+export type MyPageSulbtiScores = {
+  sweetness: number;
+  body: number;
+  carbonation: number;
+  flavor: number;
+  abv: number;
+};
+
+export type MyPageSulbtiResult = {
+  hasResult: boolean;
+  type: string | null;
+  title: string | null;
+  description: string | null;
+  scores: MyPageSulbtiScores | null;
+  tags: string[];
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type SaveMyPageSulbtiPayload = {
+  type: string;
+  sweetnessScore: number;
+  bodyScore: number;
+  carbonationScore: number;
+  flavorScore: number;
+  abvScore: number;
+};
+
+export type MyPageArchiveImage = {
+  imageId: number;
+  imageUrl: string;
+  sortOrder: number;
+};
+
+const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
+
+export async function getMyPageAccessToken() {
+  for (const key of TOKEN_STORAGE_KEYS) {
+    const value = await SafeStorage.getItem(key);
+    if (value) return value;
+  }
+  return null;
+}
+
+function parseMyPageResponseBody(path: string, response: Response, text: string) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const contentType = response.headers.get('content-type') || 'unknown content-type';
+    throw new Error(`API 응답이 JSON이 아닙니다. ${response.status} ${path} (${contentType})`);
+  }
+}
+
+async function requestMyPageJson<T>(path: string, options: RequestInit = {}) {
+  const { headers, ...requestOptions } = options;
+  const token = await getMyPageAccessToken();
+  if (!token) {
+    throw new Error('NEEDS_ACCESS_TOKEN');
+  }
+
+  const nextHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+    ...(headers as Record<string, string> | undefined),
+  };
+
+  const response = await fetch(`${JUDAM_MYPAGE_API_BASE_URL}${path}`, {
+    ...requestOptions,
+    headers: nextHeaders,
+  });
+
+  const text = await response.text();
+  const data = parseMyPageResponseBody(path, response, text);
+
+  if (!response.ok) {
+    const message = (data as MyPageApiErrorBody | null)?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
+async function requestMyPageForm<T>(path: string, formData: FormData, options: RequestInit = {}) {
+  const { headers, ...requestOptions } = options;
+  const token = await getMyPageAccessToken();
+  if (!token) {
+    throw new Error('NEEDS_ACCESS_TOKEN');
+  }
+
+  const nextHeaders: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    ...(headers as Record<string, string> | undefined),
+  };
+
+  const response = await fetch(`${JUDAM_MYPAGE_API_BASE_URL}${path}`, {
+    ...requestOptions,
+    method: requestOptions.method || 'PATCH',
+    body: formData,
+    headers: nextHeaders,
+  });
+
+  const text = await response.text();
+  const data = parseMyPageResponseBody(path, response, text);
+
+  if (!response.ok) {
+    const message = (data as MyPageApiErrorBody | null)?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
+function unwrapMyPageData<T>(response: T | MyPageApiEnvelope<T>) {
+  if (response && typeof response === 'object' && 'data' in response) {
+    const data = (response as MyPageApiEnvelope<T>).data;
+    if (data !== undefined) return data;
+  }
+  return response as T;
+}
+
+export async function getMyPageProfile() {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageProfile>>('/api/mypage/profile');
+  return unwrapMyPageData<MyPageProfile>(response);
+}
+
+export async function checkMyPageNickname(nickname: string) {
+  const query = new URLSearchParams({ nickname });
+  const response = await requestMyPageJson<MyPageApiEnvelope<NicknameCheckResult>>(
+    `/api/mypage/profile/nickname/check?${query.toString()}`
+  );
+  return unwrapMyPageData<NicknameCheckResult>(response);
+}
+
+export async function updateMyPageNickname(nickname: string) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<{ nickname: string }>>('/api/mypage/profile/nickname', {
+    method: 'PATCH',
+    body: JSON.stringify({ nickname }),
+  });
+  return unwrapMyPageData<{ nickname: string }>(response);
+}
+
+export async function updateMyPagePhone(phoneNumber: string) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<{ phoneNumber: string }>>('/api/mypage/profile/phone', {
+    method: 'PATCH',
+    body: JSON.stringify({ phoneNumber }),
+  });
+  return unwrapMyPageData<{ phoneNumber: string }>(response);
+}
+
+export async function updateMyPageProfileImage(image: MyPageImageUploadFile) {
+  if (!image.uri) {
+    throw new Error('프로필 이미지 파일을 첨부해주세요.');
+  }
+
+  const formData = new FormData();
+  const imageName = image.name || image.uri.split('/').pop() || `profile-${Date.now()}.jpg`;
+  const imageType = image.type || 'image/jpeg';
+  formData.append('image', {
+    uri: image.uri,
+    name: imageName,
+    type: imageType,
+  } as unknown as Blob);
+
+  const response = await requestMyPageForm<MyPageApiEnvelope<{ profileImageUrl: string }>>(
+    '/api/mypage/profile/image',
+    formData,
+    { method: 'PATCH' }
+  );
+  return unwrapMyPageData<{ profileImageUrl: string }>(response);
+}
+
+export async function changeMyPagePassword(currentPassword: string, newPassword: string) {
+  return requestMyPageJson<MyPageApiEnvelope<null>>('/api/mypage/profile/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export async function getMyPageSummary() {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSummary>>('/api/mypage/summary');
+  return unwrapMyPageData<MyPageSummary>(response);
+}
+
+export async function getMyPageSulbti() {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSulbtiResult>>('/api/mypage/sulbti');
+  return unwrapMyPageData<MyPageSulbtiResult>(response);
+}
+
+export async function saveMyPageSulbti(payload: SaveMyPageSulbtiPayload) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSulbtiResult>>('/api/mypage/sulbti', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return unwrapMyPageData<MyPageSulbtiResult>(response);
+}
+
+export async function uploadMyPageArchiveImages(archiveId: string | number, images: MyPageImageUploadFile[]) {
+  if (!images.length) {
+    throw new Error('아카이브 이미지 파일을 첨부해주세요.');
+  }
+
+  const formData = new FormData();
+  images.forEach((image, index) => {
+    const imageName = image.name || image.uri.split('/').pop() || `archive-${archiveId}-${index + 1}.jpg`;
+    const imageType = image.type || 'image/jpeg';
+    formData.append('images', {
+      uri: image.uri,
+      name: imageName,
+      type: imageType,
+    } as unknown as Blob);
+  });
+
+  const response = await requestMyPageForm<MyPageApiEnvelope<MyPageArchiveImage[]>>(
+    `/api/mypage/archives/${archiveId}/images`,
+    formData,
+    { method: 'POST' }
+  );
+  return unwrapMyPageData<MyPageArchiveImage[]>(response);
+}
+
+export async function deleteMyPageArchiveImage(archiveId: string | number, imageId: string | number) {
+  return requestMyPageJson<MyPageApiEnvelope<null>>(`/api/mypage/archives/${archiveId}/images/${imageId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function getMyPageApiErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    if (error.message === 'NEEDS_ACCESS_TOKEN') return '로그인이 필요합니다.';
+    return error.message || fallback;
+  }
+  return fallback;
+}

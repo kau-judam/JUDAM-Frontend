@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -41,6 +42,7 @@ import { Button } from '@/components/ui/button';
 import { getFundingApiErrorMessage, getMyFundingOrders, isFundingApiMissingEndpointError } from '@/features/funding/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 import { getBtiResult, resolveBtiType, resolveSulbtiCode } from '@/features/bti/data';
+import { getMyPageApiErrorMessage, getMyPageProfile, getMyPageSummary, MyPageSummary } from '@/features/mypage/api';
 
 const FAQ_ITEMS = [
   { id: 1, q: "펀딩 취소·환불은 어떻게 하나요?", a: "펀딩 취소는 마감일 전까지 마이페이지에서 직접 취소하실 수 있습니다. 단, 제조가 시작된 경우 취소가 불가할 수 있습니다." },
@@ -49,14 +51,35 @@ const FAQ_ITEMS = [
 
 export default function MyPageScreen() {
   const insets = useSafeAreaInsets();
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const { participatedFundings, mergeParticipationsFromOrders } = useFunding();
   const [supportVisible, setSupportVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+  const [summary, setSummary] = useState<MyPageSummary | null>(null);
 
   useEffect(() => {
     if (!user) return;
     let mounted = true;
+    getMyPageProfile()
+      .then((profile) => {
+        if (!mounted) return;
+        const nextUser = {
+          id: profile.userId || user.id,
+          uid: profile.userId || user.uid,
+          name: profile.nickname || user.name,
+          email: profile.email || user.email,
+          phone: profile.phoneNumber || undefined,
+          profileImage: profile.profileImageUrl || undefined,
+        };
+        const changed = Object.entries(nextUser).some(([key, value]) => user[key as keyof typeof user] !== value);
+        if (changed) {
+          updateUser(nextUser);
+        }
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '프로필 정보를 불러오지 못했습니다.'));
+      });
+
     getMyFundingOrders({ page: 0, size: 20 })
       .then((response) => {
         if (!mounted) return;
@@ -67,10 +90,45 @@ export default function MyPageScreen() {
         console.warn(getFundingApiErrorMessage(error, "후원 내역을 불러오지 못했습니다."));
       });
 
+    getMyPageSummary()
+      .then((nextSummary) => {
+        if (!mounted) return;
+        setSummary(nextSummary);
+        const summaryType = nextSummary.sulbti?.hasResult ? resolveSulbtiCode(nextSummary.sulbti.type) : null;
+        if (summaryType && summaryType !== resolveSulbtiCode(user.sulbti)) {
+          updateUser({ sulbti: summaryType });
+        }
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '마이페이지 요약 정보를 불러오지 못했습니다.'));
+      });
+
     return () => {
       mounted = false;
     };
-  }, [mergeParticipationsFromOrders, user]);
+  }, [mergeParticipationsFromOrders, updateUser, user]);
+
+  if (!user) {
+    return (
+      <View style={[styles.loginReqContainer, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
+        <View style={styles.loginReqCard}>
+          <View style={styles.loginReqIcon}>
+            <Lock size={30} color="#111827" />
+          </View>
+          <Text style={styles.loginReqTitle}>로그인이 필요해요</Text>
+          <Text style={styles.loginReqDesc}>
+            마이페이지에서 프로필, 참여 펀딩, 아카이브와 취향 기록을 확인하려면 먼저 로그인해주세요.
+          </Text>
+          <TouchableOpacity style={styles.loginReqPrimaryBtn} activeOpacity={0.85} onPress={() => router.push('/login' as any)}>
+            <Text style={styles.loginReqPrimaryTxt}>로그인하기</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.loginReqSecondaryBtn} activeOpacity={0.85} onPress={() => router.push('/signup' as any)}>
+            <Text style={styles.loginReqSecondaryTxt}>회원가입</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   if (!user) {
     return (
@@ -147,7 +205,8 @@ export default function MyPageScreen() {
 
   const initial = user.name?.[0] || 'U';
   const isBrewery = user.type === 'brewery';
-  const savedBtiCode = resolveSulbtiCode(user.sulbti);
+  const summaryBtiCode = summary?.sulbti?.hasResult ? resolveSulbtiCode(summary.sulbti.type) : null;
+  const savedBtiCode = resolveSulbtiCode(user.sulbti) || summaryBtiCode;
   const savedBtiType = resolveBtiType(savedBtiCode);
   const btiResult = savedBtiCode ? getBtiResult(savedBtiCode) : null;
   const openBtiResultOrTest = () => {
@@ -156,9 +215,9 @@ export default function MyPageScreen() {
   const startBtiTest = () => {
     router.push('/bti-test' as any);
   };
-  const fundedCount = isBrewery ? 6 : participatedFundings.length;
-  const archiveCount = 12;
-  const badgeCount = 5;
+  const fundedCount = summary?.participatedFundingCount ?? (isBrewery ? 6 : participatedFundings.length);
+  const archiveCount = summary?.archiveCount ?? 12;
+  const badgeCount = summary?.badgeCount ?? 5;
 
   return (
     <View style={styles.container}>
@@ -167,7 +226,11 @@ export default function MyPageScreen() {
         <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
            <View style={styles.profileRow}>
               <View style={styles.avatar}>
-                 <Text style={styles.avatarTxt}>{initial}</Text>
+                 {user.profileImage ? (
+                   <Image source={{ uri: user.profileImage }} style={styles.avatarImage} />
+                 ) : (
+                   <Text style={styles.avatarTxt}>{initial}</Text>
+                 )}
               </View>
               <View style={styles.profileInfo}>
                  <Text style={styles.profileName}>{user.name} 님</Text>
@@ -340,6 +403,7 @@ const styles = StyleSheet.create({
   profileRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
   guestAvatar: { backgroundColor: '#F3F4F6' },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 28 },
   avatarTxt: { color: '#FFF', fontSize: 20, fontWeight: '800' },
   profileInfo: { flex: 1 },
   profileName: { fontSize: 20, fontWeight: '800', color: '#111' },
@@ -384,9 +448,14 @@ const styles = StyleSheet.create({
   guestLockedText: { color: '#6B7280' },
   loginReqContainer: { flex: 1, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center', padding: 30 },
   loginReqCard: { width: '100%', backgroundColor: '#FFF', borderRadius: 32, padding: 40, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.05, shadowRadius: 20, elevation: 5 },
+  loginReqIcon: { width: 64, height: 64, borderRadius: 22, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   loginReqTitle: { fontSize: 22, fontWeight: '800', marginTop: 24, marginBottom: 12 },
   loginReqDesc: { fontSize: 15, color: '#6B7280', textAlign: 'center', lineHeight: 22, marginBottom: 32 },
   loginReqBtn: { width: '100%' },
+  loginReqPrimaryBtn: { width: '100%', height: 52, borderRadius: 16, backgroundColor: '#111827', justifyContent: 'center', alignItems: 'center' },
+  loginReqPrimaryTxt: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
+  loginReqSecondaryBtn: { width: '100%', height: 50, borderRadius: 16, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', justifyContent: 'center', alignItems: 'center', marginTop: 10 },
+  loginReqSecondaryTxt: { color: '#111827', fontSize: 14, fontWeight: '800' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 32, borderTopRightRadius: 32, height: '85%' },
   modalHeader: { padding: 20, alignItems: 'center' },

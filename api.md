@@ -88,33 +88,42 @@ Common error body:
 ## Community Post APIs
 
 Source PDFs:
-- `5a518311-0c63-45bb-9029-e39115dbf59d_게시글_작성.pdf`
-- `98c61173-ead6-4d1e-858a-12f18a420d05_게시글_목록_조회.pdf`
-- `6d5e2b3b-b7ad-438e-8d63-dd352fdbc38e_게시글_상세_조회.pdf`
-- `a559f6ec-2508-4f2f-a048-bcd470d53335_게시글_수정.pdf`
-- `24f65445-e946-495b-8fb4-dabaaf256e55_게시글_삭제.pdf`
-- `7b5b5dc3-5590-497f-96e3-13e956b29eab_게시글_좋아요_등록.pdf`
-- `4a6fd0fb-830c-4d84-809e-d04641ccca92_게시글_좋아요_취소.pdf`
-- `ed40016b-75b5-47c0-a7a7-44f03d769a8b_게시글_댓글_목록_조회.pdf`
-- `668fa391-e36d-4e9b-85f8-a9f542d21238_게시글_댓글_작성.pdf`
-- `4f703c5e-b60b-4119-b3c7-39184105ac26_게시글_댓글_수정.pdf`
-- `b71fb3c8-4b85-4c1c-8574-b810d8e4db44_게시글_댓글_삭제.pdf`
-- `1fba1f2f-e654-439b-9d96-26530ce9c2cc_게시글_댓글_좋아요_등록.pdf`
-- `7341842d-95eb-4649-b8fb-231e598ef705_게시글_댓글_좋아요_취소.pdf`
+- `8a515107-d924-411d-bae2-340756a7b781_게시글_작성.pdf`
+- `10c7c0de-4a3a-4ea0-bb9e-a278071b97d9_게시글_목록_조회.pdf`
+- `e6a47372-3bcb-409a-9749-9b0c537ff423_게시글_상세_조회.pdf`
+- `3d9778f7-7470-4632-ad8c-b55983a1f333_게시글_수정.pdf`
+- `6711046b-bb52-414b-8fdd-ac79bf323832_게시글_좋아요_등록.pdf`
+- `dca8aec8-4ea0-4222-bd4e-3f54463bb05e_게시글_좋아요_취소.pdf`
+- `aa4e75b9-4b5a-49aa-a086-7c02f125da72_게시글_댓글_목록_조회.pdf`
+- `1ecfc8f3-a0a6-4dac-a6fb-ab2d69257179_게시글_댓글_좋아요_등록.pdf`
+- `fffd87ce-ae19-4412-adab-4a6e63ba95f2_게시글_댓글_좋아요_취소.pdf`
+- `0ea13c62-dc20-4669-9a56-2321af8b7941_게시글_댓글_대댓글_작성.pdf`
+- `bcf0e050-b8b3-4725-b20d-fd6b309d45d8_게시글_댓글_대댓글_목록_조회.pdf`
 
 Base:
 - Same current server: `http://43.202.24.223:3000`
 - Endpoint prefix: `{baseURI}/api/posts`
 - Public read APIs may omit `Authorization`.
-- Authenticated read APIs may include `Authorization: Bearer {access_token}` to receive user-specific fields such as `is_liked`.
-- Write, update, delete, like, and comment mutation APIs require `Authorization: Bearer {access_token}`.
+- Read APIs may include `Authorization: Bearer {access_token}` to receive user-specific fields such as `is_liked` and `is_mine`.
+- Write, update, delete, like, and reply mutation APIs require `Authorization: Bearer {access_token}`.
 
 Board types:
 - `ALL`: list filter only. Default when omitted.
 - `FREE`: 자유게시판.
-- `TASTING_REVIEW`: 시음 후기.
-- `RECIPE_DISCUSSION`: 레시피 토론.
+- `INFO`: 정보게시판.
 - `board_type` is required on create and cannot be changed on update.
+
+Sorting:
+- `newest`: latest first. Default.
+- `popular`: `like_count DESC`.
+
+Image policy:
+- Create and update use `multipart/form-data`.
+- Do not manually set `Content-Type`; React Native/fetch/axios must set the multipart boundary automatically.
+- The repeated field name for files is `images`.
+- Maximum image count is 5.
+- React Native should append each file as `{ uri, name, type }`.
+- List response returns only `thumbnail_url`; detail response returns ordered image objects.
 
 ### Community Post Create
 
@@ -129,14 +138,13 @@ Access:
 
 Request:
 - Body: `multipart/form-data`
-- Do not manually set `Content-Type`; the runtime must set the multipart boundary.
 
 ```ts
 type CreateCommunityPostFormData = {
   title: string;
   content: string;
-  board_type: "FREE" | "TASTING_REVIEW" | "RECIPE_DISCUSSION";
-  images?: File[]; // same form field name repeated, max 5
+  board_type: "FREE" | "INFO";
+  images?: File[]; // repeated field name, max 5
 };
 ```
 
@@ -148,7 +156,7 @@ type CreateCommunityPostResponse = {
   post: {
     post_id: number;
     title: string;
-    board_type: "FREE" | "TASTING_REVIEW" | "RECIPE_DISCUSSION";
+    board_type: "FREE" | "INFO";
     user_id: number;
     nickname: string;
     like_count: 0;
@@ -160,10 +168,9 @@ type CreateCommunityPostResponse = {
 ```
 
 Notes:
-- Images are sent as files, not URLs. Backend uploads them to S3 and stores returned URLs in `POST_IMAGES`.
-- Maximum image count is 5.
-- React Native should append each image as `{ uri, name, type }` using the repeated field name `images`.
+- Images are sent as files, not URLs. Backend uploads them to S3 and stores returned URLs in `post_images`.
 - Initial `like_count` and `comment_count` are `0`.
+- PDF example still shows `TASTING_REVIEW`, but the request table and implementation notes say the valid values are `FREE` and `INFO`; use `FREE | INFO`.
 
 Errors:
 - `400`: required field missing.
@@ -184,7 +191,7 @@ Access:
 - `Authorization` optional.
 
 Query:
-- `board_type`: `ALL` default, `FREE`, `TASTING_REVIEW`, `RECIPE_DISCUSSION`
+- `board_type`: `ALL` default, `FREE`, `INFO`
 - `sort`: `newest` default, `popular`
 - `page`: default `0`
 - `size`: default `20`
@@ -195,13 +202,16 @@ type CommunityPostListResponse = {
   posts: Array<{
     post_id: number;
     title: string;
-    board_type: "FREE" | "TASTING_REVIEW" | "RECIPE_DISCUSSION";
+    board_type: "FREE" | "INFO";
     user_id: number;
     nickname: string;
+    author_profile_image: string | null;
     like_count: number;
     comment_count: number;
     thumbnail_url: string | null;
     created_at: string;
+    is_liked: boolean;
+    is_mine: boolean;
   }>;
   totalElements: number;
   totalPages: number;
@@ -210,13 +220,13 @@ type CommunityPostListResponse = {
 ```
 
 Notes:
-- `sort=popular` sorts by `like_count DESC`.
-- `thumbnail_url` is the first image URL for the post, or `null`.
+- `thumbnail_url` is the `sequence = 0` image URL from `post_images`, or `null`.
 - List response intentionally excludes `content`.
+- If no token is provided, `is_liked` and `is_mine` are always `false`.
 
-Missing for current app UI:
-- The list response does not include `is_liked`, so heart state on cards cannot be hydrated from the list alone.
-- The list response does not include author profile image.
+Errors:
+- `400`: invalid `board_type`.
+- `500`: server error.
 
 ### Community Post Detail
 
@@ -227,7 +237,7 @@ GET {baseURI}/api/posts/{postId}
 
 Access:
 - Public.
-- `Authorization` optional; if omitted, `is_liked` is `false`.
+- `Authorization` optional.
 
 Path:
 - `postId`: community post id.
@@ -239,13 +249,18 @@ type CommunityPostDetailResponse = {
     post_id: number;
     title: string;
     content: string;
-    board_type: "FREE" | "TASTING_REVIEW" | "RECIPE_DISCUSSION";
+    board_type: "FREE" | "INFO";
     user_id: number;
     nickname: string;
+    author_profile_image: string | null;
     like_count: number;
     comment_count: number;
     is_liked: boolean;
-    image_urls: string[];
+    is_mine: boolean;
+    images: Array<{
+      sequence: number;
+      image_url: string;
+    }>;
     created_at: string;
     updated_at: string | null;
   };
@@ -253,8 +268,8 @@ type CommunityPostDetailResponse = {
 ```
 
 Notes:
-- `image_urls` are ordered by `POST_IMAGES.sequence ASC`.
-- `is_liked` is computed from `POST_LIKES(user_id, post_id)` when logged in.
+- `images` are ordered by `post_images.sequence ASC`.
+- If no token is provided, `is_liked` and `is_mine` are always `false`.
 
 Errors:
 - `404`: post not found.
@@ -272,11 +287,13 @@ Access:
 - Only the author can update.
 
 Request:
+- Body: `multipart/form-data`
+
 ```ts
-type UpdateCommunityPostRequest = {
+type UpdateCommunityPostFormData = {
   title: string;
   content: string;
-  image_urls: string[]; // complete replacement list, max 5
+  images?: File[]; // repeated field name, max 5
 };
 ```
 
@@ -297,8 +314,9 @@ type UpdateCommunityPostResponse = {
 
 Notes:
 - `board_type` cannot be updated.
-- Existing `POST_IMAGES` rows are deleted and recreated from `image_urls`.
-- This update API accepts existing image URLs, not new multipart files. If the frontend needs to add newly selected local images during edit, a separate upload path or multipart update spec is still needed.
+- Image update is a complete replacement.
+- Backend deletes all existing `post_images` rows for the post, then inserts the newly uploaded files in sequence order.
+- If the `images` field is omitted or sent empty, existing images are deleted and replaced with an empty list.
 
 Errors:
 - `400`: required field missing.
@@ -327,7 +345,7 @@ type DeleteCommunityPostResponse = {
 ```
 
 Notes:
-- Backend deletes related `POST_IMAGES`, `COMMENTS`, and `POST_LIKES` by cascade or explicit deletion.
+- This endpoint came from the earlier community API files and was not replaced by the latest PDF set.
 
 Errors:
 - `401`: invalid or expired token.
@@ -363,9 +381,9 @@ type CommunityPostLikeResponse = {
 ```
 
 Notes:
-- `POST_LIKES(post_id, user_id)` has a unique constraint to prevent duplicates.
-- Register increments `POSTS.like_count`.
-- Cancel deletes the matching `POST_LIKES` row and decrements `POSTS.like_count`, clamped at `0`.
+- `post_likes(post_id, user_id)` has a unique constraint to prevent duplicates.
+- Register increments `posts.like_count`.
+- Cancel deletes the matching `post_likes` row and decrements `posts.like_count`, clamped at `0`.
 
 Errors:
 - `400`: duplicate like, or no existing like history on cancel.
@@ -382,7 +400,7 @@ GET {baseURI}/api/posts/{postId}/comments
 
 Access:
 - Public.
-- `Authorization` optional; if omitted, `is_liked` is `false`.
+- `Authorization` optional.
 
 Query:
 - `page`: default `0`
@@ -395,9 +413,12 @@ type CommunityPostCommentListResponse = {
     comment_id: number;
     user_id: number;
     nickname: string;
+    author_profile_image: string | null;
     content: string;
     like_count: number;
+    reply_count: number;
     is_liked: boolean;
+    is_mine: boolean;
     created_at: string;
     updated_at: string | null;
   }>;
@@ -408,13 +429,10 @@ type CommunityPostCommentListResponse = {
 ```
 
 Notes:
+- Returns only root comments: `parent_comment_id IS NULL`.
 - Sorted by `created_at ASC`, oldest comments first.
-- `is_liked` is computed from `POST_COMMENT_LIKES(user_id, comment_id)` when logged in.
-
-Missing for current app UI:
-- No `is_mine` field is provided, so frontend must compare `user_id` with current user id or ask backend to add `is_mine`.
-- No author profile image or author type is provided.
-- No reply/nested comment API is included in these PDFs.
+- If no token is provided, `is_liked` and `is_mine` are always `false`.
+- `reply_count` is the count of comments whose `parent_comment_id` equals the root comment id.
 
 Errors:
 - `404`: post not found.
@@ -455,8 +473,8 @@ type CreateCommunityPostCommentResponse = {
 ```
 
 Notes:
-- Successful creation increments `POSTS.comment_count`.
-- `user_id` and `nickname` are extracted from JWT.
+- This endpoint came from the earlier community API files and was not replaced by the latest PDF set.
+- Successful creation increments `posts.comment_count`.
 
 Errors:
 - `400`: empty comment content.
@@ -495,6 +513,9 @@ type UpdateCommunityPostCommentResponse = {
 };
 ```
 
+Notes:
+- This endpoint came from the earlier community API files and was not replaced by the latest PDF set.
+
 Errors:
 - `400`: empty comment content.
 - `401`: invalid or expired token.
@@ -522,8 +543,8 @@ type DeleteCommunityPostCommentResponse = {
 ```
 
 Notes:
-- Successful deletion decrements `POSTS.comment_count`, clamped at `0`.
-- Related `POST_COMMENT_LIKES` rows are deleted by cascade or explicit deletion.
+- This endpoint came from the earlier community API files and was not replaced by the latest PDF set.
+- Successful deletion decrements `posts.comment_count`, clamped at `0`.
 
 Errors:
 - `401`: invalid or expired token.
@@ -559,9 +580,10 @@ type CommunityPostCommentLikeResponse = {
 ```
 
 Notes:
-- `POST_COMMENT_LIKES(comment_id, user_id)` has a unique constraint to prevent duplicates.
-- Register increments `COMMENTS.like_count`.
-- Cancel deletes the matching row and decrements `COMMENTS.like_count`, clamped at `0`.
+- `post_comment_likes(comment_id, user_id)` has a unique constraint to prevent duplicates.
+- Register increments `post_comments.like_count`.
+- Cancel deletes the matching row and decrements `post_comments.like_count`, clamped at `0`.
+- The same like endpoints apply to root comments and replies because replies are also `post_comments` rows.
 
 Errors:
 - `400`: duplicate like, or no existing like history on cancel.
@@ -569,21 +591,112 @@ Errors:
 - `404`: comment not found.
 - `500`: server error.
 
+### Community Post Reply Create
+
+Endpoint:
+```http
+POST {baseURI}/api/posts/{postId}/comments/{commentId}/replies
+```
+
+Access:
+- Login required.
+
+Path:
+- `postId`: community post id.
+- `commentId`: parent comment id.
+
+Request:
+```json
+{
+  "content": "저도 그렇게 생각해요!"
+}
+```
+
+Response:
+```ts
+type CreateCommunityPostReplyResponse = {
+  status: 201;
+  message: string;
+  reply: {
+    comment_id: number;
+    post_id: number;
+    parent_comment_id: number;
+    user_id: number;
+    nickname: string;
+    content: string;
+    created_at: string;
+    parent_reply_count: number;
+  };
+  parent_reply_count: number;
+};
+```
+
+Notes:
+- A reply is inserted into `post_comments` with `parent_comment_id = commentId`.
+- Depth is not limited by backend; frontend decides how to display nested replies.
+- After insert, backend returns the latest count for the parent comment so the UI can update "N replies" without a separate fetch.
+- DB prerequisite: `post_comments.parent_comment_id BIGINT NULL` with self-referencing FK.
+
+Errors:
+- `400`: empty reply content.
+- `401`: invalid or expired token.
+- `404`: parent comment not found.
+- `500`: server error.
+
+### Community Post Reply List
+
+Endpoint:
+```http
+GET {baseURI}/api/posts/{postId}/comments/{commentId}/replies
+```
+
+Access:
+- Public.
+- `Authorization` optional.
+
+Query:
+- `page`: default `0`
+- `size`: default `20`
+
+Response:
+```ts
+type CommunityPostReplyListResponse = {
+  replies: Array<{
+    comment_id: number;
+    user_id: number;
+    nickname: string;
+    author_profile_image: string | null;
+    content: string;
+    is_mine: boolean;
+    created_at: string;
+    updated_at: string | null;
+  }>;
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+};
+```
+
+Notes:
+- Returns rows where `parent_comment_id = commentId`.
+- Sorted by `created_at ASC`.
+- If no token is provided, `is_liked` and `is_mine` are treated as `false`.
+- The implementation notes mention `is_liked`, but the response schema/example do not include it. Confirm with backend before relying on reply like state from this endpoint.
+- If the parent comment id does not exist, backend returns an empty array instead of an error.
+
+Errors:
+- `500`: server error.
+
 ### Community API Gaps To Ask Backend
 
-These are the remaining items to confirm before connecting the bottom tab `[커뮤니티]` page end to end:
+Items still not covered or needing confirmation before a full community connection:
 
-- Post list needs `is_liked` if the card heart state should be accurate without fetching every detail page.
-- Post list/detail need `is_mine` or a stable current-user id comparison rule for edit/delete menu visibility.
-- Post list/detail/comment responses do not include author profile image; confirm whether the UI should show a placeholder or backend should add `profile_image_url`.
-- Comment list does not include `is_mine`; frontend can compare `user_id`, but only if auth context has the same numeric id used by backend.
-- There is no comment reply API in these PDFs. If current `[커뮤니티]` UI has nested replies, either hide replies or request reply list/create/update/delete/like specs.
-- Create post supports multipart file upload, but update post only accepts `image_urls`. Confirm how to upload newly added images during edit.
-- Confirm whether post update should also support image deletion/reorder via complete replacement only, as the PDF says.
-- Confirm whether `board_type` should map exactly to UI tabs: 자유게시판 `FREE`, 시음 후기 `TASTING_REVIEW`, 레시피 토론 `RECIPE_DISCUSSION`.
-- Confirm whether search is needed. The provided list API has no `keyword` query.
-- Confirm whether "popular" sorting by `like_count DESC` is enough, or whether comment count / recent activity should influence ranking.
-
+- Reply list response schema does not include `is_liked`, even though implementation notes mention it. Needed if reply heart state must hydrate from the list.
+- Reply edit/delete APIs were not included in the latest community PDF set.
+- Post delete, comment create/update/delete specs are still from the earlier PDF set, not refreshed in the latest set.
+- Create PDF introduction mentions older board categories, but the request table and implementation notes say valid `board_type` values are only `FREE` and `INFO`; use `FREE | INFO` unless backend says otherwise.
+- Post update now supports multipart image upload, but it is complete image replacement. Frontend must preserve existing remote images by re-uploading/including files only if backend supports that flow, or keep edit-image changes local until a more granular API exists.
+- Search is still not specified. The provided list API has no `keyword` query.
 ## Funding Agreement Save
 
 Source:
@@ -2006,3 +2119,393 @@ Frontend connection:
 - Replaced the temporary brewery token again with a backend-provided access token containing `role: "BREWERY"`, expiring at `2026-05-21 12:58:19 KST`. This token is suitable for brewery-authenticated recipe create testing.
 - Direct server verification with the new brewery token succeeded for both `POST /api/recipes` multipart without image and `POST /api/recipes/brewery` JSON without image, returning `201`. If the app still shows `500` or `Network request failed`, focus on app-side file upload/image asset state. `RecipeCreateScreen` now clears both preview and `imageAsset` when the image remove button is pressed and logs create payload metadata before submit.
 - Follow-up direct verification with the same brewery token and a tiny 1x1 PNG attached as multipart `image` returned `500 서버 내부 오류`. Because the same endpoint succeeds without `image`, the remaining issue is backend-side multipart file handling/S3 upload/AI image pipeline, not the frontend text fields or token.
+## My Page Profile APIs
+
+Source:
+- User-provided backend note on 2026-05-20.
+
+Base URL:
+```http
+http://43.202.24.223:3000
+```
+
+Common auth:
+- All endpoints require `Authorization: Bearer {accessToken}`.
+- If the token is missing or expired, backend returns `401`.
+
+### Get My Profile
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/profile
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "내 정보 조회 성공",
+  "data": {
+    "userId": "1",
+    "profileImageUrl": null,
+    "nickname": "주담러",
+    "phoneNumber": null,
+    "email": "test@test.com",
+    "loginType": "kakao"
+  }
+}
+```
+
+### Check Nickname
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/profile/nickname/check?nickname=닉네임
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "사용 가능한 닉네임입니다.",
+  "data": {
+    "nickname": "새닉네임",
+    "isAvailable": true
+  }
+}
+```
+
+### Update Nickname
+
+Endpoint:
+```http
+PATCH {baseURI}/api/mypage/profile/nickname
+```
+
+Request:
+```json
+{
+  "nickname": "새닉네임"
+}
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "닉네임 수정 성공",
+  "data": {
+    "nickname": "새닉네임"
+  }
+}
+```
+
+### Update Phone Number
+
+Endpoint:
+```http
+PATCH {baseURI}/api/mypage/profile/phone
+```
+
+Request:
+```json
+{
+  "phoneNumber": "01012345678"
+}
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "전화번호 수정 성공",
+  "data": {
+    "phoneNumber": "01012345678"
+  }
+}
+```
+
+Error:
+```json
+{
+  "status": 401,
+  "message": "유효하지 않거나 만료된 토큰입니다."
+}
+```
+
+Frontend connection:
+- Connected on 2026-05-20.
+- API client: `src/features/mypage/api.ts`.
+- Screens:
+  - `src/features/mypage/screens/MyPageScreen.tsx` calls profile lookup when the `[마이]` bottom tab is opened and syncs the local auth user.
+  - `src/features/mypage/screens/ProfileScreen.tsx` calls profile lookup on entry, checks nickname availability before nickname update, and calls phone update with digits-only `phoneNumber`.
+- Email is displayed from profile lookup, but it is read-only because no email update endpoint was provided.
+- Profile image update is connected through `PATCH /api/mypage/profile/image`.
+
+### Update Profile Image
+
+Endpoint:
+```http
+PATCH {baseURI}/api/mypage/profile/image
+```
+
+Request:
+- Body: `multipart/form-data`
+- File field name: `image`
+
+Headers:
+```http
+Authorization: Bearer {accessToken}
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "프로필 이미지 수정 성공",
+  "data": {
+    "profileImageUrl": "S3 업로드 URL"
+  }
+}
+```
+
+Notes:
+- Uploaded images are stored in S3 and `users.profile_image` is updated.
+- Later `GET /api/mypage/profile` returns the changed `profileImageUrl`.
+- Do not manually set `Content-Type`; React Native/fetch must set the multipart boundary automatically.
+
+Errors:
+```json
+{
+  "status": 400,
+  "message": "프로필 이미지 파일을 첨부해주세요."
+}
+```
+
+```json
+{
+  "status": 401,
+  "message": "유효하지 않거나 만료된 토큰입니다."
+}
+```
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `updateMyPageProfileImage`.
+- Screen: `src/features/mypage/screens/ProfileScreen.tsx` profile image picker.
+
+## My Page Additional APIs
+
+Common header:
+```http
+Authorization: Bearer {accessToken}
+```
+
+### Change Password
+
+Endpoint:
+```http
+PATCH {baseURI}/api/mypage/profile/password
+```
+
+Request:
+```json
+{
+  "currentPassword": "기존비밀번호",
+  "newPassword": "새비밀번호"
+}
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "비밀번호 변경 성공"
+}
+```
+
+Notes:
+- Only local-login users can change password.
+- Kakao users cannot change password.
+- `newPassword` must be at least 8 characters.
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `changeMyPagePassword`.
+- Screen: `src/features/mypage/screens/PasswordChangeScreen.tsx`.
+
+### My Page Summary
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/summary
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "마이페이지 메인 요약 조회 성공",
+  "data": {
+    "participatedFundingCount": 3,
+    "archiveCount": 0,
+    "badgeCount": 0,
+    "sulbti": {
+      "hasResult": false,
+      "type": null,
+      "title": null,
+      "summary": null,
+      "tags": []
+    }
+  }
+}
+```
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `getMyPageSummary`.
+- Screen: `src/features/mypage/screens/MyPageScreen.tsx` uses summary counts and SulBTI summary type.
+
+### My SulBTI Result
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/sulbti
+POST {baseURI}/api/mypage/sulbti
+```
+
+POST request:
+```json
+{
+  "type": "DHFC",
+  "sweetnessScore": 3,
+  "bodyScore": 4,
+  "carbonationScore": 5,
+  "flavorScore": 4,
+  "abvScore": 3
+}
+```
+
+GET response when no result:
+```json
+{
+  "status": 200,
+  "message": "술BTI 결과가 없습니다.",
+  "data": {
+    "hasResult": false,
+    "type": null,
+    "title": null,
+    "description": null,
+    "scores": null,
+    "tags": [],
+    "createdAt": null,
+    "updatedAt": null
+  }
+}
+```
+
+GET/POST response when result exists:
+```json
+{
+  "status": 200,
+  "message": "술BTI 결과 조회 성공",
+  "data": {
+    "hasResult": true,
+    "type": "DHFC",
+    "title": "톡 쏘는 호밀 크래커",
+    "description": "묵직한 바디감과 강한 탄산, 드라이한 맛을 선호하는 술BTI 유형입니다.",
+    "scores": {
+      "sweetness": 3,
+      "body": 4,
+      "carbonation": 5,
+      "flavor": 4,
+      "abv": 3
+    },
+    "tags": [],
+    "createdAt": "2026-05-21T14:01:23.811Z",
+    "updatedAt": "2026-05-21T14:01:23.811Z"
+  }
+}
+```
+
+Notes:
+- The save API keeps one SulBTI result per user. Existing result is updated.
+- Scores must be numbers between 1 and 5.
+- `tags` currently returns an empty array because the DB column does not exist yet.
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `getMyPageSulbti`, `saveMyPageSulbti`.
+- Screens:
+  - `src/features/bti/screens/BTITestScreen.tsx` saves SulBTI after survey conversion succeeds.
+  - `src/features/bti/screens/BTIResultScreen.tsx` loads the saved SulBTI result.
+
+### Archive Record Date
+
+Archive create/update can include:
+```json
+{
+  "recordDate": "2026-05-21"
+}
+```
+
+Notes:
+- `recordDate` format is `YYYY-MM-DD`.
+- Invalid format returns:
+```json
+{
+  "status": 400,
+  "message": "기록 날짜 형식이 올바르지 않습니다."
+}
+```
+- Archive create/detail/update responses include `recordDate`.
+
+### Archive Images
+
+Upload endpoint:
+```http
+POST {baseURI}/api/mypage/archives/{archiveId}/images
+```
+
+Request:
+- Body: `multipart/form-data`
+- File field name: `images`
+- Maximum 3 images per archive.
+
+Upload response:
+```json
+{
+  "status": 201,
+  "message": "아카이브 이미지 업로드 성공",
+  "data": [
+    {
+      "imageId": 1,
+      "imageUrl": "https://judam-storage.s3.ap-northeast-2.amazonaws.com/uploads/1/...",
+      "sortOrder": 0
+    }
+  ]
+}
+```
+
+Delete endpoint:
+```http
+DELETE {baseURI}/api/mypage/archives/{archiveId}/images/{imageId}
+```
+
+Delete response:
+```json
+{
+  "status": 200,
+  "message": "아카이브 이미지 삭제 성공"
+}
+```
+
+Notes:
+- Archive list/detail responses include `images`.
+- Current backend deletes only the `user_archive_images` row, not the S3 object.
+
+Frontend connection:
+- API client functions were added on 2026-05-22:
+  - `src/features/mypage/api.ts` `uploadMyPageArchiveImages`.
+  - `src/features/mypage/api.ts` `deleteMyPageArchiveImage`.
+- Screen wiring still needs the archive create/update/detail API contract that returns and accepts `archiveId`.

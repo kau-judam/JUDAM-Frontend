@@ -83,11 +83,12 @@ function RatingStars({ value, onChange }: { value: number; onChange: (value: num
 
 export default function ArchiveWriteScreen() {
   const insets = useSafeAreaInsets();
-  const { type, fundingId } = useLocalSearchParams<{ type?: string; fundingId?: string }>();
+  const { type, fundingId, editId } = useLocalSearchParams<{ type?: string; fundingId?: string; editId?: string }>();
   const archiveKind: ArchiveKind = type === 'funding' ? 'funding' : 'normal';
   const projectId = Number(Array.isArray(fundingId) ? fundingId[0] : fundingId);
+  const targetEditId = Number(Array.isArray(editId) ? editId[0] : editId);
   const { user } = useAuth();
-  const { projects, fundingReviews, addFundingReview } = useFunding();
+  const { projects, fundingReviews, addFundingReview, updateFundingReview } = useFunding();
 
   const project = useMemo(
     () =>
@@ -103,28 +104,54 @@ export default function ArchiveWriteScreen() {
         : null,
     [archiveKind, fundingReviews, projectId, user]
   );
+  const editingArchive = useMemo(
+    () => (Number.isFinite(targetEditId) ? fundingReviews.find((item) => item.id === targetEditId) || null : null),
+    [fundingReviews, targetEditId]
+  );
+  const editingAlcohol = useMemo(
+    () => (editingArchive && archiveKind === 'normal' ? editingArchive.tags.find((tag) => /%/.test(tag)) || '' : ''),
+    [archiveKind, editingArchive]
+  );
+  const editingPresetTags = useMemo(
+    () =>
+      editingArchive
+        ? editingArchive.tags.filter((tag) => tag !== editingAlcohol && Object.values(reviewPresetTags).flat().includes(tag))
+        : [],
+    [editingAlcohol, editingArchive]
+  );
+  const editingCustomTags = useMemo(
+    () =>
+      editingArchive
+        ? editingArchive.tags.filter((tag) => tag !== editingAlcohol && !Object.values(reviewPresetTags).flat().includes(tag))
+        : [],
+    [editingAlcohol, editingArchive]
+  );
 
   const [isSaving, setIsSaving] = useState(false);
-  const [drinkName, setDrinkName] = useState('');
-  const [drinkAlcohol, setDrinkAlcohol] = useState('');
+  const [drinkName, setDrinkName] = useState(editingArchive?.rewardName || '');
+  const [drinkAlcohol, setDrinkAlcohol] = useState(editingAlcohol);
   const initialDateParts = useMemo(() => parseArchiveDateParts(getTodayArchiveDate()), []);
-  const [recordYear, setRecordYear] = useState(initialDateParts.year);
-  const [recordMonth, setRecordMonth] = useState(initialDateParts.month);
-  const [recordDay, setRecordDay] = useState(initialDateParts.day);
-  const [rating, setRating] = useState(0);
-  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
-  const [reviewText, setReviewText] = useState('');
-  const [mood, setMood] = useState('');
-  const [pairing, setPairing] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const editingDateParts = useMemo(() => parseArchiveDateParts(editingArchive?.date || ''), [editingArchive?.date]);
+  const [recordYear, setRecordYear] = useState(editingDateParts.year || initialDateParts.year);
+  const [recordMonth, setRecordMonth] = useState(editingDateParts.month || initialDateParts.month);
+  const [recordDay, setRecordDay] = useState(editingDateParts.day || initialDateParts.day);
+  const [rating, setRating] = useState(editingArchive?.rating || 0);
+  const [uploadedImages, setUploadedImages] = useState<string[]>(editingArchive?.images || []);
+  const [reviewText, setReviewText] = useState(editingArchive?.comment || '');
+  const [mood, setMood] = useState(editingArchive?.mood || '');
+  const [pairing, setPairing] = useState(editingArchive?.pairing || '');
+  const [selectedTags, setSelectedTags] = useState<string[]>(editingPresetTags);
   const [customInput, setCustomInput] = useState('');
-  const [customTags, setCustomTags] = useState<string[]>([]);
-  const [openTagSection, setOpenTagSection] = useState<string | null>('留쎛룻뼢');
+  const [customTags, setCustomTags] = useState<string[]>(editingCustomTags);
+  const [openTagSection, setOpenTagSection] = useState<string | null>(
+    Object.entries(reviewPresetTags).find(([, tags]) => tags.some((tag) => editingPresetTags.includes(tag)))?.[0] || '맛·향'
+  );
   const [alertModal, setAlertModal] = useState<ArchiveAlert | null>(null);
 
   const allTags = [...selectedTags, ...customTags];
   const recordDate = formatArchiveDate(recordYear, recordMonth, recordDay);
-  const headerTitle = archiveKind === 'funding' ? '펀딩 술 기록' : '일반 술 기록';
+  const isEditMode = Boolean(editingArchive);
+  const headerTitle = isEditMode ? '술 기록 수정' : archiveKind === 'funding' ? '펀딩 술 기록' : '일반 술 기록';
   const rewardName = archiveKind === 'funding'
     ? project?.rewardItems?.[0] || `${project?.bottleSize || '375ml'} 1병`
     : drinkName.trim();
@@ -226,7 +253,7 @@ export default function ArchiveWriteScreen() {
     }
 
     setIsSaving(true);
-    const saved = addFundingReview({
+    const payload = {
       projectId: archiveKind === 'funding' ? projectId : NORMAL_ARCHIVE_PROJECT_ID,
       userId: user.id,
       userName: user.name || '사용자',
@@ -239,14 +266,17 @@ export default function ArchiveWriteScreen() {
       pairing: pairing.trim(),
       showRecordInReview: false,
       tags: archiveKind === 'normal' ? [drinkAlcohol.trim(), ...allTags] : allTags,
-    });
+    };
+    const saved = isEditMode && editingArchive
+      ? updateFundingReview(editingArchive.id, payload)
+      : addFundingReview(payload);
     setIsSaving(false);
 
     if (!saved) {
       showAlert('저장 실패', '기록을 저장하지 못했습니다. 다시 시도해주세요.', 'warning');
       return;
     }
-    showAlert('저장 완료', '내 아카이브에 기록이 저장되었습니다.', 'success', [
+    showAlert(isEditMode ? '수정 완료' : '저장 완료', isEditMode ? '수정한 기록이 반영되었습니다.' : '내 아카이브에 기록이 저장되었습니다.', 'success', [
       { label: '확인', onPress: () => router.replace('/mypage/archive' as any) },
     ]);
   };
@@ -440,7 +470,7 @@ export default function ArchiveWriteScreen() {
         </View>
 
         <TouchableOpacity style={[styles.submitButton, isSaving && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={isSaving}>
-          {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.submitButtonText}>아카이브 저장하기</Text>}
+          {isSaving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.submitButtonText}>{isEditMode ? '수정 완료하기' : '아카이브 저장하기'}</Text>}
         </TouchableOpacity>
       </ScrollView>
 

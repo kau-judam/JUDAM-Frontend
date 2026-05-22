@@ -264,7 +264,6 @@ export default function ProfileScreen() {
               <Camera size={15} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.imageHelpText}>이미지는 서버에 저장되고 프로필에 반영됩니다.</Text>
         </View>
 
         <Text style={styles.sectionTitle}>계정 정보</Text>
@@ -423,8 +422,8 @@ function getPlaceholder(field: EditableField | null) {
 
 function getHelperText(field: EditableField | null) {
   if (field === 'nickname') return '2~12자, 한글/영문/숫자만 사용할 수 있어요.';
-  if (field === 'phone') return '회원가입과 같은 인증 UI입니다. 인증 후 저장할 수 있어요.';
-  if (field === 'email') return '이메일 수정 API가 없어 현재는 인증 UI만 동작합니다.';
+  if (field === 'phone') return '인증 후 저장할 수 있어요.';
+  if (field === 'email') return '';
   return '';
 }
 
@@ -480,7 +479,6 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 5,
   },
-  imageHelpText: { marginTop: 14, fontSize: 12, fontWeight: '700', color: '#9CA3AF' },
   sectionTitle: { fontSize: 12, fontWeight: '800', color: '#9CA3AF', marginLeft: 4, marginBottom: 12 },
   card: {
     backgroundColor: '#FFFFFF',

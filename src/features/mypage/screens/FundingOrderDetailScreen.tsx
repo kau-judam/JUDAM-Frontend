@@ -167,16 +167,16 @@ function getDeliveryStatus(project: FundingProject): DeliveryStatus {
 }
 
 function buildTimeline(order: Pick<DerivedOrder, 'participatedAt' | 'estimatedDate' | 'deliveryStatus'>): OrderTimelineStep[] {
-  const doneToManufacture = order.deliveryStatus !== '예정';
-  const shipped = order.deliveryStatus === '발송' || order.deliveryStatus === '완료';
+  const prepared = order.deliveryStatus !== '예정';
+  const collected = order.deliveryStatus === '준비중' || order.deliveryStatus === '발송' || order.deliveryStatus === '완료';
+  const shipping = order.deliveryStatus === '발송' || order.deliveryStatus === '완료';
   const delivered = order.deliveryStatus === '완료';
 
   return [
-    { date: order.participatedAt, label: '펀딩 참여 완료', done: true },
-    { date: addDays(order.participatedAt, 31), label: doneToManufacture ? '제조 시작' : '제조 시작 예정', done: doneToManufacture },
-    { date: addDays(order.participatedAt, 55), label: doneToManufacture ? '제조 완료 · 배송 준비' : '제조 완료 예정', done: doneToManufacture },
-    { date: addDays(order.participatedAt, 65), label: shipped ? '발송 완료' : '발송 예정', done: shipped },
-    { date: order.estimatedDate, label: delivered ? '배송 완료' : '배송 완료 예정', done: delivered },
+    { date: addDays(order.participatedAt, 31), label: '상품 준비', done: prepared },
+    { date: addDays(order.participatedAt, 55), label: '집화', done: collected },
+    { date: addDays(order.participatedAt, 65), label: '배송 중', done: shipping },
+    { date: order.estimatedDate, label: '배송 완료', done: delivered },
   ];
 }
 

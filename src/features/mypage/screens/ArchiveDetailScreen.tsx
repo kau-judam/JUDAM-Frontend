@@ -1,5 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   ImageSourcePropType,
   ScrollView,
@@ -9,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, Star } from 'lucide-react-native';
+import { ChevronLeft, MoreVertical, Star } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFundingProjectImageSource } from '@/constants/data';
@@ -33,6 +34,7 @@ type ArchiveDetailData = {
   pairing?: string;
   tags: string[];
   likes: number;
+  projectId?: number;
   projectTitle?: string;
 };
 
@@ -115,7 +117,8 @@ function getImageSource(image: string | ImageSourcePropType) {
 export default function ArchiveDetailScreen() {
   const insets = useSafeAreaInsets();
   const { archiveId, kind, fundingId } = useLocalSearchParams<{ archiveId?: string; kind?: string; fundingId?: string }>();
-  const { projects, participatedFundings, fundingReviews } = useFunding();
+  const { projects, participatedFundings, fundingReviews, deleteFundingReview } = useFunding();
+  const [showMenu, setShowMenu] = useState(false);
   const targetArchiveId = Number(Array.isArray(archiveId) ? archiveId[0] : archiveId);
   const targetFundingId = Number(Array.isArray(fundingId) ? fundingId[0] : fundingId);
   const rawKind = Array.isArray(kind) ? kind[0] : kind;
@@ -146,6 +149,7 @@ export default function ArchiveDetailScreen() {
         pairing: savedReview.pairing,
         tags: savedAlcohol ? savedReview.tags.filter((tag) => tag !== savedAlcohol) : savedReview.tags,
         likes: savedReview.likes,
+        projectId: savedReview.projectId,
         projectTitle: project?.title,
       };
     }
@@ -169,12 +173,43 @@ export default function ArchiveDetailScreen() {
         images: [getFundingProjectImageSource(project)].filter(Boolean) as ImageSourcePropType[],
         tags: project.tags || [],
         likes: 0,
+        projectId: project.id,
         projectTitle: project.title,
       };
     }
 
     return null;
   }, [fundingReviews, participatedFundings, projects, rawKind, targetArchiveId, targetFundingId]);
+
+  const savedArchive = useMemo(
+    () => fundingReviews.find((item) => item.id === targetArchiveId) || null,
+    [fundingReviews, targetArchiveId]
+  );
+
+  const handleEdit = () => {
+    setShowMenu(false);
+    if (savedArchive) {
+      const editType = savedArchive.projectId === 0 ? 'normal' : 'funding';
+      const fundingQuery = savedArchive.projectId === 0 ? '' : `&fundingId=${savedArchive.projectId}`;
+      router.push(`/mypage/archive/write?type=${editType}&editId=${savedArchive.id}${fundingQuery}` as any);
+      return;
+    }
+    if (rawKind === 'funding' && archive?.projectId) {
+      router.push(`/mypage/archive/write?type=funding&fundingId=${archive.projectId}` as any);
+      return;
+    }
+    Alert.alert('수정할 수 없어요', '샘플 기록은 수정 화면으로 불러올 수 없습니다.');
+  };
+
+  const handleDelete = () => {
+    setShowMenu(false);
+    if (!savedArchive) {
+      Alert.alert('삭제할 수 없어요', '저장된 기록만 삭제할 수 있습니다.');
+      return;
+    }
+    deleteFundingReview(savedArchive.id);
+    router.replace('/mypage/archive' as any);
+  };
 
 
   if (!archive) {
@@ -196,7 +231,21 @@ export default function ArchiveDetailScreen() {
           <ChevronLeft size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>내 술 기록</Text>
-        <View style={styles.headerButton} />
+        <View style={styles.menuWrap}>
+          <TouchableOpacity style={styles.headerButton} onPress={() => setShowMenu((prev) => !prev)}>
+            <MoreVertical size={22} color="#111827" />
+          </TouchableOpacity>
+          {showMenu && (
+            <View style={styles.menuBox}>
+              <TouchableOpacity style={styles.menuItem} onPress={handleEdit}>
+                <Text style={styles.menuText}>수정</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.menuItem, styles.menuItemBorder]} onPress={handleDelete}>
+                <Text style={styles.menuText}>삭제</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 36 }]} showsVerticalScrollIndicator={false}>
@@ -269,6 +318,27 @@ const styles = StyleSheet.create({
   header: { minHeight: 56, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingBottom: 8 },
   headerButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '900', color: '#111827' },
+  menuWrap: { position: 'relative' },
+  menuBox: {
+    position: 'absolute',
+    top: 42,
+    right: 4,
+    minWidth: 120,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+    zIndex: 20,
+    elevation: 10,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+  },
+  menuItem: { paddingHorizontal: 16, paddingVertical: 13 },
+  menuItemBorder: { borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  menuText: { fontSize: 14, fontWeight: '700', color: '#111827' },
   content: { paddingHorizontal: 16, paddingTop: 14 },
   detailDate: { fontSize: 13, fontWeight: '800', color: '#9CA3AF', marginBottom: 8 },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 5 },

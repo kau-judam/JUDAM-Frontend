@@ -22,7 +22,7 @@ import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import { canAccessFundingReviews, isTemporarySansaReviewTestProject } from '@/features/funding/permissions';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
-import { createFundingReview, getFundingApiErrorMessage, type FundingUploadFile } from '@/features/funding/api';
+import { createFundingReview, getFundingApiErrorMessage, updateFundingReviewApi, type FundingUploadFile } from '@/features/funding/api';
 import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
 
@@ -266,16 +266,21 @@ export default function FundingReviewWriteScreen() {
     setIsLoading(true);
     try {
       const imageFiles = uploadedImages.map((image) => imageFilesByUri[image]).filter((file): file is FundingUploadFile => Boolean(file));
-      const response = isEditMode || isArchiveMode
+      const response = isArchiveMode
         ? null
-        : await createFundingReview(projectId, {
-            rating,
-            content: reviewText.trim(),
-            images: imageFiles,
-          });
+        : isEditMode && editableReview
+          ? await updateFundingReviewApi(projectId, editableReview.id, {
+              rating,
+              content: reviewText.trim(),
+            })
+          : await createFundingReview(projectId, {
+              rating,
+              content: reviewText.trim(),
+              images: imageFiles,
+            });
       const responseImageUrls = normalizeFundingImageUrls(response?.imageUrls);
       const reviewPayload = {
-        id: response?.reviewId,
+        id: response?.reviewId || editableReview?.id,
         projectId,
         userId: user.id,
         userName: user.name || '사용자',

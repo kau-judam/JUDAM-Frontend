@@ -30,7 +30,7 @@ import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
-import { getFundingList, getFundingApiErrorMessage } from '@/features/funding/api';
+import { getFundingList, getFundingStats, getFundingApiErrorMessage, type FundingStatsResponse } from '@/features/funding/api';
 import { mergeFundingListItem } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import {
@@ -81,6 +81,7 @@ export default function FundingListScreen() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [alertModal, setAlertModal] = useState<FundingListAlert | null>(null);
+  const [serverFundingStats, setServerFundingStats] = useState<FundingStatsResponse | null>(null);
 
   const isBreweryAccount = user?.type === "brewery";
   const isVerifiedBrewery = isBreweryAccount && user?.isBreweryVerified;
@@ -134,6 +135,22 @@ export default function FundingListScreen() {
     };
   }, [mergeProjects, selectedSort, selectedStatus]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    getFundingStats()
+      .then((stats) => {
+        if (mounted) setServerFundingStats(stats);
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '펀딩 통계를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       if (!scrollToTop) return;
@@ -171,7 +188,16 @@ export default function FundingListScreen() {
     () => sortedProjects.slice((currentPage - 1) * FUNDING_ITEMS_PER_PAGE, currentPage * FUNDING_ITEMS_PER_PAGE),
     [currentPage, sortedProjects]
   );
-  const fundingStats = useMemo(() => getFundingListStats(projects), [projects]);
+  const localFundingStats = useMemo(() => getFundingListStats(projects), [projects]);
+  const fundingStats = useMemo(() => {
+    if (!serverFundingStats) return localFundingStats;
+    return {
+      supportableCount: serverFundingStats.participationAvailableFunding,
+      totalBackers: serverFundingStats.totalSupporterCount,
+      completedCount: serverFundingStats.successfulProjectCount,
+      totalRaised: serverFundingStats.totalRaisedAmount,
+    };
+  }, [localFundingStats, serverFundingStats]);
 
   useEffect(() => {
     restorePaginationScroll();

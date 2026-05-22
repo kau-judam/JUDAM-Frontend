@@ -179,15 +179,16 @@ export default function CommunityDetailScreen() {
   const numericId = Number(Array.isArray(id) ? id[0] : id) || 1;
   const contextPost = posts.find((item) => item.id === numericId);
   const [apiPost, setApiPost] = useState<CommunityPostDetail | null>(null);
+  const [isPostLoading, setIsPostLoading] = useState(true);
   const [apiPostLoadFailed, setApiPostLoadFailed] = useState(false);
-  const fallbackPost = contextPost || mockPosts[numericId] || mockPosts[1];
+  const fallbackPost = contextPost || (numericId <= 6 ? mockPosts[numericId] || mockPosts[1] : null);
   const post = apiPost || fallbackPost;
-  const isTemporaryUserPost = numericId === 1 && post.category === '자유게시판' && user?.type === 'user';
-  const isAuthor = !!user && Boolean((post.isMine ?? (post.authorId && post.authorId === user.id)) || user.name === post.author || isTemporaryUserPost);
+  const isTemporaryUserPost = numericId === 1 && post?.category === '자유게시판' && user?.type === 'user';
+  const isAuthor = !!user && !!post && Boolean((post.isMine ?? (post.authorId && post.authorId === user.id)) || user.name === post.author || isTemporaryUserPost);
 
   const [commentInput, setCommentInput] = useState('');
   const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(post.likes);
+  const [likeCount, setLikeCount] = useState(post?.likes ?? 0);
   const [showMenu, setShowMenu] = useState(false);
   const [showAllComments, setShowAllComments] = useState(false);
   const [commentMenuTarget, setCommentMenuTarget] = useState<number | null>(null);
@@ -200,6 +201,7 @@ export default function CommunityDetailScreen() {
 
   useEffect(() => {
     let cancelled = false;
+    setIsPostLoading(true);
 
     fetchCommunityPost(numericId)
       .then((response) => {
@@ -213,8 +215,13 @@ export default function CommunityDetailScreen() {
         if (cancelled) return;
         console.warn('Failed to load community post detail from API', error);
         setApiPostLoadFailed(true);
-        setLiked(fallbackPost.liked ?? false);
-        setLikeCount(fallbackPost.likes);
+        setApiPost(null);
+        setLiked(fallbackPost?.liked ?? false);
+        setLikeCount(fallbackPost?.likes ?? 0);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsPostLoading(false);
       });
 
     setIsCommentsLoading(true);
@@ -242,12 +249,46 @@ export default function CommunityDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [fallbackPost.liked, fallbackPost.likes, numericId, user]);
+  }, [fallbackPost?.liked, fallbackPost?.likes, numericId, user]);
 
   const visibleComments = showAllComments ? comments : comments.slice(0, INITIAL_COMMENT_COUNT);
   const hasMoreComments = comments.length > INITIAL_COMMENT_COUNT;
   const getCommentReplies = (comment: Comment) => comment.replies || [];
-  const postImageUrls = post.imageUrls ?? (post.image ? [post.image] : []);
+  const postImageUrls = post?.imageUrls ?? (post?.image ? [post.image] : []);
+
+  if (!post && isPostLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { height: insets.top + 56, paddingTop: insets.top }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+            <ChevronLeft size={26} color="#111" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>게시글</Text>
+          <View style={styles.iconBtn} />
+        </View>
+        <View style={styles.loadingBox}>
+          <Text style={styles.loadingText}>게시글을 불러오고 있어요.</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!post) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { height: insets.top + 56, paddingTop: insets.top }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+            <ChevronLeft size={26} color="#111" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>게시글</Text>
+          <View style={styles.iconBtn} />
+        </View>
+        <View style={styles.loadingBox}>
+          <Text style={styles.loadingText}>게시글을 불러오지 못했습니다.</Text>
+        </View>
+      </View>
+    );
+  }
 
   const loadCommentReplies = async (commentId: number) => {
     if (apiPostLoadFailed || post.id > 1000000000000) return;
@@ -397,7 +438,7 @@ export default function CommunityDetailScreen() {
 
   const handlePostEdit = () => {
     setShowMenu(false);
-    router.push(`/community/create?editPostId=${post.id}` as any);
+    router.replace(`/community/create?editPostId=${post.id}` as any);
   };
 
   const handlePostDelete = async () => {
@@ -796,6 +837,8 @@ export default function CommunityDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
+  loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '700' },
   header: {
     backgroundColor: '#FFF',
     borderBottomWidth: 1,

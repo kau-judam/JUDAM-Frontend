@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFundingProjectImageSource } from '@/constants/data';
 import { useFunding } from '@/contexts/FundingContext';
+import { deleteMyPageArchive, getMyPageApiErrorMessage, getMyPageArchiveDetail, type MyPageArchive } from '@/features/mypage/api';
 
 
 type ArchiveDetailData = {
@@ -119,11 +120,51 @@ export default function ArchiveDetailScreen() {
   const { archiveId, kind, fundingId } = useLocalSearchParams<{ archiveId?: string; kind?: string; fundingId?: string }>();
   const { projects, participatedFundings, fundingReviews, deleteFundingReview } = useFunding();
   const [showMenu, setShowMenu] = useState(false);
+  const [serverArchive, setServerArchive] = useState<MyPageArchive | null>(null);
   const targetArchiveId = Number(Array.isArray(archiveId) ? archiveId[0] : archiveId);
   const targetFundingId = Number(Array.isArray(fundingId) ? fundingId[0] : fundingId);
   const rawKind = Array.isArray(kind) ? kind[0] : kind;
 
+  useEffect(() => {
+    if (!Number.isFinite(targetArchiveId) || rawKind === 'sample' || rawKind === 'funding') return;
+    let mounted = true;
+    getMyPageArchiveDetail(targetArchiveId)
+      .then((nextArchive) => {
+        if (!mounted) return;
+        setServerArchive(nextArchive);
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '아카이브 상세 정보를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [rawKind, targetArchiveId]);
+
   const archive = useMemo<ArchiveDetailData | null>(() => {
+    if (serverArchive) {
+      const localArchive = fundingReviews.find((item) => item.id === serverArchive.archiveId);
+      return {
+        id: serverArchive.archiveId,
+        title: serverArchive.drinkName || '나의 전통주 기록',
+        subtitle: serverArchive.archiveType === 'FUNDING' ? '펀딩 술' : '직접 기록',
+        badge: serverArchive.archiveType === 'FUNDING' ? '펀딩' : '일반 술',
+        alcohol: serverArchive.abv ? `${serverArchive.abv}%` : undefined,
+        userName: '',
+        date: serverArchive.recordDate || serverArchive.createdAt?.slice(0, 10) || '',
+        rating: serverArchive.rating || 0,
+        body: serverArchive.tastingNote || '',
+        rewardName: serverArchive.drinkName || '나의 전통주 기록',
+        images: serverArchive.images.map((image) => image.imageUrl),
+        mood: localArchive?.mood,
+        pairing: localArchive?.pairing,
+        tags: serverArchive.tags.map((tag) => tag.name),
+        likes: 0,
+        projectId: serverArchive.fundingId || undefined,
+      };
+    }
+
     if (rawKind === 'sample') {
       return SAMPLE_ARCHIVES.find((item) => item.id === targetArchiveId) || null;
     }
@@ -179,7 +220,7 @@ export default function ArchiveDetailScreen() {
     }
 
     return null;
-  }, [fundingReviews, participatedFundings, projects, rawKind, targetArchiveId, targetFundingId]);
+  }, [fundingReviews, participatedFundings, projects, rawKind, serverArchive, targetArchiveId, targetFundingId]);
 
   const savedArchive = useMemo(
     () => fundingReviews.find((item) => item.id === targetArchiveId) || null,
@@ -188,21 +229,36 @@ export default function ArchiveDetailScreen() {
 
   const handleEdit = () => {
     setShowMenu(false);
+    if (serverArchive) {
+      const editType = serverArchive.archiveType === 'FUNDING' ? 'funding' : 'normal';
+      const fundingQuery = serverArchive.fundingId ? `&fundingId=${serverArchive.fundingId}` : '';
+      router.replace(`/mypage/archive/write?type=${editType}&editId=${serverArchive.archiveId}${fundingQuery}` as any);
+      return;
+    }
     if (savedArchive) {
       const editType = savedArchive.projectId === 0 ? 'normal' : 'funding';
       const fundingQuery = savedArchive.projectId === 0 ? '' : `&fundingId=${savedArchive.projectId}`;
-      router.push(`/mypage/archive/write?type=${editType}&editId=${savedArchive.id}${fundingQuery}` as any);
+      router.replace(`/mypage/archive/write?type=${editType}&editId=${savedArchive.id}${fundingQuery}` as any);
       return;
     }
     if (rawKind === 'funding' && archive?.projectId) {
-      router.push(`/mypage/archive/write?type=funding&fundingId=${archive.projectId}` as any);
+      router.replace(`/mypage/archive/write?type=funding&fundingId=${archive.projectId}` as any);
       return;
     }
     Alert.alert('수정할 수 없어요', '샘플 기록은 수정 화면으로 불러올 수 없습니다.');
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     setShowMenu(false);
+    if (serverArchive) {
+      try {
+        await deleteMyPageArchive(serverArchive.archiveId);
+        router.replace('/mypage/archive' as any);
+      } catch (error) {
+        Alert.alert('삭제 실패', getMyPageApiErrorMessage(error, '아카이브를 삭제하지 못했습니다.'));
+      }
+      return;
+    }
     if (!savedArchive) {
       Alert.alert('삭제할 수 없어요', '저장된 기록만 삭제할 수 있습니다.');
       return;

@@ -232,7 +232,6 @@ export default function CommunityScreen() {
                 </View>
 
                 <Text style={styles.postTitle} numberOfLines={1} ellipsizeMode="tail">{post.title}</Text>
-                <Text style={styles.postContent} numberOfLines={2} ellipsizeMode="tail">{post.content}</Text>
 
                 <View style={styles.postFooter}>
                    <TouchableOpacity style={styles.statBtn} onPress={() => handlePostLike(post.id)}>
@@ -325,8 +324,7 @@ const styles = StyleSheet.create({
   postCatTxt: { fontSize: 10, fontWeight: '800', color: '#6B7280' },
   timeTxt: { fontSize: 12, color: '#6B7280', fontWeight: '700' },
   postTitle: { fontSize: 15, lineHeight: 21, color: '#111', fontWeight: '900', marginBottom: 8 },
-  postContent: { height: 44, fontSize: 14, lineHeight: 22, color: '#374151', fontWeight: '600' },
-  postFooter: { flexDirection: 'row', gap: 18, marginTop: 14, paddingTop: 0 },
+  postFooter: { flexDirection: 'row', gap: 18, marginTop: 12, paddingTop: 0 },
   statBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statTxt: { fontSize: 13, fontWeight: '800', color: '#6B7280' },
   emptyState: { paddingVertical: 80, alignItems: 'center' },

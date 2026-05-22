@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   ImageSourcePropType,
@@ -17,61 +17,25 @@ import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import { isFundingReviewOwnedByUser } from '@/features/funding/reviews';
+import { getMyPageApiErrorMessage, getMyPageArchives, type MyPageArchive } from '@/features/mypage/api';
 
 type ArchiveTab = 'all' | 'funded' | 'general';
 
 type ArchiveDrink = {
   id: number;
+  listKey?: string;
   name: string;
   brewery: string;
   category: string;
-  image: ImageSourcePropType;
+  image?: ImageSourcePropType;
   rating: number;
   date: string;
   tags: string[];
   isFunding: boolean;
   alcohol: number;
   fundingId?: number;
+  isServer?: boolean;
 };
-
-const GENERAL_DRINKS: ArchiveDrink[] = [
-  {
-    id: 101,
-    name: '안동 증류식 소주',
-    brewery: '안동양조',
-    category: '소주',
-    image: require('../../../../newpicutre/bottle.jpg'),
-    rating: 4.0,
-    date: '2025.02.20',
-    tags: ['깔끔한', '묵직한'],
-    isFunding: false,
-    alcohol: 45,
-  },
-  {
-    id: 102,
-    name: '꽃향기 주',
-    brewery: '과일청양조',
-    category: '청주',
-    image: require('../../../../newpicutre/food.jpg'),
-    rating: 5.0,
-    date: '2025.01.30',
-    tags: ['과일향', '깔끔한'],
-    isFunding: false,
-    alcohol: 13,
-  },
-  {
-    id: 103,
-    name: '감귤 막걸리',
-    brewery: '꽃담양조',
-    category: '막걸리',
-    image: require('../../../../newpicutre/funding3.jpg'),
-    rating: 4.5,
-    date: '2025.01.15',
-    tags: ['달콤한', '과일향'],
-    isFunding: false,
-    alcohol: 6,
-  },
-];
 
 const SAMPLE_FUNDING_DRINKS: ArchiveDrink[] = [
   {
@@ -100,6 +64,25 @@ export default function MyArchiveScreen() {
   const { projects, participatedFundings, fundingReviews } = useFunding();
   const [activeTab, setActiveTab] = useState<ArchiveTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [serverArchives, setServerArchives] = useState<MyPageArchive[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    let mounted = true;
+    const type = activeTab === 'funded' ? 'funding' : activeTab === 'general' ? 'normal' : 'all';
+    getMyPageArchives({ type, page: 0, size: 50 })
+      .then((response) => {
+        if (!mounted) return;
+        setServerArchives(response.content);
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '아카이브 목록을 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, user]);
 
   const fundedDrinks = useMemo<ArchiveDrink[]>(() => {
     const nextDrinks: ArchiveDrink[] = [];
@@ -124,6 +107,24 @@ export default function MyArchiveScreen() {
   }, [participatedFundings, projects]);
 
   const savedArchiveDrinks = useMemo<ArchiveDrink[]>(() => {
+    if (serverArchives.length > 0) {
+      return serverArchives.map((archive) => ({
+        id: archive.archiveId,
+        listKey: `server-${archive.archiveType.toLowerCase()}-${archive.archiveId}`,
+        name: archive.drinkName || '나의 전통주 기록',
+        brewery: archive.archiveType === 'FUNDING' ? '펀딩 술' : '직접 기록',
+        category: archive.category || (archive.archiveType === 'FUNDING' ? '펀딩' : '일반 술'),
+        image: archive.images[0]?.imageUrl ? { uri: archive.images[0].imageUrl } : undefined,
+        rating: archive.rating || 0,
+        date: archive.recordDate || archive.createdAt?.slice(0, 10) || '',
+        tags: archive.tags.map((tag) => tag.name),
+        isFunding: archive.archiveType === 'FUNDING',
+        alcohol: archive.abv || 0,
+        fundingId: archive.fundingId || undefined,
+        isServer: true,
+      }));
+    }
+
     return fundingReviews
       .filter((review) => isFundingReviewOwnedByUser(review, user))
       .map((review) => {
@@ -133,9 +134,10 @@ export default function MyArchiveScreen() {
           ? { uri: review.images[0] }
           : project
             ? getFundingProjectImageSource(project)!
-            : require('../../../../newpicutre/bottle.jpg');
+            : undefined;
         return {
           id: review.id,
+          listKey: `local-${isFunding ? 'funded' : 'general'}-${review.id}`,
           name: isFunding ? project!.shortTitle || project!.title : review.rewardName || '나의 전통주 기록',
           brewery: isFunding ? project!.brewery : '직접 기록',
           category: isFunding ? project!.category : '일반 술',
@@ -148,11 +150,11 @@ export default function MyArchiveScreen() {
           fundingId: isFunding ? project!.id : undefined,
         };
       });
-  }, [fundingReviews, projects, user]);
+  }, [fundingReviews, projects, serverArchives, user]);
 
   const allDrinks = useMemo(
-    () => [...savedArchiveDrinks, ...SAMPLE_FUNDING_DRINKS, ...fundedDrinks, ...GENERAL_DRINKS],
-    [fundedDrinks, savedArchiveDrinks]
+    () => (serverArchives.length > 0 ? savedArchiveDrinks : [...savedArchiveDrinks, ...SAMPLE_FUNDING_DRINKS, ...fundedDrinks]),
+    [fundedDrinks, savedArchiveDrinks, serverArchives.length]
   );
 
   const filteredDrinks = useMemo(() => {
@@ -221,8 +223,11 @@ export default function MyArchiveScreen() {
         </View>
 
         <View style={styles.list}>
-          {filteredDrinks.map((drink) => (
-            <ArchiveDrinkCard key={`${drink.isFunding ? 'funded' : 'general'}-${drink.id}`} drink={drink} />
+          {filteredDrinks.map((drink, index) => (
+            <ArchiveDrinkCard
+              key={`${drink.listKey || `${drink.isFunding ? 'funded' : 'general'}-${drink.id}`}-${index}`}
+              drink={drink}
+            />
           ))}
         </View>
 
@@ -248,22 +253,23 @@ export default function MyArchiveScreen() {
 
 function ArchiveDrinkCard({ drink }: { drink: ArchiveDrink }) {
   const goDetail = () => {
-    const kind = drink.fundingId ? 'funding' : drink.id >= 100 ? 'sample' : 'archive';
+    const kind = drink.isServer ? 'archive' : drink.fundingId ? 'funding' : drink.id >= 100 ? 'sample' : 'archive';
     const fundingQuery = drink.fundingId ? `&fundingId=${drink.fundingId}` : '';
     router.push(`/mypage/archive/detail/${drink.id}?kind=${kind}${fundingQuery}` as any);
   };
 
   return (
     <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={goDetail}>
-      <View style={styles.imageWrap}>
-        <Image source={drink.image} style={styles.image} />
-        {drink.isFunding && (
-          <View style={styles.fundingBadge}>
-            <Text style={styles.fundingBadgeText}>펀딩 술</Text>
-          </View>
-        )}
-      </View>
-
+      {drink.image ? (
+        <View style={styles.imageWrap}>
+          <Image source={drink.image} style={styles.image} />
+          {drink.isFunding && (
+            <View style={styles.fundingBadge}>
+              <Text style={styles.fundingBadgeText}>펀딩</Text>
+            </View>
+          )}
+        </View>
+      ) : null}
       <View style={styles.cardInfo}>
         <Text style={styles.dateText}>{drink.date}</Text>
         <Text style={styles.drinkName} numberOfLines={1}>{drink.name}</Text>
@@ -396,3 +402,4 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 15, fontWeight: '900', color: '#6B7280' },
   emptyDesc: { fontSize: 12, fontWeight: '700', color: '#9CA3AF' },
 });
+

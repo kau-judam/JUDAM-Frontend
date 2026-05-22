@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   Modal,
@@ -20,6 +20,7 @@ import { useCommunity } from '@/contexts/CommunityContext';
 import {
   createCommunityPost,
   type CommunityBoardType,
+  fetchCommunityPost,
   updateCommunityPost,
 } from '@/features/community/api';
 
@@ -39,7 +40,12 @@ export default function CommunityCreateScreen() {
   const { user } = useAuth();
   const { posts, addPost, updatePost } = useCommunity();
   const rawEditPostId = Array.isArray(editPostId) ? editPostId[0] : editPostId;
-  const editingPost = posts.find((post) => post.id === Number(rawEditPostId));
+  const editPostNumericId = Number(rawEditPostId);
+  const shouldFetchEditingPost = Boolean(rawEditPostId && Number.isFinite(editPostNumericId) && editPostNumericId <= 1000000000000);
+  const contextEditingPost = shouldFetchEditingPost ? undefined : posts.find((post) => post.id === editPostNumericId);
+  const [apiEditingPost, setApiEditingPost] = useState<typeof contextEditingPost | null>(null);
+  const [isEditPostLoading, setIsEditPostLoading] = useState(shouldFetchEditingPost);
+  const editingPost = contextEditingPost || apiEditingPost;
   const editingBoardType = editingPost?.tags?.[0] === 'INFO' ? 'INFO' : 'FREE';
   const initialBoard = editingBoardType === 'INFO' ? BOARDS[1] : BOARDS[0];
   const [selectedBoard, setSelectedBoard] = useState<Board>(initialBoard);
@@ -48,6 +54,39 @@ export default function CommunityCreateScreen() {
   const [imageUris, setImageUris] = useState<string[]>(editingPost?.imageUrls ?? (editingPost?.image ? [editingPost.image] : []));
   const [notice, setNotice] = useState<NoticeState>(null);
   const imageCountLabel = `사진 추가 (${imageUris.length}/5)`;
+
+  useEffect(() => {
+    if (!shouldFetchEditingPost) {
+      setIsEditPostLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsEditPostLoading(true);
+
+    fetchCommunityPost(editPostNumericId)
+      .then((response) => {
+        if (cancelled) return;
+        setApiEditingPost(response.post);
+        setSelectedBoard(response.post.tags?.[0] === 'INFO' ? BOARDS[1] : BOARDS[0]);
+        setTitle(response.post.title || '');
+        setContent(response.post.content || '');
+        setImageUris(response.post.imageUrls ?? (response.post.image ? [response.post.image] : []));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Failed to load community post for edit', error);
+        showNotice('게시글 정보를 불러오지 못했습니다.', '잠시 후 다시 시도해 주세요.', () => router.back());
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsEditPostLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editPostNumericId, shouldFetchEditingPost]);
 
   const showNotice = (titleText: string, body?: string, onConfirm?: () => void) => {
     setNotice({ title: titleText, body, onConfirm });
@@ -73,6 +112,23 @@ export default function CommunityCreateScreen() {
           <Text style={styles.lockedTitle}>로그인이 필요합니다</Text>
           <Text style={styles.lockedDesc}>커뮤니티 글 작성은 로그인한 사용자만 이용할 수 있어요.</Text>
           <Button label="로그인하러 가기" onPress={() => router.push('/login' as any)} style={styles.lockedButton} />
+        </View>
+      </View>
+    );
+  }
+
+  if (isEditPostLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { height: insets.top + 56, paddingTop: insets.top }]}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
+            <ChevronLeft size={26} color="#111" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>게시글 수정</Text>
+          <View style={styles.iconBtn} />
+        </View>
+        <View style={styles.loadingBox}>
+          <Text style={styles.loadingText}>게시글 정보를 불러오고 있어요.</Text>
         </View>
       </View>
     );
@@ -139,25 +195,25 @@ export default function CommunityCreateScreen() {
     };
 
     if (editingPost) {
-      if (imageUris.some((uri) => /^https?:\/\//i.test(uri))) {
-        showNotice(
-          '이미지가 있는 게시글 수정은 아직 연결할 수 없습니다.',
-          '현재 수정 API는 파일만 받을 수 있어서 기존 서버 이미지를 유지한 채 제목/내용만 수정하는 방식이 필요합니다.'
-        );
-        return;
-      }
+      const existingImageUrls = imageUris.filter((uri) => /^https?:\/\//i.test(uri));
+      const localImageUris = imageUris.filter((uri) => !/^https?:\/\//i.test(uri));
       try {
-        await updateCommunityPost(editingPost.id, {
+        const response = await updateCommunityPost(editingPost.id, {
           title: trimmedTitle,
           content: trimmedContent,
-          images: imageUris,
+          existingImageUrls,
+          images: localImageUris,
+        });
+        updatePost(editingPost.id, {
+          ...postPayload,
+          image: response.post.image_urls[0],
+          imageUrls: response.post.image_urls,
         });
       } catch (error) {
         console.warn('Failed to update community post', error);
         showNotice('게시글 수정에 실패했습니다.', '잠시 후 다시 시도해 주세요.');
         return;
       }
-      updatePost(editingPost.id, postPayload);
       showNotice('게시글이 수정되었습니다.', undefined, () => router.replace(`/community/${editingPost.id}` as any));
       return;
     }
@@ -311,6 +367,8 @@ function NoticeModal({
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFF' },
+  loadingBox: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '700' },
   header: {
     backgroundColor: '#FFF',
     borderBottomWidth: 1,

@@ -11,6 +11,13 @@ type MyPageApiEnvelope<T> = MyPageApiErrorBody & {
   data?: T;
 };
 
+type MyPagePagedEnvelope<T> = MyPageApiEnvelope<T> & {
+  page?: number;
+  size?: number;
+  totalElements?: number;
+  totalPages?: number;
+};
+
 export type MyPageProfile = {
   userId: string;
   profileImageUrl: string | null;
@@ -76,6 +83,74 @@ export type MyPageArchiveImage = {
   imageId: number;
   imageUrl: string;
   sortOrder: number;
+};
+
+export type MyPageArchiveTag = {
+  tagId: number;
+  category: string;
+  name: string;
+  categoryName?: string;
+};
+
+export type MyPageArchive = {
+  archiveId: number;
+  archiveType: 'NORMAL' | 'FUNDING';
+  alcoholId: number | null;
+  fundingId: number | null;
+  orderId: number | null;
+  reviewId: number | null;
+  drinkName: string;
+  category: string | null;
+  abv: number | null;
+  rating: number | null;
+  tastingNote: string | null;
+  recordDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  tags: MyPageArchiveTag[];
+  images: MyPageArchiveImage[];
+};
+
+export type CreateMyPageArchiveWithImagesPayload = {
+  archiveType: 'NORMAL' | 'FUNDING';
+  customName?: string;
+  alcoholId?: number | string;
+  fundingId?: number | string;
+  orderId?: number | string;
+  reviewId?: number | string;
+  category?: string;
+  abv?: number | string;
+  rating?: number | string;
+  tastingNote?: string;
+  recordDate?: string;
+  tagIds?: (number | string)[];
+  customTags?: string[];
+  images?: MyPageImageUploadFile[];
+};
+
+export type MyPageArchiveListType = 'all' | 'normal' | 'funding';
+
+export type MyPageArchiveListResult = {
+  content: MyPageArchive[];
+  page: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+};
+
+export type UpdateMyPageArchivePayload = {
+  recordDate?: string;
+  tastingNote?: string;
+  tagIds?: (number | string)[];
+};
+
+export type MyPageArchiveTagGroup = {
+  category: string;
+  categoryName: string;
+  tags: {
+    tagId: number;
+    name: string;
+  }[];
 };
 
 const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
@@ -241,6 +316,90 @@ export async function saveMyPageSulbti(payload: SaveMyPageSulbtiPayload) {
     body: JSON.stringify(payload),
   });
   return unwrapMyPageData<MyPageSulbtiResult>(response);
+}
+
+export async function createMyPageArchiveWithImages(payload: CreateMyPageArchiveWithImagesPayload) {
+  const formData = new FormData();
+  formData.append('archiveType', payload.archiveType);
+  if (payload.customName) formData.append('customName', payload.customName);
+  if (payload.alcoholId !== undefined) formData.append('alcoholId', String(payload.alcoholId));
+  if (payload.fundingId !== undefined) formData.append('fundingId', String(payload.fundingId));
+  if (payload.orderId !== undefined) formData.append('orderId', String(payload.orderId));
+  if (payload.reviewId !== undefined) formData.append('reviewId', String(payload.reviewId));
+  if (payload.category) formData.append('category', payload.category);
+  if (payload.abv !== undefined) formData.append('abv', String(payload.abv));
+  if (payload.rating !== undefined) formData.append('rating', String(payload.rating));
+  if (payload.tastingNote) formData.append('tastingNote', payload.tastingNote);
+  if (payload.recordDate) formData.append('recordDate', payload.recordDate);
+  formData.append('tagIds', JSON.stringify(payload.tagIds || []));
+  formData.append('customTags', JSON.stringify(payload.customTags || []));
+
+  (payload.images || []).slice(0, 3).forEach((image, index) => {
+    const imageName = image.name || image.uri.split('/').pop() || `archive-${Date.now()}-${index + 1}.jpg`;
+    const imageType = image.type || 'image/jpeg';
+    formData.append('images', {
+      uri: image.uri,
+      name: imageName,
+      type: imageType,
+    } as unknown as Blob);
+  });
+
+  const response = await requestMyPageForm<MyPageApiEnvelope<MyPageArchive>>(
+    '/api/mypage/archives/with-images',
+    formData,
+    { method: 'POST' }
+  );
+  return unwrapMyPageData<MyPageArchive>(response);
+}
+
+export async function getMyPageArchives({
+  type = 'all',
+  page = 0,
+  size = 30,
+}: {
+  type?: MyPageArchiveListType;
+  page?: number;
+  size?: number;
+} = {}) {
+  const query = new URLSearchParams({
+    type,
+    page: String(page),
+    size: String(size),
+  });
+  const response = await requestMyPageJson<MyPagePagedEnvelope<MyPageArchive[]>>(
+    `/api/mypage/archives?${query.toString()}`
+  );
+  return {
+    content: response.data || [],
+    page: response.page || page,
+    size: response.size || size,
+    totalElements: response.totalElements || 0,
+    totalPages: response.totalPages || 0,
+  } satisfies MyPageArchiveListResult;
+}
+
+export async function getMyPageArchiveDetail(archiveId: string | number) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageArchive>>(`/api/mypage/archives/${archiveId}`);
+  return unwrapMyPageData<MyPageArchive>(response);
+}
+
+export async function updateMyPageArchive(archiveId: string | number, payload: UpdateMyPageArchivePayload) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<Partial<MyPageArchive>>>(`/api/mypage/archives/${archiveId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  return unwrapMyPageData<Partial<MyPageArchive>>(response);
+}
+
+export async function deleteMyPageArchive(archiveId: string | number) {
+  return requestMyPageJson<MyPageApiEnvelope<null>>(`/api/mypage/archives/${archiveId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getMyPageArchiveTags() {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageArchiveTagGroup[]>>('/api/mypage/archives/tags');
+  return unwrapMyPageData<MyPageArchiveTagGroup[]>(response);
 }
 
 export async function uploadMyPageArchiveImages(archiveId: string | number, images: MyPageImageUploadFile[]) {

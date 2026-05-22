@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   BackHandler,
   View,
@@ -13,7 +13,6 @@ import {
   Alert,
   StatusBar,
   Dimensions,
-  Modal,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -27,11 +26,10 @@ import {
   Phone, 
   Upload, 
   MessageSquare,
-  Search,
-  X,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import DaumAddressSearchModal, { type DaumAddressResult } from '@/features/funding/components/DaumAddressSearchModal';
 import { formatBusinessNumber, formatPhoneNumber, isValidBusinessNumber, isValidPhone } from '@/utils/validation';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 
@@ -46,29 +44,6 @@ type BusinessLicenseFile = {
   size?: number;
   source: 'photo' | 'file';
 };
-
-const MOCK_ADDRESSES = [
-  {
-    zipCode: '12545',
-    roadAddress: '경기도 양평군 용문면 용문로 123',
-    jibunAddress: '경기도 양평군 용문면 다문리 456-7',
-  },
-  {
-    zipCode: '03048',
-    roadAddress: '서울특별시 종로구 북촌로 77',
-    jibunAddress: '서울특별시 종로구 가회동 31-2',
-  },
-  {
-    zipCode: '38187',
-    roadAddress: '경상북도 경주시 첨성로 150',
-    jibunAddress: '경상북도 경주시 황남동 221-4',
-  },
-  {
-    zipCode: '58217',
-    roadAddress: '전라남도 나주시 금성관길 8',
-    jibunAddress: '전라남도 나주시 과원동 109-5',
-  },
-];
 
 export default function BreweryVerificationScreen() {
   const insets = useSafeAreaInsets();
@@ -91,17 +66,6 @@ export default function BreweryVerificationScreen() {
   const [verificationCode, setVerificationCode] = useState('');
   const [isPhoneVerified, setIsPhoneVerified] = useState(isEditMode);
   const [showAddressModal, setShowAddressModal] = useState(false);
-  const [addressSearch, setAddressSearch] = useState('');
-
-  const addressResults = useMemo(() => {
-    const keyword = addressSearch.trim().toLowerCase();
-    if (!keyword) return MOCK_ADDRESSES;
-    return MOCK_ADDRESSES.filter((address) => (
-      address.zipCode.includes(keyword)
-      || address.roadAddress.toLowerCase().includes(keyword)
-      || address.jibunAddress.toLowerCase().includes(keyword)
-    ));
-  }, [addressSearch]);
 
   const handleBack = useCallback(() => {
     if (!isEditMode && shouldReturnToUserType) {
@@ -303,13 +267,12 @@ export default function BreweryVerificationScreen() {
     ]);
   };
 
-  const handleAddressSelect = (address: typeof MOCK_ADDRESSES[number]) => {
+  const handleAddressSelect = (address: DaumAddressResult) => {
     setFormData({
       ...formData,
-      breweryLocation: `[${address.zipCode}] ${address.roadAddress}`,
+      breweryLocation: address.zonecode ? `[${address.zonecode}] ${address.address}` : address.address,
     });
     setShowAddressModal(false);
-    setAddressSearch('');
   };
 
   return (
@@ -556,79 +519,14 @@ export default function BreweryVerificationScreen() {
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-      <AddressSearchModal
+      <DaumAddressSearchModal
         visible={showAddressModal}
-        search={addressSearch}
-        results={addressResults}
-        onChangeSearch={setAddressSearch}
+        insetsTop={insets.top}
+        title="양조장 주소 검색"
         onClose={() => setShowAddressModal(false)}
         onSelect={handleAddressSelect}
       />
     </View>
-  );
-}
-
-function AddressSearchModal({
-  visible,
-  search,
-  results,
-  onChangeSearch,
-  onClose,
-  onSelect,
-}: {
-  visible: boolean;
-  search: string;
-  results: typeof MOCK_ADDRESSES;
-  onChangeSearch: (value: string) => void;
-  onClose: () => void;
-  onSelect: (address: typeof MOCK_ADDRESSES[number]) => void;
-}) {
-  return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.addressModalBackdrop}>
-        <View style={styles.addressModal}>
-          <View style={styles.addressHeader}>
-            <Text style={styles.addressTitle}>주소 검색</Text>
-            <TouchableOpacity style={styles.addressCloseBtn} onPress={onClose}>
-              <X size={18} color="#111" />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.addressSearchBox}>
-            <Search size={18} color="#9CA3AF" style={styles.inputIcon} />
-            <TextInput
-              style={styles.addressSearchInput}
-              placeholder="도로명, 지번, 우편번호 검색"
-              placeholderTextColor="#9CA3AF"
-              value={search}
-              onChangeText={onChangeSearch}
-              autoFocus
-            />
-          </View>
-          <ScrollView
-            style={styles.addressResultList}
-            contentContainerStyle={styles.addressResultContent}
-            keyboardShouldPersistTaps="handled"
-          >
-            {results.length > 0 ? results.map((address) => (
-              <TouchableOpacity
-                key={`${address.zipCode}-${address.roadAddress}`}
-                style={styles.addressResultItem}
-                onPress={() => onSelect(address)}
-                activeOpacity={0.75}
-              >
-                <Text style={styles.addressZip}>[{address.zipCode}]</Text>
-                <Text style={styles.addressRoad}>{address.roadAddress}</Text>
-                <Text style={styles.addressJibun}>{address.jibunAddress}</Text>
-              </TouchableOpacity>
-            )) : (
-              <View style={styles.addressEmpty}>
-                <Text style={styles.addressEmptyText}>검색 결과가 없습니다.</Text>
-              </View>
-            )}
-          </ScrollView>
-        </View>
-      </View>
-    </Modal>
   );
 }
 

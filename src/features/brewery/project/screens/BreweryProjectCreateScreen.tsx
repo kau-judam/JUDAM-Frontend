@@ -29,9 +29,7 @@ import {
   Eye,
   FileCheck,
   Image as ImageIcon,
-  MapPin,
   Plus,
-  Search,
   Tag,
   Upload,
   User,
@@ -44,6 +42,7 @@ import { Progress } from '@/components/ui/progress';
 import type { FundingProject, BudgetItem, ScheduleItem, ProjectStatus } from '@/constants/data';
 import { useAuth, type User as AuthUser } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import DaumAddressSearchModal from '@/features/funding/components/DaumAddressSearchModal';
 import FundingAlertModal from '@/features/funding/components/FundingAlertModal';
 import {
   createFundingDraft,
@@ -88,11 +87,6 @@ interface IngredientRow {
   origin: string;
 }
 
-interface AddressItem {
-  zipCode: string;
-  address: string;
-}
-
 const projectTabs: { id: TabId; label: string }[] = [
   { id: 'basic', label: '기본정보' },
   { id: 'funding', label: '목표 금액 및 일정' },
@@ -103,8 +97,6 @@ const projectTabs: { id: TabId; label: string }[] = [
   { id: 'trust', label: '안내 사항' },
   { id: 'verification', label: '인증 서류' },
 ];
-
-const addressSuggestions: AddressItem[] = [];
 
 const BANK_OPTIONS = ['KB국민', '신한', '우리', '하나', '농협은행', 'IBK기업', '카카오뱅크', '토스뱅크', '케이뱅크', 'SC제일', '부산', '대구', '광주', '전북', '경남', '수협', '새마을금고', '신협'];
 const TEMP_SAVE_KEY = 'judam_project_temp_save';
@@ -597,7 +589,6 @@ export default function BreweryProjectCreateScreen() {
   const [showBankModal, setShowBankModal] = useState(false);
   const [datePickerTarget, setDatePickerTarget] = useState<DatePickerTarget | null>(null);
   const [createdProjectId, setCreatedProjectId] = useState<number | null>(null);
-  const [addressSearch, setAddressSearch] = useState('');
   const [phoneVerificationSent, setPhoneVerificationSent] = useState(false);
   const [phoneVerificationCode, setPhoneVerificationCode] = useState('');
   const [phoneVerified, setPhoneVerified] = useState(false);
@@ -755,11 +746,6 @@ export default function BreweryProjectCreateScreen() {
     endDate && deliveryDate && deliveryDate <= endDate
       ? '예상 발송 시작일은 펀딩 종료일 이후여야 합니다.'
       : '';
-  const filteredAddresses = useMemo(
-    () => addressSuggestions.filter((item) => item.address.includes(addressSearch) || item.zipCode.includes(addressSearch)),
-    [addressSearch]
-  );
-
   const progress = useMemo(() => {
     let total = 0;
     let completed = 0;
@@ -1545,18 +1531,6 @@ export default function BreweryProjectCreateScreen() {
 
   const handleSelectAddress = (zipCode: string, address: string) => {
     setTaxInfo((prev) => ({ ...prev, address: `(${zipCode}) ${address}` }));
-    setAddressSearch('');
-    setShowAddressModal(false);
-  };
-
-  const handleUseManualAddress = () => {
-    const nextAddress = addressSearch.trim();
-    if (!nextAddress) {
-      showAlert('주소를 입력해주세요.');
-      return;
-    }
-    setTaxInfo((prev) => ({ ...prev, address: nextAddress }));
-    setAddressSearch('');
     setShowAddressModal(false);
   };
 
@@ -2530,7 +2504,13 @@ export default function BreweryProjectCreateScreen() {
       />
       <ExitConfirmModal visible={showExitConfirm} onSave={handleSaveAndExit} onExit={handleExitWithoutSave} onContinue={() => setShowExitConfirm(false)} />
       <FundingGuideModal visible={showFundingGuideModal} onClose={() => setShowFundingGuideModal(false)} />
-      <AddressModal visible={showAddressModal} insetsTop={insets.top} search={addressSearch} results={filteredAddresses} onChangeSearch={setAddressSearch} onClose={() => setShowAddressModal(false)} onSelect={handleSelectAddress} onUseManual={handleUseManualAddress} />
+      <DaumAddressSearchModal
+        visible={showAddressModal}
+        insetsTop={insets.top}
+        title="사업장 소재지 검색"
+        onClose={() => setShowAddressModal(false)}
+        onSelect={(result) => handleSelectAddress(result.zonecode, result.address)}
+      />
       <BankSelectModal
         visible={showBankModal}
         value={creatorInfo.accountBank}
@@ -3218,65 +3198,6 @@ function ExitConfirmModal({ visible, onSave, onExit, onContinue }: { visible: bo
             <Text style={styles.modalPlainText}>계속 작성하기</Text>
           </TouchableOpacity>
         </View>
-      </View>
-    </Modal>
-  );
-}
-
-function AddressModal({ visible, insetsTop, search, results, onChangeSearch, onClose, onSelect, onUseManual }: { visible: boolean; insetsTop: number; search: string; results: AddressItem[]; onChangeSearch: (value: string) => void; onClose: () => void; onSelect: (zipCode: string, address: string) => void; onUseManual: () => void }) {
-  return (
-    <Modal visible={visible} animationType="slide">
-      <View style={styles.addressModal}>
-        <View style={[styles.addressHeader, { paddingTop: insetsTop }]}>
-          <View style={styles.addressTitleRow}>
-            <TouchableOpacity style={styles.headerIcon} onPress={onClose}>
-              <ChevronLeft size={24} color="#111" />
-            </TouchableOpacity>
-            <Text style={styles.addressTitle}>주소 검색</Text>
-            <View style={styles.headerIcon} />
-          </View>
-          <View style={styles.addressSearchBox}>
-            <Search size={18} color="#9CA3AF" />
-            <TextInput style={styles.addressInput} value={search} onChangeText={onChangeSearch} placeholder="도로명, 건물명, 지역명 입력" placeholderTextColor="#9CA3AF" autoFocus />
-            {Boolean(search) && (
-              <TouchableOpacity onPress={() => onChangeSearch('')}>
-                <X size={18} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-        <ScrollView contentContainerStyle={styles.addressContent}>
-          {!search ? (
-            <View style={styles.addressEmpty}>
-              <MapPin size={34} color="#D1D5DB" />
-              <Text style={styles.addressEmptyTitle}>주소를 검색해주세요</Text>
-              <Text style={styles.addressEmptyText}>도로명, 건물명 또는 지역명으로 검색할 수 있습니다.</Text>
-            </View>
-          ) : (
-            <>
-              <Text style={styles.resultCount}>검색 결과 {results.length}건</Text>
-              <TouchableOpacity style={styles.manualAddressCard} onPress={onUseManual}>
-                <Text style={styles.manualAddressLabel}>입력한 주소 사용</Text>
-                <Text style={styles.manualAddressText}>{search}</Text>
-              </TouchableOpacity>
-              {results.map((item) => (
-                <TouchableOpacity key={`${item.zipCode}-${item.address}`} style={styles.addressResultCard} onPress={() => onSelect(item.zipCode, item.address)}>
-                  <Text style={styles.zipCode}>우편번호 {item.zipCode}</Text>
-                  <Text style={styles.addressResultText}>{item.address}</Text>
-                </TouchableOpacity>
-              ))}
-              {results.length === 0 && (
-                <View style={styles.noResult}>
-                  <Text style={styles.noResultTitle}>검색 결과가 없습니다</Text>
-                  <Text style={styles.noResultText}>다른 검색어로 시도해보세요.</Text>
-                </View>
-              )}
-            </>
-          )}
-          <View style={styles.addressGuideBox}>
-            <Text style={styles.addressGuideText}>주소 검색 API 연결 전까지 입력한 주소를 그대로 사용할 수 있습니다.</Text>
-          </View>
-        </ScrollView>
       </View>
     </Modal>
   );

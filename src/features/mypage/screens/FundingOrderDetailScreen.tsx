@@ -72,6 +72,35 @@ type DerivedOrder = {
   project: FundingProject;
 };
 
+const DUMMY_DELIVERY_PROJECT_ID = 9001;
+
+const DUMMY_DELIVERY_PROJECT: FundingProject = {
+  id: DUMMY_DELIVERY_PROJECT_ID,
+  title: '달빛 담은 배 막걸리 배송 더미',
+  brewery: '주담 테스트 양조장',
+  location: '충북 충주',
+  category: '막걸리',
+  shortTitle: '달빛 담은 배 막걸리',
+  shortDescription: '배송조회 확인용 참여 펀딩 더미 데이터',
+  image: '',
+  localImage: require('../../../../newpicutre/funding3.jpg'),
+  goalAmount: 3000000,
+  currentAmount: 3600000,
+  backers: 128,
+  daysLeft: 0,
+  status: '펀딩 성공' as FundingProject['status'],
+  startDate: '2026.04.01',
+  endDate: '2026.05.10',
+  pricePerBottle: 32000,
+  bottleSize: '500ml',
+  alcoholContent: '6%',
+  estimatedDelivery: '2026.06.05',
+  rewardItems: ['달빛 담은 배 막걸리 1병'],
+  shippingFee: 3000,
+  mainIngredients: '쌀, 배',
+  tags: ['테스트', '배송조회'],
+};
+
 const STATUS_CONFIG: Record<DeliveryStatus, { label: string; bg: string; border: string; text: string; dot: string }> = {
   예정: { label: '배송 예정', bg: '#EFF6FF', border: '#DBEAFE', text: '#4F6DFF', dot: '#93C5FD' },
   준비중: { label: '배송 준비중', bg: '#FFFBEB', border: '#FEF3C7', text: '#B45309', dot: '#FBBF24' },
@@ -80,6 +109,20 @@ const STATUS_CONFIG: Record<DeliveryStatus, { label: string; bg: string; border:
 };
 
 const ORDER_OVERRIDES: Record<number, Partial<DerivedOrder>> = {
+  [DUMMY_DELIVERY_PROJECT_ID]: {
+    orderId: 'JD-2026-009001',
+    breweryPhone: '043-123-4567',
+    paymentMethod: '테스트 결제',
+    deliveryStatus: Object.keys(STATUS_CONFIG)[2] as DeliveryStatus,
+    estimatedDate: '2026.06.05',
+    paidAt: '2026.05.21 14:20',
+    participatedAt: '2026.05.21',
+    recipient: '김주담',
+    address: '서울시 마포구 연남동 123-45, 202호',
+    trackingNumber: '624888900100',
+    courier: 'CJ대한통운',
+    hasReview: false,
+  },
   5: {
     orderId: 'JD-2025-006102',
     breweryPhone: '033-789-0123',
@@ -124,16 +167,16 @@ function getDeliveryStatus(project: FundingProject): DeliveryStatus {
 }
 
 function buildTimeline(order: Pick<DerivedOrder, 'participatedAt' | 'estimatedDate' | 'deliveryStatus'>): OrderTimelineStep[] {
-  const doneToManufacture = order.deliveryStatus !== '예정';
-  const shipped = order.deliveryStatus === '발송' || order.deliveryStatus === '완료';
+  const prepared = order.deliveryStatus !== '예정';
+  const collected = order.deliveryStatus === '준비중' || order.deliveryStatus === '발송' || order.deliveryStatus === '완료';
+  const shipping = order.deliveryStatus === '발송' || order.deliveryStatus === '완료';
   const delivered = order.deliveryStatus === '완료';
 
   return [
-    { date: order.participatedAt, label: '펀딩 참여 완료', done: true },
-    { date: addDays(order.participatedAt, 31), label: doneToManufacture ? '제조 시작' : '제조 시작 예정', done: doneToManufacture },
-    { date: addDays(order.participatedAt, 55), label: doneToManufacture ? '제조 완료 · 배송 준비' : '제조 완료 예정', done: doneToManufacture },
-    { date: addDays(order.participatedAt, 65), label: shipped ? '발송 완료' : '발송 예정', done: shipped },
-    { date: order.estimatedDate, label: delivered ? '배송 완료' : '배송 완료 예정', done: delivered },
+    { date: addDays(order.participatedAt, 31), label: '상품 준비', done: prepared },
+    { date: addDays(order.participatedAt, 55), label: '집화', done: collected },
+    { date: addDays(order.participatedAt, 65), label: '배송 중', done: shipping },
+    { date: order.estimatedDate, label: '배송 완료', done: delivered },
   ];
 }
 
@@ -183,7 +226,11 @@ export default function FundingOrderDetailScreen() {
   const projectId = Number(Array.isArray(id) ? id[0] : id);
   const hasDeliveryOrder = Object.prototype.hasOwnProperty.call(ORDER_OVERRIDES, projectId);
   const project = useMemo(
-    () => (hasDeliveryOrder ? projects.find((item) => item.id === projectId) || null : null),
+    () =>
+      hasDeliveryOrder
+        ? projects.find((item) => item.id === projectId) ||
+          (projectId === DUMMY_DELIVERY_PROJECT_ID ? DUMMY_DELIVERY_PROJECT : null)
+        : null,
     [hasDeliveryOrder, projectId, projects]
   );
   const participation = useMemo(

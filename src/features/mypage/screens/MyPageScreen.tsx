@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -210,7 +211,11 @@ export default function MyPageScreen() {
         <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
            <View style={styles.profileRow}>
               <View style={styles.avatar}>
-                 <Text style={styles.avatarTxt}>{initial}</Text>
+                 {user.profileImage ? (
+                   <Image source={{ uri: user.profileImage }} style={styles.avatarImage} />
+                 ) : (
+                   <Text style={styles.avatarTxt}>{initial}</Text>
+                 )}
               </View>
               <View style={styles.profileInfo}>
                  <Text style={styles.profileName}>{user.name} 님</Text>
@@ -383,6 +388,7 @@ const styles = StyleSheet.create({
   profileRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
   guestAvatar: { backgroundColor: '#F3F4F6' },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 28 },
   avatarTxt: { color: '#FFF', fontSize: 20, fontWeight: '800' },
   profileInfo: { flex: 1 },
   profileName: { fontSize: 20, fontWeight: '800', color: '#111' },

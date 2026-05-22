@@ -55,7 +55,7 @@ export default function PasswordChangeScreen() {
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()} activeOpacity={0.75}>
-          <ArrowLeft size={26} color="#111827" />
+          <ArrowLeft size={22} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>비밀번호 변경</Text>
         <View style={styles.headerSpacer} />
@@ -132,7 +132,7 @@ function PasswordField({
           autoCapitalize="none"
         />
         <TouchableOpacity style={styles.eyeButton} onPress={onToggleVisible} activeOpacity={0.75}>
-          {visible ? <EyeOff size={22} color="#9CA3AF" /> : <Eye size={22} color="#9CA3AF" />}
+          {visible ? <EyeOff size={19} color="#9CA3AF" /> : <Eye size={19} color="#9CA3AF" />}
         </TouchableOpacity>
       </View>
     </View>
@@ -151,15 +151,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   backButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-start' },
-  headerTitle: { flex: 1, textAlign: 'center', fontSize: 24, fontWeight: '900', color: '#111827' },
+  headerTitle: { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '900', color: '#111827' },
   headerSpacer: { width: 44 },
-  content: { paddingHorizontal: 20, paddingTop: 48 },
+  content: { paddingHorizontal: 24, paddingTop: 22 },
   card: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    paddingHorizontal: 22,
-    paddingTop: 26,
-    paddingBottom: 24,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 20,
+    paddingBottom: 18,
     borderWidth: 1,
     borderColor: '#EEF0F3',
     shadowColor: '#000',
@@ -168,14 +168,14 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  fieldBlock: { marginBottom: 24 },
-  fieldLabel: { fontSize: 17, fontWeight: '900', color: '#111827', marginBottom: 12 },
+  fieldBlock: { marginBottom: 16 },
+  fieldLabel: { fontSize: 13, fontWeight: '800', color: '#374151', marginBottom: 8 },
   inputWrap: {
-    height: 58,
+    height: 48,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -184,29 +184,29 @@ const styles = StyleSheet.create({
     height: '100%',
     paddingLeft: 16,
     paddingRight: 8,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#111827',
   },
-  eyeButton: { width: 52, height: '100%', justifyContent: 'center', alignItems: 'center' },
+  eyeButton: { width: 46, height: '100%', justifyContent: 'center', alignItems: 'center' },
   input: {
-    height: 58,
+    height: 48,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
     paddingHorizontal: 16,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: '#111827',
   },
   saveButton: {
-    height: 58,
-    borderRadius: 18,
+    height: 52,
+    borderRadius: 15,
     backgroundColor: '#111827',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 2,
+    marginTop: 0,
   },
-  saveButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
+  saveButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
 });

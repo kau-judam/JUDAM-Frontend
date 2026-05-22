@@ -25,6 +25,12 @@ export type NicknameCheckResult = {
   isAvailable: boolean;
 };
 
+export type MyPageImageUploadFile = {
+  uri: string;
+  name?: string | null;
+  type?: string | null;
+};
+
 const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
 
 export async function getMyPageAccessToken() {
@@ -76,6 +82,36 @@ async function requestMyPageJson<T>(path: string, options: RequestInit = {}) {
   return data as T;
 }
 
+async function requestMyPageForm<T>(path: string, formData: FormData, options: RequestInit = {}) {
+  const { headers, ...requestOptions } = options;
+  const token = await getMyPageAccessToken();
+  if (!token) {
+    throw new Error('NEEDS_ACCESS_TOKEN');
+  }
+
+  const nextHeaders: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    ...(headers as Record<string, string> | undefined),
+  };
+
+  const response = await fetch(`${JUDAM_MYPAGE_API_BASE_URL}${path}`, {
+    ...requestOptions,
+    method: requestOptions.method || 'PATCH',
+    body: formData,
+    headers: nextHeaders,
+  });
+
+  const text = await response.text();
+  const data = parseMyPageResponseBody(path, response, text);
+
+  if (!response.ok) {
+    const message = (data as MyPageApiErrorBody | null)?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
 function unwrapMyPageData<T>(response: T | MyPageApiEnvelope<T>) {
   if (response && typeof response === 'object' && 'data' in response) {
     const data = (response as MyPageApiEnvelope<T>).data;
@@ -111,6 +147,28 @@ export async function updateMyPagePhone(phoneNumber: string) {
     body: JSON.stringify({ phoneNumber }),
   });
   return unwrapMyPageData<{ phoneNumber: string }>(response);
+}
+
+export async function updateMyPageProfileImage(image: MyPageImageUploadFile) {
+  if (!image.uri) {
+    throw new Error('프로필 이미지 파일을 첨부해주세요.');
+  }
+
+  const formData = new FormData();
+  const imageName = image.name || image.uri.split('/').pop() || `profile-${Date.now()}.jpg`;
+  const imageType = image.type || 'image/jpeg';
+  formData.append('image', {
+    uri: image.uri,
+    name: imageName,
+    type: imageType,
+  } as unknown as Blob);
+
+  const response = await requestMyPageForm<MyPageApiEnvelope<{ profileImageUrl: string }>>(
+    '/api/mypage/profile/image',
+    formData,
+    { method: 'PATCH' }
+  );
+  return unwrapMyPageData<{ profileImageUrl: string }>(response);
 }
 
 export function getMyPageApiErrorMessage(error: unknown, fallback: string) {

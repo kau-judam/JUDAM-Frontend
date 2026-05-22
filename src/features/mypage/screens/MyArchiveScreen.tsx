@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { isFundingReviewOwnedByUser } from '@/features/funding/reviews';
 
 type ArchiveTab = 'all' | 'funded' | 'general';
 
@@ -72,6 +73,21 @@ const GENERAL_DRINKS: ArchiveDrink[] = [
   },
 ];
 
+const SAMPLE_FUNDING_DRINKS: ArchiveDrink[] = [
+  {
+    id: 201,
+    name: '달빛 담은 배 막걸리',
+    brewery: '주담 테스트 양조장',
+    category: '막걸리',
+    image: require('../../../../newpicutre/funding3.jpg'),
+    rating: 4.5,
+    date: '2026.05.21',
+    tags: ['부드러움', '은은한단맛'],
+    isFunding: true,
+    alcohol: 6,
+  },
+];
+
 const TAB_LABELS: Record<ArchiveTab, string> = {
   all: '전체',
   funded: '펀딩 술',
@@ -81,7 +97,7 @@ const TAB_LABELS: Record<ArchiveTab, string> = {
 export default function MyArchiveScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { projects, participatedFundings } = useFunding();
+  const { projects, participatedFundings, fundingReviews } = useFunding();
   const [activeTab, setActiveTab] = useState<ArchiveTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -107,18 +123,52 @@ export default function MyArchiveScreen() {
     return nextDrinks;
   }, [participatedFundings, projects]);
 
-  const allDrinks = useMemo(() => [...fundedDrinks, ...GENERAL_DRINKS], [fundedDrinks]);
+  const savedArchiveDrinks = useMemo<ArchiveDrink[]>(() => {
+    return fundingReviews
+      .filter((review) => isFundingReviewOwnedByUser(review, user))
+      .map((review) => {
+        const project = projects.find((item) => item.id === review.projectId);
+        const isFunding = Boolean(project);
+        const image = review.images[0]
+          ? { uri: review.images[0] }
+          : project
+            ? getFundingProjectImageSource(project)!
+            : require('../../../../newpicutre/bottle.jpg');
+        return {
+          id: review.id,
+          name: isFunding ? project!.shortTitle || project!.title : review.rewardName || '나의 전통주 기록',
+          brewery: isFunding ? project!.brewery : '직접 기록',
+          category: isFunding ? project!.category : '일반 술',
+          image,
+          rating: review.rating,
+          date: review.date,
+          tags: review.tags,
+          isFunding,
+          alcohol: isFunding ? Number.parseFloat(project!.alcoholContent || '') || 6 : 0,
+          fundingId: isFunding ? project!.id : undefined,
+        };
+      });
+  }, [fundingReviews, projects, user]);
+
+  const allDrinks = useMemo(
+    () => [...savedArchiveDrinks, ...SAMPLE_FUNDING_DRINKS, ...fundedDrinks, ...GENERAL_DRINKS],
+    [fundedDrinks, savedArchiveDrinks]
+  );
 
   const filteredDrinks = useMemo(() => {
     const source =
-      activeTab === 'funded' ? fundedDrinks : activeTab === 'general' ? GENERAL_DRINKS : allDrinks;
+      activeTab === 'funded'
+        ? allDrinks.filter((item) => item.isFunding)
+        : activeTab === 'general'
+          ? allDrinks.filter((item) => !item.isFunding)
+          : allDrinks;
     const query = searchQuery.trim().toLowerCase();
     if (!query) return source;
     return source.filter((item) => {
       const haystack = [item.name, item.brewery, item.category, ...item.tags].join(' ').toLowerCase();
       return haystack.includes(query);
     });
-  }, [activeTab, allDrinks, fundedDrinks, searchQuery]);
+  }, [activeTab, allDrinks, searchQuery]);
 
   const handleAddPress = () => {
     if (!user) {
@@ -198,9 +248,9 @@ export default function MyArchiveScreen() {
 
 function ArchiveDrinkCard({ drink }: { drink: ArchiveDrink }) {
   const goDetail = () => {
-    if (drink.isFunding && drink.fundingId) {
-      router.push(`/funding/${drink.fundingId}?fromArchive=1` as any);
-    }
+    const kind = drink.fundingId ? 'funding' : drink.id >= 100 ? 'sample' : 'archive';
+    const fundingQuery = drink.fundingId ? `&fundingId=${drink.fundingId}` : '';
+    router.push(`/mypage/archive/detail/${drink.id}?kind=${kind}${fundingQuery}` as any);
   };
 
   return (
@@ -216,12 +266,6 @@ function ArchiveDrinkCard({ drink }: { drink: ArchiveDrink }) {
 
       <View style={styles.cardInfo}>
         <Text style={styles.dateText}>{drink.date}</Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.breweryText} numberOfLines={1}>{drink.brewery}</Text>
-          <View style={styles.categoryBadge}>
-            <Text style={styles.categoryText}>{drink.category}</Text>
-          </View>
-        </View>
         <Text style={styles.drinkName} numberOfLines={1}>{drink.name}</Text>
         <StarRating rating={drink.rating} />
         <View style={styles.tagRow}>
@@ -326,10 +370,6 @@ const styles = StyleSheet.create({
   fundingBadgeText: { fontSize: 9, fontWeight: '900', color: '#111827' },
   cardInfo: { flex: 1, minWidth: 0 },
   dateText: { alignSelf: 'flex-end', fontSize: 11, fontWeight: '700', color: '#8B95A1', marginBottom: 6 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 },
-  breweryText: { maxWidth: 90, fontSize: 12, fontWeight: '900', color: '#64748B' },
-  categoryBadge: { borderRadius: 999, backgroundColor: '#F3F4F6', paddingHorizontal: 7, paddingVertical: 3 },
-  categoryText: { fontSize: 10, fontWeight: '800', color: '#4B5563' },
   drinkName: { fontSize: 16, fontWeight: '900', color: '#000000', marginBottom: 5 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 1, marginBottom: 6 },
   ratingText: { marginLeft: 5, fontSize: 12, fontWeight: '900', color: '#111827' },

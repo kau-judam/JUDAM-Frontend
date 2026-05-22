@@ -19,10 +19,8 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
-  MapPin,
   MessageCircle,
   Package,
-  Search,
   ShieldCheck,
   UserRound,
   X,
@@ -34,6 +32,7 @@ import { getFundingProjectImageSource, isSupportableFundingStatus } from '@/cons
 import type { FundingProject } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import DaumAddressSearchModal from '@/features/funding/components/DaumAddressSearchModal';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import {
   completeFundingPayment,
@@ -65,7 +64,6 @@ import {
   getPrimaryRewardItem,
   getRecentShippingKey,
   messageOptions,
-  addressSuggestions,
   paymentMethods,
   type InfoModalType,
   type PaymentMethod,
@@ -142,7 +140,6 @@ export default function FundingSupportScreen() {
   const [agreeRefund, setAgreeRefund] = useState(false);
   const [showRefundPolicy, setShowRefundPolicy] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
-  const [addressSearch, setAddressSearch] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [infoModal, setInfoModal] = useState<InfoModalType>(null);
@@ -272,10 +269,6 @@ export default function FundingSupportScreen() {
   const fundingAmount = rewardAmount + extraAmount;
   const totalAmount = rewardAmount + shippingFee + extraAmount;
   const progressPercentage = project && project.goalAmount > 0 ? Math.min((project.currentAmount / project.goalAmount) * 100, 100) : 0;
-  const filteredAddresses = useMemo(
-    () => addressSuggestions.filter((addr) => addr.address.includes(addressSearch) || addr.zipCode.includes(addressSearch)),
-    [addressSearch]
-  );
   const canSubmit = Boolean(selectedPaymentMethod && agreeTerms && agreeRefund && !isProcessing);
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
   const paymentSummary = getPaymentSummary(selectedPaymentMethod, accountBank, depositorName);
@@ -290,7 +283,6 @@ export default function FundingSupportScreen() {
     setShippingInfo((prev) => ({ ...prev, address: zipCode ? `[${zipCode}] ${address}` : address }));
     clearValidationError('address');
     setShowAddressModal(false);
-    setAddressSearch('');
   };
 
   const handleUseRecentShippingInfo = () => {
@@ -902,17 +894,12 @@ export default function FundingSupportScreen() {
         </View>
       </View>
 
-      <AddressModal
+      <DaumAddressSearchModal
         visible={showAddressModal}
         insetsTop={insets.top}
-        search={addressSearch}
-        results={filteredAddresses}
-        onChangeSearch={setAddressSearch}
-        onClose={() => {
-          setShowAddressModal(false);
-          setAddressSearch('');
-        }}
-        onSelect={handleAddressSelect}
+        title="배송지 주소 검색"
+        onClose={() => setShowAddressModal(false)}
+        onSelect={(result) => handleAddressSelect(result.zonecode, result.address)}
       />
 
       <ConfirmationModal
@@ -1104,97 +1091,6 @@ function AgreementRow({
         <Text style={styles.agreementAction}>{actionLabel}</Text>
       </TouchableOpacity>
     </View>
-  );
-}
-
-function AddressModal({
-  visible,
-  insetsTop,
-  search,
-  results,
-  onChangeSearch,
-  onClose,
-  onSelect,
-}: {
-  visible: boolean;
-  insetsTop: number;
-  search: string;
-  results: typeof addressSuggestions;
-  onChangeSearch: (text: string) => void;
-  onClose: () => void;
-  onSelect: (zipCode: string, address: string) => void;
-}) {
-  const typedAddress = search.trim();
-
-  return (
-    <Modal visible={visible} animationType="slide">
-      <View style={styles.addressModal}>
-        <View style={[styles.addressModalHeader, { paddingTop: insetsTop }]}>
-          <View style={styles.addressTitleRow}>
-            <TouchableOpacity style={styles.iconBtn} onPress={onClose}>
-              <ChevronLeft size={24} color="#111" />
-            </TouchableOpacity>
-            <Text style={styles.addressModalTitle}>주소 검색</Text>
-            <View style={styles.iconBtn} />
-          </View>
-          <View style={styles.addressSearchBox}>
-            <Search size={18} color="#9CA3AF" />
-            <TextInput
-              style={styles.addressSearchInput}
-              value={search}
-              onChangeText={onChangeSearch}
-              placeholder="도로명, 건물명, 지역명 입력"
-              placeholderTextColor="#9CA3AF"
-              autoFocus
-            />
-            {Boolean(search) && (
-              <TouchableOpacity onPress={() => onChangeSearch('')}>
-                <X size={18} color="#9CA3AF" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-        <ScrollView style={styles.addressResultArea} contentContainerStyle={styles.addressResultContent}>
-          {!search ? (
-            <View style={styles.addressEmpty}>
-              <MapPin size={34} color="#D1D5DB" />
-              <Text style={styles.addressEmptyTitle}>주소를 검색해주세요</Text>
-              <Text style={styles.addressEmptyText}>도로명, 건물명 또는 지역명으로 검색할 수 있습니다.</Text>
-            </View>
-          ) : (
-            <>
-              <Text style={styles.resultCount}>검색 결과 {results.length}건</Text>
-              {results.map((item) => (
-                <TouchableOpacity
-                  key={`${item.zipCode}-${item.address}`}
-                  style={styles.addressResultCard}
-                  onPress={() => onSelect(item.zipCode, item.address)}
-                >
-                  <Text style={styles.zipCode}>우편번호 {item.zipCode}</Text>
-                  <Text style={styles.addressResultText}>{item.address}</Text>
-                </TouchableOpacity>
-              ))}
-              {typedAddress && (
-                <TouchableOpacity
-                  style={styles.addressResultCard}
-                  onPress={() => onSelect('', typedAddress)}
-                >
-                  <Text style={styles.zipCode}>직접 입력</Text>
-                  <Text style={styles.addressResultText}>{typedAddress}</Text>
-                  <Text style={styles.useTypedAddressText}>입력한 주소 사용</Text>
-                </TouchableOpacity>
-              )}
-              {results.length === 0 && (
-                <View style={styles.noResult}>
-                  <Text style={styles.noResultTitle}>일치하는 주소가 없습니다</Text>
-                  <Text style={styles.noResultText}>입력한 주소를 그대로 사용하거나 다른 검색어로 시도해보세요.</Text>
-                </View>
-              )}
-            </>
-          )}
-        </ScrollView>
-      </View>
-    </Modal>
   );
 }
 

@@ -274,7 +274,7 @@ export default function SignupScreen() {
       return;
     }
     setIsPassVerifying(true);
-    showNotice('PASS 본인인증을 진행합니다.');
+    showNotice('본인인증을 진행합니다.');
     setTimeout(() => {
       setIsPassVerifying(false);
       setIsPhoneVerified(true);
@@ -300,7 +300,7 @@ export default function SignupScreen() {
       return;
     }
     if (!isPhoneVerified) {
-      showNotice('PASS 본인인증을 완료해주세요.');
+      showNotice('본인인증을 완료해주세요.');
       return;
     }
     if (!terms.service || !terms.privacy) {
@@ -524,7 +524,7 @@ export default function SignupScreen() {
 
                 <View style={styles.inputGroup}>
                   <View style={styles.labelRow}>
-                    <Text style={styles.label}>본인인증 (PASS)</Text>
+                    <Text style={styles.label}>본인인증</Text>
                     {isPhoneVerified && (
                       <View style={styles.availableRow}>
                         <CheckCircle2 size={14} color="#059669" />
@@ -552,7 +552,7 @@ export default function SignupScreen() {
                     >
                       <ShieldCheck size={15} color="#FFF" />
                       <Text style={styles.smallBtnTxt}>
-                        {isPhoneVerified ? '완료' : isPassVerifying ? '확인중' : 'PASS 인증'}
+                        {isPhoneVerified ? '완료' : isPassVerifying ? '확인중' : '인증하기'}
                       </Text>
                     </TouchableOpacity>
                   </View>

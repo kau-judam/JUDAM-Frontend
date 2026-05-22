@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -47,6 +47,7 @@ import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { initialNotifications, type AppNotification } from '@/features/notifications/data';
 
 const unreadDashboardNotifications = initialNotifications.filter((notification) => !notification.read);
+const FUNDINGS_PER_PAGE = 3;
 
 const getDashboardNotificationIcon = (type: AppNotification["type"]) => {
   switch (type) {
@@ -90,6 +91,7 @@ export default function BreweryDashboardScreen() {
   const { user } = useAuth();
   const { projects, updateProjectStatus } = useFunding();
   const [fundingFilter, setFundingFilter] = useState<"active" | "completed">("active");
+  const [fundingPage, setFundingPage] = useState(0);
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [selectedStatusProject, setSelectedStatusProject] = useState<number | null>(null);
   const [selectedJournalStage, setSelectedJournalStage] = useState(manufacturingStages[0]);
@@ -115,6 +117,13 @@ export default function BreweryDashboardScreen() {
   const filteredFundings = fundingFilter === "active"
     ? dashboardProjects.filter((project) => isSupportableFundingStatus(project.status) || project.status === "심사 중" || project.status === "펀딩 예정")
     : dashboardProjects.filter((project) => isCompletedFundingStatus(project.status));
+  const fundingPageCount = Math.max(1, Math.ceil(filteredFundings.length / FUNDINGS_PER_PAGE));
+  const visibleFundings = useMemo(
+    () => filteredFundings.slice(fundingPage * FUNDINGS_PER_PAGE, fundingPage * FUNDINGS_PER_PAGE + FUNDINGS_PER_PAGE),
+    [filteredFundings, fundingPage],
+  );
+  const canGoPrevFundingPage = fundingPage > 0;
+  const canGoNextFundingPage = fundingPage < fundingPageCount - 1;
   const activeFundingCount = dashboardProjects.filter((project) => isSupportableFundingStatus(project.status)).length;
   const totalFundingCount = dashboardProjects.length;
   const totalBackers = dashboardProjects.reduce((sum, project) => sum + project.backers, 0);
@@ -122,6 +131,14 @@ export default function BreweryDashboardScreen() {
     ? projects.find((project) => project.id === selectedStatusProject)
     : null;
   const currentJournalEntry = journalData[selectedJournalStage];
+
+  useEffect(() => {
+    setFundingPage(0);
+  }, [fundingFilter]);
+
+  useEffect(() => {
+    setFundingPage((currentPage) => Math.min(currentPage, fundingPageCount - 1));
+  }, [fundingPageCount]);
 
   const handleJournalContentChange = (content: string) => {
     setJournalData((prev) => ({
@@ -241,7 +258,7 @@ export default function BreweryDashboardScreen() {
 
           <TouchableOpacity 
             style={styles.infoCard} 
-            onPress={() => router.push('/brewery/verification' as any)}
+            onPress={() => router.push('/brewery/profile' as any)}
           >
             <View style={styles.row}>
               <View style={styles.infoIconBox}>
@@ -300,7 +317,7 @@ export default function BreweryDashboardScreen() {
 
           {/* Funding List */}
           <View style={styles.fundingList}>
-            {filteredFundings.map((funding) => {
+            {visibleFundings.map((funding) => {
               const progress = Math.min((funding.currentAmount / funding.goalAmount) * 100, 100);
               const status = getFundingStatusLabel(funding.status);
 
@@ -337,6 +354,29 @@ export default function BreweryDashboardScreen() {
               );
             })}
           </View>
+          {filteredFundings.length > FUNDINGS_PER_PAGE && (
+            <View style={styles.fundingPagination}>
+              <TouchableOpacity
+                style={[styles.paginationButton, !canGoPrevFundingPage && styles.paginationButtonDisabled]}
+                activeOpacity={0.85}
+                disabled={!canGoPrevFundingPage}
+                onPress={() => setFundingPage((page) => Math.max(0, page - 1))}
+              >
+                <ChevronLeft size={18} color={canGoPrevFundingPage ? '#111827' : '#D1D5DB'} />
+              </TouchableOpacity>
+              <Text style={styles.paginationText}>
+                {fundingPage + 1} / {fundingPageCount}
+              </Text>
+              <TouchableOpacity
+                style={[styles.paginationButton, !canGoNextFundingPage && styles.paginationButtonDisabled]}
+                activeOpacity={0.85}
+                disabled={!canGoNextFundingPage}
+                onPress={() => setFundingPage((page) => Math.min(fundingPageCount - 1, page + 1))}
+              >
+                <ChevronRight size={18} color={canGoNextFundingPage ? '#111827' : '#D1D5DB'} />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Section 3: 알림 및 정보 */}
@@ -565,6 +605,10 @@ const styles = StyleSheet.create({
   statsVal: { fontSize: 20, fontWeight: '800', color: '#FFF', marginBottom: 2 },
   statsLab: { fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: '600' },
   fundingList: { gap: 12 },
+  fundingPagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 16 },
+  paginationButton: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
+  paginationButtonDisabled: { backgroundColor: '#F9FAFB', borderColor: '#F3F4F6' },
+  paginationText: { minWidth: 48, textAlign: 'center', fontSize: 13, fontWeight: '800', color: '#111827' },
   fundingItemCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#F3F4F6', elevation: 3, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
   fundingRow: { flexDirection: 'row', gap: 12 },
   fundingThumb: { width: 80, height: 80, borderRadius: 12 },

@@ -16,7 +16,7 @@ const BADGES: BadgeItem[] = [
     id: 'welcome',
     name: '반가워요!',
     image: require('../../../../assets/images/badges/welcome.png'),
-    earned: false,
+    earned: true,
   },
   {
     id: 'communicate',

@@ -2293,3 +2293,219 @@ Frontend connection:
 - Connected on 2026-05-22.
 - API client: `src/features/mypage/api.ts` `updateMyPageProfileImage`.
 - Screen: `src/features/mypage/screens/ProfileScreen.tsx` profile image picker.
+
+## My Page Additional APIs
+
+Common header:
+```http
+Authorization: Bearer {accessToken}
+```
+
+### Change Password
+
+Endpoint:
+```http
+PATCH {baseURI}/api/mypage/profile/password
+```
+
+Request:
+```json
+{
+  "currentPassword": "기존비밀번호",
+  "newPassword": "새비밀번호"
+}
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "비밀번호 변경 성공"
+}
+```
+
+Notes:
+- Only local-login users can change password.
+- Kakao users cannot change password.
+- `newPassword` must be at least 8 characters.
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `changeMyPagePassword`.
+- Screen: `src/features/mypage/screens/PasswordChangeScreen.tsx`.
+
+### My Page Summary
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/summary
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "마이페이지 메인 요약 조회 성공",
+  "data": {
+    "participatedFundingCount": 3,
+    "archiveCount": 0,
+    "badgeCount": 0,
+    "sulbti": {
+      "hasResult": false,
+      "type": null,
+      "title": null,
+      "summary": null,
+      "tags": []
+    }
+  }
+}
+```
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `getMyPageSummary`.
+- Screen: `src/features/mypage/screens/MyPageScreen.tsx` uses summary counts and SulBTI summary type.
+
+### My SulBTI Result
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/sulbti
+POST {baseURI}/api/mypage/sulbti
+```
+
+POST request:
+```json
+{
+  "type": "DHFC",
+  "sweetnessScore": 3,
+  "bodyScore": 4,
+  "carbonationScore": 5,
+  "flavorScore": 4,
+  "abvScore": 3
+}
+```
+
+GET response when no result:
+```json
+{
+  "status": 200,
+  "message": "술BTI 결과가 없습니다.",
+  "data": {
+    "hasResult": false,
+    "type": null,
+    "title": null,
+    "description": null,
+    "scores": null,
+    "tags": [],
+    "createdAt": null,
+    "updatedAt": null
+  }
+}
+```
+
+GET/POST response when result exists:
+```json
+{
+  "status": 200,
+  "message": "술BTI 결과 조회 성공",
+  "data": {
+    "hasResult": true,
+    "type": "DHFC",
+    "title": "톡 쏘는 호밀 크래커",
+    "description": "묵직한 바디감과 강한 탄산, 드라이한 맛을 선호하는 술BTI 유형입니다.",
+    "scores": {
+      "sweetness": 3,
+      "body": 4,
+      "carbonation": 5,
+      "flavor": 4,
+      "abv": 3
+    },
+    "tags": [],
+    "createdAt": "2026-05-21T14:01:23.811Z",
+    "updatedAt": "2026-05-21T14:01:23.811Z"
+  }
+}
+```
+
+Notes:
+- The save API keeps one SulBTI result per user. Existing result is updated.
+- Scores must be numbers between 1 and 5.
+- `tags` currently returns an empty array because the DB column does not exist yet.
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `getMyPageSulbti`, `saveMyPageSulbti`.
+- Screens:
+  - `src/features/bti/screens/BTITestScreen.tsx` saves SulBTI after survey conversion succeeds.
+  - `src/features/bti/screens/BTIResultScreen.tsx` loads the saved SulBTI result.
+
+### Archive Record Date
+
+Archive create/update can include:
+```json
+{
+  "recordDate": "2026-05-21"
+}
+```
+
+Notes:
+- `recordDate` format is `YYYY-MM-DD`.
+- Invalid format returns:
+```json
+{
+  "status": 400,
+  "message": "기록 날짜 형식이 올바르지 않습니다."
+}
+```
+- Archive create/detail/update responses include `recordDate`.
+
+### Archive Images
+
+Upload endpoint:
+```http
+POST {baseURI}/api/mypage/archives/{archiveId}/images
+```
+
+Request:
+- Body: `multipart/form-data`
+- File field name: `images`
+- Maximum 3 images per archive.
+
+Upload response:
+```json
+{
+  "status": 201,
+  "message": "아카이브 이미지 업로드 성공",
+  "data": [
+    {
+      "imageId": 1,
+      "imageUrl": "https://judam-storage.s3.ap-northeast-2.amazonaws.com/uploads/1/...",
+      "sortOrder": 0
+    }
+  ]
+}
+```
+
+Delete endpoint:
+```http
+DELETE {baseURI}/api/mypage/archives/{archiveId}/images/{imageId}
+```
+
+Delete response:
+```json
+{
+  "status": 200,
+  "message": "아카이브 이미지 삭제 성공"
+}
+```
+
+Notes:
+- Archive list/detail responses include `images`.
+- Current backend deletes only the `user_archive_images` row, not the S3 object.
+
+Frontend connection:
+- API client functions were added on 2026-05-22:
+  - `src/features/mypage/api.ts` `uploadMyPageArchiveImages`.
+  - `src/features/mypage/api.ts` `deleteMyPageArchiveImage`.
+- Screen wiring still needs the archive create/update/detail API contract that returns and accepts `archiveId`.

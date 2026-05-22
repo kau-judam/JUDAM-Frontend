@@ -31,6 +31,53 @@ export type MyPageImageUploadFile = {
   type?: string | null;
 };
 
+export type MyPageSummary = {
+  participatedFundingCount: number;
+  archiveCount: number;
+  badgeCount: number;
+  sulbti: {
+    hasResult: boolean;
+    type: string | null;
+    title: string | null;
+    summary: string | null;
+    tags: string[];
+  };
+};
+
+export type MyPageSulbtiScores = {
+  sweetness: number;
+  body: number;
+  carbonation: number;
+  flavor: number;
+  abv: number;
+};
+
+export type MyPageSulbtiResult = {
+  hasResult: boolean;
+  type: string | null;
+  title: string | null;
+  description: string | null;
+  scores: MyPageSulbtiScores | null;
+  tags: string[];
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type SaveMyPageSulbtiPayload = {
+  type: string;
+  sweetnessScore: number;
+  bodyScore: number;
+  carbonationScore: number;
+  flavorScore: number;
+  abvScore: number;
+};
+
+export type MyPageArchiveImage = {
+  imageId: number;
+  imageUrl: string;
+  sortOrder: number;
+};
+
 const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
 
 export async function getMyPageAccessToken() {
@@ -169,6 +216,61 @@ export async function updateMyPageProfileImage(image: MyPageImageUploadFile) {
     { method: 'PATCH' }
   );
   return unwrapMyPageData<{ profileImageUrl: string }>(response);
+}
+
+export async function changeMyPagePassword(currentPassword: string, newPassword: string) {
+  return requestMyPageJson<MyPageApiEnvelope<null>>('/api/mypage/profile/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export async function getMyPageSummary() {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSummary>>('/api/mypage/summary');
+  return unwrapMyPageData<MyPageSummary>(response);
+}
+
+export async function getMyPageSulbti() {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSulbtiResult>>('/api/mypage/sulbti');
+  return unwrapMyPageData<MyPageSulbtiResult>(response);
+}
+
+export async function saveMyPageSulbti(payload: SaveMyPageSulbtiPayload) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSulbtiResult>>('/api/mypage/sulbti', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return unwrapMyPageData<MyPageSulbtiResult>(response);
+}
+
+export async function uploadMyPageArchiveImages(archiveId: string | number, images: MyPageImageUploadFile[]) {
+  if (!images.length) {
+    throw new Error('아카이브 이미지 파일을 첨부해주세요.');
+  }
+
+  const formData = new FormData();
+  images.forEach((image, index) => {
+    const imageName = image.name || image.uri.split('/').pop() || `archive-${archiveId}-${index + 1}.jpg`;
+    const imageType = image.type || 'image/jpeg';
+    formData.append('images', {
+      uri: image.uri,
+      name: imageName,
+      type: imageType,
+    } as unknown as Blob);
+  });
+
+  const response = await requestMyPageForm<MyPageApiEnvelope<MyPageArchiveImage[]>>(
+    `/api/mypage/archives/${archiveId}/images`,
+    formData,
+    { method: 'POST' }
+  );
+  return unwrapMyPageData<MyPageArchiveImage[]>(response);
+}
+
+export async function deleteMyPageArchiveImage(archiveId: string | number, imageId: string | number) {
+  return requestMyPageJson<MyPageApiEnvelope<null>>(`/api/mypage/archives/${archiveId}/images/${imageId}`, {
+    method: 'DELETE',
+  });
 }
 
 export function getMyPageApiErrorMessage(error: unknown, fallback: string) {

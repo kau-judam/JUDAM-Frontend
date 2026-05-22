@@ -13,6 +13,7 @@ import { ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { changeMyPagePassword, getMyPageApiErrorMessage } from '@/features/mypage/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 
 export default function PasswordChangeScreen() {
@@ -23,6 +24,7 @@ export default function PasswordChangeScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!user) {
@@ -33,7 +35,8 @@ export default function PasswordChangeScreen() {
 
   if (!user) return null;
 
-  const savePassword = () => {
+  const savePassword = async () => {
+    if (isSaving) return;
     if (!currentPassword.trim()) {
       Alert.alert('입력 확인', '현재 비밀번호를 입력해주세요.');
       return;
@@ -46,9 +49,18 @@ export default function PasswordChangeScreen() {
       Alert.alert('입력 확인', '새 비밀번호가 일치하지 않습니다.');
       return;
     }
-    Alert.alert('저장 완료', '비밀번호가 변경되었습니다.', [
-      { text: '확인', onPress: () => router.back() },
-    ]);
+
+    try {
+      setIsSaving(true);
+      await changeMyPagePassword(currentPassword.trim(), newPassword);
+      Alert.alert('저장 완료', '비밀번호가 변경되었습니다.', [
+        { text: '확인', onPress: () => router.back() },
+      ]);
+    } catch (error) {
+      Alert.alert('저장 실패', getMyPageApiErrorMessage(error, '비밀번호를 변경하지 못했습니다.'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -94,8 +106,13 @@ export default function PasswordChangeScreen() {
               autoCapitalize="none"
             />
           </View>
-          <TouchableOpacity style={styles.saveButton} onPress={savePassword} activeOpacity={0.85}>
-            <Text style={styles.saveButtonText}>저장하기</Text>
+          <TouchableOpacity
+            style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+            onPress={savePassword}
+            activeOpacity={0.85}
+            disabled={isSaving}
+          >
+            <Text style={styles.saveButtonText}>{isSaving ? '저장 중...' : '저장하기'}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -208,5 +225,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 0,
   },
+  saveButtonDisabled: { opacity: 0.55 },
   saveButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
 });

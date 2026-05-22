@@ -338,12 +338,16 @@ function buildCommunityPostFormData(payload: {
   title: string;
   content: string;
   boardType?: CommunityBoardType;
+  existingImageUrls?: string[];
   images?: (string | CommunityImageFile)[];
 }) {
   const formData = new FormData();
   formData.append('title', payload.title);
   formData.append('content', payload.content);
   if (payload.boardType) formData.append('board_type', payload.boardType);
+  if (payload.existingImageUrls) {
+    formData.append('existing_image_urls', JSON.stringify(payload.existingImageUrls));
+  }
   appendCommunityImages(formData, payload.images);
   return formData;
 }
@@ -364,6 +368,7 @@ export async function createCommunityPost(payload: {
 export async function updateCommunityPost(postId: number, payload: {
   title: string;
   content: string;
+  existingImageUrls?: string[];
   images?: (string | CommunityImageFile)[];
 }) {
   return requestJson<UpdateCommunityPostResponse>(`/api/posts/${postId}`, {

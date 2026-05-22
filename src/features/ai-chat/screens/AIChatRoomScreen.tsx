@@ -1,13 +1,53 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ChevronLeft, MoreVertical, Send, Trash2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { sendAIChatMessage, type AIChatHistoryItem } from '@/features/ai-chat/api';
 import SafeStorage from '@/utils/storage';
 
+type ChatCategory = 'recommend' | 'pairing' | 'general';
+
+type ChatMessage = {
+  role: 'user' | 'assistant';
+  text: string;
+};
+
+type ChatRoom = {
+  id: string;
+  category: ChatCategory;
+  title: string;
+  lastMessage: string;
+  timestamp: string;
+  messages: ChatMessage[];
+};
+
 const CHAT_ROOMS_STORAGE_KEY = 'judam.aiChat.rooms';
+
+const CATEGORY_LABELS: Record<string, string> = {
+  recommend: '술 추천',
+  pairing: '안주 추천',
+  general: '통합 AI',
+};
+
+const INITIAL_MESSAGE: ChatMessage = {
+  role: 'assistant',
+  text: '어떤 전통주 이야기를 나눠볼까요?',
+};
+
+function toHistory(messages: ChatMessage[]): AIChatHistoryItem[] {
+  return messages
+    .filter((message) => message.text.trim())
+    .map((message) => ({ role: message.role, content: message.text }));
+}
+
+function makeRoomTitle(message: string) {
+  const trimmed = message.trim();
+  if (trimmed.length <= 22) return trimmed;
+  return `${trimmed.slice(0, 22)}...`;
+}
 
 export default function AIChatRoomScreen() {
   const insets = useSafeAreaInsets();
@@ -17,18 +57,93 @@ export default function AIChatRoomScreen() {
   const chatRoomId = Array.isArray(roomId) ? roomId[0] : roomId;
   const [input, setInput] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
-  const [messages, setMessages] = useState([
-    { role: 'assistant', text: '어떤 전통주 이야기를 나눠볼까요?' },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const [isSending, setIsSending] = useState(false);
 
-  const send = () => {
-    if (!input.trim()) return;
-    setMessages((prev) => [
-      ...prev,
-      { role: 'user', text: input.trim() },
-      { role: 'assistant', text: '현재는 화면 연결용 응답입니다. 추천 로직은 이후 AI 서버와 연동됩니다.' },
-    ]);
+  const categoryLabel = useMemo(() => CATEGORY_LABELS[chatCategory || ''] || 'AI 챗봇', [chatCategory]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadRoom = async () => {
+      if (!chatRoomId) return;
+      const savedRooms = await SafeStorage.getItem(CHAT_ROOMS_STORAGE_KEY);
+      if (!savedRooms || !mounted) return;
+
+      try {
+        const parsedRooms = JSON.parse(savedRooms) as ChatRoom[];
+        const currentRoom = parsedRooms.find((room) => room.id === chatRoomId);
+        if (currentRoom?.messages?.length) {
+          setMessages(currentRoom.messages);
+        }
+      } catch {
+        await SafeStorage.removeItem(CHAT_ROOMS_STORAGE_KEY);
+      }
+    };
+
+    loadRoom();
+    return () => {
+      mounted = false;
+    };
+  }, [chatRoomId]);
+
+  const persistMessages = async (nextMessages: ChatMessage[]) => {
+    if (!chatRoomId) return;
+    const savedRooms = await SafeStorage.getItem(CHAT_ROOMS_STORAGE_KEY);
+    if (!savedRooms) return;
+
+    try {
+      const parsedRooms = JSON.parse(savedRooms) as ChatRoom[];
+      const now = new Date().toISOString();
+      const nextRooms = parsedRooms.map((room) => {
+        if (room.id !== chatRoomId) return room;
+        const firstUserMessage = nextMessages.find((message) => message.role === 'user')?.text;
+        const lastMessage = nextMessages[nextMessages.length - 1]?.text || room.lastMessage;
+        return {
+          ...room,
+          title: firstUserMessage ? makeRoomTitle(firstUserMessage) : room.title,
+          lastMessage,
+          timestamp: now,
+          messages: nextMessages,
+        };
+      });
+      await SafeStorage.setItem(CHAT_ROOMS_STORAGE_KEY, JSON.stringify(nextRooms));
+    } catch {
+      await SafeStorage.removeItem(CHAT_ROOMS_STORAGE_KEY);
+    }
+  };
+
+  const send = async (overrideMessage?: string) => {
+    const nextInput = (overrideMessage || input).trim();
+    if (!nextInput || isSending) return;
+
+    const previousMessages = messages;
+    const userMessage: ChatMessage = { role: 'user', text: nextInput };
+    const pendingMessages = [...previousMessages, userMessage];
+    setMessages(pendingMessages);
     setInput('');
+    setSuggestedQuestions([]);
+    setIsSending(true);
+
+    try {
+      const data = await sendAIChatMessage({
+        message: nextInput,
+        userId: user?.id,
+        history: toHistory(previousMessages),
+      });
+      const nextMessages = [...pendingMessages, { role: 'assistant' as const, text: data.response }];
+      setMessages(nextMessages);
+      setSuggestedQuestions(data.suggested_questions || []);
+      await persistMessages(nextMessages);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'AI 챗봇 요청 중 오류가 발생했습니다.';
+      const nextMessages = [...pendingMessages, { role: 'assistant' as const, text: errorMessage }];
+      setMessages(nextMessages);
+      await persistMessages(nextMessages);
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const deleteRoom = async () => {
@@ -93,18 +208,41 @@ export default function AIChatRoomScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} onScrollBeginDrag={() => setMenuVisible(false)}>
-        <Text style={styles.category}>{chatCategory || 'general'}</Text>
+        <Text style={styles.category}>{categoryLabel}</Text>
         {messages.map((message, index) => (
-          <View key={index} style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
+          <View key={`${message.role}-${index}`} style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
             <Text style={[styles.bubbleTxt, message.role === 'user' && styles.userTxt]}>{message.text}</Text>
           </View>
         ))}
+        {isSending && (
+          <View style={[styles.bubble, styles.assistantBubble]}>
+            <Text style={styles.bubbleTxt}>답변을 준비하고 있어요...</Text>
+          </View>
+        )}
+        {suggestedQuestions.length > 0 && (
+          <View style={styles.suggestions}>
+            {suggestedQuestions.map((question) => (
+              <TouchableOpacity key={question} style={styles.suggestionChip} onPress={() => send(question)} disabled={isSending}>
+                <Text style={styles.suggestionText}>{question}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[styles.inputBar, { paddingBottom: insets.bottom + 10 }]}>
-          <TextInput style={styles.input} value={input} onChangeText={setInput} placeholder="메시지 입력" placeholderTextColor="#9CA3AF" />
-          <TouchableOpacity style={styles.sendBtn} onPress={send}>
+          <TextInput
+            style={styles.input}
+            value={input}
+            onChangeText={setInput}
+            placeholder="메시지 입력"
+            placeholderTextColor="#9CA3AF"
+            editable={!isSending}
+            onSubmitEditing={() => send()}
+            returnKeyType="send"
+          />
+          <TouchableOpacity style={[styles.sendBtn, isSending && styles.sendBtnDisabled]} onPress={() => send()} disabled={isSending}>
             <Send size={18} color="#FFF" />
           </TouchableOpacity>
         </View>
@@ -145,9 +283,13 @@ const styles = StyleSheet.create({
   userBubble: { alignSelf: 'flex-end', backgroundColor: '#111' },
   bubbleTxt: { fontSize: 14, fontWeight: '600', color: '#111', lineHeight: 20 },
   userTxt: { color: '#FFF' },
+  suggestions: { gap: 8, marginTop: 4 },
+  suggestionChip: { alignSelf: 'flex-start', borderRadius: 18, borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 12, paddingVertical: 9, backgroundColor: '#FFF' },
+  suggestionText: { fontSize: 13, fontWeight: '700', color: '#111' },
   inputBar: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6', backgroundColor: '#FFF' },
   input: { flex: 1, height: 46, borderRadius: 23, backgroundColor: '#F3F4F6', paddingHorizontal: 16, fontSize: 14, fontWeight: '600', color: '#111' },
   sendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+  sendBtnDisabled: { opacity: 0.5 },
   lockedContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   lockedTitle: { fontSize: 22, fontWeight: '900', color: '#111', marginBottom: 8 },
   lockedDesc: { fontSize: 14, fontWeight: '600', color: '#6B7280', lineHeight: 22, textAlign: 'center', marginBottom: 24 },

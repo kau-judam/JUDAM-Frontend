@@ -1,1 +1,1 @@
-export { default } from '@/features/ai-chat/screens/AIChatRoomScreen';
+export { default } from '../../../src/features/ai-chat/screens/AIChatRoomScreen';

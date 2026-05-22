@@ -293,7 +293,8 @@ Request:
 type UpdateCommunityPostFormData = {
   title: string;
   content: string;
-  images?: File[]; // repeated field name, max 5
+  existing_image_urls?: string; // JSON string array of existing S3 URLs to keep, e.g. '["https://.../a.png"]'
+  images?: File[]; // newly added files, repeated field name
 };
 ```
 
@@ -314,12 +315,17 @@ type UpdateCommunityPostResponse = {
 
 Notes:
 - `board_type` cannot be updated.
-- Image update is a complete replacement.
-- Backend deletes all existing `post_images` rows for the post, then inserts the newly uploaded files in sequence order.
-- If the `images` field is omitted or sent empty, existing images are deleted and replaced with an empty list.
+- Image update now uses existing-image preservation plus new-file append.
+- `existing_image_urls` must be appended as a JSON string array. If omitted or set to `'[]'`, no existing images are kept.
+- `images` contains only newly added local files. React Native should append each as `{ uri, name, type }`.
+- Final images are `[...existing_image_urls, ...uploaded image urls]` and must be 5 or fewer.
+- Backend validates that every URL in `existing_image_urls` belongs to the current post, then deletes all `post_images` rows and reinserts the final URL list in sequence order.
 
 Errors:
 - `400`: required field missing.
+- `400`: invalid `existing_image_urls` JSON string array.
+- `400`: `existing_image_urls` contains an invalid URL for this post.
+- `400`: final image count exceeds 5.
 - `401`: invalid or expired token.
 - `403`: not the author.
 - `404`: post not found.
@@ -695,7 +701,7 @@ Items still not covered or needing confirmation before a full community connecti
 - Reply edit/delete APIs were not included in the latest community PDF set.
 - Post delete, comment create/update/delete specs are still from the earlier PDF set, not refreshed in the latest set.
 - Create PDF introduction mentions older board categories, but the request table and implementation notes say valid `board_type` values are only `FREE` and `INFO`; use `FREE | INFO` unless backend says otherwise.
-- Post update now supports multipart image upload, but it is complete image replacement. Frontend must preserve existing remote images by re-uploading/including files only if backend supports that flow, or keep edit-image changes local until a more granular API exists.
+- Post update supports `existing_image_urls` plus new `images`, so frontend can keep existing server images, remove selected existing URLs, and append new local files in one request.
 - Search is still not specified. The provided list API has no `keyword` query.
 ## Funding Agreement Save
 
@@ -2460,7 +2466,164 @@ Notes:
 ```
 - Archive create/detail/update responses include `recordDate`.
 
+### Archive List
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/archives?type=all&page=0&size=10
+```
+
+Query:
+- `type`: `all`, `normal`, `funding`
+- `page`: page number
+- `size`: page size
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `getMyPageArchives`.
+- Screen: `src/features/mypage/screens/MyArchiveScreen.tsx`.
+
+### Archive Detail
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/archives/{archiveId}
+```
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `getMyPageArchiveDetail`.
+- Screens:
+  - `src/features/mypage/screens/ArchiveDetailScreen.tsx`.
+  - `src/features/mypage/screens/ArchiveWriteScreen.tsx` edit mode prefill.
+
+### Archive Update
+
+Endpoint:
+```http
+PATCH {baseURI}/api/mypage/archives/{archiveId}
+```
+
+Request:
+```json
+{
+  "recordDate": "2026-05-22",
+  "tastingNote": "기록 날짜 수정 테스트",
+  "tagIds": [2, 7, 17]
+}
+```
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `updateMyPageArchive`.
+- Screen: `src/features/mypage/screens/ArchiveWriteScreen.tsx` edit mode.
+- Current backend update API edits `recordDate`, `tastingNote`, and fixed `tagIds`.
+
+### Archive Delete
+
+Endpoint:
+```http
+DELETE {baseURI}/api/mypage/archives/{archiveId}
+```
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `deleteMyPageArchive`.
+- Screen: `src/features/mypage/screens/ArchiveDetailScreen.tsx`.
+
+### Archive Tags
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/archives/tags
+```
+
+Response categories:
+- `TASTE`: 맛
+- `AROMA`: 향
+- `SITUATION`: 상황
+- `MOOD`: 감성
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `getMyPageArchiveTags`.
+- Screen: `src/features/mypage/screens/ArchiveWriteScreen.tsx`.
+- The existing tag UI remains unchanged; fetched tags are used to build a name-to-`tagId` map where names match.
+
 ### Archive Images
+
+Integrated create endpoint:
+```http
+POST {baseURI}/api/mypage/archives/with-images
+```
+
+Request:
+- Body: `multipart/form-data`
+- Fields:
+  - `archiveType`: `NORMAL` or `FUNDING`
+  - `customName`: custom drink name for normal archive
+  - `alcoholId`: existing alcohol ID
+  - `fundingId`: funding ID
+  - `orderId`: order ID
+  - `reviewId`: review ID
+  - `category`: drink category
+  - `abv`: alcohol by volume
+  - `rating`: rating
+  - `tastingNote`: record text
+  - `recordDate`: `YYYY-MM-DD`
+  - `tagIds`: tag ID array string. Backend accepts `"[1,6,16]"`, `"1,6,16"`, or `"1"`.
+  - `customTags`: custom tag array string. Backend accepts `["비오는날","이미지태그"]`, `"비오는날,이미지태그"`, or `"비오는날"`.
+  - `images`: image files, max 3
+
+Response:
+```json
+{
+  "status": 201,
+  "message": "아카이브 작성 성공",
+  "data": {
+    "archiveId": 6,
+    "archiveType": "NORMAL",
+    "alcoholId": null,
+    "fundingId": null,
+    "orderId": null,
+    "reviewId": null,
+    "drinkName": "통합 이미지 테스트 막걸리",
+    "category": "탁주",
+    "abv": 6,
+    "rating": 4.5,
+    "tastingNote": "술 정보와 이미지를 함께 저장하는 테스트",
+    "recordDate": "2026-05-22",
+    "createdAt": "2026-05-22T07:26:53.623Z",
+    "updatedAt": "2026-05-22T07:26:53.623Z",
+    "tags": [
+      {
+        "tagId": 1,
+        "category": "TASTE",
+        "name": "달콤함"
+      }
+    ],
+    "images": [
+      {
+        "imageId": 2,
+        "imageUrl": "https://judam-storage.s3.ap-northeast-2.amazonaws.com/uploads/1/...",
+        "sortOrder": 0
+      }
+    ]
+  }
+}
+```
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `createMyPageArchiveWithImages`.
+- Screen: `src/features/mypage/screens/ArchiveWriteScreen.tsx` create mode.
+- `Content-Type` is not set manually so React Native can attach the multipart boundary.
+- Fixed frontend tags are converted to `tagIds`.
+- User-entered custom tags are sent through `customTags`.
+- Current fixed tag mapping:
+  - Taste: `달콤한=21`, `깔끔한=22`, `묵직한=23`, `산미있는=24`, `쓴맛=25`, `고소한=26`, `부드러운=27`, `탄산있는=28`, `구수한=29`, `과일향=30`
+  - Situation: `혼술=31`, `친구모임=32`, `데이트=33`, `특별한날=34`, `식사중=35`, `야외=36`, `집들이=37`, `기념일=38`
+  - Mood: `행복한=39`, `설레는=40`, `그리운=41`, `편안한=42`, `들뜬=43`, `차분한=44`
 
 Upload endpoint:
 ```http
@@ -2509,3 +2672,11 @@ Frontend connection:
   - `src/features/mypage/api.ts` `uploadMyPageArchiveImages`.
   - `src/features/mypage/api.ts` `deleteMyPageArchiveImage`.
 - Screen wiring still needs the archive create/update/detail API contract that returns and accepts `archiveId`.
+# 2026-05-22 AI Chat Proxy API Frontend Connection
+
+- Endpoint connected: `POST /api/ai/chat`.
+- Frontend file: `src/features/ai-chat/api.ts`.
+- Screen wired: `src/features/ai-chat/screens/AIChatRoomScreen.tsx`.
+- Request mapping: `message` from current input, `user_id` from `AuthContext.user.id`, `history` from previous local chat messages as `{ role, content }`.
+- Response mapping: `data.response` becomes the assistant bubble, `data.suggested_questions` becomes follow-up chips, backend error `message` is shown in-chat.
+- The frontend calls only the backend proxy and does not call the AI server directly.

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -22,6 +22,16 @@ import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
+import {
+  createMyPageArchiveWithImages,
+  deleteMyPageArchiveImage,
+  getMyPageApiErrorMessage,
+  getMyPageArchiveDetail,
+  getMyPageArchiveTags,
+  uploadMyPageArchiveImages,
+  updateMyPageArchive,
+  type MyPageImageUploadFile,
+} from '@/features/mypage/api';
 
 type ArchiveKind = 'normal' | 'funding';
 
@@ -33,6 +43,32 @@ type ArchiveAlert = {
 };
 
 const NORMAL_ARCHIVE_PROJECT_ID = 0;
+const ARCHIVE_TAG_ID_BY_NAME: Record<string, number> = {
+  '달콤한': 21,
+  '깔끔한': 22,
+  '묵직한': 23,
+  '산미있는': 24,
+  '쓴맛': 25,
+  '고소한': 26,
+  '부드러운': 27,
+  '탄산있는': 28,
+  '구수한': 29,
+  '과일향': 30,
+  '혼술': 11,
+  '친구모임': 32,
+  '데이트': 33,
+  '특별한날': 34,
+  '식사중': 35,
+  '야외': 36,
+  '집들이': 37,
+  '기념일': 14,
+  '행복한': 39,
+  '설레는': 40,
+  '그리운': 41,
+  '편안한': 17,
+  '들뜬': 43,
+  '차분한': 44,
+};
 const ARCHIVE_DUMMY_FUNDING_PROJECT: FundingProject = {
   id: -1001,
   title: '아카이브 테스트 펀딩 전통주',
@@ -64,6 +100,32 @@ function parseArchiveDateParts(date: string) {
 
 function formatArchiveDate(year: string, month: string, day: string) {
   return `${year.trim()}. ${month.trim().padStart(2, '0')}. ${day.trim().padStart(2, '0')}`;
+}
+
+function formatArchiveApiDate(year: string, month: string, day: string) {
+  return `${year.trim()}-${month.trim().padStart(2, '0')}-${day.trim().padStart(2, '0')}`;
+}
+
+function getArchiveImageFile(uri: string, index: number): MyPageImageUploadFile {
+  const name = uri.split('/').pop() || `archive-${Date.now()}-${index + 1}.jpg`;
+  const extension = name.split('.').pop()?.toLowerCase();
+  const type = extension === 'png' ? 'image/png' : extension === 'webp' ? 'image/webp' : 'image/jpeg';
+  return { uri, name, type };
+}
+
+function isLocalArchiveImage(uri: string) {
+  return !/^https?:\/\//i.test(uri);
+}
+
+function parseAbv(value: string) {
+  const number = Number(value.replace(/[^0-9.]/g, ''));
+  return Number.isFinite(number) ? number : 0;
+}
+
+function getArchiveTagIds(tags: string[], tagIdByName: Record<string, number>) {
+  return tags
+    .map((tag) => tagIdByName[tag])
+    .filter((tagId): tagId is number => Number.isFinite(tagId));
 }
 
 function RatingStars({ value, onChange }: { value: number; onChange: (value: number) => void }) {
@@ -137,20 +199,77 @@ export default function ArchiveWriteScreen() {
   const [recordDay, setRecordDay] = useState(editingDateParts.day || initialDateParts.day);
   const [rating, setRating] = useState(editingArchive?.rating || 0);
   const [uploadedImages, setUploadedImages] = useState<string[]>(editingArchive?.images || []);
+  const [serverImageIdsByUrl, setServerImageIdsByUrl] = useState<Record<string, number>>({});
   const [reviewText, setReviewText] = useState(editingArchive?.comment || '');
   const [mood, setMood] = useState(editingArchive?.mood || '');
   const [pairing, setPairing] = useState(editingArchive?.pairing || '');
   const [selectedTags, setSelectedTags] = useState<string[]>(editingPresetTags);
   const [customInput, setCustomInput] = useState('');
   const [customTags, setCustomTags] = useState<string[]>(editingCustomTags);
+  const [tagIdByName, setTagIdByName] = useState<Record<string, number>>(ARCHIVE_TAG_ID_BY_NAME);
   const [openTagSection, setOpenTagSection] = useState<string | null>(
     Object.entries(reviewPresetTags).find(([, tags]) => tags.some((tag) => editingPresetTags.includes(tag)))?.[0] || '맛·향'
   );
   const [alertModal, setAlertModal] = useState<ArchiveAlert | null>(null);
+  const isEditMode = Number.isFinite(targetEditId);
+
+  useEffect(() => {
+    let mounted = true;
+    getMyPageArchiveTags()
+      .then((groups) => {
+        if (!mounted) return;
+        const nextMap = { ...ARCHIVE_TAG_ID_BY_NAME };
+        groups.forEach((group) => {
+          group.tags.forEach((tag) => {
+            nextMap[tag.name] = tag.tagId;
+          });
+        });
+        setTagIdByName(nextMap);
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '아카이브 태그 목록을 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isEditMode || !Number.isFinite(targetEditId)) return;
+    let mounted = true;
+    getMyPageArchiveDetail(targetEditId)
+      .then((archive) => {
+        if (!mounted) return;
+        const dateParts = parseArchiveDateParts(archive.recordDate || '');
+        setDrinkName(archive.drinkName || '');
+        setDrinkAlcohol(archive.abv ? `${archive.abv}%` : '');
+        setRecordYear(dateParts.year || initialDateParts.year);
+        setRecordMonth(dateParts.month || initialDateParts.month);
+        setRecordDay(dateParts.day || initialDateParts.day);
+        setRating(archive.rating || 0);
+        setReviewText(archive.tastingNote || '');
+        setUploadedImages(archive.images.map((image) => image.imageUrl));
+        setServerImageIdsByUrl(
+          archive.images.reduce<Record<string, number>>((map, image) => {
+            map[image.imageUrl] = image.imageId;
+            return map;
+          }, {})
+        );
+        setSelectedTags(archive.tags.filter((tag) => tag.category !== 'CUSTOM').map((tag) => tag.name));
+        setCustomTags(archive.tags.filter((tag) => tag.category === 'CUSTOM').map((tag) => tag.name));
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '아카이브 상세 정보를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [initialDateParts.day, initialDateParts.month, initialDateParts.year, isEditMode, targetEditId]);
 
   const allTags = [...selectedTags, ...customTags];
   const recordDate = formatArchiveDate(recordYear, recordMonth, recordDay);
-  const isEditMode = Boolean(editingArchive);
   const headerTitle = isEditMode ? '술 기록 수정' : archiveKind === 'funding' ? '펀딩 술 기록' : '일반 술 기록';
   const rewardName = archiveKind === 'funding'
     ? project?.rewardItems?.[0] || `${project?.bottleSize || '375ml'} 1병`
@@ -215,7 +334,7 @@ export default function ArchiveWriteScreen() {
     showAlert('후기를 불러왔어요', '작성해둔 펀딩 후기를 아카이브 기록에 채웠습니다.', 'success');
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!user) {
       showAlert('로그인이 필요합니다', '아카이브 기록은 로그인 후 이용할 수 있습니다.', 'info', [
         { label: '로그인하기', onPress: () => router.push('/login' as any) },
@@ -267,9 +386,62 @@ export default function ArchiveWriteScreen() {
       showRecordInReview: false,
       tags: archiveKind === 'normal' ? [drinkAlcohol.trim(), ...allTags] : allTags,
     };
-    const saved = isEditMode && editingArchive
-      ? updateFundingReview(editingArchive.id, payload)
-      : addFundingReview(payload);
+    let saved = null;
+    try {
+      if (isEditMode && Number.isFinite(targetEditId)) {
+        const updatedArchive = await updateMyPageArchive(targetEditId, {
+          recordDate: formatArchiveApiDate(recordYear, recordMonth, recordDay),
+          tastingNote: reviewText.trim(),
+          tagIds: getArchiveTagIds(selectedTags, tagIdByName),
+        });
+        const newImages = uploadedImages.filter(isLocalArchiveImage).map(getArchiveImageFile);
+        const deletedServerImageIds = Object.entries(serverImageIdsByUrl)
+          .filter(([imageUrl]) => !uploadedImages.includes(imageUrl))
+          .map(([, imageId]) => imageId);
+        if (deletedServerImageIds.length > 0) {
+          await Promise.all(deletedServerImageIds.map((imageId) => deleteMyPageArchiveImage(targetEditId, imageId)));
+        }
+        const uploadedServerImages = newImages.length > 0
+          ? await uploadMyPageArchiveImages(targetEditId, newImages)
+          : [];
+        saved = addFundingReview({
+          ...payload,
+          id: Number(updatedArchive.archiveId || targetEditId),
+          images: [
+            ...uploadedImages.filter((image) => !isLocalArchiveImage(image)),
+            ...uploadedServerImages.map((image) => image.imageUrl),
+          ],
+        });
+      } else if (isEditMode && editingArchive) {
+        saved = updateFundingReview(editingArchive.id, payload);
+      } else {
+        const createdArchive = await createMyPageArchiveWithImages({
+          archiveType: archiveKind === 'funding' ? 'FUNDING' : 'NORMAL',
+          customName: rewardName || '?섏쓽 ?꾪넻二?湲곕줉',
+          category: '탁주',
+          abv: archiveKind === 'normal' ? parseAbv(drinkAlcohol) : parseAbv(project?.alcoholContent || ''),
+          rating,
+          tastingNote: reviewText.trim(),
+          recordDate: formatArchiveApiDate(recordYear, recordMonth, recordDay),
+          tagIds: getArchiveTagIds(selectedTags, tagIdByName),
+          customTags,
+          images: uploadedImages.map(getArchiveImageFile),
+        });
+        saved = addFundingReview({
+          ...payload,
+          id: createdArchive.archiveId,
+          images: createdArchive.images.map((image) => image.imageUrl),
+          tags: [
+            ...(archiveKind === 'normal' && createdArchive.abv ? [`${createdArchive.abv}%`] : []),
+            ...createdArchive.tags.map((tag) => tag.name),
+          ],
+        });
+      }
+    } catch (error) {
+      setIsSaving(false);
+      showAlert('????ㅽ뙣', getMyPageApiErrorMessage(error, '湲곕줉????ν븯吏 紐삵뻽?듬땲?? ?ㅼ떆 ?쒕룄?댁＜?몄슂.'), 'warning');
+      return;
+    }
     setIsSaving(false);
 
     if (!saved) {
@@ -277,7 +449,16 @@ export default function ArchiveWriteScreen() {
       return;
     }
     showAlert(isEditMode ? '수정 완료' : '저장 완료', isEditMode ? '수정한 기록이 반영되었습니다.' : '내 아카이브에 기록이 저장되었습니다.', 'success', [
-      { label: '확인', onPress: () => router.replace('/mypage/archive' as any) },
+      {
+        label: '확인',
+        onPress: () => {
+          if (isEditMode && saved?.id) {
+            router.replace(`/mypage/archive/detail/${saved.id}?kind=archive` as any);
+            return;
+          }
+          router.replace('/mypage/archive' as any);
+        },
+      },
     ]);
   };
 

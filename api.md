@@ -435,6 +435,7 @@ type CommunityPostCommentListResponse = {
 ```
 
 Notes:
+- Backend status: working confirmed on 2026-05-22 from the latest comment list spec.
 - Returns only root comments: `parent_comment_id IS NULL`.
 - Sorted by `created_at ASC`, oldest comments first.
 - If no token is provided, `is_liked` and `is_mine` are always `false`.
@@ -479,8 +480,9 @@ type CreateCommunityPostCommentResponse = {
 ```
 
 Notes:
-- This endpoint came from the earlier community API files and was not replaced by the latest PDF set.
+- Backend status: working confirmed on 2026-05-22 from the latest comment create spec.
 - Successful creation increments `posts.comment_count`.
+- `user_id` and `nickname` are extracted from the JWT.
 
 Errors:
 - `400`: empty comment content.
@@ -520,13 +522,14 @@ type UpdateCommunityPostCommentResponse = {
 ```
 
 Notes:
-- This endpoint came from the earlier community API files and was not replaced by the latest PDF set.
+- Backend status: working confirmed on 2026-05-22 from the latest comment update spec.
+- Backend checks `comment_id` and `post_id` together. If the comment does not belong to the post, it returns `404`.
 
 Errors:
 - `400`: empty comment content.
 - `401`: invalid or expired token.
 - `403`: not the author.
-- `404`: comment not found.
+- `404`: comment not found, or `postId` / `commentId` mismatch.
 - `500`: server error.
 
 ### Community Post Comment Delete
@@ -549,13 +552,15 @@ type DeleteCommunityPostCommentResponse = {
 ```
 
 Notes:
-- This endpoint came from the earlier community API files and was not replaced by the latest PDF set.
+- Backend status: working confirmed on 2026-05-22 from the latest comment delete spec.
 - Successful deletion decrements `posts.comment_count`, clamped at `0`.
+- Related `post_comment_likes` rows are deleted by cascade or explicit deletion.
+- Backend checks `comment_id` and `post_id` together. If the comment does not belong to the post, it returns `404`.
 
 Errors:
 - `401`: invalid or expired token.
 - `403`: not the author.
-- `404`: comment not found.
+- `404`: comment not found, or `postId` / `commentId` mismatch.
 - `500`: server error.
 
 ### Community Post Comment Likes
@@ -2518,6 +2523,37 @@ Frontend connection:
 - API client: `src/features/mypage/api.ts` `updateMyPageArchive`.
 - Screen: `src/features/mypage/screens/ArchiveWriteScreen.tsx` edit mode.
 - Current backend update API edits `recordDate`, `tastingNote`, and fixed `tagIds`.
+
+### Archive Update With Images
+
+Endpoint:
+```http
+PATCH {baseURI}/api/mypage/archives/{archiveId}/with-images
+```
+
+Request:
+- Body: `multipart/form-data`
+- Fields:
+  - `archiveType`: `NORMAL` or `FUNDING`
+  - `customName`
+  - `alcoholId`
+  - `category`
+  - `abv`
+  - `rating`
+  - `tastingNote`
+  - `recordDate`: `YYYY-MM-DD`
+  - `mood`
+  - `pairing`
+  - `tagIds`
+  - `customTags`
+  - `deleteImageIds`
+  - `images`
+
+Frontend connection:
+- Connected on 2026-05-22.
+- API client: `src/features/mypage/api.ts` `updateMyPageArchiveWithImages`.
+- Screen: `src/features/mypage/screens/ArchiveWriteScreen.tsx` edit mode.
+- This replaces the previous split flow of JSON update plus separate image upload/delete calls.
 
 ### Archive Delete
 

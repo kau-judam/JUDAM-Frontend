@@ -13,12 +13,6 @@ type BadgeItem = {
 
 const BADGES: BadgeItem[] = [
   {
-    id: 'co-creator',
-    name: '공동 제작자',
-    image: require('../../../../assets/images/badges/co_creator.png'),
-    earned: false,
-  },
-  {
     id: 'welcome',
     name: '반가워요!',
     image: require('../../../../assets/images/badges/welcome.png'),
@@ -31,12 +25,6 @@ const BADGES: BadgeItem[] = [
     earned: false,
   },
   {
-    id: 'funding-expert',
-    name: '펀딩 숙련가',
-    image: require('../../../../assets/images/badges/funding_expert.png'),
-    earned: false,
-  },
-  {
     id: 'funding-beginner',
     name: '펀딩 입문자',
     image: require('../../../../assets/images/badges/funding_beginner.png'),
@@ -46,6 +34,18 @@ const BADGES: BadgeItem[] = [
     id: 'funding-intermediate',
     name: '펀딩 중급자',
     image: require('../../../../assets/images/badges/funding_intermediate.png'),
+    earned: false,
+  },
+  {
+    id: 'funding-expert',
+    name: '펀딩 숙련가',
+    image: require('../../../../assets/images/badges/funding_expert.png'),
+    earned: false,
+  },
+  {
+    id: 'co-creator',
+    name: '공동 제작자',
+    image: require('../../../../assets/images/badges/co_creator.png'),
     earned: false,
   },
 ];

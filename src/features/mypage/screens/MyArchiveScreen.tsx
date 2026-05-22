@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Image,
   ImageSourcePropType,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { ArrowLeft, ChevronRight, Droplet, Plus, Search, Star, Wine, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -65,11 +66,16 @@ export default function MyArchiveScreen() {
   const [activeTab, setActiveTab] = useState<ArchiveTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [serverArchives, setServerArchives] = useState<MyPageArchive[]>([]);
+  const [isArchiveListLoading, setIsArchiveListLoading] = useState(false);
 
-  useEffect(() => {
-    if (!user) return;
+  const loadServerArchives = useCallback(() => {
+    if (!user) {
+      setServerArchives([]);
+      return () => undefined;
+    }
     let mounted = true;
     const type = activeTab === 'funded' ? 'funding' : activeTab === 'general' ? 'normal' : 'all';
+    setIsArchiveListLoading(true);
     getMyPageArchives({ type, page: 0, size: 50 })
       .then((response) => {
         if (!mounted) return;
@@ -77,12 +83,18 @@ export default function MyArchiveScreen() {
       })
       .catch((error) => {
         console.warn(getMyPageApiErrorMessage(error, '아카이브 목록을 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsArchiveListLoading(false);
       });
 
     return () => {
       mounted = false;
     };
   }, [activeTab, user]);
+
+  useFocusEffect(loadServerArchives);
 
   const fundedDrinks = useMemo<ArchiveDrink[]>(() => {
     const nextDrinks: ArchiveDrink[] = [];
@@ -231,7 +243,15 @@ export default function MyArchiveScreen() {
           ))}
         </View>
 
-        {filteredDrinks.length === 0 && (
+        {isArchiveListLoading && filteredDrinks.length === 0 && (
+          <View style={styles.emptyBox}>
+            <Wine size={46} color="#D1D5DB" />
+            <Text style={styles.emptyTitle}>아카이브를 불러오는 중입니다</Text>
+            <Text style={styles.emptyDesc}>잠시만 기다려주세요.</Text>
+          </View>
+        )}
+
+        {!isArchiveListLoading && filteredDrinks.length === 0 && (
           <View style={styles.emptyBox}>
             <Wine size={46} color="#D1D5DB" />
             <Text style={styles.emptyTitle}>경험한 술이 없습니다</Text>

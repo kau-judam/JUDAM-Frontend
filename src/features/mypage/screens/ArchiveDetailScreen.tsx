@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  ActivityIndicator,
   Image,
   ImageSourcePropType,
   ScrollView,
@@ -121,6 +122,8 @@ export default function ArchiveDetailScreen() {
   const { projects, participatedFundings, fundingReviews, deleteFundingReview } = useFunding();
   const [showMenu, setShowMenu] = useState(false);
   const [serverArchive, setServerArchive] = useState<MyPageArchive | null>(null);
+  const [isArchiveLoading, setIsArchiveLoading] = useState(false);
+  const [archiveLoadFailed, setArchiveLoadFailed] = useState(false);
   const targetArchiveId = Number(Array.isArray(archiveId) ? archiveId[0] : archiveId);
   const targetFundingId = Number(Array.isArray(fundingId) ? fundingId[0] : fundingId);
   const rawKind = Array.isArray(kind) ? kind[0] : kind;
@@ -128,13 +131,21 @@ export default function ArchiveDetailScreen() {
   useEffect(() => {
     if (!Number.isFinite(targetArchiveId) || rawKind === 'sample' || rawKind === 'funding') return;
     let mounted = true;
+    setIsArchiveLoading(true);
+    setArchiveLoadFailed(false);
     getMyPageArchiveDetail(targetArchiveId)
       .then((nextArchive) => {
         if (!mounted) return;
         setServerArchive(nextArchive);
       })
       .catch((error) => {
+        if (!mounted) return;
+        setArchiveLoadFailed(true);
         console.warn(getMyPageApiErrorMessage(error, '아카이브 상세 정보를 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsArchiveLoading(false);
       });
 
     return () => {
@@ -268,11 +279,23 @@ export default function ArchiveDetailScreen() {
   };
 
 
+  if (isArchiveLoading && !archive) {
+    return (
+      <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
+        <ActivityIndicator size="large" color="#111827" />
+        <Text style={styles.noticeTitle}>기록을 불러오는 중입니다</Text>
+        <Text style={styles.noticeBody}>잠시만 기다려주세요.</Text>
+      </View>
+    );
+  }
+
   if (!archive) {
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
         <Text style={styles.noticeTitle}>기록을 찾을 수 없습니다</Text>
-        <Text style={styles.noticeBody}>요청한 아카이브 기록이 없거나 삭제되었습니다.</Text>
+        <Text style={styles.noticeBody}>
+          {archiveLoadFailed ? '아카이브 기록을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.' : '요청한 아카이브 기록이 없거나 삭제되었습니다.'}
+        </Text>
         <TouchableOpacity style={styles.noticeButton} onPress={() => router.back()}>
           <Text style={styles.noticeButtonText}>돌아가기</Text>
         </TouchableOpacity>

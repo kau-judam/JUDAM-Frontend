@@ -1,31 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
-} from 'react-native';
+import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { Swipeable } from 'react-native-gesture-handler';
-import { 
-  ChevronLeft, 
-  Wine, 
-  UtensilsCrossed, 
-  Sparkles, 
-  Plus, 
-  MessageCircle,
-  Trash2,
-} from 'lucide-react-native';
+import { ChevronLeft, MessageCircle, Plus, Sparkles, Trash2, UtensilsCrossed, Wine } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp, FadeOut } from 'react-native-reanimated';
 
 import { useAuth } from '@/contexts/AuthContext';
 import SafeStorage from '@/utils/storage';
 
-type ChatCategory = "recommend" | "pairing" | "general";
+type ChatCategory = 'recommend' | 'pairing' | 'general';
+
+type ChatMessage = {
+  role: 'user' | 'assistant';
+  text: string;
+};
 
 interface ChatRoom {
   id: string;
@@ -33,16 +23,17 @@ interface ChatRoom {
   title: string;
   lastMessage: string;
   timestamp: string;
-  messages: any[];
+  messages: ChatMessage[];
 }
 
 const categories = [
-  { id: "recommend" as ChatCategory, title: "술 추천", icon: Wine },
-  { id: "pairing" as ChatCategory, title: "안주 추천", icon: UtensilsCrossed },
-  { id: "general" as ChatCategory, title: "통합 AI", icon: Sparkles },
+  { id: 'recommend' as ChatCategory, title: '술 추천', icon: Wine },
+  { id: 'pairing' as ChatCategory, title: '안주 추천', icon: UtensilsCrossed },
+  { id: 'general' as ChatCategory, title: '통합 AI', icon: Sparkles },
 ];
 
 const CHAT_ROOMS_STORAGE_KEY = 'judam.aiChat.rooms';
+const INITIAL_ASSISTANT_MESSAGE = '안녕하세요!';
 
 const getCategoryTitle = (category: ChatCategory) => {
   return categories.find((item) => item.id === category)?.title || 'AI';
@@ -53,90 +44,57 @@ const makeNewRoom = (category: ChatCategory): ChatRoom => {
   return {
     id: `${category}-${now.getTime()}`,
     category,
-    title: `${getCategoryTitle(category)} 새 대화`,
-    lastMessage: '새 대화를 시작했어요.',
+    title: `${getCategoryTitle(category)} 대화`,
+    lastMessage: INITIAL_ASSISTANT_MESSAGE,
     timestamp: now.toISOString(),
-    messages: [],
+    messages: [{ role: 'assistant', text: INITIAL_ASSISTANT_MESSAGE }],
   };
 };
+
+function isValidRoom(room: ChatRoom) {
+  return !room.id.startsWith('sample-') && categories.some((category) => category.id === room.category);
+}
 
 export default function AIChatScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [selectedCategory, setSelectedCategory] = useState<ChatCategory>("recommend");
-  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([
-    {
-      id: "sample-1",
-      category: "recommend",
-      title: "달콤한 막걸리 추천해줘",
-      lastMessage: "말씀하신 취향에 따르면 '벚꽃 막걸리'를 추천드려요. 은은한 꽃향과 부드러운 단맛이 특징이에요.",
-      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      messages: [],
-    },
-    {
-      id: "sample-3",
-      category: "pairing",
-      title: "막걸리랑 어울리는 안주 추천",
-      lastMessage: "막걸리와는 파전이나 김치전이 정말 잘 어울려요. 특히 비오는 날에는 환상의 조합이죠!",
-      timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-      messages: [],
-    }
-  ]);
+  const [selectedCategory, setSelectedCategory] = useState<ChatCategory>('recommend');
+  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [isFloatingMenuOpen, setIsFloatingMenuOpen] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const loadRooms = async () => {
-      const savedRooms = await SafeStorage.getItem(CHAT_ROOMS_STORAGE_KEY);
-      if (!savedRooms || !mounted) return;
-
-      try {
-        const parsedRooms = JSON.parse(savedRooms) as ChatRoom[];
-        const availableRooms = parsedRooms.filter((room) =>
-          categories.some((category) => category.id === room.category),
-        );
-        setChatRooms(availableRooms);
-      } catch {
-        await SafeStorage.removeItem(CHAT_ROOMS_STORAGE_KEY);
-      }
-    };
-
-    loadRooms();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      let mounted = true;
-
-      const loadRooms = async () => {
-        const savedRooms = await SafeStorage.getItem(CHAT_ROOMS_STORAGE_KEY);
-        if (!savedRooms || !mounted) return;
-
-        try {
-          const parsedRooms = JSON.parse(savedRooms) as ChatRoom[];
-          const availableRooms = parsedRooms.filter((room) =>
-            categories.some((category) => category.id === room.category),
-          );
-          setChatRooms(availableRooms);
-        } catch {
-          await SafeStorage.removeItem(CHAT_ROOMS_STORAGE_KEY);
-        }
-      };
-
-      loadRooms();
-      return () => {
-        mounted = false;
-      };
-    }, [])
-  );
 
   const persistRooms = async (rooms: ChatRoom[]) => {
     await SafeStorage.setItem(CHAT_ROOMS_STORAGE_KEY, JSON.stringify(rooms));
   };
+
+  const loadRooms = useCallback(async () => {
+    const savedRooms = await SafeStorage.getItem(CHAT_ROOMS_STORAGE_KEY);
+    if (!savedRooms) {
+      setChatRooms([]);
+      return;
+    }
+
+    try {
+      const parsedRooms = JSON.parse(savedRooms) as ChatRoom[];
+      const availableRooms = parsedRooms.filter(isValidRoom);
+      setChatRooms(availableRooms);
+      if (availableRooms.length !== parsedRooms.length) {
+        await persistRooms(availableRooms);
+      }
+    } catch {
+      setChatRooms([]);
+      await SafeStorage.removeItem(CHAT_ROOMS_STORAGE_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadRooms();
+  }, [loadRooms]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRooms();
+    }, [loadRooms]),
+  );
 
   const createRoom = (category: ChatCategory) => {
     const nextRoom = makeNewRoom(category);
@@ -172,14 +130,11 @@ export default function AIChatScreen() {
     const diffDays = Math.floor(diff / (1000 * 60 * 60 * 24));
 
     if (diffDays === 0) {
-      return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-    } else if (diffDays === 1) {
-      return "어제";
-    } else if (diffDays < 7) {
-      return `${diffDays}일 전`;
-    } else {
-      return `${date.getMonth() + 1}/${date.getDate()}`;
+      return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
     }
+    if (diffDays === 1) return '어제';
+    if (diffDays < 7) return `${diffDays}일 전`;
+    return `${date.getMonth() + 1}/${date.getDate()}`;
   };
 
   if (!user) {
@@ -210,7 +165,6 @@ export default function AIChatScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -220,7 +174,6 @@ export default function AIChatScreen() {
           <View style={{ width: 40 }} />
         </View>
 
-        {/* Category Toggle */}
         <View style={styles.categoryArea}>
           <View style={styles.categoryBg}>
             {categories.map((category) => (
@@ -229,7 +182,7 @@ export default function AIChatScreen() {
                 onPress={() => setSelectedCategory(category.id)}
                 style={[styles.categoryBtn, selectedCategory === category.id && styles.categoryBtnActive]}
               >
-                <category.icon size={14} color={selectedCategory === category.id ? "#FFF" : "#8B5A3C"} />
+                <category.icon size={14} color={selectedCategory === category.id ? '#FFF' : '#8B5A3C'} />
                 <Text style={[styles.categoryTxt, selectedCategory === category.id && styles.categoryTxtActive]}>{category.title}</Text>
               </TouchableOpacity>
             ))}
@@ -237,7 +190,6 @@ export default function AIChatScreen() {
         </View>
       </View>
 
-      {/* Chat List */}
       <ScrollView contentContainerStyle={styles.listContent}>
         {filteredChatRooms.length === 0 ? (
           <View style={styles.empty}>
@@ -245,7 +197,7 @@ export default function AIChatScreen() {
             <Text style={styles.emptyTitle}>아직 대화가 없습니다.</Text>
             <Text style={styles.emptySub}>새로운 질문을 시작해보세요.</Text>
             <TouchableOpacity style={styles.newChatBtn} onPress={() => createRoom(selectedCategory)}>
-               <Text style={styles.newChatBtnTxt}>새 대화 시작하기</Text>
+              <Text style={styles.newChatBtnTxt}>대화 시작하기</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -257,15 +209,17 @@ export default function AIChatScreen() {
                   onPress={() => router.push(`/ai-chat/${room.category}/${room.id}` as any)}
                   activeOpacity={0.85}
                 >
-                   <View style={styles.chatRow}>
-                      <View style={{ flex: 1 }}>
-                         <View style={styles.rowBetween}>
-                            <Text style={styles.chatTitle}>{room.title}</Text>
-                            <Text style={styles.chatTime}>{formatTimestamp(room.timestamp)}</Text>
-                         </View>
-                         <Text style={styles.lastMsg} numberOfLines={1}>{room.lastMessage}</Text>
+                  <View style={styles.chatRow}>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.rowBetween}>
+                        <Text style={styles.chatTitle}>{room.title}</Text>
+                        <Text style={styles.chatTime}>{formatTimestamp(room.timestamp)}</Text>
                       </View>
-                   </View>
+                      <Text style={styles.lastMsg} numberOfLines={1}>
+                        {room.lastMessage}
+                      </Text>
+                    </View>
+                  </View>
                 </TouchableOpacity>
               </Swipeable>
             ))}
@@ -273,31 +227,22 @@ export default function AIChatScreen() {
         )}
       </ScrollView>
 
-      {/* FAB */}
       <View style={[styles.fabArea, { bottom: insets.bottom + 20 }]}>
-         {isFloatingMenuOpen && (
-           <Animated.View entering={FadeInUp} exiting={FadeOut} style={styles.floatingMenu}>
-              {categories.map((c, i) => (
-                <TouchableOpacity 
-                  key={c.id} 
-                  style={styles.menuItem} 
-                  onPress={() => createRoom(c.id)}
-                >
-                   <c.icon size={18} color="#8B5A3C" />
-                   <Text style={styles.menuTxt}>{c.title}</Text>
-                </TouchableOpacity>
-              ))}
-           </Animated.View>
-         )}
-         <TouchableOpacity 
-           style={styles.fab} 
-           activeOpacity={0.8}
-           onPress={() => setIsFloatingMenuOpen(!isFloatingMenuOpen)}
-         >
-            <Animated.View style={{ transform: [{ rotate: isFloatingMenuOpen ? '45deg' : '0deg' }] }}>
-               <Plus size={28} color="#FFF" />
-            </Animated.View>
-         </TouchableOpacity>
+        {isFloatingMenuOpen && (
+          <Animated.View entering={FadeInUp} exiting={FadeOut} style={styles.floatingMenu}>
+            {categories.map((category) => (
+              <TouchableOpacity key={category.id} style={styles.menuItem} onPress={() => createRoom(category.id)}>
+                <category.icon size={18} color="#8B5A3C" />
+                <Text style={styles.menuTxt}>{category.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </Animated.View>
+        )}
+        <TouchableOpacity style={styles.fab} activeOpacity={0.8} onPress={() => setIsFloatingMenuOpen(!isFloatingMenuOpen)}>
+          <Animated.View style={{ transform: [{ rotate: isFloatingMenuOpen ? '45deg' : '0deg' }] }}>
+            <Plus size={28} color="#FFF" />
+          </Animated.View>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -325,7 +270,7 @@ const styles = StyleSheet.create({
   chatItem: { padding: 20, borderBottomWidth: 1, borderBottomColor: '#F9FAFB', backgroundColor: '#FFF' },
   chatRow: { flexDirection: 'row', gap: 12 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  chatTitle: { fontSize: 15, fontWeight: '600', color: '#111' },
+  chatTitle: { flex: 1, fontSize: 15, fontWeight: '600', color: '#111', marginRight: 10 },
   chatTime: { fontSize: 12, color: '#9CA3AF' },
   lastMsg: { fontSize: 14, color: '#6B7280' },
   deleteAction: { width: 88, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', gap: 4 },

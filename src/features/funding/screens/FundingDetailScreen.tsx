@@ -60,6 +60,8 @@ import {
   getFundingShareLink,
   getFundingSupportOptions,
   isFundingApiMissingEndpointError,
+  likeFundingQuestion,
+  unlikeFundingQuestion,
   type FundingDetailResponse,
   type FundingReportReason,
   type FundingSupportOption,
@@ -106,6 +108,7 @@ type FundingQuestionComment = {
   content: string;
   date: string;
   likes: number;
+  liked?: boolean;
   isBrewery: boolean;
   replies: {
     id: number;
@@ -197,7 +200,6 @@ function mergeStoredQnaComments(apiComments: FundingQuestionComment[], stored?: 
     if (!storedComment) return comment;
     return {
       ...comment,
-      likes: storedComment.likes ?? comment.likes,
       replies: storedComment.replies || comment.replies,
     };
   });
@@ -569,9 +571,17 @@ export default function FundingDetailScreen() {
           userName: item.writerNickname,
           content: item.content || item.title,
           date: new Date(item.createdAt).toLocaleDateString("ko-KR"),
-          likes: 0,
+          likes: Math.max(item.likeCount || 0, item.liked ? 1 : 0),
+          liked: Boolean(item.liked),
           isBrewery: false,
-          replies: [],
+          replies: (item.replies || []).map((reply) => ({
+            id: reply.replyId,
+            userName: reply.writerNickname || project?.brewery || '양조장',
+            content: reply.content,
+            date: new Date(reply.createdAt).toLocaleDateString("ko-KR"),
+            likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
+            isBrewery: true,
+          })),
         }));
         let stored: StoredQnaInteractions | null = null;
         try {
@@ -581,9 +591,15 @@ export default function FundingDetailScreen() {
           stored = null;
         }
         if (!mounted) return;
-        setLikedComments(new Set(stored?.likedComments || []));
         setLikedReplies(new Set(stored?.likedReplies || []));
-        setComments(mergeStoredQnaComments(apiComments, stored));
+        const mergedComments = mergeStoredQnaComments(apiComments, stored);
+        const serverCommentIds = new Set(mergedComments.filter((comment) => comment.serverQuestionId).map((comment) => comment.id));
+        const nextLikedComments = new Set((stored?.likedComments || []).filter((commentId) => !serverCommentIds.has(commentId)));
+        mergedComments.forEach((comment) => {
+          if (comment.liked) nextLikedComments.add(comment.id);
+        });
+        setLikedComments(nextLikedComments);
+        setComments(mergedComments);
         qnaInteractionsLoadedRef.current = true;
       })
       .catch(async (error) => {
@@ -610,7 +626,7 @@ export default function FundingDetailScreen() {
     return () => {
       mounted = false;
     };
-  }, [activeTab, projectId, user?.id]);
+  }, [activeTab, project?.brewery, projectId, user?.id]);
 
   useEffect(() => {
     if (!qnaInteractionsLoadedRef.current || !Number.isFinite(projectId) || activeTab !== "Q&A") return;
@@ -888,12 +904,13 @@ export default function FundingDetailScreen() {
   };
 
 
-  const toggleCommentLike = (commentId: number) => {
+  const toggleCommentLike = async (commentId: number) => {
     if (!user) {
       showLoginRequired('펀딩 Q&A 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
     const targetComment = comments.find((comment) => comment.id === commentId);
+    if (!targetComment) return;
     const isAlreadyLiked = Boolean(targetComment && likedComments.has(commentId) && (targetComment.likes || 0) > 0);
     const newLiked = new Set(likedComments);
     let diff = 0;
@@ -904,8 +921,37 @@ export default function FundingDetailScreen() {
       newLiked.add(commentId);
       diff = 1;
     }
-    setComments(comments.map(c => c.id === commentId ? { ...c, likes: Math.max(0, (c.likes || 0) + diff) } : c));
+    const previousComments = comments;
+    const previousLikedComments = likedComments;
+    setComments(comments.map(c => c.id === commentId ? { ...c, likes: Math.max(0, (c.likes || 0) + diff), liked: !isAlreadyLiked } : c));
     setLikedComments(newLiked);
+
+    const serverQuestionId = targetComment.serverQuestionId;
+    if (!serverQuestionId) return;
+
+    try {
+      const response = isAlreadyLiked
+        ? await unlikeFundingQuestion(project.id, serverQuestionId)
+        : await likeFundingQuestion(project.id, serverQuestionId);
+      setComments((prev) => prev.map((comment) =>
+        comment.id === commentId
+          ? { ...comment, likes: Math.max(response.likeCount, response.liked ? 1 : 0), liked: response.liked }
+          : comment
+      ));
+      setLikedComments((prev) => {
+        const next = new Set(prev);
+        if (response.liked) next.add(commentId);
+        else next.delete(commentId);
+        return next;
+      });
+    } catch (error) {
+      setComments(previousComments);
+      setLikedComments(previousLikedComments);
+      setFeedbackModal({
+        title: '좋아요 처리 실패',
+        body: getFundingApiErrorMessage(error, 'Q&A 좋아요 처리 중 문제가 발생했습니다.'),
+      });
+    }
   };
 
   const toggleReplyLike = (commentId: number, replyId: number) => {

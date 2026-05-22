@@ -489,10 +489,32 @@ type CreateFundingReviewResponse = {
   message: string;
 };
 
+type UpdateFundingReviewPayload = {
+  rating: number;
+  content: string;
+};
+
 type FundingLikeResponse = {
   fundingId: number;
   liked: boolean;
   likeCount: number;
+  message: string;
+};
+
+type FundingQuestionLikeResponse = {
+  fundingId: number;
+  questionId: number;
+  liked: boolean;
+  likeCount: number;
+  message: string;
+};
+
+export type FundingStatsResponse = {
+  participationAvailableFunding: number;
+  totalSupporterCount: number;
+  successfulProjectCount: number;
+  totalRaisedAmount: number;
+  totalRaisedHundredMillion: number;
   message: string;
 };
 
@@ -613,6 +635,18 @@ export type FundingQuestionItem = {
   content: string;
   answered: boolean;
   createdAt: string;
+  likeCount?: number;
+  liked?: boolean;
+  replies?: FundingQuestionReplyItem[];
+};
+
+export type FundingQuestionReplyItem = {
+  replyId: number;
+  writerNickname?: string;
+  content: string;
+  createdAt: string;
+  likeCount?: number;
+  liked?: boolean;
 };
 
 export type FundingQuestionsResponse = {
@@ -814,6 +848,20 @@ function readFundingApiString(source: Record<string, unknown>, keys: string[], f
   return fallback;
 }
 
+function readFundingApiBoolean(source: Record<string, unknown>, keys: string[], fallback = false) {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return value > 0;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+      if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+    }
+  }
+  return fallback;
+}
+
 function readFundingApiArray<T>(source: Record<string, unknown>, keys: string[], fallback: T[] = []) {
   for (const key of keys) {
     const value = source[key];
@@ -965,7 +1013,7 @@ function normalizeBreweryLogItem(source: Record<string, unknown>): FundingBrewer
     imageUrls: readFundingApiStringArray(source, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
     createdAt: readFundingApiString(source, ['createdAt', 'created_at', 'date']),
     likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
-    liked: Boolean(source.liked),
+    liked: readFundingApiBoolean(source, ['liked']),
   };
 }
 
@@ -1024,6 +1072,23 @@ function normalizeCreateFundingReviewResponse(response: unknown): CreateFundingR
     rating: readFundingApiNumber(data, ['rating']),
     imageUrls: readFundingApiStringArray(data, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
     message: readFundingApiString(responseData, ['message']) || readFundingApiString(data, ['message']),
+  };
+}
+
+function normalizeFundingStatsResponse(response: unknown): FundingStatsResponse {
+  const data = getFundingApiObject(response);
+  const totalRaisedAmount = readFundingApiNumber(data, ['totalRaisedAmount', 'total_raised_amount']);
+  return {
+    participationAvailableFunding: readFundingApiNumber(data, ['participationAvailableFunding', 'participation_available_funding']),
+    totalSupporterCount: readFundingApiNumber(data, ['totalSupporterCount', 'total_supporter_count']),
+    successfulProjectCount: readFundingApiNumber(data, ['successfulProjectCount', 'successful_project_count']),
+    totalRaisedAmount,
+    totalRaisedHundredMillion: readFundingApiNumber(
+      data,
+      ['totalRaisedHundredMillion', 'total_raised_hundred_million'],
+      totalRaisedAmount / 100000000
+    ),
+    message: readFundingApiString(data, ['message']),
   };
 }
 
@@ -1132,9 +1197,53 @@ function normalizeFundingLikeResponse(response: unknown): FundingLikeResponse {
   const data = getFundingApiObject(response);
   return {
     fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
-    liked: Boolean(data.liked),
+    liked: readFundingApiBoolean(data, ['liked']),
     likeCount: readFundingApiNumber(data, ['likeCount', 'like_count']),
     message: readFundingApiString(data, ['message']),
+  };
+}
+
+function normalizeFundingQuestionLikeResponse(response: unknown): FundingQuestionLikeResponse {
+  const data = getFundingApiObject(response);
+  return {
+    fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
+    questionId: readFundingApiNumber(data, ['questionId', 'question_id']),
+    liked: readFundingApiBoolean(data, ['liked']),
+    likeCount: readFundingApiNumber(data, ['likeCount', 'like_count']),
+    message: readFundingApiString(data, ['message']),
+  };
+}
+
+function normalizeFundingQuestionItem(source: Record<string, unknown>): FundingQuestionItem {
+  return {
+    questionId: readFundingApiNumber(source, ['questionId', 'question_id', 'id']),
+    writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname'], '사용자'),
+    title: readFundingApiString(source, ['title']),
+    content: readFundingApiString(source, ['content', 'body']),
+    answered: readFundingApiBoolean(source, ['answered']),
+    createdAt: readFundingApiString(source, ['createdAt', 'created_at', 'date']),
+    likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
+    liked: readFundingApiBoolean(source, ['liked']),
+    replies: readFundingApiArray<Record<string, unknown>>(source, ['replies', 'answers']).map((reply) => ({
+      replyId: readFundingApiNumber(reply, ['replyId', 'reply_id', 'id']),
+      writerNickname: readFundingApiString(reply, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+      content: readFundingApiString(reply, ['content', 'body']),
+      createdAt: readFundingApiString(reply, ['createdAt', 'created_at', 'date']),
+      likeCount: readFundingApiNumber(reply, ['likeCount', 'like_count', 'likes']),
+      liked: readFundingApiBoolean(reply, ['liked']),
+    })),
+  };
+}
+
+function normalizeFundingQuestionsResponse(response: unknown): FundingQuestionsResponse {
+  const data = getFundingApiObject(response);
+  const content = getFundingApiArray<Record<string, unknown>>(response, ['content', 'questions', 'data']);
+  return {
+    content: content.map(normalizeFundingQuestionItem),
+    page: readFundingApiNumber(data, ['page']),
+    size: readFundingApiNumber(data, ['size'], content.length),
+    totalElements: readFundingApiNumber(data, ['totalElements', 'total_elements'], content.length),
+    totalPages: readFundingApiNumber(data, ['totalPages', 'total_pages'], content.length > 0 ? 1 : 0),
   };
 }
 
@@ -1147,7 +1256,7 @@ function normalizeMyLikedFundingItem(source: Record<string, unknown>): MyLikedFu
     currentAmount: readFundingApiNumber(source, ['currentAmount', 'current_amount']),
     startDate: readFundingApiString(source, ['startDate', 'start_date']) || undefined,
     endDate: readFundingApiString(source, ['endDate', 'end_date']) || undefined,
-    liked: Boolean(source.liked),
+    liked: readFundingApiBoolean(source, ['liked']),
     likeCount: readFundingApiNumber(source, ['likeCount', 'like_count']),
   };
 }
@@ -1689,6 +1798,11 @@ export async function getFundingList(params: {
   };
 }
 
+export async function getFundingStats() {
+  const result = await requestFundingJson<unknown>('/api/fundings/stats');
+  return normalizeFundingStatsResponse(result);
+}
+
 export async function getFundingDetail(fundingId: number) {
   const result = await requestFundingJson<FundingDetailApiResponse>(`/api/fundings/${fundingId}`);
   return getFundingResponseData<FundingDetailResponse>(result);
@@ -1738,7 +1852,8 @@ export async function getFundingQuestions(fundingId: number, params: {
   query.set('page', String(params.page ?? 0));
   query.set('size', String(params.size ?? 10));
   if (params.answered !== undefined) query.set('answered', String(params.answered));
-  return requestFundingJson<FundingQuestionsResponse>(`/api/fundings/${fundingId}/questions?${query.toString()}`);
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/questions?${query.toString()}`);
+  return normalizeFundingQuestionsResponse(result);
 }
 
 export async function createFundingQuestion(fundingId: number, payload: CreateFundingQuestionPayload) {
@@ -1755,6 +1870,22 @@ export async function createFundingReply(fundingId: number, questionId: number, 
     auth: true,
     body: JSON.stringify(payload),
   });
+}
+
+export async function likeFundingQuestion(fundingId: number, questionId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/questions/${questionId}/likes`, {
+    method: 'POST',
+    auth: true,
+  });
+  return normalizeFundingQuestionLikeResponse(result);
+}
+
+export async function unlikeFundingQuestion(fundingId: number, questionId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/questions/${questionId}/likes`, {
+    method: 'DELETE',
+    auth: true,
+  });
+  return normalizeFundingQuestionLikeResponse(result);
 }
 
 export async function getFundingReviews(fundingId: number, params: {
@@ -1779,6 +1910,15 @@ export async function createFundingReview(fundingId: number, payload: CreateFund
   const result = await requestFundingForm<unknown>(`/api/fundings/${fundingId}/reviews`, formData, {
     method: 'POST',
     auth: true,
+  });
+  return normalizeCreateFundingReviewResponse(result);
+}
+
+export async function updateFundingReviewApi(fundingId: number, reviewId: number, payload: UpdateFundingReviewPayload) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}`, {
+    method: 'PATCH',
+    auth: true,
+    body: JSON.stringify(payload),
   });
   return normalizeCreateFundingReviewResponse(result);
 }

@@ -1,6 +1,17 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import SafeStorage from "@/utils/storage";
-import { clearAuthTokens, loginWithEmail, loginWithKakaoCode as requestKakaoLogin, saveAuthTokens, signupWithEmail, type AuthApiUser, type AuthRole, type KakaoLoginResponse } from "@/features/auth/api";
+import {
+  clearAuthTokens,
+  loginWithEmail,
+  loginWithKakaoCode as requestKakaoLogin,
+  saveAuthTokens,
+  signupWithEmail,
+  updateMyRole,
+  type AuthApiUser,
+  type AuthRole,
+  type KakaoLoginResponse,
+  type SelectableAuthRole,
+} from "@/features/auth/api";
 import { digitsOnly } from "@/utils/validation";
 import type { BtiTasteAxisValues } from "@/features/bti/data";
 
@@ -33,6 +44,7 @@ interface AuthContextType {
   signup: (data: SignupData) => Promise<void>;
   verifyBrewery: (data: BreweryVerificationData) => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
+  updateUserRole: (role: SelectableAuthRole) => Promise<User>;
 }
 
 export type KakaoLoginResult =
@@ -271,8 +283,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateUserRole = async (role: SelectableAuthRole) => {
+    const response = await updateMyRole(role);
+    const nextUser = mapAuthApiUser(response.user, role === "BREWERY_PENDING" ? "brewery" : "user");
+    setUser(nextUser);
+    try {
+      await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
+    } catch (e) {
+      console.error("Failed to update user role in SafeStorage", e);
+    }
+    return nextUser;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isAuthReady, login, loginWithKakaoCode, logout, signup, verifyBrewery, updateUser }}>
+    <AuthContext.Provider value={{ user, isAuthReady, login, loginWithKakaoCode, logout, signup, verifyBrewery, updateUser, updateUserRole }}>
       {children}
     </AuthContext.Provider>
   );

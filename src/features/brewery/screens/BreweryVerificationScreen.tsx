@@ -29,7 +29,7 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
-import { confirmPhoneVerification, requestPhoneVerification } from '@/features/auth/api';
+import { confirmPhoneVerification, requestPhoneVerification, submitBreweryApplication } from '@/features/auth/api';
 import DaumAddressSearchModal, { type DaumAddressResult } from '@/features/funding/components/DaumAddressSearchModal';
 import { formatBusinessNumber, formatPhoneNumber, isValidBusinessNumber, isValidPhone } from '@/utils/validation';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
@@ -49,7 +49,7 @@ type BusinessLicenseFile = {
 export default function BreweryVerificationScreen() {
   const insets = useSafeAreaInsets();
   const { from } = useLocalSearchParams<{ from?: string }>();
-  const { user, verifyBrewery } = useAuth();
+  const { user, updateUser, verifyBrewery } = useAuth();
   const isEditMode = user?.isBreweryVerified || false;
   const shouldReturnToUserType = from === 'auth';
   
@@ -65,6 +65,7 @@ export default function BreweryVerificationScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isVerificationSent, setIsVerificationSent] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
+  const [phoneVerificationToken, setPhoneVerificationToken] = useState('');
   const [verificationGuide, setVerificationGuide] = useState('');
   const [isVerificationChecking, setIsVerificationChecking] = useState(false);
   const [isPhoneVerified, setIsPhoneVerified] = useState(isEditMode);
@@ -145,6 +146,7 @@ export default function BreweryVerificationScreen() {
         return;
       }
       Alert.alert('알림', '인증이 완료되었습니다.');
+      setPhoneVerificationToken(result.phoneVerificationToken);
       setIsPhoneVerified(true);
     } catch (error) {
       Alert.alert('오류', error instanceof Error ? error.message : '인증 확인에 실패했습니다.');
@@ -172,23 +174,65 @@ export default function BreweryVerificationScreen() {
       return;
     }
 
+    if (!isEditMode && !phoneVerificationToken) {
+      Alert.alert('알림', '연락처 인증 정보를 확인하지 못했습니다. 인증 확인을 다시 진행해주세요.');
+      return;
+    }
+
+    const selectedBusinessLicense = businessLicense;
     setIsLoading(true);
 
     try {
-      await verifyBrewery({
-        businessNumber: formData.businessNumber,
-        businessLicense,
-        breweryName: formData.breweryName,
-        breweryLocation: formData.breweryLocation,
-        breweryLocationDetail: formData.breweryLocationDetail,
-        phone: formData.phone,
-      });
+      if (isEditMode) {
+        await verifyBrewery({
+          businessNumber: formData.businessNumber,
+          businessLicense,
+          breweryName: formData.breweryName,
+          breweryLocation: formData.breweryLocation,
+          breweryLocationDetail: formData.breweryLocationDetail,
+          phone: formData.phone,
+        });
+      } else {
+        if (!selectedBusinessLicense) {
+          Alert.alert('알림', '사업자등록증을 업로드해주세요.');
+          return;
+        }
 
-      Alert.alert('알림', isEditMode ? "양조장 정보가 수정되었습니다!" : "양조장 인증이 완료되었습니다!", [
+        await submitBreweryApplication({
+          businessNumber: formData.businessNumber,
+          breweryName: formData.breweryName.trim(),
+          businessAddress: formData.breweryLocation.trim(),
+          businessAddressDetail: formData.breweryLocationDetail.trim(),
+          phoneNumber: formData.phone,
+          phoneVerificationToken,
+          businessLicense: {
+            uri: selectedBusinessLicense.uri,
+            name: selectedBusinessLicense.name,
+            mimeType: selectedBusinessLicense.mimeType,
+          },
+        });
+
+        await updateUser({
+          type: 'brewery',
+          isBreweryVerified: false,
+          businessNumber: formData.businessNumber,
+          breweryName: formData.breweryName.trim(),
+          breweryLocation: formData.breweryLocation.trim(),
+          breweryLocationDetail: formData.breweryLocationDetail.trim(),
+          phone: formData.phone,
+        });
+      }
+
+      Alert.alert('알림', isEditMode ? "양조장 정보가 수정되었습니다!" : "양조장 인증 신청이 접수되었습니다!", [
         { text: '확인', onPress: () => router.replace('/(tabs)' as any) }
       ]);
-    } catch {
-      Alert.alert('오류', isEditMode ? "정보 수정에 실패했습니다." : "인증에 실패했습니다. 다시 시도해주세요.");
+    } catch (error) {
+      Alert.alert(
+        '오류',
+        error instanceof Error
+          ? error.message
+          : (isEditMode ? "정보 수정에 실패했습니다." : "인증 신청에 실패했습니다. 다시 시도해주세요.")
+      );
     } finally {
       setIsLoading(false);
     }
@@ -428,6 +472,7 @@ export default function BreweryVerificationScreen() {
                         setIsPhoneVerified(false);
                         setIsVerificationSent(false);
                         setVerificationCode('');
+                        setPhoneVerificationToken('');
                         setVerificationGuide('');
                       }}
                       keyboardType="phone-pad"

@@ -30,8 +30,9 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function UserTypeSelectionScreen() {
   const insets = useSafeAreaInsets();
-  const { user, updateUser } = useAuth();
+  const { user, updateUserRole } = useAuth();
   const [selectedType, setSelectedType] = useState<'user' | 'brewery' | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleBack = useCallback(() => {
     router.replace('/login' as any);
@@ -49,16 +50,35 @@ export default function UserTypeSelectionScreen() {
   );
 
   const handleUserSelection = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     try {
-      await updateUser({ type: 'user' });
+      await updateUserRole('USER');
       router.replace('/(tabs)');
-    } catch {
-      Alert.alert('알림', '사용자 유형을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+    } catch (error) {
+      Alert.alert(
+        '알림',
+        error instanceof Error ? error.message : '사용자 유형을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleBrewerySelection = () => {
-    router.push('/brewery/verification?from=auth' as any);
+  const handleBrewerySelection = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await updateUserRole('BREWERY_PENDING');
+      router.push('/brewery/verification?from=auth' as any);
+    } catch (error) {
+      Alert.alert(
+        '알림',
+        error instanceof Error ? error.message : '사용자 유형을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!user) {
@@ -173,12 +193,13 @@ export default function UserTypeSelectionScreen() {
            {selectedType === 'user' && (
              <Animated.View entering={FadeIn.duration(200)} style={styles.fullWidth}>
                 <TouchableOpacity 
-                  style={styles.confirmBtn} 
+                  style={[styles.confirmBtn, isSubmitting && styles.confirmBtnDisabled]} 
                   onPress={handleUserSelection}
                   activeOpacity={0.8}
+                  disabled={isSubmitting}
                 >
                   <View style={styles.navyBtn}>
-                    <Text style={styles.confirmBtnTxt}>일반 사용자로 시작</Text>
+                    <Text style={styles.confirmBtnTxt}>{isSubmitting ? '저장 중...' : '일반 사용자로 시작'}</Text>
                   </View>
                 </TouchableOpacity>
                 <Text style={styles.disclaimer}>마이페이지에서 양조장 인증 시 양조장 계정으로 전환가능합니다.</Text>
@@ -188,12 +209,13 @@ export default function UserTypeSelectionScreen() {
            {selectedType === 'brewery' && (
              <Animated.View entering={FadeIn.duration(200)} style={styles.fullWidth}>
                 <TouchableOpacity 
-                  style={styles.confirmBtn} 
+                  style={[styles.confirmBtn, isSubmitting && styles.confirmBtnDisabled]} 
                   onPress={handleBrewerySelection}
                   activeOpacity={0.8}
+                  disabled={isSubmitting}
                 >
                   <View style={styles.navyBtn}>
-                    <Text style={styles.confirmBtnTxt}>양조장으로 시작</Text>
+                    <Text style={styles.confirmBtnTxt}>{isSubmitting ? '저장 중...' : '양조장으로 시작'}</Text>
                   </View>
                 </TouchableOpacity>
                 <Text style={styles.disclaimer}>양조장 인증을 완료해야 펀딩 프로젝트 등록이 가능합니다.</Text>
@@ -227,6 +249,7 @@ const styles = StyleSheet.create({
   btnArea: { paddingHorizontal: 20, marginTop: 32, alignItems: 'center', minHeight: 100 },
   fullWidth: { width: '100%', alignItems: 'center' },
   confirmBtn: { width: '100%', height: 56, borderRadius: 14, overflow: 'hidden', elevation: 5, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, marginBottom: 16 },
+  confirmBtnDisabled: { opacity: 0.7 },
   navyBtn: { flex: 1, backgroundColor: '#1E293B', justifyContent: 'center', alignItems: 'center' },
   confirmBtnTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   disclaimer: { fontSize: 11, color: '#9CA3AF', fontWeight: '500', textAlign: 'center', paddingHorizontal: 20 },

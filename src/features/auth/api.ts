@@ -26,6 +26,12 @@ export type AuthSession = {
   user: AuthApiUser;
 };
 
+export type SelectableAuthRole = 'USER' | 'BREWERY_PENDING';
+
+export type AuthRoleUpdateResponse = {
+  user: AuthApiUser;
+};
+
 export type KakaoLoginResponse = Partial<AuthSession> & {
   isNewUser?: boolean;
   signupRequired?: boolean;
@@ -74,6 +80,30 @@ export type KakaoLoginUrlResponse = {
   authUrl?: string;
 };
 
+export type BreweryApplicationFile = {
+  uri: string;
+  name: string;
+  mimeType?: string;
+};
+
+export type BreweryApplicationPayload = {
+  businessNumber: string;
+  breweryName: string;
+  businessAddress: string;
+  businessAddressDetail?: string;
+  phoneNumber: string;
+  phoneVerificationToken: string;
+  businessLicense: BreweryApplicationFile;
+};
+
+export type BreweryApplicationResponse = {
+  applicationId?: number;
+  status?: string;
+  documentUrl?: string;
+  user?: AuthApiUser;
+  message?: string;
+};
+
 function parseAuthResponseBody(path: string, response: Response, text: string) {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -114,6 +144,26 @@ async function requestAuthJson<T>(path: string, options: RequestInit = {}) {
   return data as T;
 }
 
+async function requestAuthForm<T>(path: string, formData: FormData, options: RequestInit = {}) {
+  const response = await fetch(`${JUDAM_AUTH_API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(options.headers as Record<string, string> | undefined),
+    },
+    body: formData,
+  });
+
+  const text = await response.text();
+  const data = parseAuthResponseBody(path, response, text);
+
+  if (!response.ok) {
+    const message = (data as AuthApiEnvelope<unknown> | null)?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
 export async function saveAuthTokens(accessToken?: string, refreshToken?: string) {
   if (accessToken) {
     await SafeStorage.setItem('judam_access_token', accessToken);
@@ -137,12 +187,37 @@ export async function clearAuthTokens() {
   ]);
 }
 
+export async function getAuthAccessToken() {
+  const tokenKeys = ['judam_access_token', 'accessToken', 'access_token', 'token'];
+  for (const key of tokenKeys) {
+    const token = await SafeStorage.getItem(key);
+    if (token) return token;
+  }
+  return null;
+}
+
 export async function loginWithEmail(email: string, password: string) {
   const response = await requestAuthJson<AuthApiEnvelope<AuthSession>>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
   return unwrapAuthData<AuthSession>(response);
+}
+
+export async function updateMyRole(role: SelectableAuthRole) {
+  const accessToken = await getAuthAccessToken();
+  if (!accessToken) {
+    throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+  }
+
+  const response = await requestAuthJson<AuthApiEnvelope<AuthRoleUpdateResponse>>('/api/auth/me/role', {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ role }),
+  });
+  return unwrapAuthData<AuthRoleUpdateResponse>(response);
 }
 
 export async function signupWithEmail(payload: {
@@ -234,4 +309,50 @@ export async function loginWithKakaoCode(code: string) {
     body: JSON.stringify({ code }),
   });
   return unwrapAuthData<KakaoLoginResponse>(response);
+}
+
+function createAuthFormFile(file: BreweryApplicationFile) {
+  return {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType || 'application/octet-stream',
+  } as unknown as Blob;
+}
+
+export async function submitBreweryApplication(payload: BreweryApplicationPayload) {
+  const accessToken = await getAuthAccessToken();
+  if (!accessToken) {
+    throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+  }
+
+  const formData = new FormData();
+  formData.append('businessNumber', payload.businessNumber);
+  formData.append('breweryName', payload.breweryName);
+  formData.append('businessAddress', payload.businessAddress);
+  formData.append('businessAddressDetail', payload.businessAddressDetail || '');
+  formData.append('phoneNumber', payload.phoneNumber);
+  formData.append('phoneVerificationToken', payload.phoneVerificationToken);
+  formData.append('businessLicense', createAuthFormFile(payload.businessLicense));
+
+  const response = await requestAuthForm<AuthApiEnvelope<BreweryApplicationResponse>>('/api/breweries/applications', formData, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  return unwrapAuthData<BreweryApplicationResponse>(response);
+}
+
+export async function getMyBreweryApplication() {
+  const accessToken = await getAuthAccessToken();
+  if (!accessToken) {
+    throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+  }
+
+  const response = await requestAuthJson<AuthApiEnvelope<BreweryApplicationResponse>>('/api/breweries/applications/me', {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  return unwrapAuthData<BreweryApplicationResponse>(response);
 }

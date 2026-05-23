@@ -13,6 +13,7 @@ import {
   StatusBar as RNStatusBar,
   ScrollView,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { router } from 'expo-router';
 import { 
   Mail, 
@@ -35,6 +36,7 @@ import Animated, {
 import { StatusBar } from 'expo-status-bar';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { getKakaoLoginUrl } from '@/features/auth/api';
 import { isValidEmail } from '@/utils/validation';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -52,7 +54,7 @@ const SPRING_CONFIG = {
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const { login, logout } = useAuth();
+  const { login, loginWithKakaoCode, logout } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -130,6 +132,48 @@ export default function LoginScreen() {
       console.warn('Failed to clear auth before guest start.', error);
     }
     router.replace('/(tabs)');
+  };
+
+  const handleKakaoLogin = async () => {
+    setIsLoading(true);
+    try {
+      const kakao = await getKakaoLoginUrl();
+      const kakaoUrl = kakao.url || kakao.loginUrl || kakao.authUrl;
+      if (!kakaoUrl) {
+        setNotice('카카오 로그인 URL을 받지 못했습니다.');
+        return;
+      }
+      const redirectUri = new URL(kakaoUrl).searchParams.get('redirect_uri') || undefined;
+      const result = await WebBrowser.openAuthSessionAsync(kakaoUrl, redirectUri);
+      if (result.type !== 'success' || !result.url) {
+        setNotice('카카오 로그인 창을 열었습니다. 로그인이 완료되지 않았다면 다시 시도해주세요.');
+        return;
+      }
+      const code = new URL(result.url).searchParams.get('code');
+      if (!code) {
+        setNotice('카카오 인가 코드를 받지 못했습니다. 백엔드 콜백 URL 확인이 필요합니다.');
+        return;
+      }
+      const kakaoResult = await loginWithKakaoCode(code, keepLoggedIn);
+      RNStatusBar.setHidden(false, 'fade');
+      if (kakaoResult.status === 'signupRequired') {
+        router.replace({
+          pathname: '/signup',
+          params: {
+            kakaoEmail: kakaoResult.email,
+            kakaoNickname: kakaoResult.nickname,
+            kakaoProfileImage: kakaoResult.profileImage || undefined,
+            kakaoId: kakaoResult.kakaoId ? String(kakaoResult.kakaoId) : undefined,
+          },
+        } as any);
+        return;
+      }
+      router.replace('/(tabs)');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '카카오 로그인에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -251,7 +295,7 @@ export default function LoginScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
-              <TouchableOpacity activeOpacity={0.8} onPress={() => setNotice("카카오 로그인은 준비 중입니다.")} style={styles.kakaoBtn}>
+              <TouchableOpacity activeOpacity={0.8} onPress={handleKakaoLogin} style={styles.kakaoBtn} disabled={isLoading}>
                 <MessageCircle size={20} color="#1a1a1a" fill="#1a1a1a" />
                 <Text style={styles.kakaoTxt}>카카오로 로그인</Text>
               </TouchableOpacity>

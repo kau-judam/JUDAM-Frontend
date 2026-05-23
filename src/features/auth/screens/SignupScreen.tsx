@@ -1,6 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
 import {
   CheckCircle2,
   ChevronLeft,
@@ -15,7 +16,7 @@ import {
   User as UserIcon,
   X,
 } from 'lucide-react-native';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -44,6 +45,7 @@ import {
   checkEmailAvailability,
   checkNicknameAvailability,
   confirmPhoneVerification,
+  getKakaoLoginUrl,
   requestPhoneVerification,
 } from '@/features/auth/api';
 import {
@@ -132,9 +134,19 @@ const TERMS_CONTENT = {
 
 type TermsModalType = 'service' | 'privacy' | null;
 
+function getFirstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 export default function SignupScreen() {
   const insets = useSafeAreaInsets();
-  const { signup } = useAuth();
+  const { loginWithKakaoCode, signup } = useAuth();
+  const params = useLocalSearchParams<{
+    kakaoEmail?: string;
+    kakaoNickname?: string;
+    kakaoProfileImage?: string;
+    kakaoId?: string;
+  }>();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -150,6 +162,8 @@ export default function SignupScreen() {
   const [isPassVerifying, setIsPassVerifying] = useState(false);
   const [isPhoneVerificationSent, setIsPhoneVerificationSent] = useState(false);
   const [phoneVerificationCode, setPhoneVerificationCode] = useState('');
+  const [phoneVerificationCheckCount, setPhoneVerificationCheckCount] = useState(0);
+  const [isPhoneVerificationChecking, setIsPhoneVerificationChecking] = useState(false);
   const [phoneVerificationGuide, setPhoneVerificationGuide] = useState('');
   const [phoneVerificationToken, setPhoneVerificationToken] = useState<string | undefined>();
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
@@ -173,11 +187,24 @@ export default function SignupScreen() {
   const passwordStrength = useMemo(() => getPasswordStrength(formData.password), [formData.password]);
   const passwordMatches = formData.confirmPassword.length > 0 && formData.password === formData.confirmPassword;
   const passwordMismatch = formData.confirmPassword.length > 0 && formData.password !== formData.confirmPassword;
+  const isKakaoSignup = Boolean(getFirstParam(params.kakaoEmail));
 
   useEffect(() => {
     RNStatusBar.setHidden(true, 'none');
     translateY.value = withSpring(SCREEN_HEIGHT - MIN_HEIGHT, SPRING_CONFIG);
   }, [MIN_HEIGHT, translateY]);
+
+  useEffect(() => {
+    const kakaoEmail = getFirstParam(params.kakaoEmail);
+    if (!kakaoEmail) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      email: kakaoEmail,
+    }));
+    setIsEmailChecked(true);
+    setIsEmailAvailable(true);
+  }, [params.kakaoEmail]);
 
   const panGesture = Gesture.Pan()
     .onStart(() => {
@@ -208,6 +235,7 @@ export default function SignupScreen() {
   const showNotice = (message: string) => setNotice(message);
 
   const handleInputChange = (name: string, value: string) => {
+    if (name === 'email' && isKakaoSignup) return;
     const nextValue = name === 'phone' ? formatPhoneNumber(value) : value;
     setFormData((prev) => ({ ...prev, [name]: nextValue }));
     if (name === 'email') {
@@ -222,6 +250,7 @@ export default function SignupScreen() {
       setIsPhoneVerified(false);
       setIsPhoneVerificationSent(false);
       setPhoneVerificationCode('');
+      setPhoneVerificationCheckCount(0);
       setPhoneVerificationGuide('');
       setPhoneVerificationToken(undefined);
     }
@@ -290,7 +319,9 @@ export default function SignupScreen() {
     try {
       const result = await requestPhoneVerification(digitsOnly(formData.phone));
       setIsPhoneVerificationSent(true);
-      setPhoneVerificationGuide(result.guideMessage || `${result.verificationCode || '인증 코드'}를 ${result.sendTo || '1666-3538'}로 문자 전송 후 인증 확인을 눌러주세요.`);
+      setPhoneVerificationCode(result.verificationCode || '');
+      setPhoneVerificationCheckCount(0);
+      setPhoneVerificationGuide(result.guideMessage || `${result.verificationCode || '인증 코드'}을 ${result.sendTo || '1666-3538'}로 문자 전송해주세요.`);
       showNotice(result.guideMessage || '인증 요청이 생성되었습니다.');
     } catch (error) {
       showNotice(error instanceof Error ? error.message : '본인인증 요청에 실패했습니다.');
@@ -299,27 +330,37 @@ export default function SignupScreen() {
     }
   };
 
-  const handleConfirmPhoneVerification = async () => {
-    if (!phoneVerificationCode.trim()) {
-      showNotice('인증 코드를 입력해주세요.');
+  const handleConfirmPhoneVerification = useCallback(async (silent = false) => {
+    if (!phoneVerificationCode) {
+      if (!silent) showNotice('인증 요청을 먼저 진행해주세요.');
       return;
     }
-    setIsPassVerifying(true);
+    setIsPhoneVerificationChecking(true);
     try {
-      const result = await confirmPhoneVerification(digitsOnly(formData.phone), phoneVerificationCode.trim());
+      const result = await confirmPhoneVerification(digitsOnly(formData.phone), phoneVerificationCode);
       if (!result.phoneVerificationToken) {
-        showNotice('전화번호 인증 토큰을 받지 못했습니다. 백엔드 인증 설정을 확인해주세요.');
+        if (!silent) showNotice('전화번호 인증 토큰을 받지 못했습니다. 백엔드 인증 설정을 확인해주세요.');
         return;
       }
       setPhoneVerificationToken(result.phoneVerificationToken);
       setIsPhoneVerified(true);
       showNotice('본인인증이 완료되었습니다.');
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : '본인인증 확인에 실패했습니다.');
+      if (!silent) showNotice(error instanceof Error ? error.message : '본인인증 확인에 실패했습니다.');
     } finally {
-      setIsPassVerifying(false);
+      setIsPhoneVerificationChecking(false);
     }
-  };
+  }, [formData.phone, phoneVerificationCode]);
+
+  useEffect(() => {
+    if (!isPhoneVerificationSent || isPhoneVerified || !phoneVerificationCode || phoneVerificationCheckCount >= 3) return;
+    const timer = setTimeout(() => {
+      setPhoneVerificationCheckCount((prev) => prev + 1);
+      void handleConfirmPhoneVerification(true);
+    }, 10000);
+
+    return () => clearTimeout(timer);
+  }, [handleConfirmPhoneVerification, isPhoneVerificationSent, isPhoneVerified, phoneVerificationCode, phoneVerificationCheckCount]);
 
   const handleSignup = async () => {
     if (!isNameChecked || !isNameAvailable) {
@@ -364,6 +405,51 @@ export default function SignupScreen() {
     } catch {
       setIsLoading(false);
       showNotice('회원가입에 실패했습니다.');
+    }
+  };
+
+  const handleKakaoSignup = async () => {
+    setIsLoading(true);
+    try {
+      const kakao = await getKakaoLoginUrl();
+      const kakaoUrl = kakao.url || kakao.loginUrl || kakao.authUrl;
+      if (!kakaoUrl) {
+        showNotice('카카오 로그인 URL을 받지 못했습니다.');
+        return;
+      }
+      const redirectUri = new URL(kakaoUrl).searchParams.get('redirect_uri') || undefined;
+      const result = await WebBrowser.openAuthSessionAsync(kakaoUrl, redirectUri);
+      if (result.type !== 'success' || !result.url) {
+        showNotice('카카오 로그인 창을 열었습니다. 로그인이 완료되지 않았다면 다시 시도해주세요.');
+        return;
+      }
+      const code = new URL(result.url).searchParams.get('code');
+      if (!code) {
+        showNotice('카카오 인가 코드를 받지 못했습니다. 백엔드 콜백 URL 확인이 필요합니다.');
+        return;
+      }
+      const kakaoResult = await loginWithKakaoCode(code, false);
+      RNStatusBar.setHidden(false, 'fade');
+      if (kakaoResult.status === 'signupRequired') {
+        setFormData((prev) => ({
+          ...prev,
+          email: kakaoResult.email || prev.email,
+          name: '',
+        }));
+        if (kakaoResult.email) {
+          setIsEmailChecked(true);
+          setIsEmailAvailable(true);
+        }
+        setIsNameChecked(false);
+        setIsNameAvailable(false);
+        showNotice('카카오 이메일을 불러왔어요. 남은 정보를 입력하고 회원가입을 완료해주세요.');
+        return;
+      }
+      router.replace('/(tabs)');
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : '카카오 회원가입에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -415,8 +501,9 @@ export default function SignupScreen() {
             >
               <TouchableOpacity
                 activeOpacity={0.8}
-                onPress={() => showNotice('카카오 회원가입은 준비 중입니다.')}
+                onPress={handleKakaoSignup}
                 style={styles.kakaoBtn}
+                disabled={isLoading}
               >
                 <MessageCircle size={20} color="#1a1a1a" fill="#1a1a1a" />
                 <Text style={styles.kakaoTxt}>카카오로 빠르게 가입</Text>
@@ -487,19 +574,22 @@ export default function SignupScreen() {
                         keyboardType="email-address"
                         autoCapitalize="none"
                         autoCorrect={false}
-                        editable={!(isEmailChecked && isEmailAvailable)}
+                        editable={!isKakaoSignup && !(isEmailChecked && isEmailAvailable)}
                       />
                     </View>
-                    <TouchableOpacity
-                      style={[styles.smallBtn, isEmailChecked && isEmailAvailable ? styles.smallBtnDone : null]}
-                      onPress={handleCheckEmail}
-                      disabled={isEmailChecked && isEmailAvailable}
-                    >
-                      <Text style={styles.smallBtnTxt}>
-                        {isEmailChecked && isEmailAvailable ? '확인완료' : '중복확인'}
-                      </Text>
-                    </TouchableOpacity>
+                    {!isKakaoSignup && (
+                      <TouchableOpacity
+                        style={[styles.smallBtn, isEmailChecked && isEmailAvailable ? styles.smallBtnDone : null]}
+                        onPress={handleCheckEmail}
+                        disabled={isEmailChecked && isEmailAvailable}
+                      >
+                        <Text style={styles.smallBtnTxt}>
+                          {isEmailChecked && isEmailAvailable ? '확인완료' : '중복확인'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
+                  {isKakaoSignup && <Text style={styles.helperText}>카카오 계정 이메일은 변경할 수 없어요.</Text>}
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -599,30 +689,25 @@ export default function SignupScreen() {
                   </View>
                   {isPhoneVerificationSent && !isPhoneVerified && (
                     <>
+                      <View style={styles.phoneVerificationGuideBox}>
+                        <Text style={styles.phoneVerificationGuideText}>
+                          {phoneVerificationGuide}
+                        </Text>
+                        <Text style={styles.phoneVerificationSubText}>
+                          문자를 보낸 뒤 10~30초 정도 기다리면 자동으로 확인해요.
+                        </Text>
+                      </View>
                       <View style={styles.row}>
-                        <View style={[styles.inputBox, { flex: 1 }]}>
-                          <ShieldCheck size={18} color="#9CA3AF" style={styles.inputIcon} />
-                          <TextInput
-                            style={styles.input}
-                            placeholder="인증 코드"
-                            placeholderTextColor="#9CA3AF"
-                            value={phoneVerificationCode}
-                            onChangeText={setPhoneVerificationCode}
-                            autoCapitalize="characters"
-                            autoCorrect={false}
-                          />
-                        </View>
                         <TouchableOpacity
-                          style={styles.smallBtn}
-                          onPress={handleConfirmPhoneVerification}
-                          disabled={isPassVerifying}
+                          style={[styles.verifyStatusButton, isPhoneVerificationChecking ? styles.verifyStatusButtonDisabled : null]}
+                          onPress={() => handleConfirmPhoneVerification(false)}
+                          disabled={isPhoneVerificationChecking}
                         >
-                          <Text style={styles.smallBtnTxt}>확인</Text>
+                          <Text style={styles.verifyStatusButtonText}>
+                            {isPhoneVerificationChecking ? '확인 중...' : '인증 상태 확인'}
+                          </Text>
                         </TouchableOpacity>
                       </View>
-                      {Boolean(phoneVerificationGuide) && (
-                        <Text style={styles.helperText}>{phoneVerificationGuide}</Text>
-                      )}
                     </>
                   )}
                 </View>
@@ -801,6 +886,12 @@ const styles = StyleSheet.create({
   smallBtnDone: { backgroundColor: '#059669' },
   smallBtnTxt: { color: '#FFF', fontSize: 12.5, fontWeight: '700' },
   helperText: { color: '#9CA3AF', fontSize: 11.2, marginLeft: 4 },
+  phoneVerificationGuideBox: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 12, gap: 4 },
+  phoneVerificationGuideText: { color: '#111827', fontSize: 12.5, fontWeight: '800', lineHeight: 18 },
+  phoneVerificationSubText: { color: '#6B7280', fontSize: 11.5, fontWeight: '700', lineHeight: 17 },
+  verifyStatusButton: { flex: 1, height: 44, backgroundColor: '#111827', borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  verifyStatusButtonDisabled: { opacity: 0.6 },
+  verifyStatusButtonText: { color: '#FFF', fontSize: 12.5, fontWeight: '800' },
   strengthArea: { gap: 5, marginTop: 2 },
   strengthBars: { flexDirection: 'row', gap: 5 },
   strengthBar: { flex: 1, height: 4, borderRadius: 99, backgroundColor: '#E5E7EB' },

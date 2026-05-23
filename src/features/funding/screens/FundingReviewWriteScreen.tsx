@@ -272,10 +272,20 @@ export default function FundingReviewWriteScreen() {
           ? await updateFundingReviewApi(projectId, editableReview.id, {
               rating,
               content: reviewText.trim(),
+              detailReview: reviewText.trim(),
+              mood: mood.trim() || undefined,
+              pairing: pairing.trim() || undefined,
+              tags: allTags,
+              recordVisibility: true,
             })
           : await createFundingReview(projectId, {
               rating,
               content: reviewText.trim(),
+              detailReview: reviewText.trim(),
+              mood: mood.trim() || undefined,
+              pairing: pairing.trim() || undefined,
+              tags: allTags,
+              recordVisibility: true,
               images: imageFiles,
             });
       const responseImageUrls = normalizeFundingImageUrls(response?.imageUrls);

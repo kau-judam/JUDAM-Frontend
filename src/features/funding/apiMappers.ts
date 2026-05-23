@@ -150,6 +150,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     formatAlcoholSpec(detail.alcoholPercentage) ||
     getAlcoholFromDescription(supportOption?.description);
   const thumbnailUrl = normalizeFundingImageUrl(detail.thumbnailUrl);
+  const detailImages = normalizeFundingImageUrls(detail.allImageUrls?.length ? detail.allImageUrls : detail.imageUrls);
   const sameProject =
     detail.fundingId === existing.id ||
     isSameFundingText(existing.title, detail.title) ||
@@ -169,6 +170,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     estimatedDelivery: sameProject ? formatDate(detail.expectedDeliveryDate) || existing.estimatedDelivery : existing.estimatedDelivery,
     projectSummary: sameProject ? detail.summary || detail.description || existing.projectSummary : existing.projectSummary,
     image: sameProject ? thumbnailUrl || existing.image || '' : existing.image,
+    images: sameProject ? (detailImages.length ? detailImages : existing.images) : existing.images,
     pricePerBottle: sameProject ? supportOption?.price ?? existing.pricePerBottle : existing.pricePerBottle,
     rewardItems: sameProject && supportOption ? [supportOption.name] : existing.rewardItems,
     bottleSize: sameProject ? bottleSize || existing.bottleSize : existing.bottleSize,
@@ -186,6 +188,14 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
         }
       : existing.tasteProfile,
     tags: sameProject && detail.tasteProfile?.flavorNotes?.length ? detail.tasteProfile.flavorNotes : existing.tags,
+    introduction: sameProject ? detail.plan?.introduction || existing.introduction : existing.introduction,
+    story: sameProject ? detail.plan?.introduction || existing.story : existing.story,
+    videoUrl: sameProject ? detail.plan?.videoUrl || existing.videoUrl : existing.videoUrl,
+    projectPolicy: sameProject ? detail.notices?.refundPolicy || existing.projectPolicy : existing.projectPolicy,
+    expectedDifficulties: sameProject ? detail.notices?.riskNotice || existing.expectedDifficulties : existing.expectedDifficulties,
+    ingredients: sameProject && detail.legalInfo?.rawMaterials?.length
+      ? detail.legalInfo.rawMaterials.map((item, index) => ({ id: index + 1, ingredient: item.name, origin: item.origin }))
+      : existing.ingredients,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -207,7 +217,9 @@ export function mergeFundingIntro(existing: FundingProject, intro: FundingIntroR
 function mapBreweryStage(step?: string): BrewingStage {
   if (!step) return 1;
   if (step === 'INGREDIENT') return 1;
+  if (step === 'PROCESSING') return 2;
   if (step === 'FERMENTATION') return 3;
+  if (step === 'FILTERING') return 4;
   if (step === 'AGING') return 4;
   if (step === 'BOTTLING') return 5;
   if (step === 'SHIPPING') return 5;

@@ -36,9 +36,9 @@ function todayText() {
 
 const BREWING_STAGE_TO_API_STAGE: Record<BrewingStage, FundingBreweryLogStage> = {
   1: 'INGREDIENT',
-  2: 'INGREDIENT',
+  2: 'PROCESSING',
   3: 'FERMENTATION',
-  4: 'AGING',
+  4: 'FILTERING',
   5: 'BOTTLING',
 };
 

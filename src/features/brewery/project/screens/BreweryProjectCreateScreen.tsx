@@ -59,8 +59,10 @@ import {
   saveFundingTasteProfile,
   submitFundingDraft,
   uploadFundingDocument,
+  uploadFundingDraftFile,
   type FundingDocumentType,
   type FundingDraftPreviewResponse,
+  loadFundingBreweryInfo,
   updateFundingDraft,
   updateFundingProjectApi,
 } from '@/features/funding/api';
@@ -471,6 +473,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
     : [{ name: basicInfo.mainIngredient || '', origin: '' }];
   const subIngredients = basicInfo.subIngredients || [];
   const thumbnailUrl = basicInfo.thumbnailUrl || '';
+  const imageUrls = basicInfo.imageUrls?.length ? basicInfo.imageUrls : (thumbnailUrl ? [thumbnailUrl] : []);
   const alcoholContent = String(legalInfo.alcoholPercentage || basicInfo.alcoholPercentage || '');
   const breweryName = breweryInfo.breweryName || user?.breweryName || '';
 
@@ -484,8 +487,8 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       subIngredient: subIngredients[0] || '',
       alcoholContent,
       summary: basicInfo.summary || '',
-      images: thumbnailUrl ? [thumbnailUrl] : [],
-      tags: normalizeProjectTags(tasteProfile.flavorNotes),
+      images: imageUrls.slice(0, 5),
+      tags: normalizeProjectTags(basicInfo.tags?.length ? basicInfo.tags : tasteProfile.flavorNotes),
     },
     fundingInfo: {
       pricePerBottle: schedule.pricePerBottle ? String(schedule.pricePerBottle) : '',
@@ -514,7 +517,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
     },
     projectPlan: {
       introduction: plan.introduction || '',
-      videoUrl: '',
+      videoUrl: plan.videoUrl || '',
       budget: formatBudgetPlanForDraft(plan.budgetPlan),
       schedule: formatSchedulePlanForDraft(plan.schedulePlan),
     },
@@ -558,9 +561,11 @@ export default function BreweryProjectCreateScreen() {
   const { user } = useAuth();
   const { projects, addProject, updateProject, mergeProjects } = useFunding();
   const editProjectIdParam = getParamValue(params.projectId) || getParamValue(params.editId);
+  const initialDraftIdParam = getParamValue(params.draftId);
   const sourceRecipeIdParam = getParamValue(params.recipeId);
   const sourceRecipeId = sourceRecipeIdParam ? Number(sourceRecipeIdParam) : null;
   const editProjectId = editProjectIdParam ? Number(editProjectIdParam) : null;
+  const initialDraftId = initialDraftIdParam ? Number(initialDraftIdParam) : null;
   const editProject = useMemo(
     () => (editProjectId ? projects.find((project) => project.id === editProjectId) || null : null),
     [editProjectId, projects]
@@ -915,6 +920,8 @@ export default function BreweryProjectCreateScreen() {
       summary: basicInfo.summary.trim() || undefined,
       alcoholPercentage: Number.isFinite(alcoholPercentage) && basicInfo.alcoholContent.trim() ? alcoholPercentage : undefined,
       thumbnailUrl: basicInfo.images[0] || undefined,
+      imageUrls: basicInfo.images,
+      tags: getReadyTags(),
     };
   };
 
@@ -973,6 +980,12 @@ export default function BreweryProjectCreateScreen() {
       bankName,
       accountNumber,
       accountHolder,
+      businessType: taxInfo.businessType,
+      businessName: taxInfo.businessName.trim(),
+      businessCategory: taxInfo.businessCategory.trim(),
+      businessItem: taxInfo.businessItem.trim(),
+      phoneVerified,
+      accountVerified,
     };
   };
 
@@ -999,7 +1012,7 @@ export default function BreweryProjectCreateScreen() {
 
   const ensureServerDraft = async () => {
     const savedDraft = await getSavedDraft();
-    const draftId = getDraftId(savedDraft);
+    const draftId = getDraftId(savedDraft) || (initialDraftId && Number.isFinite(initialDraftId) && initialDraftId > 0 ? initialDraftId : null);
     const serverDraft = await syncServerDraft(draftId);
     const draft = {
       ...createDraftPayload(),
@@ -1025,6 +1038,8 @@ export default function BreweryProjectCreateScreen() {
       alcoholPercentage: Number(basicInfo.alcoholContent),
       summary: basicInfo.summary.trim(),
       thumbnailUrl: basicInfo.images[0],
+      imageUrls: basicInfo.images,
+      tags: getReadyTags(),
     });
     await saveFundingSchedule(draftId, {
       pricePerBottle: Number(fundingInfo.pricePerBottle),
@@ -1054,6 +1069,7 @@ export default function BreweryProjectCreateScreen() {
     });
     await saveFundingPlan(draftId, {
       introduction: projectPlan.introduction.trim(),
+      videoUrl: projectPlan.videoUrl.trim() || undefined,
       budgetPlan: getBudgetPlanForApi(),
       schedulePlan: getSchedulePlanForApi(),
     });
@@ -1067,6 +1083,10 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const uploadProjectDocumentsToApi = async (draftId: number) => {
+    const profileImageFile = getLocalUploadFile(uploadedFiles.profileImage);
+    if (profileImageFile) {
+      await uploadFundingDraftFile(draftId, 'PROFILE_IMAGE', profileImageFile);
+    }
     for (const key of DOCUMENT_FILE_KEYS) {
       if (typeof uploadedFiles[key] === 'string' && uploadedFiles[key]) continue;
       const file = getLocalUploadFile(uploadedFiles[key]);
@@ -1128,7 +1148,7 @@ export default function BreweryProjectCreateScreen() {
       let syncError: unknown = null;
       if (!isEditMode) {
         try {
-          const serverDraft = await syncServerDraft(existingDraftId);
+          const serverDraft = await syncServerDraft(existingDraftId || (initialDraftId && Number.isFinite(initialDraftId) && initialDraftId > 0 ? initialDraftId : null));
           await SafeStorage.setItem(tempSaveKey, JSON.stringify({ ...draft, serverDraft }));
         } catch (error) {
           syncError = error;
@@ -1262,8 +1282,43 @@ export default function BreweryProjectCreateScreen() {
     navigateToExitRoute();
   };
 
-  const loadBreweryInfo = () => {
+  const applyLoadedBreweryInfo = (info: Partial<ReturnType<typeof getBreweryInfoForApi>>) => {
+    const loadedBreweryName = info.breweryName || user?.breweryName || '';
+    setCreatorInfo((prev) => ({
+      ...prev,
+      name: loadedBreweryName,
+      phone: info.contactPhone || prev.phone,
+      accountBank: info.bankName || prev.accountBank,
+      accountNumber: info.accountNumber || prev.accountNumber,
+    }));
+    setTaxInfo((prev) => ({
+      ...prev,
+      businessType: info.businessType || prev.businessType || 'corporation',
+      businessName: info.businessName || loadedBreweryName || prev.businessName,
+      businessNumber: info.businessRegistrationNumber || prev.businessNumber,
+      ceoName: info.representativeName || prev.ceoName,
+      address: info.businessAddress || prev.address,
+      businessCategory: info.businessCategory || prev.businessCategory,
+      businessItem: info.businessItem || prev.businessItem,
+      email: info.contactEmail || prev.email || user?.email || '',
+    }));
+    setPhoneVerified(Boolean(info.phoneVerified || info.contactPhone));
+    setAccountVerified(Boolean(info.accountVerified || (info.bankName && info.accountNumber)));
+  };
+
+  const loadBreweryInfo = async () => {
     if (!user || user.type !== 'brewery') return;
+    if (!isEditMode) {
+      try {
+        const draftId = await ensureServerDraft();
+        const serverInfo = await loadFundingBreweryInfo(draftId);
+        applyLoadedBreweryInfo(serverInfo);
+        showAlert('서버에 저장된 양조장 정보를 불러왔습니다.');
+        return;
+      } catch (error) {
+        console.warn(getFundingApiErrorMessage(error, '서버 양조장 정보를 불러오지 못했습니다.'));
+      }
+    }
     const loadedBreweryName = user.breweryName || '';
     const loadedAddress = [user.breweryLocation, user.breweryLocationDetail].filter(Boolean).join(' ');
     const loadedCeoName = user.name && user.name !== loadedBreweryName ? user.name : '';
@@ -1530,7 +1585,7 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleSelectAddress = (zipCode: string, address: string) => {
-    setTaxInfo((prev) => ({ ...prev, address: `(${zipCode}) ${address}` }));
+    setTaxInfo((prev) => ({ ...prev, address: zipCode ? `[${zipCode}] ${address}` : address }));
     setShowAddressModal(false);
   };
 
@@ -1634,12 +1689,14 @@ export default function BreweryProjectCreateScreen() {
     setSubmitSyncWarning('');
     try {
       let convertedFunding: Awaited<ReturnType<typeof createRecipeFunding>>['funding'] | null = null;
+      let submittedFundingId: number | null = null;
       if (!isEditMode) {
         try {
           const draftId = await ensureServerDraft();
           await saveProjectSectionsToApi(draftId);
           await uploadProjectDocumentsToApi(draftId);
-          await submitFundingDraft(draftId);
+          const submittedDraft = await submitFundingDraft(draftId);
+          submittedFundingId = submittedDraft.fundingId || null;
           if (sourceRecipeId && Number.isFinite(sourceRecipeId)) {
             const response = await createRecipeFunding(sourceRecipeId, {
               title: basicInfo.title,
@@ -1682,6 +1739,20 @@ export default function BreweryProjectCreateScreen() {
         };
         mergeProjects([convertedProject]);
         setCreatedProjectId(convertedProject.id);
+        void SafeStorage.removeItem(tempSaveKey);
+        setHasTempSave(false);
+        setTempSaveTimestamp('');
+        setSubmitSyncWarning('');
+        setShowSubmitSuccess(true);
+        return;
+      }
+      if (!isEditMode && submittedFundingId) {
+        const submittedProject: FundingProject = {
+          ...payload,
+          id: submittedFundingId,
+        };
+        mergeProjects([submittedProject]);
+        setCreatedProjectId(submittedProject.id);
         void SafeStorage.removeItem(tempSaveKey);
         setHasTempSave(false);
         setTempSaveTimestamp('');

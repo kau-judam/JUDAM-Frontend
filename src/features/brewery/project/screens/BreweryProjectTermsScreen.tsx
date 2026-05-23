@@ -105,9 +105,13 @@ export default function BreweryProjectTermsScreen() {
     return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1;
   };
 
-  const getProjectCreateRoute = () => {
+  const getProjectCreateRoute = (draftId?: number) => {
     const rawRecipeId = Array.isArray(params.recipeId) ? params.recipeId[0] : params.recipeId;
-    return rawRecipeId ? `/brewery/project/create?recipeId=${rawRecipeId}` : '/brewery/project/create';
+    const query = new URLSearchParams();
+    if (rawRecipeId) query.set('recipeId', rawRecipeId);
+    if (draftId) query.set('draftId', String(draftId));
+    const suffix = query.toString();
+    return suffix ? `/brewery/project/create?${suffix}` : '/brewery/project/create';
   };
 
   const handleNext = async () => {
@@ -115,7 +119,7 @@ export default function BreweryProjectTermsScreen() {
 
     setIsSubmitting(true);
     try {
-      await saveFundingAgreement({
+      const agreement = await saveFundingAgreement({
         breweryId: getBreweryId(),
         isAdultConfirmed: agreedTerms.includes('age'),
         isContactInfoAgreed: agreedTerms.includes('contact'),
@@ -127,7 +131,7 @@ export default function BreweryProjectTermsScreen() {
         isRecipeLicenseAgreed: agreedTerms.includes('ip'),
         allRequiredTermsAgreed: allTermIds.every((termId) => agreedTerms.includes(termId)),
       });
-      router.push(getProjectCreateRoute() as any);
+      router.push(getProjectCreateRoute(agreement.draftId) as any);
     } catch (error) {
       const message = getFundingApiErrorMessage(error, '약관 동의 저장 중 문제가 발생했습니다.');
       if (message.includes('필수 약관') && allTermIds.every((termId) => agreedTerms.includes(termId))) {

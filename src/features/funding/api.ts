@@ -25,6 +25,7 @@ type FundingAgreementPayload = {
 };
 
 type FundingAgreementResponse = {
+  draftId?: number;
   agreementId: number;
   breweryId: number;
   message: string;
@@ -58,6 +59,8 @@ type FundingDraftUpdatePayload = {
   summary?: string;
   alcoholPercentage?: number;
   thumbnailUrl?: string;
+  imageUrls?: string[];
+  tags?: string[];
 };
 
 type FundingSectionResponse = {
@@ -74,7 +77,10 @@ type FundingSectionResponse = {
 
 type FundingDraftSubmitResponse = {
   draftId: number;
+  fundingId?: number;
+  recipeId?: number;
   status: 'SUBMITTED' | string;
+  fundingStatus?: string;
   progressRate: number;
   submittedAt?: string;
   updatedAt?: string;
@@ -111,6 +117,8 @@ export type FundingDraftPreviewResponse = {
     alcoholPercentage?: number;
     summary?: string;
     thumbnailUrl?: string;
+    imageUrls?: string[];
+    tags?: string[];
   };
   schedule?: {
     pricePerBottle?: number;
@@ -137,6 +145,7 @@ export type FundingDraftPreviewResponse = {
   };
   plan?: {
     introduction?: string;
+    videoUrl?: string;
     budgetPlan?: { category: string; amount: number }[];
     schedulePlan?: { step: string; description: string; date: string }[];
   };
@@ -181,6 +190,8 @@ type FundingBasicInfoPayload = {
   alcoholPercentage?: number;
   summary?: string;
   thumbnailUrl?: string;
+  imageUrls?: string[];
+  tags?: string[];
 };
 
 type FundingSchedulePayload = {
@@ -210,6 +221,7 @@ type FundingTasteProfilePayload = {
 
 type FundingPlanPayload = {
   introduction: string;
+  videoUrl?: string;
   budgetPlan?: { category: string; amount: number }[] | null;
   schedulePlan?: { step: string; description: string; date: string }[] | null;
 };
@@ -224,6 +236,12 @@ type FundingBreweryInfoPayload = {
   bankName: string;
   accountNumber: string;
   accountHolder: string;
+  businessType?: string;
+  businessName?: string;
+  businessCategory?: string;
+  businessItem?: string;
+  phoneVerified?: boolean;
+  accountVerified?: boolean;
 };
 
 type FundingNoticesPayload = {
@@ -279,6 +297,8 @@ type FundingDocumentUploadFile = {
 
 export type FundingUploadFile = FundingDocumentUploadFile;
 
+export type FundingDraftFileType = 'PROFILE_IMAGE' | 'IDENTITY_DOCUMENT' | 'BUSINESS_REGISTRATION';
+
 type FundingDocumentUploadResponse = {
   draftId: number;
   documentId: number;
@@ -288,9 +308,20 @@ type FundingDocumentUploadResponse = {
   message: string;
 };
 
+type FundingDraftFileUploadResponse = {
+  draftId: number;
+  fileId?: number;
+  fileType: FundingDraftFileType | string;
+  fileName: string;
+  fileUrl: string;
+  message: string;
+};
+
 export type FundingBreweryLogStage =
   | 'INGREDIENT'
+  | 'PROCESSING'
   | 'FERMENTATION'
+  | 'FILTERING'
   | 'AGING'
   | 'BOTTLING'
   | 'SHIPPING';
@@ -334,7 +365,12 @@ export type FundingReportReason =
   | 'INAPPROPRIATE_CONTENT'
   | 'COPYRIGHT'
   | 'FRAUD'
-  | 'ETC';
+  | 'ETC'
+  | '허위 정보'
+  | '부적절한 내용'
+  | '저작권 침해'
+  | '사기 의심'
+  | '기타';
 
 type CreateFundingReportPayload = {
   reason: FundingReportReason;
@@ -346,6 +382,14 @@ type CreateFundingReportResponse = {
   fundingId: number;
   reason: FundingReportReason | string;
   message: string;
+};
+
+const FUNDING_REPORT_REASON_LABELS: Record<string, string> = {
+  FALSE_INFORMATION: '허위 정보',
+  INAPPROPRIATE_CONTENT: '부적절한 내용',
+  COPYRIGHT: '저작권 침해',
+  FRAUD: '사기 의심',
+  ETC: '기타',
 };
 
 export type FundingReportStatus = 'PENDING' | 'REVIEWING' | 'RESOLVED' | 'REJECTED';
@@ -477,7 +521,13 @@ type AdminRejectFundingDraftResponse = {
 
 type CreateFundingReviewPayload = {
   rating: number;
-  content: string;
+  content?: string;
+  detailReview?: string;
+  mood?: string;
+  pairing?: string;
+  tags?: string[];
+  recordVisibility?: boolean;
+  imageUrls?: string[];
   images?: FundingUploadFile[];
 };
 
@@ -491,7 +541,12 @@ type CreateFundingReviewResponse = {
 
 type UpdateFundingReviewPayload = {
   rating: number;
-  content: string;
+  content?: string;
+  detailReview?: string;
+  mood?: string;
+  pairing?: string;
+  tags?: string[];
+  recordVisibility?: boolean;
 };
 
 type FundingLikeResponse = {
@@ -535,7 +590,7 @@ type MyLikedFundingsResponse = {
 };
 
 export type FundingListStatus = 'UPCOMING' | 'ONGOING' | 'ENDED';
-export type FundingListSort = 'POPULAR' | 'LATEST' | 'DEADLINE';
+export type FundingListSort = 'POPULAR' | 'LATEST' | 'DEADLINE' | 'RECOMMENDED';
 
 export type FundingListItem = {
   fundingId: number;
@@ -576,6 +631,8 @@ export type FundingDetailResponse = {
   title: string;
   summary: string;
   thumbnailUrl: string | null;
+  imageUrls?: string[];
+  allImageUrls?: string[];
   breweryName: string;
   status: FundingListStatus | string;
   currentAmount: number;
@@ -592,6 +649,11 @@ export type FundingDetailResponse = {
   alcoholPercentage?: number;
   liked?: boolean;
   likeCount?: number;
+  legalInfo?: FundingDraftPreviewResponse['legalInfo'];
+  plan?: FundingDraftPreviewResponse['plan'];
+  breweryInfo?: FundingDraftPreviewResponse['breweryInfo'];
+  notices?: FundingDraftPreviewResponse['notices'];
+  documents?: FundingDraftPreviewResponse['documents'];
   tasteProfile?: {
     sweetness: number;
     acidity: number;
@@ -626,6 +688,29 @@ export type FundingBreweryLogItem = {
 export type FundingBreweryLogsResponse = {
   fundingId: number;
   logs: FundingBreweryLogItem[];
+};
+
+export type FundingBreweryLogReplyItem = {
+  replyId: number;
+  writerNickname?: string;
+  content: string;
+  createdAt: string;
+  likeCount?: number;
+  liked?: boolean;
+};
+
+export type FundingBreweryLogCommentItem = {
+  commentId: number;
+  writerNickname?: string;
+  content: string;
+  createdAt: string;
+  likeCount?: number;
+  liked?: boolean;
+  replies?: FundingBreweryLogReplyItem[];
+};
+
+type FundingBreweryLogCommentsResponse = {
+  content: FundingBreweryLogCommentItem[];
 };
 
 export type FundingQuestionItem = {
@@ -733,6 +818,14 @@ export type FundingOrderDetailResponse = {
   shippingAddress: string;
   shippingDetailAddress: string;
   createdAt: string;
+};
+
+export type RecentShippingAddressResponse = {
+  recipientName?: string;
+  recipientPhone?: string;
+  shippingAddress?: string;
+  shippingDetailAddress?: string;
+  postalCode?: string;
 };
 
 type CreateFundingInquiryPayload = {
@@ -915,6 +1008,16 @@ function normalizeFundingDraftResponse(response: unknown): FundingDraftResponse 
   };
 }
 
+function normalizeFundingAgreementResponse(response: unknown): FundingAgreementResponse {
+  const data = getFundingApiObject(response);
+  return {
+    draftId: readFundingApiNumber(data, ['draftId', 'draft_id']) || undefined,
+    agreementId: readFundingApiNumber(data, ['agreementId', 'agreement_id']),
+    breweryId: readFundingApiNumber(data, ['breweryId', 'brewery_id']),
+    message: readFundingApiString(data, ['message']),
+  };
+}
+
 function normalizeFundingDraftListResponse(response: unknown): FundingDraftListResponse {
   const data = getFundingApiObject(response);
   return {
@@ -946,6 +1049,8 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       alcoholPercentage: readFundingApiNumber(basicInfo, ['alcoholPercentage', 'alcohol_percentage']) || undefined,
       summary: readFundingApiString(basicInfo, ['summary']),
       thumbnailUrl: readFundingApiString(basicInfo, ['thumbnailUrl', 'thumbnail_url']),
+      imageUrls: readFundingApiStringArray(basicInfo, ['imageUrls', 'image_urls', 'allImageUrls', 'all_image_urls'], ['thumbnailUrl', 'thumbnail_url']),
+      tags: readFundingApiArray<string>(basicInfo, ['tags']),
     },
     schedule: {
       pricePerBottle: readFundingApiNumber(schedule, ['pricePerBottle', 'price_per_bottle']) || undefined,
@@ -972,6 +1077,7 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
     },
     plan: {
       introduction: readFundingApiString(plan, ['introduction']),
+      videoUrl: readFundingApiString(plan, ['videoUrl', 'video_url']),
       budgetPlan: readFundingApiArray<{ category: string; amount: number }>(plan, ['budgetPlan', 'budget_plan']),
       schedulePlan: readFundingApiArray<{ step: string; description: string; date: string }>(plan, ['schedulePlan', 'schedule_plan']),
     },
@@ -1024,6 +1130,30 @@ function normalizeBreweryLogsResponse(response: unknown): FundingBreweryLogsResp
     fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
     logs: logs.map(normalizeBreweryLogItem),
   };
+}
+
+function normalizeBreweryLogCommentItem(source: Record<string, unknown>): FundingBreweryLogCommentItem {
+  return {
+    commentId: readFundingApiNumber(source, ['commentId', 'comment_id', 'id']),
+    writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+    content: readFundingApiString(source, ['content', 'body']),
+    createdAt: readFundingApiString(source, ['createdAt', 'created_at', 'date']),
+    likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
+    liked: readFundingApiBoolean(source, ['liked']),
+    replies: readFundingApiArray<Record<string, unknown>>(source, ['replies', 'answers']).map((reply) => ({
+      replyId: readFundingApiNumber(reply, ['replyId', 'reply_id', 'id']),
+      writerNickname: readFundingApiString(reply, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+      content: readFundingApiString(reply, ['content', 'body']),
+      createdAt: readFundingApiString(reply, ['createdAt', 'created_at', 'date']),
+      likeCount: readFundingApiNumber(reply, ['likeCount', 'like_count', 'likes']),
+      liked: readFundingApiBoolean(reply, ['liked']),
+    })),
+  };
+}
+
+function normalizeBreweryLogCommentsResponse(response: unknown): FundingBreweryLogCommentsResponse {
+  const content = getFundingApiArray<Record<string, unknown>>(response, ['content', 'comments', 'data']);
+  return { content: content.map(normalizeBreweryLogCommentItem) };
 }
 
 function normalizeBreweryLogMutationResponse(response: unknown): FundingBreweryLogMutationResponse {
@@ -1111,7 +1241,10 @@ function normalizeFundingDraftSubmitResponse(response: unknown): FundingDraftSub
   const data = getFundingApiObject(response);
   return {
     draftId: readFundingApiNumber(data, ['draftId', 'draft_id']),
+    fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']) || undefined,
+    recipeId: readFundingApiNumber(data, ['recipeId', 'recipe_id']) || undefined,
     status: readFundingApiString(data, ['status'], 'SUBMITTED'),
+    fundingStatus: readFundingApiString(data, ['fundingStatus', 'funding_status']) || undefined,
     progressRate: readFundingApiNumber(data, ['progressRate', 'progress_rate']),
     submittedAt: readFundingApiString(data, ['submittedAt', 'submitted_at']) || undefined,
     updatedAt: readFundingApiString(data, ['updatedAt', 'updated_at']) || undefined,
@@ -1482,11 +1615,12 @@ export async function saveFundingAgreement(payload: FundingAgreementPayload) {
   let lastError: unknown = null;
   for (const body of requestBodies) {
     try {
-      return await requestFundingJson<FundingAgreementResponse>('/api/fundings/agreements', {
+      const result = await requestFundingJson<unknown>('/api/fundings/agreements', {
         method: 'POST',
         auth: true,
         body: JSON.stringify(body),
       });
+      return normalizeFundingAgreementResponse(result);
     } catch (error) {
       lastError = error;
     }
@@ -1615,6 +1749,12 @@ export async function saveFundingBreweryInfo(draftId: number, payload: FundingBr
       bank_name: payload.bankName,
       account_number: payload.accountNumber,
       account_holder: payload.accountHolder,
+      business_type: payload.businessType,
+      business_name: payload.businessName,
+      business_category: payload.businessCategory,
+      business_item: payload.businessItem,
+      phone_verified: payload.phoneVerified,
+      account_verified: payload.accountVerified,
     },
     {
       breweryName: payload.breweryName,
@@ -1633,6 +1773,12 @@ export async function saveFundingBreweryInfo(draftId: number, payload: FundingBr
       bank: payload.bankName,
       accountNumber: payload.accountNumber,
       accountHolder: payload.accountHolder,
+      businessType: payload.businessType,
+      businessName: payload.businessName,
+      businessCategory: payload.businessCategory,
+      businessItem: payload.businessItem,
+      phoneVerified: payload.phoneVerified,
+      accountVerified: payload.accountVerified,
     },
   ];
 
@@ -1650,6 +1796,31 @@ export async function saveFundingBreweryInfo(draftId: number, payload: FundingBr
     }
   }
   throw lastError;
+}
+
+export async function loadFundingBreweryInfo(draftId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/drafts/${draftId}/brewery-info/load`, {
+    auth: true,
+  });
+  const data = getFundingApiObject(result);
+  const breweryInfo = getFundingApiNestedObject(data, ['breweryInfo', 'brewery_info', 'data']);
+  return {
+    breweryName: readFundingApiString(breweryInfo, ['breweryName', 'brewery_name']),
+    representativeName: readFundingApiString(breweryInfo, ['representativeName', 'representative_name']),
+    businessRegistrationNumber: readFundingApiString(breweryInfo, ['businessRegistrationNumber', 'business_registration_number']),
+    businessAddress: readFundingApiString(breweryInfo, ['businessAddress', 'business_address']),
+    contactEmail: readFundingApiString(breweryInfo, ['contactEmail', 'contact_email']),
+    contactPhone: readFundingApiString(breweryInfo, ['contactPhone', 'contact_phone']),
+    bankName: readFundingApiString(breweryInfo, ['bankName', 'bank_name']),
+    accountNumber: readFundingApiString(breweryInfo, ['accountNumber', 'account_number']),
+    accountHolder: readFundingApiString(breweryInfo, ['accountHolder', 'account_holder']),
+    businessType: readFundingApiString(breweryInfo, ['businessType', 'business_type']),
+    businessName: readFundingApiString(breweryInfo, ['businessName', 'business_name']),
+    businessCategory: readFundingApiString(breweryInfo, ['businessCategory', 'business_category']),
+    businessItem: readFundingApiString(breweryInfo, ['businessItem', 'business_item']),
+    phoneVerified: readFundingApiBoolean(breweryInfo, ['phoneVerified', 'phone_verified']),
+    accountVerified: readFundingApiBoolean(breweryInfo, ['accountVerified', 'account_verified']),
+  } satisfies Partial<FundingBreweryInfoPayload>;
 }
 
 export async function saveFundingNotices(draftId: number, payload: FundingNoticesPayload) {
@@ -1684,6 +1855,17 @@ export async function uploadFundingDocument(draftId: number, documentType: Fundi
   formData.append('file', createFundingFormFile(file));
 
   return requestFundingForm<FundingDocumentUploadResponse>(`/api/fundings/drafts/${draftId}/documents`, formData, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function uploadFundingDraftFile(draftId: number, fileType: FundingDraftFileType, file: FundingDocumentUploadFile) {
+  const formData = new FormData();
+  formData.append('fileType', fileType);
+  formData.append('file', createFundingFormFile(file));
+
+  return requestFundingForm<FundingDraftFileUploadResponse>(`/api/fundings/drafts/${draftId}/files`, formData, {
     method: 'POST',
     auth: true,
   });
@@ -1725,6 +1907,57 @@ export async function deleteBreweryLog(fundingId: number, breweryLogId: number) 
     method: 'DELETE',
     auth: true,
   });
+}
+
+export async function likeBreweryLog(fundingId: number, breweryLogId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/likes`, {
+    method: 'POST',
+    auth: true,
+  });
+  return normalizeFundingLikeResponse(result);
+}
+
+export async function unlikeBreweryLog(fundingId: number, breweryLogId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/likes`, {
+    method: 'DELETE',
+    auth: true,
+  });
+  return normalizeFundingLikeResponse(result);
+}
+
+export async function getBreweryLogComments(fundingId: number, breweryLogId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/comments`, {
+    auth: true,
+  });
+  return normalizeBreweryLogCommentsResponse(result);
+}
+
+export async function createBreweryLogComment(fundingId: number, breweryLogId: number, content: string) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/comments`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({ content }),
+  });
+  const responseData = getFundingApiObject(result);
+  return normalizeBreweryLogCommentItem(getFundingApiNestedObject(responseData, ['comment', 'data']));
+}
+
+export async function createBreweryLogCommentReply(fundingId: number, breweryLogId: number, commentId: number, content: string) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/comments/${commentId}/replies`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({ content }),
+  });
+  const responseData = getFundingApiObject(result);
+  const data = getFundingApiNestedObject(responseData, ['reply', 'data']);
+  return {
+    replyId: readFundingApiNumber(data, ['replyId', 'reply_id', 'id']),
+    writerNickname: readFundingApiString(data, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+    content: readFundingApiString(data, ['content', 'body']),
+    createdAt: readFundingApiString(data, ['createdAt', 'created_at', 'date']),
+    likeCount: readFundingApiNumber(data, ['likeCount', 'like_count', 'likes']),
+    liked: readFundingApiBoolean(data, ['liked']),
+  } satisfies FundingBreweryLogReplyItem;
 }
 
 export async function createFundingOrder(fundingId: number, payload: CreateFundingOrderPayload) {
@@ -1825,7 +2058,10 @@ export async function createFundingReport(fundingId: number, payload: CreateFund
   return requestFundingJson<CreateFundingReportResponse>(`/api/fundings/${fundingId}/reports`, {
     method: 'POST',
     auth: true,
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      reason: FUNDING_REPORT_REASON_LABELS[payload.reason] || payload.reason,
+    }),
   });
 }
 
@@ -1904,7 +2140,14 @@ export async function getFundingReviews(fundingId: number, params: {
 export async function createFundingReview(fundingId: number, payload: CreateFundingReviewPayload) {
   const formData = new FormData();
   formData.append('rating', String(payload.rating));
-  formData.append('content', payload.content);
+  const detailReview = payload.detailReview || payload.content || '';
+  formData.append('content', detailReview);
+  formData.append('detailReview', detailReview);
+  if (payload.mood) formData.append('mood', payload.mood);
+  if (payload.pairing) formData.append('pairing', payload.pairing);
+  if (payload.recordVisibility !== undefined) formData.append('recordVisibility', String(payload.recordVisibility));
+  payload.tags?.forEach((tag) => formData.append('tags', tag));
+  payload.imageUrls?.forEach((imageUrl) => formData.append('imageUrls', imageUrl));
   appendFundingFormFiles(formData, 'images', payload.images);
 
   const result = await requestFundingForm<unknown>(`/api/fundings/${fundingId}/reviews`, formData, {
@@ -1918,7 +2161,10 @@ export async function updateFundingReviewApi(fundingId: number, reviewId: number
   const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}`, {
     method: 'PATCH',
     auth: true,
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      detailReview: payload.detailReview || payload.content,
+    }),
   });
   return normalizeCreateFundingReviewResponse(result);
 }
@@ -1937,6 +2183,20 @@ export async function getFundingOrderDetail(orderId: number) {
     auth: true,
   });
   return normalizeFundingOrderDetailResponse(result);
+}
+
+export async function getRecentShippingAddress() {
+  const result = await requestFundingJson<unknown>('/api/users/me/recent-shipping-address', {
+    auth: true,
+  });
+  const data = getFundingApiObject(result);
+  return {
+    recipientName: readFundingApiString(data, ['recipientName', 'recipient_name']),
+    recipientPhone: readFundingApiString(data, ['recipientPhone', 'recipient_phone']),
+    shippingAddress: readFundingApiString(data, ['shippingAddress', 'shipping_address']),
+    shippingDetailAddress: readFundingApiString(data, ['shippingDetailAddress', 'shipping_detail_address']),
+    postalCode: readFundingApiString(data, ['postalCode', 'postal_code']),
+  } satisfies RecentShippingAddressResponse;
 }
 
 export async function createFundingInquiry(fundingId: number, payload: CreateFundingInquiryPayload) {

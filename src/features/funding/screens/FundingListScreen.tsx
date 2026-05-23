@@ -61,6 +61,7 @@ function getFundingApiStatus(status: FundingStatusFilter) {
 }
 
 function getFundingApiSort(sort: FundingSortOption) {
+  if (sort === "추천순") return "RECOMMENDED";
   if (sort === "마감임박") return "DEADLINE";
   if (sort === "최신순") return "LATEST";
   return "POPULAR";

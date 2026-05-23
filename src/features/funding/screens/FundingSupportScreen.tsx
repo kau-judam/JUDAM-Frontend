@@ -41,6 +41,7 @@ import {
   getFundingApiErrorMessage,
   getFundingOrderDetail,
   getFundingPaymentInfo,
+  getRecentShippingAddress,
   getFundingSupportOptions,
   isFundingApiMissingEndpointError,
   requestFundingPayment,
@@ -190,16 +191,38 @@ export default function FundingSupportScreen() {
   useEffect(() => {
     if (!user) return;
     let mounted = true;
-    SafeStorage.getItem(getRecentShippingKey(user.id))
-      .then((saved) => {
-        if (!mounted || !saved) return;
-        const parsed = JSON.parse(saved) as ShippingInfo;
-        if (parsed?.recipientName && parsed?.address && parsed?.phone) {
-          setRecentShippingInfo(parsed);
+    getRecentShippingAddress()
+      .then((serverAddress) => {
+        if (!mounted) return;
+        if (serverAddress.recipientName && serverAddress.shippingAddress && serverAddress.recipientPhone) {
+          setRecentShippingInfo({
+            recipientName: serverAddress.recipientName,
+            phone: serverAddress.recipientPhone,
+            address: serverAddress.shippingAddress,
+            detailAddress: serverAddress.shippingDetailAddress || '',
+          });
+          return;
         }
+        return SafeStorage.getItem(getRecentShippingKey(user.id)).then((saved) => {
+          if (!mounted || !saved) return;
+          const parsed = JSON.parse(saved) as ShippingInfo;
+          if (parsed?.recipientName && parsed?.address && parsed?.phone) {
+            setRecentShippingInfo(parsed);
+          }
+        });
       })
       .catch(() => {
-        if (mounted) setRecentShippingInfo(null);
+        SafeStorage.getItem(getRecentShippingKey(user.id))
+          .then((saved) => {
+            if (!mounted || !saved) return;
+            const parsed = JSON.parse(saved) as ShippingInfo;
+            if (parsed?.recipientName && parsed?.address && parsed?.phone) {
+              setRecentShippingInfo(parsed);
+            }
+          })
+          .catch(() => {
+            if (mounted) setRecentShippingInfo(null);
+          });
       });
     return () => {
       mounted = false;

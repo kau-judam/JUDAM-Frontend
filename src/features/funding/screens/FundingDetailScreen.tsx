@@ -49,8 +49,11 @@ import { Button } from '@/components/ui/button';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import {
   createFundingReport,
+  createBreweryLogComment,
+  createBreweryLogCommentReply,
   createFundingQuestion,
   createFundingReply,
+  getBreweryLogComments,
   getFundingApiErrorMessage,
   getFundingBreweryLogs,
   getFundingDetail,
@@ -60,8 +63,11 @@ import {
   getFundingShareLink,
   getFundingSupportOptions,
   isFundingApiMissingEndpointError,
+  likeBreweryLog,
   likeFundingQuestion,
+  unlikeBreweryLog,
   unlikeFundingQuestion,
+  type FundingBreweryLogCommentItem,
   type FundingDetailResponse,
   type FundingReportReason,
   type FundingSupportOption,
@@ -168,6 +174,32 @@ function createFundingProjectFromDetail(detail: FundingDetailResponse): FundingP
 function todayText() {
   const today = new Date();
   return `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, '0')}. ${String(today.getDate()).padStart(2, '0')}`;
+}
+
+function formatApiDate(value?: string) {
+  if (!value) return todayText();
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function mapBreweryLogComments(comments: FundingBreweryLogCommentItem[], journalId: number): JournalComment[] {
+  return comments.map((comment) => ({
+    id: comment.commentId,
+    journalId,
+    userName: comment.writerNickname || '사용자',
+    content: comment.content,
+    date: formatApiDate(comment.createdAt),
+    likes: Math.max(comment.likeCount || 0, comment.liked ? 1 : 0),
+    replies: (comment.replies || []).map((reply) => ({
+      id: reply.replyId,
+      commentId: comment.commentId,
+      userName: reply.writerNickname || '사용자',
+      content: reply.content,
+      date: formatApiDate(reply.createdAt),
+      likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
+    })),
+  }));
 }
 
 function getJournalInteractionStorageKey(projectId: number, userId?: string) {
@@ -524,20 +556,30 @@ export default function FundingDetailScreen() {
     if (!Number.isFinite(projectId) || activeTab !== "양조일지") return;
 
     getFundingBreweryLogs(projectId)
-      .then((response) => {
+      .then(async (response) => {
         const currentProject = projectRef.current;
         if (!mounted || !currentProject) return;
-        const apiJournals = mapBreweryLogs(response.logs);
+        const apiJournals = await Promise.all(
+          mapBreweryLogs(response.logs).map(async (journal) => {
+            try {
+              const comments = await getBreweryLogComments(projectId, journal.id);
+              return { ...journal, comments: mapBreweryLogComments(comments.content, journal.id) };
+            } catch {
+              return journal;
+            }
+          })
+        );
         const existingJournalsByKey = new Map((currentProject.journals || []).map((journal) => [getJournalMergeKey(journal), journal]));
         const mergedJournals = apiJournals.map((journal) => {
           const existingJournal = existingJournalsByKey.get(getJournalMergeKey(journal));
           const journalKey = getJournalMergeKey(journal);
           const preservedLikes = existingJournal?.likes || journal.likes || 0;
+          const serverComments = journal.comments || [];
           return existingJournal
             ? {
                 ...journal,
                 likes: likedJournals.has(journalKey) ? Math.max(1, preservedLikes) : preservedLikes,
-                comments: existingJournal.comments,
+                comments: serverComments.length > 0 ? serverComments : existingJournal.comments,
               }
             : {
                 ...journal,
@@ -1021,7 +1063,7 @@ export default function FundingDetailScreen() {
     });
   };
 
-  const handleJournalLike = (journalKey: string) => {
+  const handleJournalLike = async (journalKey: string) => {
     if (!user) {
       showLoginRequired('양조일지 좋아요는 로그인 후 이용할 수 있어요.');
       return;
@@ -1029,6 +1071,9 @@ export default function FundingDetailScreen() {
 
     const targetJournal = journals.find((entry) => getJournalMergeKey(entry) === journalKey);
     const isLiked = Boolean(targetJournal && likedJournals.has(journalKey) && (targetJournal.likes || 0) > 0);
+    if (!targetJournal) return;
+    const previousJournals = journals;
+    const previousLikedJournals = likedJournals;
     updateProjectJournals(
       project.id,
       journals.map((entry) =>
@@ -1043,9 +1088,30 @@ export default function FundingDetailScreen() {
       else next.add(journalKey);
       return next;
     });
+    try {
+      const response = isLiked
+        ? await unlikeBreweryLog(project.id, targetJournal.id)
+        : await likeBreweryLog(project.id, targetJournal.id);
+      updateProjectJournals(
+        project.id,
+        (projectRef.current?.journals || []).map((entry) =>
+          getJournalMergeKey(entry) === journalKey ? { ...entry, likes: response.likeCount } : entry
+        )
+      );
+      setLikedJournals((prev) => {
+        const next = new Set(prev);
+        if (response.liked) next.add(journalKey);
+        else next.delete(journalKey);
+        return next;
+      });
+    } catch (error) {
+      if (!isFundingApiMissingEndpointError(error)) console.warn(getFundingApiErrorMessage(error, '양조일지 좋아요를 저장하지 못했습니다.'));
+      updateProjectJournals(project.id, previousJournals);
+      setLikedJournals(previousLikedJournals);
+    }
   };
 
-  const handleAddJournalComment = (targetJournal: JournalEntry, journalKey: string) => {
+  const handleAddJournalComment = async (targetJournal: JournalEntry, journalKey: string) => {
     const content = journalCommentDrafts[journalKey]?.trim();
     if (!content) return;
     if (!user) {
@@ -1085,6 +1151,30 @@ export default function FundingDetailScreen() {
       next.add(journalKey);
       return next;
     });
+    try {
+      const response = await createBreweryLogComment(project.id, targetJournal.id, content);
+      updateProjectJournals(
+        project.id,
+        (projectRef.current?.journals || []).map((entry) => {
+          if (getJournalMergeKey(entry) !== journalKey) return entry;
+          return {
+            ...entry,
+            comments: (entry.comments || []).map((comment) =>
+              comment.id === commentId
+                ? {
+                    ...comment,
+                    id: response.commentId || comment.id,
+                    userName: response.writerNickname || comment.userName,
+                    date: formatApiDate(response.createdAt),
+                  }
+                : comment
+            ),
+          };
+        })
+      );
+    } catch (error) {
+      if (!isFundingApiMissingEndpointError(error)) console.warn(getFundingApiErrorMessage(error, '양조일지 댓글을 저장하지 못했습니다.'));
+    }
   };
 
   const handleJournalCommentLike = (journalKey: string, commentId: number) => {
@@ -1131,7 +1221,7 @@ export default function FundingDetailScreen() {
     setReplyingToJournalComment(replyingToJournalComment === replyKey ? null : replyKey);
   };
 
-  const handleAddJournalReply = (journalKey: string, commentId: number) => {
+  const handleAddJournalReply = async (journalKey: string, commentId: number) => {
     const replyKey = `${journalKey}:${commentId}`;
     const content = journalReplyDrafts[replyKey]?.trim();
     if (!content) return;
@@ -1176,6 +1266,38 @@ export default function FundingDetailScreen() {
     setJournalReplyDrafts((prev) => ({ ...prev, [replyKey]: "" }));
     setReplyingToJournalComment(null);
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
+    const targetJournal = journals.find((entry) => getJournalMergeKey(entry) === journalKey);
+    if (!targetJournal) return;
+    try {
+      const response = await createBreweryLogCommentReply(project.id, targetJournal.id, commentId, content);
+      updateProjectJournals(
+        project.id,
+        (projectRef.current?.journals || []).map((entry) => {
+          if (getJournalMergeKey(entry) !== journalKey) return entry;
+          return {
+            ...entry,
+            comments: (entry.comments || []).map((comment) => {
+              if (comment.id !== commentId) return comment;
+              return {
+                ...comment,
+                replies: (comment.replies || []).map((reply) =>
+                  reply.id === replyId
+                    ? {
+                        ...reply,
+                        id: response.replyId || reply.id,
+                        userName: response.writerNickname || reply.userName,
+                        date: formatApiDate(response.createdAt),
+                      }
+                    : reply
+                ),
+              };
+            }),
+          };
+        })
+      );
+    } catch (error) {
+      if (!isFundingApiMissingEndpointError(error)) console.warn(getFundingApiErrorMessage(error, '양조일지 답글을 저장하지 못했습니다.'));
+    }
   };
 
   const handleJournalReplyLike = (journalKey: string, commentId: number, replyId: number) => {

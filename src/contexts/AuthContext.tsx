@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import SafeStorage from "@/utils/storage";
-import { clearAuthTokens, loginWithEmail, saveAuthTokens, signupWithEmail, type AuthApiUser, type AuthRole } from "@/features/auth/api";
+import { clearAuthTokens, loginWithEmail, loginWithKakaoCode as requestKakaoLogin, saveAuthTokens, signupWithEmail, type AuthApiUser, type AuthRole, type KakaoLoginResponse } from "@/features/auth/api";
 import { digitsOnly } from "@/utils/validation";
 import type { BtiTasteAxisValues } from "@/features/bti/data";
 
@@ -28,11 +28,22 @@ interface AuthContextType {
   user: User | null;
   isAuthReady: boolean;
   login: (email: string, password: string, type: UserType, keepLoggedIn?: boolean) => Promise<User>;
+  loginWithKakaoCode: (code: string, keepLoggedIn?: boolean) => Promise<KakaoLoginResult>;
   logout: () => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
   verifyBrewery: (data: BreweryVerificationData) => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
 }
+
+export type KakaoLoginResult =
+  | { status: "loggedIn"; user: User }
+  | {
+      status: "signupRequired";
+      email?: string;
+      nickname?: string;
+      profileImage?: string | null;
+      kakaoId?: string | number;
+    };
 
 interface SignupData {
   name: string;
@@ -99,6 +110,17 @@ function mapAuthApiUser(apiUser: AuthApiUser, fallbackType: UserType = "user"): 
   };
 }
 
+function getKakaoSignupPayload(session: KakaoLoginResponse): Extract<KakaoLoginResult, { status: "signupRequired" }> {
+  const user = session.user;
+  return {
+    status: "signupRequired",
+    email: session.email || session.kakaoEmail || user?.email,
+    nickname: session.nickname || session.kakaoNickname || user?.nickname,
+    profileImage: session.profileImage || user?.profileImage,
+    kakaoId: session.kakaoId,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -142,6 +164,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     return nextUser;
+  };
+
+  const loginWithKakaoCode = async (code: string, keepLoggedIn = false) => {
+    const session = await requestKakaoLogin(code);
+    const apiUser = session?.user;
+    const shouldSignup =
+      Boolean(session?.isNewUser || session?.signupRequired || session?.requiresSignup) || !apiUser;
+
+    if (shouldSignup || !apiUser) {
+      return getKakaoSignupPayload(session);
+    }
+    const nextUser = mapAuthApiUser(apiUser);
+    setUser(nextUser);
+    try {
+      await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
+      await saveAuthTokens(session.accessToken, session.refreshToken);
+      await SafeStorage.setItem(KEEP_LOGIN_KEY, keepLoggedIn ? "true" : "false");
+    } catch (e) {
+      console.error("Failed to save Kakao user to SafeStorage", e);
+    }
+
+    return { status: "loggedIn" as const, user: nextUser };
   };
 
   const logout = async () => {
@@ -228,7 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthReady, login, logout, signup, verifyBrewery, updateUser }}>
+    <AuthContext.Provider value={{ user, isAuthReady, login, loginWithKakaoCode, logout, signup, verifyBrewery, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

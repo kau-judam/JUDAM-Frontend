@@ -26,6 +26,18 @@ export type AuthSession = {
   user: AuthApiUser;
 };
 
+export type KakaoLoginResponse = Partial<AuthSession> & {
+  isNewUser?: boolean;
+  signupRequired?: boolean;
+  requiresSignup?: boolean;
+  email?: string;
+  kakaoEmail?: string;
+  nickname?: string;
+  kakaoNickname?: string;
+  profileImage?: string | null;
+  kakaoId?: string | number;
+};
+
 export type AuthAvailabilityResponse = {
   email?: string;
   nickname?: string;
@@ -214,4 +226,12 @@ export async function confirmPhoneVerification(phoneNumber: string, verification
 export async function getKakaoLoginUrl() {
   const response = await requestAuthJson<AuthApiEnvelope<KakaoLoginUrlResponse>>('/api/auth/kakao/url');
   return unwrapAuthData<KakaoLoginUrlResponse>(response);
+}
+
+export async function loginWithKakaoCode(code: string) {
+  const response = await requestAuthJson<AuthApiEnvelope<KakaoLoginResponse>>('/api/auth/kakao/login', {
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
+  return unwrapAuthData<KakaoLoginResponse>(response);
 }

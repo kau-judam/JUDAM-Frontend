@@ -383,6 +383,10 @@ export default function SignupScreen() {
       showNotice('본인인증을 완료해주세요.');
       return;
     }
+    if (!phoneVerificationToken) {
+      showNotice('전화번호 인증 토큰을 받지 못했습니다. 인증 상태를 다시 확인해주세요.');
+      return;
+    }
     if (!terms.service || !terms.privacy) {
       showNotice('필수 약관에 동의해주세요.');
       return;
@@ -402,9 +406,9 @@ export default function SignupScreen() {
       setIsLoading(false);
       RNStatusBar.setHidden(false, 'fade');
       router.replace('/(auth)/user-type');
-    } catch {
+    } catch (error) {
       setIsLoading(false);
-      showNotice('회원가입에 실패했습니다.');
+      showNotice(error instanceof Error ? error.message : '회원가입에 실패했습니다.');
     }
   };
 
@@ -704,7 +708,7 @@ export default function SignupScreen() {
                           disabled={isPhoneVerificationChecking}
                         >
                           <Text style={styles.verifyStatusButtonText}>
-                            {isPhoneVerificationChecking ? '확인 중...' : '인증 상태 확인'}
+                            {isPhoneVerificationChecking ? '확인 중...' : '인증 확인'}
                           </Text>
                         </TouchableOpacity>
                       </View>

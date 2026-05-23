@@ -29,6 +29,7 @@ import {
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import { confirmPhoneVerification, requestPhoneVerification } from '@/features/auth/api';
 import DaumAddressSearchModal, { type DaumAddressResult } from '@/features/funding/components/DaumAddressSearchModal';
 import { formatBusinessNumber, formatPhoneNumber, isValidBusinessNumber, isValidPhone } from '@/utils/validation';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
@@ -64,6 +65,8 @@ export default function BreweryVerificationScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isVerificationSent, setIsVerificationSent] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
+  const [verificationGuide, setVerificationGuide] = useState('');
+  const [isVerificationChecking, setIsVerificationChecking] = useState(false);
   const [isPhoneVerified, setIsPhoneVerified] = useState(isEditMode);
   const [showAddressModal, setShowAddressModal] = useState(false);
 
@@ -113,27 +116,40 @@ export default function BreweryVerificationScreen() {
     );
   }
 
-  const handleSendVerification = () => {
+  const handleSendVerification = async () => {
     if (!isValidPhone(formData.phone)) {
       Alert.alert('알림', '연락처를 정확히 입력해주세요.');
       return;
     }
-    const wasAlreadySent = isVerificationSent;
-    setVerificationCode('');
-    setIsVerificationSent(true);
-    Alert.alert('알림', wasAlreadySent ? '인증번호가 재전송되었습니다.' : '인증번호가 전송되었습니다.');
+    try {
+      const result = await requestPhoneVerification(formData.phone);
+      setVerificationCode(result.verificationCode || '');
+      setVerificationGuide(result.guideMessage || `${result.verificationCode || '인증 코드'}을 ${result.sendTo || '1666-3538'}로 문자 전송해주세요.`);
+      setIsVerificationSent(true);
+      Alert.alert('알림', result.guideMessage || '인증 요청이 생성되었습니다.');
+    } catch (error) {
+      Alert.alert('오류', error instanceof Error ? error.message : '인증 요청에 실패했습니다.');
+    }
   };
 
-  const handleVerifyCode = () => {
+  const handleVerifyCode = async () => {
     if (!verificationCode) {
-      Alert.alert('알림', '인증번호를 입력해주세요.');
+      Alert.alert('알림', '인증 요청을 먼저 진행해주세요.');
       return;
     }
-    if (verificationCode === '1234') {
+    setIsVerificationChecking(true);
+    try {
+      const result = await confirmPhoneVerification(formData.phone, verificationCode);
+      if (!result.verified || !result.phoneVerificationToken) {
+        Alert.alert('알림', '아직 인증이 완료되지 않았습니다. 문자를 보낸 뒤 다시 확인해주세요.');
+        return;
+      }
       Alert.alert('알림', '인증이 완료되었습니다.');
       setIsPhoneVerified(true);
-    } else {
-      Alert.alert('오류', '인증번호가 일치하지 않습니다.');
+    } catch (error) {
+      Alert.alert('오류', error instanceof Error ? error.message : '인증 확인에 실패했습니다.');
+    } finally {
+      setIsVerificationChecking(false);
     }
   };
 
@@ -412,6 +428,7 @@ export default function BreweryVerificationScreen() {
                         setIsPhoneVerified(false);
                         setIsVerificationSent(false);
                         setVerificationCode('');
+                        setVerificationGuide('');
                       }}
                       keyboardType="phone-pad"
                       editable={!isPhoneVerified}
@@ -433,28 +450,20 @@ export default function BreweryVerificationScreen() {
                 </View>
 
                 {isVerificationSent && !isPhoneVerified && (
-                  <Animated.View entering={FadeIn.duration(300)} style={[styles.row, { marginTop: 12 }]}>
-                    <View style={[styles.inputBox, { flex: 1 }]}>
-                      <MessageSquare size={20} color="#9CA3AF" style={styles.inputIcon} />
-                      <TextInput 
-                        style={styles.input}
-                        placeholder="인증번호 입력"
-                        placeholderTextColor="#9CA3AF"
-                        value={verificationCode}
-                        onChangeText={setVerificationCode}
-                        keyboardType="number-pad"
-                      />
+                  <Animated.View entering={FadeIn.duration(300)} style={[styles.verificationGuideBox, { marginTop: 12 }]}>
+                    <MessageSquare size={18} color="#1E293B" />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.verificationGuideText}>{verificationGuide}</Text>
+                      <Text style={styles.verificationGuideSubText}>문자를 보낸 뒤 10~30초 후 인증 확인을 눌러주세요.</Text>
                     </View>
                     <TouchableOpacity 
-                      style={styles.smallBtn}
+                      style={[styles.smallBtn, isVerificationChecking && styles.verifyBtnDisabled]}
                       onPress={handleVerifyCode}
+                      disabled={isVerificationChecking}
                     >
-                      <Text style={styles.smallBtnTxt}>확인</Text>
+                      <Text style={styles.smallBtnTxt}>{isVerificationChecking ? '확인중' : '인증 확인'}</Text>
                     </TouchableOpacity>
                   </Animated.View>
-                )}
-                {isVerificationSent && !isPhoneVerified && (
-                  <Text style={styles.testHint}>* 테스트용 인증번호: 1234</Text>
                 )}
               </View>
 
@@ -555,6 +564,10 @@ const styles = StyleSheet.create({
   resendBtn: { minWidth: 122, paddingHorizontal: 12 },
   smallBtnDone: { backgroundColor: '#059669' },
   smallBtnTxt: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  verificationGuideBox: { backgroundColor: '#F8FAFC', borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  verificationGuideText: { fontSize: 12.5, fontWeight: '800', color: '#111827', lineHeight: 18 },
+  verificationGuideSubText: { fontSize: 11.5, fontWeight: '600', color: '#64748B', lineHeight: 17, marginTop: 3 },
+  verifyBtnDisabled: { opacity: 0.65 },
   testHint: { color: '#9CA3AF', fontSize: 12, marginLeft: 4 },
   uploadBox: { height: 120, backgroundColor: 'rgba(255, 255, 255, 0.7)', borderRadius: 12, borderStyle: 'dashed', borderWidth: 2, borderColor: '#D1D5DB', justifyContent: 'center', alignItems: 'center', gap: 4 },
   uploadMainTxt: { fontSize: 14, color: '#4B5563', fontWeight: '500' },

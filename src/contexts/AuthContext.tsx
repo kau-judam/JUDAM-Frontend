@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import SafeStorage from "@/utils/storage";
+import { clearAuthTokens, loginWithEmail, saveAuthTokens, signupWithEmail, type AuthApiUser, type AuthRole } from "@/features/auth/api";
+import { digitsOnly } from "@/utils/validation";
 import type { BtiTasteAxisValues } from "@/features/bti/data";
 
 export type UserType = "user" | "brewery";
@@ -38,6 +40,8 @@ interface SignupData {
   password: string;
   phone?: string;
   type: UserType;
+  marketingAgreed?: boolean;
+  phoneVerificationToken?: string;
   breweryName?: string;
   breweryLocation?: string;
   breweryLocationDetail?: string;
@@ -52,9 +56,9 @@ interface BreweryVerificationData {
   phone: string;
 }
 
-function generateUID(): string {
+function generateUID(prefix = "JD"): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  let result = "JD-";
+  let result = `${prefix}-`;
   for (let i = 0; i < 8; i++) {
     result += chars[Math.floor(Math.random() * chars.length)];
   }
@@ -62,23 +66,7 @@ function generateUID(): string {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const TEMP_USER_ACCESS_TOKEN =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjIiLCJlbWFpbCI6InRlc3QtY29uc3VtZXJAanVkYW0uY29tIiwicm9sZSI6IlVTRVIiLCJpYXQiOjE3NzgwODc4NjYsImV4cCI6MTc3ODY5MjY2Nn0.BtGpz_7jGpN0ePz3LXxFhuQ22CkKm2Etr8cKh-6OPm8";
-const TEMP_BREWERY_ACCESS_TOKEN =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxIiwicHJvdmlkZXIiOiJrYWthbyIsInJvbGUiOiJCUkVXRVJZIiwiaWF0IjoxNzc5MzY5OTYxLCJleHAiOjE3Nzk5NzQ3NjF9.2aTaZAH19gEysQ1eY4gbkkXIra1Dge2KoNX1TBy3n3E";
 const KEEP_LOGIN_KEY = "judam_keep_login";
-
-function getTemporaryAccessToken(type: UserType) {
-  return type === "brewery" ? TEMP_BREWERY_ACCESS_TOKEN : TEMP_USER_ACCESS_TOKEN;
-}
-
-function getTemporaryLoginType(email: string, password: string, fallbackType: UserType) {
-  const normalizedEmail = email.trim().toLowerCase();
-  const normalizedPassword = password.trim().toLowerCase();
-  if (normalizedEmail === "user@judam.test" && normalizedPassword === "judam123") return "user";
-  if (normalizedEmail === "brewery@judam.test" && normalizedPassword === "judam123") return "brewery";
-  return fallbackType;
-}
 
 function normalizeTemporaryUser(user: User): User {
   if (user.type === "user" && user.id === "2" && user.name === "테스트 사용자") {
@@ -87,12 +75,28 @@ function normalizeTemporaryUser(user: User): User {
   return user;
 }
 
-async function saveTemporaryAccessToken(type: UserType) {
-  await SafeStorage.setItem("judam_access_token", getTemporaryAccessToken(type));
+function mapAuthRoleToUserType(role?: AuthRole): UserType {
+  const normalizedRole = String(role || "").toUpperCase();
+  return normalizedRole.includes("BREWERY") ? "brewery" : "user";
 }
 
-async function removeTemporaryAccessToken() {
-  await SafeStorage.removeItem("judam_access_token");
+function isVerifiedBreweryRole(role?: AuthRole) {
+  const normalizedRole = String(role || "").toUpperCase();
+  return normalizedRole === "BREWERY" || normalizedRole === "BREWERY_APPROVED";
+}
+
+function mapAuthApiUser(apiUser: AuthApiUser, fallbackType: UserType = "user"): User {
+  const type = apiUser.role ? mapAuthRoleToUserType(apiUser.role) : fallbackType;
+  return {
+    id: String(apiUser.userId),
+    uid: generateUID(type === "brewery" ? "JD-BREW" : "JD-USER"),
+    name: apiUser.nickname,
+    email: apiUser.email,
+    phone: apiUser.phoneNumber || undefined,
+    profileImage: apiUser.profileImage || undefined,
+    type,
+    isBreweryVerified: type === "brewery" ? isVerifiedBreweryRole(apiUser.role) : undefined,
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -107,17 +111,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (keepLoggedIn !== "true") {
           if (savedUser) {
             await SafeStorage.removeItem("judam_user");
-            await removeTemporaryAccessToken();
+            await clearAuthTokens();
           }
           return;
         }
         if (savedUser) {
           const parsedUser = normalizeTemporaryUser(JSON.parse(savedUser) as User);
-          const savedToken = await SafeStorage.getItem("judam_access_token");
-          const expectedToken = getTemporaryAccessToken(parsedUser.type);
-          if (savedToken !== expectedToken) {
-            await saveTemporaryAccessToken(parsedUser.type);
-          }
           await SafeStorage.setItem("judam_user", JSON.stringify(parsedUser));
           setUser(parsedUser);
         }
@@ -131,33 +130,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string, type: UserType, keepLoggedIn = false) => {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    const loginType = getTemporaryLoginType(email, password, type);
-
-    const mockUser: User = {
-      id: loginType === "brewery" ? "1" : "2",
-      uid: loginType === "brewery" ? "JD-BREW0001" : "JD-USER0002",
-      name: loginType === "brewery" ? "술샘양조장" : "테스트소비자",
-      email,
-      phone: "010-1234-5678",
-      type: loginType,
-      isBreweryVerified: loginType === "brewery" ? true : undefined,
-      breweryName: loginType === "brewery" ? "술샘양조장" : undefined,
-      breweryLocation: loginType === "brewery" ? "경기 양평" : undefined,
-      breweryLocationDetail: loginType === "brewery" ? "누룩길 12" : undefined,
-      businessNumber: loginType === "brewery" ? "123-45-67890" : undefined,
-    };
-
-    setUser(mockUser);
+    const session = await loginWithEmail(email.trim().toLowerCase(), password);
+    const nextUser = mapAuthApiUser(session.user, type);
+    setUser(nextUser);
     try {
-      await SafeStorage.setItem("judam_user", JSON.stringify(mockUser));
-      await saveTemporaryAccessToken(loginType);
+      await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
+      await saveAuthTokens(session.accessToken, session.refreshToken);
       await SafeStorage.setItem(KEEP_LOGIN_KEY, keepLoggedIn ? "true" : "false");
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
     }
 
-    return mockUser;
+    return nextUser;
   };
 
   const logout = async () => {
@@ -166,32 +150,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await SafeStorage.removeItem("judam_user");
       await SafeStorage.removeItem(KEEP_LOGIN_KEY);
       await SafeStorage.removeItem("judam_onboarded");
-      await removeTemporaryAccessToken();
+      await clearAuthTokens();
     } catch (e) {
       console.error("Failed to remove user from SafeStorage", e);
     }
   };
 
   const signup = async (data: SignupData) => {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    const mockUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      uid: generateUID(),
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      type: data.type,
-      isBreweryVerified: false,
-      breweryName: data.breweryName,
-      breweryLocation: data.breweryLocation,
-      breweryLocationDetail: data.breweryLocationDetail,
+    const role = data.type === "brewery" ? "BREWERY_PENDING" : "USER";
+    const session = await signupWithEmail({
+      email: data.email.trim().toLowerCase(),
+      password: data.password,
+      nickname: data.name.trim(),
+      phoneNumber: digitsOnly(data.phone || ""),
+      termsAgreed: true,
+      privacyAgreed: true,
+      marketingAgreed: Boolean(data.marketingAgreed),
+      role,
+      phoneVerificationToken: data.phoneVerificationToken,
+    });
+    const fallbackUser: AuthApiUser = {
+      userId: Math.random().toString(36).slice(2, 11),
+      email: data.email.trim().toLowerCase(),
+      nickname: data.name.trim(),
+      phoneNumber: digitsOnly(data.phone || ""),
+      role,
     };
+    const nextUser = mapAuthApiUser(session?.user || fallbackUser, data.type);
 
-    setUser(mockUser);
+    setUser(nextUser);
     try {
-      await SafeStorage.setItem("judam_user", JSON.stringify(mockUser));
-      await saveTemporaryAccessToken(data.type);
+      await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
+      await saveAuthTokens(session?.accessToken, session?.refreshToken);
       await SafeStorage.setItem(KEEP_LOGIN_KEY, "false");
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
@@ -219,7 +209,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(updatedUser);
       try {
         await SafeStorage.setItem("judam_user", JSON.stringify(updatedUser));
-        await saveTemporaryAccessToken("brewery");
       } catch (e) {
         console.error("Failed to save updated user to SafeStorage", e);
       }

@@ -29,6 +29,7 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { requestPasswordReset, resetPassword, verifyPasswordResetCode } from '@/features/auth/api';
 import { getPasswordStrength, isPasswordReady, isValidEmail } from '@/utils/validation';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -56,6 +57,7 @@ export default function PasswordResetScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [notice, setNotice] = useState('');
+  const [isResetCodeVerified, setIsResetCodeVerified] = useState(false);
   const passwordStrength = useMemo(() => getPasswordStrength(newPassword), [newPassword]);
   const passwordMatches = confirmPassword.length > 0 && newPassword === confirmPassword;
   const passwordMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
@@ -93,11 +95,18 @@ export default function PasswordResetScreen() {
     }
 
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setEmail(normalizedEmail);
-    setIsLoading(false);
-    showNotice('인증번호가 발송되었습니다.');
-    setStep('verify');
+    try {
+      const result = await requestPasswordReset(normalizedEmail);
+      setEmail(result.email || normalizedEmail);
+      setVerificationCode('');
+      setIsResetCodeVerified(false);
+      showNotice(result.verificationCode ? `인증번호가 발급되었습니다. 인증번호: ${result.verificationCode}` : '인증번호가 발송되었습니다.');
+      setStep('verify');
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : '인증번호 요청에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleVerifyCode = async () => {
@@ -107,16 +116,16 @@ export default function PasswordResetScreen() {
     }
 
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    setIsLoading(false);
-
-    if (verificationCode.trim() !== '1234') {
-      showNotice('인증번호가 일치하지 않습니다.');
-      return;
+    try {
+      await verifyPasswordResetCode(email, verificationCode.trim());
+      setIsResetCodeVerified(true);
+      showNotice('인증이 완료되었습니다.');
+      setStep('newPassword');
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : '인증번호 확인에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
     }
-
-    showNotice('인증이 완료되었습니다.');
-    setStep('newPassword');
   };
 
   const handleResetPassword = async () => {
@@ -132,11 +141,25 @@ export default function PasswordResetScreen() {
       showNotice('비밀번호가 일치하지 않습니다.');
       return;
     }
+    if (!isResetCodeVerified) {
+      showNotice('인증번호 확인을 먼저 완료해주세요.');
+      setStep('verify');
+      return;
+    }
 
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    setIsLoading(false);
-    showNotice('비밀번호가 재설정되었습니다.');
+    try {
+      await resetPassword({
+        email,
+        verificationCode: verificationCode.trim(),
+        newPassword,
+      });
+      showNotice('비밀번호가 재설정되었습니다.');
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : '비밀번호 재설정에 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const closeNotice = () => {
@@ -216,7 +239,6 @@ export default function PasswordResetScreen() {
                       onChangeText={setVerificationCode}
                       keyboardType="number-pad"
                     />
-                    <Text style={styles.helperText}>* 테스트용 인증번호: 1234</Text>
                     <TouchableOpacity
                       activeOpacity={0.85}
                       style={[styles.primaryButton, isLoading && styles.disabledButton]}

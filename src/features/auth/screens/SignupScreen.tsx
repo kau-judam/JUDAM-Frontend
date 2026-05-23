@@ -41,6 +41,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import {
+  checkEmailAvailability,
+  checkNicknameAvailability,
+  confirmPhoneVerification,
+  requestPhoneVerification,
+} from '@/features/auth/api';
+import {
+  digitsOnly,
   formatPhoneNumber,
   getPasswordStrength,
   isPasswordReady,
@@ -141,6 +148,10 @@ export default function SignupScreen() {
   const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isPassVerifying, setIsPassVerifying] = useState(false);
+  const [isPhoneVerificationSent, setIsPhoneVerificationSent] = useState(false);
+  const [phoneVerificationCode, setPhoneVerificationCode] = useState('');
+  const [phoneVerificationGuide, setPhoneVerificationGuide] = useState('');
+  const [phoneVerificationToken, setPhoneVerificationToken] = useState<string | undefined>();
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
   const [isEmailChecked, setIsEmailChecked] = useState(false);
   const [isEmailAvailable, setIsEmailAvailable] = useState(false);
@@ -209,6 +220,10 @@ export default function SignupScreen() {
     }
     if (name === 'phone') {
       setIsPhoneVerified(false);
+      setIsPhoneVerificationSent(false);
+      setPhoneVerificationCode('');
+      setPhoneVerificationGuide('');
+      setPhoneVerificationToken(undefined);
     }
   };
 
@@ -222,16 +237,15 @@ export default function SignupScreen() {
       showNotice('올바른 이메일 형식이 아닙니다.');
       return;
     }
-    if (normalizedEmail === 'test@test.com') {
+    try {
+      const result = await checkEmailAvailability(normalizedEmail);
+      setFormData((prev) => ({ ...prev, email: normalizedEmail }));
       setIsEmailChecked(true);
-      setIsEmailAvailable(false);
-      showNotice('이미 사용 중인 이메일입니다.');
-      return;
+      setIsEmailAvailable(result.isAvailable);
+      showNotice(result.isAvailable ? '사용 가능한 이메일입니다.' : '이미 사용 중인 이메일입니다.');
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : '이메일 중복 확인에 실패했습니다.');
     }
-    setFormData((prev) => ({ ...prev, email: normalizedEmail }));
-    setIsEmailChecked(true);
-    setIsEmailAvailable(true);
-    showNotice('사용 가능한 이메일입니다.');
   };
 
   const handleCheckName = async () => {
@@ -244,16 +258,15 @@ export default function SignupScreen() {
       showNotice('닉네임에는 특수문자를 사용할 수 없습니다.');
       return;
     }
-    if (nickname.toLowerCase() === 'admin') {
+    try {
+      const result = await checkNicknameAvailability(nickname);
+      setFormData((prev) => ({ ...prev, name: nickname }));
       setIsNameChecked(true);
-      setIsNameAvailable(false);
-      showNotice('이미 사용 중인 닉네임입니다.');
-      return;
+      setIsNameAvailable(result.isAvailable);
+      showNotice(result.isAvailable ? '사용 가능한 닉네임입니다.' : '이미 사용 중인 닉네임입니다.');
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : '닉네임 중복 확인에 실패했습니다.');
     }
-    setFormData((prev) => ({ ...prev, name: nickname }));
-    setIsNameChecked(true);
-    setIsNameAvailable(true);
-    showNotice('사용 가능한 닉네임입니다.');
   };
 
   const handleTermsChange = (key: keyof typeof terms) => {
@@ -268,18 +281,44 @@ export default function SignupScreen() {
     setTerms(next);
   };
 
-  const handlePassVerification = () => {
+  const handlePassVerification = async () => {
     if (!isValidPhone(formData.phone)) {
       showNotice('연락처를 정확히 입력해주세요.');
       return;
     }
     setIsPassVerifying(true);
-    showNotice('본인인증을 진행합니다.');
-    setTimeout(() => {
+    try {
+      const result = await requestPhoneVerification(digitsOnly(formData.phone));
+      setIsPhoneVerificationSent(true);
+      setPhoneVerificationGuide(result.guideMessage || `${result.verificationCode || '인증 코드'}를 ${result.sendTo || '1666-3538'}로 문자 전송 후 인증 확인을 눌러주세요.`);
+      showNotice(result.guideMessage || '인증 요청이 생성되었습니다.');
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : '본인인증 요청에 실패했습니다.');
+    } finally {
       setIsPassVerifying(false);
+    }
+  };
+
+  const handleConfirmPhoneVerification = async () => {
+    if (!phoneVerificationCode.trim()) {
+      showNotice('인증 코드를 입력해주세요.');
+      return;
+    }
+    setIsPassVerifying(true);
+    try {
+      const result = await confirmPhoneVerification(digitsOnly(formData.phone), phoneVerificationCode.trim());
+      if (!result.phoneVerificationToken) {
+        showNotice('전화번호 인증 토큰을 받지 못했습니다. 백엔드 인증 설정을 확인해주세요.');
+        return;
+      }
+      setPhoneVerificationToken(result.phoneVerificationToken);
       setIsPhoneVerified(true);
       showNotice('본인인증이 완료되었습니다.');
-    }, 900);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : '본인인증 확인에 실패했습니다.');
+    } finally {
+      setIsPassVerifying(false);
+    }
   };
 
   const handleSignup = async () => {
@@ -316,6 +355,8 @@ export default function SignupScreen() {
         password: formData.password,
         phone: formData.phone,
         type: 'user',
+        marketingAgreed: terms.marketing,
+        phoneVerificationToken,
       });
       setIsLoading(false);
       RNStatusBar.setHidden(false, 'fade');
@@ -552,10 +593,38 @@ export default function SignupScreen() {
                     >
                       <ShieldCheck size={15} color="#FFF" />
                       <Text style={styles.smallBtnTxt}>
-                        {isPhoneVerified ? '완료' : isPassVerifying ? '확인중' : '인증하기'}
+                        {isPhoneVerified ? '완료' : isPassVerifying ? '확인중' : isPhoneVerificationSent ? '재요청' : '인증하기'}
                       </Text>
                     </TouchableOpacity>
                   </View>
+                  {isPhoneVerificationSent && !isPhoneVerified && (
+                    <>
+                      <View style={styles.row}>
+                        <View style={[styles.inputBox, { flex: 1 }]}>
+                          <ShieldCheck size={18} color="#9CA3AF" style={styles.inputIcon} />
+                          <TextInput
+                            style={styles.input}
+                            placeholder="인증 코드"
+                            placeholderTextColor="#9CA3AF"
+                            value={phoneVerificationCode}
+                            onChangeText={setPhoneVerificationCode}
+                            autoCapitalize="characters"
+                            autoCorrect={false}
+                          />
+                        </View>
+                        <TouchableOpacity
+                          style={styles.smallBtn}
+                          onPress={handleConfirmPhoneVerification}
+                          disabled={isPassVerifying}
+                        >
+                          <Text style={styles.smallBtnTxt}>확인</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {Boolean(phoneVerificationGuide) && (
+                        <Text style={styles.helperText}>{phoneVerificationGuide}</Text>
+                      )}
+                    </>
+                  )}
                 </View>
 
                 <View style={styles.termsArea}>

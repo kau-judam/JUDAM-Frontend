@@ -40,7 +40,7 @@ interface AuthContextType {
   user: User | null;
   isAuthReady: boolean;
   login: (email: string, password: string, type: UserType, keepLoggedIn?: boolean) => Promise<User>;
-  loginWithKakaoCode: (code: string, keepLoggedIn?: boolean) => Promise<KakaoLoginResult>;
+  loginWithKakaoCode: (code: string, keepLoggedIn?: boolean, redirectUri?: string) => Promise<KakaoLoginResult>;
   logout: () => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
   verifyBrewery: (data: BreweryVerificationData) => Promise<void>;
@@ -182,8 +182,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return nextUser;
   };
 
-  const loginWithKakaoCode = async (code: string, keepLoggedIn = false) => {
-    const session = await requestKakaoLogin(code);
+  const loginWithKakaoCode = async (code: string, keepLoggedIn = false, redirectUri?: string) => {
+    const session = await requestKakaoLogin(code, redirectUri);
     const apiUser = session?.user;
     const shouldSignup =
       Boolean(session?.isNewUser || session?.signupRequired || session?.requiresSignup) || !apiUser;

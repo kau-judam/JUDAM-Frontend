@@ -78,9 +78,11 @@ export type PhoneVerificationConfirmResponse = {
 };
 
 export type KakaoLoginUrlResponse = {
+  kakaoLoginUrl?: string;
   url?: string;
   loginUrl?: string;
   authUrl?: string;
+  redirectUri?: string;
 };
 
 export type BreweryApplicationFile = {
@@ -350,10 +352,13 @@ export async function getKakaoLoginUrl() {
   return unwrapAuthData<KakaoLoginUrlResponse>(response);
 }
 
-export async function loginWithKakaoCode(code: string) {
+export async function loginWithKakaoCode(code: string, redirectUri?: string) {
   const response = await requestAuthJson<AuthApiEnvelope<KakaoLoginResponse>>('/api/auth/kakao/login', {
     method: 'POST',
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({
+      code,
+      ...(redirectUri ? { redirectUri } : {}),
+    }),
   });
   return unwrapAuthData<KakaoLoginResponse>(response);
 }

@@ -37,10 +37,12 @@ import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '@/contexts/AuthContext';
 import { getKakaoLoginUrl } from '@/features/auth/api';
 import {
+  createKakaoAppRedirectUrl,
   getKakaoAuthUrl,
-  getKakaoCallbackCode,
+  getKakaoCallbackRouteParams,
   getKakaoRedirectUri,
   openKakaoAuthSession,
+  savePendingKakaoAuthRequest,
 } from '@/features/auth/kakaoAuth';
 import { isValidEmail } from '@/utils/validation';
 
@@ -59,7 +61,7 @@ const SPRING_CONFIG = {
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const { login, loginWithKakaoCode, logout } = useAuth();
+  const { login, logout } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -142,35 +144,25 @@ export default function LoginScreen() {
   const handleKakaoLogin = async () => {
     setIsLoading(true);
     try {
-      const kakao = await getKakaoLoginUrl();
+      const appRedirectUri = createKakaoAppRedirectUrl();
+      const kakao = await getKakaoLoginUrl(appRedirectUri);
       const kakaoUrl = getKakaoAuthUrl(kakao);
       if (!kakaoUrl) {
         setNotice('카카오 로그인 URL을 받지 못했습니다.');
         return;
       }
       const redirectUri = getKakaoRedirectUri(kakaoUrl);
-      const result = await openKakaoAuthSession(kakaoUrl);
+      await savePendingKakaoAuthRequest({ keepLoggedIn, redirectUri });
+      const result = await openKakaoAuthSession(kakaoUrl, appRedirectUri);
       if (result.type !== 'success' || !result.url) {
         setNotice('카카오 로그인 창을 열었습니다. 로그인이 완료되지 않았다면 다시 시도해주세요.');
         return;
       }
-      const code = getKakaoCallbackCode(result.url);
-      const kakaoResult = await loginWithKakaoCode(code, keepLoggedIn, redirectUri);
       RNStatusBar.setHidden(false, 'fade');
-      if (kakaoResult.status === 'signupRequired') {
-        router.replace({
-          pathname: '/signup',
-          params: {
-            kakaoEmail: kakaoResult.email,
-            kakaoNickname: kakaoResult.nickname,
-            kakaoProfileImage: kakaoResult.profileImage || undefined,
-            kakaoId: kakaoResult.kakaoId ? String(kakaoResult.kakaoId) : undefined,
-            kakaoSignupToken: kakaoResult.kakaoSignupToken,
-          },
-        } as any);
-        return;
-      }
-      router.replace('/(tabs)');
+      router.replace({
+        pathname: '/kakao/callback',
+        params: getKakaoCallbackRouteParams(result.url),
+      } as any);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '카카오 로그인에 실패했습니다.');
     } finally {

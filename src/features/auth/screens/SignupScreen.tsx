@@ -48,10 +48,12 @@ import {
   requestPhoneVerification,
 } from '@/features/auth/api';
 import {
+  createKakaoAppRedirectUrl,
   getKakaoAuthUrl,
-  getKakaoCallbackCode,
+  getKakaoCallbackRouteParams,
   getKakaoRedirectUri,
   openKakaoAuthSession,
+  savePendingKakaoAuthRequest,
 } from '@/features/auth/kakaoAuth';
 import {
   digitsOnly,
@@ -145,7 +147,7 @@ function getFirstParam(value: string | string[] | undefined) {
 
 export default function SignupScreen() {
   const insets = useSafeAreaInsets();
-  const { loginWithKakaoCode, signup } = useAuth();
+  const { signup } = useAuth();
   const params = useLocalSearchParams<{
     kakaoEmail?: string;
     kakaoNickname?: string;
@@ -435,40 +437,25 @@ export default function SignupScreen() {
   const handleKakaoSignup = async () => {
     setIsLoading(true);
     try {
-      const kakao = await getKakaoLoginUrl();
+      const appRedirectUri = createKakaoAppRedirectUrl();
+      const kakao = await getKakaoLoginUrl(appRedirectUri);
       const kakaoUrl = getKakaoAuthUrl(kakao);
       if (!kakaoUrl) {
         showNotice('카카오 로그인 URL을 받지 못했습니다.');
         return;
       }
       const redirectUri = getKakaoRedirectUri(kakaoUrl);
-      const result = await openKakaoAuthSession(kakaoUrl);
+      await savePendingKakaoAuthRequest({ keepLoggedIn: false, redirectUri });
+      const result = await openKakaoAuthSession(kakaoUrl, appRedirectUri);
       if (result.type !== 'success' || !result.url) {
         showNotice('카카오 로그인 창을 열었습니다. 로그인이 완료되지 않았다면 다시 시도해주세요.');
         return;
       }
-      const code = getKakaoCallbackCode(result.url);
-      const kakaoResult = await loginWithKakaoCode(code, false, redirectUri);
       RNStatusBar.setHidden(false, 'fade');
-      if (kakaoResult.status === 'signupRequired') {
-        if (kakaoResult.kakaoSignupToken) {
-          setKakaoSignupToken(kakaoResult.kakaoSignupToken);
-        }
-        setFormData((prev) => ({
-          ...prev,
-          email: kakaoResult.email || prev.email,
-          name: '',
-        }));
-        if (kakaoResult.email) {
-          setIsEmailChecked(true);
-          setIsEmailAvailable(true);
-        }
-        setIsNameChecked(false);
-        setIsNameAvailable(false);
-        showNotice('카카오 이메일을 불러왔어요. 남은 정보를 입력하고 회원가입을 완료해주세요.');
-        return;
-      }
-      router.replace('/(tabs)');
+      router.replace({
+        pathname: '/kakao/callback',
+        params: getKakaoCallbackRouteParams(result.url),
+      } as any);
     } catch (error) {
       showNotice(error instanceof Error ? error.message : '카카오 회원가입에 실패했습니다.');
     } finally {

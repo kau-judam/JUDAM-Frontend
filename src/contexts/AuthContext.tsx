@@ -1,4 +1,6 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from "react";
+import { Linking } from "react-native";
+import { router } from "expo-router";
 import SafeStorage from "@/utils/storage";
 import {
   clearAuthTokens,
@@ -15,6 +17,14 @@ import {
 } from "@/features/auth/api";
 import { digitsOnly } from "@/utils/validation";
 import type { BtiTasteAxisValues } from "@/features/bti/data";
+import {
+  beginKakaoCallbackHandling,
+  clearPendingKakaoAuthRequest,
+  finishKakaoCallbackHandling,
+  getKakaoCallbackCode,
+  getPendingKakaoAuthRequest,
+  isKakaoCallbackUrl,
+} from "@/features/auth/kakaoAuth";
 
 export type UserType = "user" | "brewery";
 
@@ -182,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return nextUser;
   };
 
-  const loginWithKakaoCode = async (code: string, keepLoggedIn = false, redirectUri?: string) => {
+  const loginWithKakaoCode = useCallback(async (code: string, keepLoggedIn = false, redirectUri?: string) => {
     const session = await requestKakaoLogin(code, redirectUri);
     const apiUser = session?.user;
     const shouldSignup =
@@ -202,7 +212,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     return { status: "loggedIn" as const, user: nextUser };
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    const handleKakaoCallbackUrl = async (url: string | null) => {
+      if (!url || !isKakaoCallbackUrl(url) || !beginKakaoCallbackHandling(url)) return;
+
+      try {
+        const code = getKakaoCallbackCode(url);
+        const pendingRequest = await getPendingKakaoAuthRequest();
+        const kakaoResult = await loginWithKakaoCode(
+          code,
+          Boolean(pendingRequest?.keepLoggedIn),
+          pendingRequest?.redirectUri
+        );
+
+        await clearPendingKakaoAuthRequest();
+        finishKakaoCallbackHandling(url);
+
+        if (kakaoResult.status === "signupRequired") {
+          router.replace({
+            pathname: "/(auth)/signup",
+            params: {
+              kakaoEmail: kakaoResult.email,
+              kakaoNickname: kakaoResult.nickname,
+              kakaoProfileImage: kakaoResult.profileImage || undefined,
+              kakaoId: kakaoResult.kakaoId ? String(kakaoResult.kakaoId) : undefined,
+              kakaoSignupToken: kakaoResult.kakaoSignupToken,
+            },
+          } as any);
+          return;
+        }
+
+        router.replace("/(tabs)");
+      } catch (error) {
+        await clearPendingKakaoAuthRequest();
+        finishKakaoCallbackHandling(url);
+        console.warn("Failed to handle Kakao callback URL.", error);
+        router.replace("/(auth)/login");
+      }
+    };
+
+    Linking.getInitialURL()
+      .then((url) => {
+        void handleKakaoCallbackUrl(url);
+      })
+      .catch((error) => console.warn("Failed to read initial URL.", error));
+
+    const subscription = Linking.addEventListener("url", ({ url }) => {
+      void handleKakaoCallbackUrl(url);
+    });
+
+    return () => subscription.remove();
+  }, [isAuthReady, loginWithKakaoCode]);
 
   const logout = async () => {
     setUser(null);

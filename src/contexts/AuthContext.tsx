@@ -147,6 +147,13 @@ function getKakaoSignupPayload(session: KakaoLoginResponse): Extract<KakaoLoginR
   };
 }
 
+function isIncompleteKakaoUser(session: KakaoLoginResponse) {
+  const provider = String(session.user?.provider || "").toLowerCase();
+  if (provider !== "kakao") return false;
+
+  return !session.user?.email || !session.user?.phoneNumber;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -196,7 +203,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const session = await requestKakaoLogin(code, redirectUri);
     const apiUser = session?.user;
     const shouldSignup =
-      Boolean(session?.isNewUser || session?.signupRequired || session?.requiresSignup) || !apiUser;
+      Boolean(session?.isNewUser || session?.signupRequired || session?.requiresSignup) ||
+      isIncompleteKakaoUser(session) ||
+      !apiUser;
 
     if (shouldSignup || !apiUser) {
       return getKakaoSignupPayload(session);
@@ -241,6 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               kakaoProfileImage: kakaoResult.profileImage || undefined,
               kakaoId: kakaoResult.kakaoId ? String(kakaoResult.kakaoId) : undefined,
               kakaoSignupToken: kakaoResult.kakaoSignupToken,
+              kakaoNeedsProfileCompletion: kakaoResult.kakaoSignupToken ? undefined : "true",
             },
           } as any);
           return;

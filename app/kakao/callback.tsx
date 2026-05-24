@@ -54,6 +54,7 @@ export default function KakaoCallbackScreen() {
               kakaoProfileImage: kakaoResult.profileImage || undefined,
               kakaoId: kakaoResult.kakaoId ? String(kakaoResult.kakaoId) : undefined,
               kakaoSignupToken: kakaoResult.kakaoSignupToken,
+              kakaoNeedsProfileCompletion: kakaoResult.kakaoSignupToken ? undefined : 'true',
             },
           } as any);
           return;

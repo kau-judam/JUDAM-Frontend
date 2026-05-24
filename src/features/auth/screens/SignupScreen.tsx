@@ -154,8 +154,10 @@ export default function SignupScreen() {
     kakaoProfileImage?: string;
     kakaoId?: string;
     kakaoSignupToken?: string;
+    kakaoNeedsProfileCompletion?: string;
   }>();
   const initialKakaoSignupToken = getFirstParam(params.kakaoSignupToken) || '';
+  const needsKakaoProfileCompletion = getFirstParam(params.kakaoNeedsProfileCompletion) === 'true';
 
   const [formData, setFormData] = useState({
     name: '',
@@ -197,7 +199,9 @@ export default function SignupScreen() {
   const passwordStrength = useMemo(() => getPasswordStrength(formData.password), [formData.password]);
   const passwordMatches = formData.confirmPassword.length > 0 && formData.password === formData.confirmPassword;
   const passwordMismatch = formData.confirmPassword.length > 0 && formData.password !== formData.confirmPassword;
-  const isKakaoSignup = Boolean(kakaoSignupToken || getFirstParam(params.kakaoEmail));
+  const kakaoEmail = getFirstParam(params.kakaoEmail);
+  const isKakaoSignup = Boolean(kakaoSignupToken || kakaoEmail);
+  const isKakaoEmailLocked = Boolean(kakaoEmail);
 
   useEffect(() => {
     RNStatusBar.setHidden(true, 'none');
@@ -205,7 +209,6 @@ export default function SignupScreen() {
   }, [MIN_HEIGHT, translateY]);
 
   useEffect(() => {
-    const kakaoEmail = getFirstParam(params.kakaoEmail);
     if (!kakaoEmail) return;
 
     setFormData((prev) => ({
@@ -214,7 +217,7 @@ export default function SignupScreen() {
     }));
     setIsEmailChecked(true);
     setIsEmailAvailable(true);
-  }, [params.kakaoEmail]);
+  }, [kakaoEmail]);
 
   useEffect(() => {
     const nextToken = getFirstParam(params.kakaoSignupToken);
@@ -222,6 +225,12 @@ export default function SignupScreen() {
       setKakaoSignupToken(nextToken);
     }
   }, [params.kakaoSignupToken]);
+
+  useEffect(() => {
+    if (needsKakaoProfileCompletion && !initialKakaoSignupToken) {
+      showNotice('카카오 계정 정보를 불러왔어요. 회원가입을 완료하려면 백엔드의 카카오 보완 가입 토큰이 필요합니다.');
+    }
+  }, [initialKakaoSignupToken, needsKakaoProfileCompletion]);
 
   const panGesture = Gesture.Pan()
     .onStart(() => {
@@ -252,7 +261,7 @@ export default function SignupScreen() {
   const showNotice = (message: string) => setNotice(message);
 
   const handleInputChange = (name: string, value: string) => {
-    if (name === 'email' && isKakaoSignup) return;
+    if (name === 'email' && isKakaoEmailLocked) return;
     const nextValue = name === 'phone' ? formatPhoneNumber(value) : value;
     setFormData((prev) => ({ ...prev, [name]: nextValue }));
     if (name === 'email') {
@@ -584,10 +593,10 @@ export default function SignupScreen() {
                         keyboardType="email-address"
                         autoCapitalize="none"
                         autoCorrect={false}
-                        editable={!isKakaoSignup && !(isEmailChecked && isEmailAvailable)}
+                        editable={!isKakaoEmailLocked && !(isEmailChecked && isEmailAvailable)}
                       />
                     </View>
-                    {!isKakaoSignup && (
+                    {!isKakaoEmailLocked && (
                       <TouchableOpacity
                         style={[styles.smallBtn, isEmailChecked && isEmailAvailable ? styles.smallBtnDone : null]}
                         onPress={handleCheckEmail}
@@ -599,7 +608,7 @@ export default function SignupScreen() {
                       </TouchableOpacity>
                     )}
                   </View>
-                  {isKakaoSignup && <Text style={styles.helperText}>카카오 계정 이메일은 변경할 수 없어요.</Text>}
+                  {isKakaoEmailLocked && <Text style={styles.helperText}>카카오 계정 이메일은 변경할 수 없어요.</Text>}
                 </View>
 
                 <View style={styles.inputGroup}>

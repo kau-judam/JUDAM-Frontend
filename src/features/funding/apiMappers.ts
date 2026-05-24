@@ -40,6 +40,23 @@ function normalizeTasteValue(value?: number) {
   return Math.max(0, Math.min(100, value));
 }
 
+function normalizeMatchScore(value?: number | null) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function getFundingMatchScore(item: {
+  sulbtiMatchScore?: number | null;
+  matchScore?: number | null;
+  tasteMatchScore?: number | null;
+  matchRate?: number | null;
+}) {
+  return normalizeMatchScore(item.sulbtiMatchScore)
+    ?? normalizeMatchScore(item.matchScore)
+    ?? normalizeMatchScore(item.tasteMatchScore)
+    ?? normalizeMatchScore(item.matchRate);
+}
+
 function getVolumeFromDescription(description?: string) {
   return description?.match(/\d+\s?ml/i)?.[0].replace(/\s/g, '') || undefined;
 }
@@ -83,6 +100,7 @@ function isSameFundingText(current?: string, incoming?: string) {
 export function mergeFundingListItem(existing: FundingProject | undefined, item: FundingListItem): FundingProject {
   const status = mapFundingStatus(item.status, item.currentAmount, item.targetAmount);
   const thumbnailUrl = normalizeFundingImageUrl(item.thumbnailUrl);
+  const matchScore = getFundingMatchScore(item);
   return {
     id: item.fundingId,
     title: item.title || existing?.title || '',
@@ -100,6 +118,10 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     breweryId: existing?.breweryId,
     liked: item.liked ?? existing?.liked,
     favoriteCount: item.likeCount ?? existing?.favoriteCount,
+    sulbtiMatchScore: matchScore ?? existing?.sulbtiMatchScore,
+    matchScore: matchScore ?? existing?.matchScore,
+    tasteMatchScore: matchScore ?? existing?.tasteMatchScore,
+    matchRate: matchScore ?? existing?.matchRate,
     goalAmount: item.targetAmount || existing?.goalAmount || 1,
     currentAmount: item.currentAmount ?? existing?.currentAmount ?? 0,
     backers: existing?.backers || 0,
@@ -155,6 +177,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     detail.fundingId === existing.id ||
     isSameFundingText(existing.title, detail.title) ||
     isSameFundingText(existing.shortTitle, detail.title);
+  const matchScore = getFundingMatchScore(detail);
   return {
     ...existing,
     title: sameProject ? detail.title || existing.title : existing.title,
@@ -178,6 +201,10 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     alcoholContent: sameProject ? alcoholContent || existing.alcoholContent : existing.alcoholContent,
     liked: sameProject ? detail.liked ?? existing.liked : existing.liked,
     favoriteCount: sameProject ? detail.likeCount ?? existing.favoriteCount : existing.favoriteCount,
+    sulbtiMatchScore: sameProject ? matchScore ?? existing.sulbtiMatchScore : existing.sulbtiMatchScore,
+    matchScore: sameProject ? matchScore ?? existing.matchScore : existing.matchScore,
+    tasteMatchScore: sameProject ? matchScore ?? existing.tasteMatchScore : existing.tasteMatchScore,
+    matchRate: sameProject ? matchScore ?? existing.matchRate : existing.matchRate,
     tasteProfile: sameProject && detail.tasteProfile
       ? {
           sweetness: normalizeTasteValue(detail.tasteProfile.sweetness),
@@ -240,6 +267,7 @@ export function mapBreweryLogs(logs: FundingBreweryLogItem[]): JournalEntry[] {
     content: log.content,
     images: normalizeFundingImageUrls(log.imageUrls),
     likes: log.likeCount || 0,
+    liked: log.liked,
     comments: [],
   }));
 }
@@ -248,13 +276,17 @@ export function mapFundingReview(projectId: number, item: FundingReviewItem): Fu
   return {
     id: item.reviewId,
     projectId,
+    userId: item.writerId ? String(item.writerId) : undefined,
     userName: item.writerNickname,
     rating: item.rating,
     date: formatDate(item.createdAt),
     comment: item.content,
     rewardName: '후원 리워드',
     images: normalizeFundingImageUrls(item.imageUrls),
-    tags: [],
+    mood: item.mood,
+    pairing: item.pairing,
+    showRecordInReview: item.recordVisibility,
+    tags: item.tags || [],
     likes: 0,
     timestamp: formatDate(item.createdAt),
   };

@@ -33,7 +33,8 @@ function FundingProjectCard({
 }: FundingProjectCardProps) {
   const progressPercentage = project.goalAmount > 0 ? Math.min((project.currentAmount / project.goalAmount) * 100, 100) : 0;
   const completed = isCompletedFundingStatus(project.status);
-  const showMatch = showTasteMatch && Boolean(tasteProfile);
+  const tasteMatchScore = getTasteMatchScore(project, tasteProfile);
+  const showMatch = showTasteMatch && tasteMatchScore !== null;
 
   const handleFavoritePress = (event: GestureResponderEvent) => {
     event.stopPropagation();
@@ -67,7 +68,7 @@ function FundingProjectCard({
           <Text style={styles.projectTitle} numberOfLines={2}>{project.title}</Text>
           {showMatch && (
             <View style={styles.matchBadge}>
-              <Text style={styles.matchBadgeTxt}>내 술BTI와 {getTasteMatchScore(project, tasteProfile)}% 매칭</Text>
+              <Text style={styles.matchBadgeTxt}>내 술BTI와 {tasteMatchScore}% 매칭</Text>
             </View>
           )}
           <View style={styles.progressRow}>

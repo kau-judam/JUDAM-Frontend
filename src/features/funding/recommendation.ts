@@ -36,7 +36,15 @@ export function getTasteProfileFromSulbti(sulbti?: string): TasteProfile | null 
 }
 
 export function getTasteMatchScore(project: FundingProject, userTasteProfile: TasteProfile | null) {
-  if (!userTasteProfile || !project.tasteProfile) return 0;
+  const serverMatchScore =
+    project.sulbtiMatchScore ??
+    project.matchScore ??
+    project.tasteMatchScore ??
+    project.matchRate;
+  if (typeof serverMatchScore === 'number' && Number.isFinite(serverMatchScore)) {
+    return Math.max(0, Math.min(100, Math.round(serverMatchScore)));
+  }
+  if (!userTasteProfile || !project.tasteProfile) return null;
   const diff =
     Math.abs(project.tasteProfile.sweetness - userTasteProfile.sweetness) +
     Math.abs(project.tasteProfile.aroma - userTasteProfile.aroma) +
@@ -94,7 +102,7 @@ export function sortFundingProjectsForDisplay(
     return [...projects].sort((a, b) => {
       const statusDiff = getRecommendationStatusPriority(a.status) - getRecommendationStatusPriority(b.status);
       if (statusDiff !== 0) return statusDiff;
-      const matchDiff = getTasteMatchScore(b, userTasteProfile) - getTasteMatchScore(a, userTasteProfile);
+      const matchDiff = (getTasteMatchScore(b, userTasteProfile) ?? -1) - (getTasteMatchScore(a, userTasteProfile) ?? -1);
       if (matchDiff !== 0) return matchDiff;
       return getProjectFavoriteCount(b, favoriteFundings) - getProjectFavoriteCount(a, favoriteFundings);
     });

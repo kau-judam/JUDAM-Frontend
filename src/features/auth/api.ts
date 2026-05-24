@@ -18,6 +18,7 @@ export type AuthApiUser = {
   provider?: string;
   role: AuthRole;
   profileImage?: string | null;
+  marketingAgreed?: boolean;
 };
 
 export type AuthSession = {
@@ -42,6 +43,8 @@ export type KakaoLoginResponse = Partial<AuthSession> & {
   kakaoNickname?: string;
   profileImage?: string | null;
   kakaoId?: string | number;
+  kakaoSignupToken?: string;
+  kakaoProfile?: unknown;
 };
 
 export type AuthAvailabilityResponse = {
@@ -96,10 +99,24 @@ export type BreweryApplicationPayload = {
   businessLicense: BreweryApplicationFile;
 };
 
-export type BreweryApplicationResponse = {
+export type BreweryApplicationRecord = {
   applicationId?: number;
   status?: string;
+  breweryName?: string;
+  businessNumber?: string;
+  businessAddress?: string;
+  businessAddressDetail?: string;
+  phoneNumber?: string;
   documentUrl?: string;
+  rejectReason?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type BreweryApplicationResponse = BreweryApplicationRecord & {
+  application?: BreweryApplicationRecord & {
+    user?: AuthApiUser;
+  };
   user?: AuthApiUser;
   message?: string;
 };
@@ -232,6 +249,25 @@ export async function signupWithEmail(payload: {
   phoneVerificationToken?: string;
 }) {
   const response = await requestAuthJson<AuthApiEnvelope<AuthSession>>('/api/auth/signup', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return unwrapAuthData<AuthSession>(response);
+}
+
+export async function completeKakaoSignup(payload: {
+  kakaoSignupToken: string;
+  email?: string;
+  password?: string;
+  nickname: string;
+  phoneNumber: string;
+  termsAgreed: boolean;
+  privacyAgreed: boolean;
+  marketingAgreed: boolean;
+  role: 'USER' | 'BREWERY_PENDING';
+  phoneVerificationToken?: string;
+}) {
+  const response = await requestAuthJson<AuthApiEnvelope<AuthSession>>('/api/auth/kakao/signup/complete', {
     method: 'POST',
     body: JSON.stringify(payload),
   });

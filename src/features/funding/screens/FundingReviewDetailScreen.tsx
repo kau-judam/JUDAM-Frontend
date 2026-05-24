@@ -17,9 +17,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
-import { deleteFundingReviewApi, getFundingApiErrorMessage, getFundingReviewDetail } from '@/features/funding/api';
+import {
+  createFundingReviewComment,
+  deleteFundingReviewApi,
+  getFundingApiErrorMessage,
+  getFundingReviewComments,
+  getFundingReviewDetail,
+  likeFundingReviewComment,
+  type FundingReviewCommentItem,
+  unlikeFundingReviewComment,
+} from '@/features/funding/api';
 import { mapFundingReview } from '@/features/funding/apiMappers';
-import { fundingReviewComments, isFundingReviewOwnedByUser, type FundingReviewComment } from '@/features/funding/reviews';
+import { isFundingReviewOwnedByUser, type FundingReviewComment } from '@/features/funding/reviews';
 
 type ReviewDetailAlert = {
   title: string;
@@ -27,6 +36,33 @@ type ReviewDetailAlert = {
   tone?: FundingAlertTone;
   buttons?: FundingAlertButton[];
 };
+
+function formatReviewCommentTime(value: string) {
+  if (!value) return '방금 전';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toISOString().slice(0, 10).replace(/-/g, '. ');
+}
+
+function mapReviewComment(
+  item: FundingReviewCommentItem,
+  fallbackProjectId: number,
+  fallbackReviewId: number,
+  currentUser: { id?: string; type?: string } | null
+): FundingReviewComment {
+  const writerId = item.writerId !== undefined ? String(item.writerId) : undefined;
+  return {
+    id: item.commentId,
+    projectId: item.fundingId || fallbackProjectId,
+    reviewId: item.reviewId || fallbackReviewId,
+    author: item.writerNickname || '사용자',
+    authorType: writerId && writerId === currentUser?.id && currentUser?.type === 'brewery' ? 'brewery' : 'user',
+    content: item.content,
+    timestamp: formatReviewCommentTime(item.createdAt),
+    likes: item.likeCount || 0,
+    liked: item.liked,
+  };
+}
 
 export default function FundingReviewDetailScreen() {
   const insets = useSafeAreaInsets();
@@ -40,16 +76,13 @@ export default function FundingReviewDetailScreen() {
     () => fundingReviews.find((item) => item.projectId === projectId && item.id === targetReviewId) || null,
     [fundingReviews, projectId, targetReviewId]
   );
-  const initialReviewComments = useMemo(
-    () => fundingReviewComments.filter((comment) => comment.projectId === projectId && comment.reviewId === targetReviewId),
-    [projectId, targetReviewId]
-  );
   const [commentInput, setCommentInput] = useState('');
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(review?.likes || 0);
-  const [comments, setComments] = useState<FundingReviewComment[]>(initialReviewComments);
+  const [comments, setComments] = useState<FundingReviewComment[]>([]);
   const [alertModal, setAlertModal] = useState<ReviewDetailAlert | null>(null);
   const [isReviewLoading, setIsReviewLoading] = useState(false);
+  const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
   const canManageReview = Boolean(review && isFundingReviewOwnedByUser(review, user));
 
   const showLoginRequired = (message: string) => {
@@ -65,11 +98,10 @@ export default function FundingReviewDetailScreen() {
   };
 
   useEffect(() => {
-    setComments(initialReviewComments);
     setCommentInput('');
     setLiked(false);
     setLikeCount(review?.likes || 0);
-  }, [initialReviewComments, review?.likes]);
+  }, [review?.id, review?.likes]);
 
   useEffect(() => {
     if (!project || !Number.isFinite(projectId) || !Number.isFinite(targetReviewId) || targetReviewId <= 0) return;
@@ -93,6 +125,24 @@ export default function FundingReviewDetailScreen() {
     };
   }, [mergeFundingReviews, project, projectId, targetReviewId]);
 
+  useEffect(() => {
+    if (!Number.isFinite(projectId) || !Number.isFinite(targetReviewId) || targetReviewId <= 0) return;
+
+    let isMounted = true;
+    getFundingReviewComments(projectId, targetReviewId)
+      .then((response) => {
+        if (!isMounted) return;
+        setComments(response.content.map((item) => mapReviewComment(item, projectId, targetReviewId, user)));
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '후기 댓글을 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [projectId, targetReviewId, user]);
+
   const handleBackToFundingReviews = () => {
     if (!project) {
       router.back();
@@ -110,41 +160,56 @@ export default function FundingReviewDetailScreen() {
     setLikeCount((prev) => Math.max(0, prev + (liked ? -1 : 1)));
   };
 
-  const handleCommentSubmit = () => {
-    if (!commentInput.trim()) return;
+  const handleCommentSubmit = async () => {
+    const content = commentInput.trim();
+    if (!content || isCommentSubmitting) return;
     if (!user) {
       showLoginRequired('후기 댓글은 로그인 후 이용할 수 있어요.');
       return;
     }
 
-    const nextComment: FundingReviewComment = {
-      id: Math.max(0, ...comments.map((comment) => comment.id)) + 1,
-      projectId,
-      reviewId: targetReviewId,
-      author: user.name || '사용자',
-      authorType: user.type === 'brewery' ? 'brewery' : 'user',
-      content: commentInput.trim(),
-      timestamp: '방금 전',
-      likes: 0,
-      liked: false,
-    };
-
-    setComments((prev) => [...prev, nextComment]);
-    setCommentInput('');
+    setIsCommentSubmitting(true);
+    try {
+      const savedComment = await createFundingReviewComment(projectId, targetReviewId, content);
+      setComments((prev) => [...prev, mapReviewComment(savedComment, projectId, targetReviewId, user)]);
+      setCommentInput('');
+    } catch (error) {
+      setAlertModal({
+        title: '댓글 작성 실패',
+        body: getFundingApiErrorMessage(error, '댓글을 저장하지 못했습니다.'),
+        tone: 'warning',
+      });
+    } finally {
+      setIsCommentSubmitting(false);
+    }
   };
 
-  const handleCommentLike = (commentId: number) => {
+  const handleCommentLike = async (commentId: number) => {
     if (!user) {
       showLoginRequired('후기 댓글 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
-    setComments((prev) =>
-      prev.map((comment) =>
-        comment.id === commentId
-          ? { ...comment, liked: !comment.liked, likes: Math.max(0, comment.likes + (comment.liked ? -1 : 1)) }
-          : comment
-      )
-    );
+    const targetComment = comments.find((comment) => comment.id === commentId);
+    if (!targetComment) return;
+
+    try {
+      const response = targetComment.liked
+        ? await unlikeFundingReviewComment(projectId, targetReviewId, commentId)
+        : await likeFundingReviewComment(projectId, targetReviewId, commentId);
+      setComments((prev) =>
+        prev.map((comment) =>
+          comment.id === commentId
+            ? { ...comment, liked: response.liked, likes: Math.max(0, response.likeCount) }
+            : comment
+        )
+      );
+    } catch (error) {
+      setAlertModal({
+        title: '좋아요 처리 실패',
+        body: getFundingApiErrorMessage(error, '댓글 좋아요 상태를 저장하지 못했습니다.'),
+        tone: 'warning',
+      });
+    }
   };
 
   const handleEditReview = () => {
@@ -356,7 +421,11 @@ export default function FundingReviewDetailScreen() {
               returnKeyType="send"
               onSubmitEditing={handleCommentSubmit}
             />
-            <TouchableOpacity style={[styles.sendButton, !commentInput.trim() && styles.sendButtonDisabled]} onPress={handleCommentSubmit} disabled={!commentInput.trim()}>
+            <TouchableOpacity
+              style={[styles.sendButton, (!commentInput.trim() || isCommentSubmitting) && styles.sendButtonDisabled]}
+              onPress={handleCommentSubmit}
+              disabled={!commentInput.trim() || isCommentSubmitting}
+            >
               <Send size={17} color="#FFF" />
             </TouchableOpacity>
           </View>

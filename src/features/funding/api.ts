@@ -808,12 +808,30 @@ export type FundingReviewItem = {
   recordVisibility?: boolean;
 };
 
+export type FundingReviewCommentItem = {
+  commentId: number;
+  fundingId?: number;
+  reviewId?: number;
+  writerId?: number | string;
+  writerNickname: string;
+  content: string;
+  likeCount: number;
+  liked: boolean;
+  createdAt: string;
+  updatedAt?: string | null;
+};
+
 export type FundingReviewsResponse = {
   content: FundingReviewItem[];
   page: number;
   size: number;
   totalElements: number;
   totalPages: number;
+};
+
+export type FundingReviewCommentsResponse = {
+  content: FundingReviewCommentItem[];
+  message?: string;
 };
 
 export type FundingSupportOption = {
@@ -1230,6 +1248,30 @@ function normalizeFundingReviewsResponse(response: unknown): FundingReviewsRespo
     size: readFundingApiNumber(data, ['size'], content.length),
     totalElements: readFundingApiNumber(data, ['totalElements', 'total_elements'], content.length),
     totalPages: readFundingApiNumber(data, ['totalPages', 'total_pages'], content.length > 0 ? 1 : 0),
+  };
+}
+
+function normalizeFundingReviewCommentItem(source: Record<string, unknown>): FundingReviewCommentItem {
+  return {
+    commentId: readFundingApiNumber(source, ['commentId', 'comment_id', 'id']),
+    fundingId: readFundingApiNumber(source, ['fundingId', 'funding_id']) || undefined,
+    reviewId: readFundingApiNumber(source, ['reviewId', 'review_id']) || undefined,
+    writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
+    writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']),
+    content: readFundingApiString(source, ['content', 'body', 'comment']),
+    likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
+    liked: readFundingApiBoolean(source, ['liked']),
+    createdAt: readFundingApiString(source, ['createdAt', 'created_at', 'date']),
+    updatedAt: readFundingApiString(source, ['updatedAt', 'updated_at']) || null,
+  };
+}
+
+function normalizeFundingReviewCommentsResponse(response: unknown): FundingReviewCommentsResponse {
+  const data = getFundingApiObject(response);
+  const content = getFundingApiArray<Record<string, unknown>>(response, ['content', 'comments', 'data']);
+  return {
+    content: content.map(normalizeFundingReviewCommentItem),
+    message: readFundingApiString(data, ['message']),
   };
 }
 
@@ -2254,6 +2296,42 @@ export async function getFundingReviewDetail(fundingId: number, reviewId: number
   return normalizeFundingReviewItem(getFundingApiNestedObject(data, ['review', 'fundingReview', 'funding_review', 'data']));
 }
 
+export async function getFundingReviewComments(fundingId: number, reviewId: number) {
+  const accessToken = await getFundingAccessToken();
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}/comments`, {
+    auth: Boolean(accessToken),
+  });
+  return normalizeFundingReviewCommentsResponse(result);
+}
+
+export async function createFundingReviewComment(fundingId: number, reviewId: number, content: string) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}/comments`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({ content }),
+  });
+  const data = getFundingApiObject(result);
+  return normalizeFundingReviewCommentItem(getFundingApiNestedObject(data, ['comment', 'reviewComment', 'review_comment', 'data']));
+}
+
+export async function likeFundingReviewComment(fundingId: number, reviewId: number, commentId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}/comments/${commentId}/likes`, {
+    method: 'POST',
+    auth: true,
+  });
+  const data = getFundingApiObject(result);
+  return normalizeFundingReviewCommentItem(getFundingApiNestedObject(data, ['comment', 'reviewComment', 'review_comment', 'data']));
+}
+
+export async function unlikeFundingReviewComment(fundingId: number, reviewId: number, commentId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}/comments/${commentId}/likes`, {
+    method: 'DELETE',
+    auth: true,
+  });
+  const data = getFundingApiObject(result);
+  return normalizeFundingReviewCommentItem(getFundingApiNestedObject(data, ['comment', 'reviewComment', 'review_comment', 'data']));
+}
+
 export async function createFundingReview(fundingId: number, payload: CreateFundingReviewPayload) {
   const formData = new FormData();
   formData.append('rating', String(payload.rating));
@@ -2262,8 +2340,11 @@ export async function createFundingReview(fundingId: number, payload: CreateFund
   formData.append('detailReview', detailReview);
   if (payload.mood) formData.append('mood', payload.mood);
   if (payload.pairing) formData.append('pairing', payload.pairing);
-  if (payload.recordVisibility !== undefined) formData.append('recordVisibility', String(payload.recordVisibility));
-  payload.tags?.forEach((tag) => formData.append('tags', tag));
+  if (payload.recordVisibility !== undefined) {
+    formData.append('recordVisibility', String(payload.recordVisibility));
+    formData.append('showRecord', String(payload.recordVisibility));
+  }
+  if (payload.tags) formData.append('tags', JSON.stringify(payload.tags));
   payload.imageUrls?.forEach((imageUrl) => formData.append('imageUrls', imageUrl));
   appendFundingFormFiles(formData, 'images', payload.images);
 

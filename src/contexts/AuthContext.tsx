@@ -62,11 +62,13 @@ export type KakaoLoginResult =
   | { status: "loggedIn"; user: User }
   | {
       status: "signupRequired";
+      reason?: string;
       email?: string;
       nickname?: string;
       profileImage?: string | null;
       kakaoId?: string | number;
       kakaoSignupToken?: string;
+      existingUserId?: string | number;
     };
 
 interface SignupData {
@@ -135,15 +137,46 @@ function mapAuthApiUser(apiUser: AuthApiUser, fallbackType: UserType = "user"): 
   };
 }
 
+function getKakaoProfileEmail(profile?: KakaoLoginResponse["kakaoProfile"]) {
+  return profile?.email || profile?.kakao_account?.email || profile?.kakaoAccount?.email;
+}
+
+function getKakaoProfileNickname(profile?: KakaoLoginResponse["kakaoProfile"]) {
+  return (
+    profile?.nickname ||
+    profile?.properties?.nickname ||
+    profile?.kakao_account?.profile?.nickname ||
+    profile?.kakaoAccount?.profile?.nickname
+  );
+}
+
+function getKakaoProfileImage(profile?: KakaoLoginResponse["kakaoProfile"]) {
+  return (
+    profile?.profileImage ||
+    profile?.profileImageUrl ||
+    profile?.profile_image_url ||
+    profile?.thumbnail_image_url ||
+    profile?.properties?.profile_image ||
+    profile?.properties?.thumbnail_image ||
+    profile?.kakao_account?.profile?.profile_image_url ||
+    profile?.kakao_account?.profile?.thumbnail_image_url ||
+    profile?.kakaoAccount?.profile?.profileImageUrl ||
+    profile?.kakaoAccount?.profile?.thumbnailImageUrl
+  );
+}
+
 function getKakaoSignupPayload(session: KakaoLoginResponse): Extract<KakaoLoginResult, { status: "signupRequired" }> {
   const user = session.user;
+  const kakaoProfile = session.kakaoProfile;
   return {
     status: "signupRequired",
-    email: session.email || session.kakaoEmail || user?.email,
-    nickname: session.nickname || session.kakaoNickname || user?.nickname,
-    profileImage: session.profileImage || user?.profileImage,
+    reason: session.reason,
+    email: session.email || session.kakaoEmail || getKakaoProfileEmail(kakaoProfile) || user?.email,
+    nickname: session.nickname || session.kakaoNickname || getKakaoProfileNickname(kakaoProfile) || user?.nickname,
+    profileImage: session.profileImage || getKakaoProfileImage(kakaoProfile) || user?.profileImage,
     kakaoId: session.kakaoId,
     kakaoSignupToken: session.kakaoSignupToken,
+    existingUserId: session.existingUserId,
   };
 }
 

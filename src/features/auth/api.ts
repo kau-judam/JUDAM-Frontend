@@ -33,10 +33,41 @@ export type AuthRoleUpdateResponse = {
   user: AuthApiUser;
 };
 
+export type KakaoProfilePayload = {
+  email?: string;
+  nickname?: string;
+  profileImage?: string | null;
+  profileImageUrl?: string | null;
+  profile_image_url?: string | null;
+  thumbnail_image_url?: string | null;
+  properties?: {
+    nickname?: string;
+    profile_image?: string | null;
+    thumbnail_image?: string | null;
+  };
+  kakao_account?: {
+    email?: string;
+    profile?: {
+      nickname?: string;
+      profile_image_url?: string | null;
+      thumbnail_image_url?: string | null;
+    };
+  };
+  kakaoAccount?: {
+    email?: string;
+    profile?: {
+      nickname?: string;
+      profileImageUrl?: string | null;
+      thumbnailImageUrl?: string | null;
+    };
+  };
+};
+
 export type KakaoLoginResponse = Partial<AuthSession> & {
   isNewUser?: boolean;
   signupRequired?: boolean;
   requiresSignup?: boolean;
+  reason?: 'INCOMPLETE_PROFILE' | string;
   email?: string;
   kakaoEmail?: string;
   nickname?: string;
@@ -44,7 +75,8 @@ export type KakaoLoginResponse = Partial<AuthSession> & {
   profileImage?: string | null;
   kakaoId?: string | number;
   kakaoSignupToken?: string;
-  kakaoProfile?: unknown;
+  kakaoProfile?: KakaoProfilePayload;
+  existingUserId?: string | number;
 };
 
 export type AuthAvailabilityResponse = {

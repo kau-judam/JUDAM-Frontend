@@ -235,14 +235,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           kakaoSignupToken: data.kakaoSignupToken,
         })
       : await signupWithEmail(signupPayload);
-    const fallbackUser: AuthApiUser = {
-      userId: Math.random().toString(36).slice(2, 11),
-      email: data.email.trim().toLowerCase(),
-      nickname: data.name.trim(),
-      phoneNumber: digitsOnly(data.phone || ""),
-      role,
-    };
-    const nextUser = mapAuthApiUser(session?.user || fallbackUser, data.type);
+    if (!session?.user) {
+      throw new Error("회원가입 응답에서 사용자 정보를 받지 못했습니다.");
+    }
+    const nextUser = mapAuthApiUser(session.user, data.type);
 
     setUser(nextUser);
     try {

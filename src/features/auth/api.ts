@@ -104,13 +104,24 @@ export type BreweryApplicationRecord = {
   status?: string;
   breweryName?: string;
   businessNumber?: string;
+  licenseNumber?: string;
   businessAddress?: string;
   businessAddressDetail?: string;
+  location?: string;
   phoneNumber?: string;
   documentUrl?: string;
+  documentKey?: string;
   rejectReason?: string | null;
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type BreweryApplicationUpdatePayload = {
+  breweryName?: string;
+  licenseNumber?: string;
+  location?: string;
+  documentUrl?: string;
+  documentKey?: string;
 };
 
 export type BreweryApplicationResponse = BreweryApplicationRecord & {
@@ -389,6 +400,22 @@ export async function getMyBreweryApplication() {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
+  });
+  return unwrapAuthData<BreweryApplicationResponse>(response);
+}
+
+export async function updateMyBreweryApplication(payload: BreweryApplicationUpdatePayload) {
+  const accessToken = await getAuthAccessToken();
+  if (!accessToken) {
+    throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+  }
+
+  const response = await requestAuthJson<AuthApiEnvelope<BreweryApplicationResponse>>('/api/breweries/applications/me', {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(payload),
   });
   return unwrapAuthData<BreweryApplicationResponse>(response);
 }

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { updateMyBreweryApplication } from '@/features/auth/api';
 
 type BreweryProfileForm = {
   breweryName: string;
@@ -59,6 +60,7 @@ export default function BreweryProfileScreen() {
     email: user?.email || DEFAULT_PROFILE.email,
   }), [isOwnProfile, project?.brewery, project?.breweryBio, project?.location, user]);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<BreweryProfileForm>(profileValues);
 
   useEffect(() => {
@@ -91,14 +93,27 @@ export default function BreweryProfileScreen() {
       return;
     }
 
-    await updateUser({
-      breweryName: form.breweryName.trim(),
-      breweryLocation: form.address.trim(),
-      name: form.representative.trim() || user?.name,
-      email: form.email.trim() || user?.email,
-    });
-    setIsEditing(false);
-    Alert.alert('완료', '양조장 프로필이 수정되었습니다.');
+    setIsSaving(true);
+    try {
+      if (isOwnProfile && user?.isBreweryVerified) {
+        await updateMyBreweryApplication({
+          breweryName: form.breweryName.trim(),
+          location: form.address.trim(),
+        });
+      }
+      await updateUser({
+        breweryName: form.breweryName.trim(),
+        breweryLocation: form.address.trim(),
+        name: form.representative.trim() || user?.name,
+        email: form.email.trim() || user?.email,
+      });
+      setIsEditing(false);
+      Alert.alert('완료', '양조장 프로필이 수정되었습니다.');
+    } catch (error) {
+      Alert.alert('오류', error instanceof Error ? error.message : '양조장 프로필을 수정하지 못했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -138,8 +153,9 @@ export default function BreweryProfileScreen() {
             onPress={() => (isEditing ? handleSave() : setIsEditing(true))}
             style={styles.editButton}
             accessibilityRole="button"
+            disabled={isSaving}
           >
-            <Text style={styles.editButtonText}>{isEditing ? '저장' : '수정'}</Text>
+            <Text style={styles.editButtonText}>{isSaving ? '저장중' : isEditing ? '저장' : '수정'}</Text>
           </TouchableOpacity>
         ) : (
           <View style={styles.headerButton} />

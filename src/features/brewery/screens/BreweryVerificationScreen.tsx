@@ -198,7 +198,7 @@ export default function BreweryVerificationScreen() {
           return;
         }
 
-        await submitBreweryApplication({
+        const application = await submitBreweryApplication({
           businessNumber: formData.businessNumber,
           breweryName: formData.breweryName.trim(),
           businessAddress: formData.breweryLocation.trim(),
@@ -211,15 +211,19 @@ export default function BreweryVerificationScreen() {
             mimeType: selectedBusinessLicense.mimeType,
           },
         });
+        const latestUser = application.user || application.application?.user;
 
         await updateUser({
           type: 'brewery',
           isBreweryVerified: false,
+          name: latestUser?.nickname || user.name,
+          email: latestUser?.email || user.email,
+          profileImage: latestUser?.profileImage || user.profileImage,
           businessNumber: formData.businessNumber,
           breweryName: formData.breweryName.trim(),
           breweryLocation: formData.breweryLocation.trim(),
           breweryLocationDetail: formData.breweryLocationDetail.trim(),
-          phone: formData.phone,
+          phone: latestUser?.phoneNumber || formData.phone,
         });
       }
 

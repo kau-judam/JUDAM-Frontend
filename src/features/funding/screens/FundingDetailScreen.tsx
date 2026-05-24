@@ -64,9 +64,15 @@ import {
   getFundingSupportOptions,
   isFundingApiMissingEndpointError,
   likeBreweryLog,
+  likeBreweryLogComment,
+  likeBreweryLogReply,
   likeFundingQuestion,
+  likeFundingQuestionReply,
   unlikeBreweryLog,
+  unlikeBreweryLogComment,
+  unlikeBreweryLogReply,
   unlikeFundingQuestion,
+  unlikeFundingQuestionReply,
   type FundingBreweryLogCommentItem,
   type FundingDetailResponse,
   type FundingReportReason,
@@ -122,6 +128,7 @@ type FundingQuestionComment = {
     content: string;
     date: string;
     likes: number;
+    liked?: boolean;
     isBrewery: boolean;
   }[];
 };
@@ -191,6 +198,7 @@ function mapBreweryLogComments(comments: FundingBreweryLogCommentItem[], journal
     content: comment.content,
     date: formatApiDate(comment.createdAt),
     likes: Math.max(comment.likeCount || 0, comment.liked ? 1 : 0),
+    liked: Boolean(comment.liked),
     replies: (comment.replies || []).map((reply) => ({
       id: reply.replyId,
       commentId: comment.commentId,
@@ -198,6 +206,7 @@ function mapBreweryLogComments(comments: FundingBreweryLogCommentItem[], journal
       content: reply.content,
       date: formatApiDate(reply.createdAt),
       likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
+      liked: Boolean(reply.liked),
     })),
   }));
 }
@@ -222,6 +231,16 @@ function getQnaInteractionStorageKey(projectId: number, userId?: string) {
   return `judam_funding_qna_interactions:${projectId}:${userId || 'guest'}`;
 }
 
+function mergeStoredQnaReplies(
+  apiReplies: FundingQuestionComment['replies'],
+  storedReplies: FundingQuestionComment['replies'] = []
+) {
+  if (!storedReplies.length) return apiReplies;
+  const apiReplyIds = new Set(apiReplies.map((reply) => reply.id));
+  const localOnlyReplies = storedReplies.filter((reply) => !apiReplyIds.has(reply.id));
+  return [...apiReplies, ...localOnlyReplies];
+}
+
 function mergeStoredQnaComments(apiComments: FundingQuestionComment[], stored?: StoredQnaInteractions | null) {
   if (!stored?.comments?.length) return withUniqueQnaCommentIds(apiComments);
   const normalizedApiComments = withUniqueQnaCommentIds(apiComments);
@@ -232,7 +251,7 @@ function mergeStoredQnaComments(apiComments: FundingQuestionComment[], stored?: 
     if (!storedComment) return comment;
     return {
       ...comment,
-      replies: storedComment.replies || comment.replies,
+      replies: mergeStoredQnaReplies(comment.replies, storedComment.replies),
     };
   });
   const localOnly = stored.comments.filter((comment) => !apiIds.has(getQnaCommentServerKey(comment)));
@@ -572,23 +591,38 @@ export default function FundingDetailScreen() {
         const existingJournalsByKey = new Map((currentProject.journals || []).map((journal) => [getJournalMergeKey(journal), journal]));
         const mergedJournals = apiJournals.map((journal) => {
           const existingJournal = existingJournalsByKey.get(getJournalMergeKey(journal));
-          const journalKey = getJournalMergeKey(journal);
           const preservedLikes = existingJournal?.likes || journal.likes || 0;
           const serverComments = journal.comments || [];
           return existingJournal
             ? {
                 ...journal,
-                likes: likedJournals.has(journalKey) ? Math.max(1, preservedLikes) : preservedLikes,
+                likes: preservedLikes,
                 comments: serverComments.length > 0 ? serverComments : existingJournal.comments,
               }
             : {
                 ...journal,
-                likes: likedJournals.has(journalKey) ? Math.max(1, journal.likes || 0) : journal.likes,
+                likes: journal.likes,
               };
+        });
+        const nextLikedJournals = new Set<string>();
+        const nextLikedJournalComments = new Set<string>();
+        const nextLikedJournalReplies = new Set<string>();
+        mergedJournals.forEach((journal) => {
+          const journalKey = getJournalMergeKey(journal);
+          if (journal.liked) nextLikedJournals.add(journalKey);
+          (journal.comments || []).forEach((comment) => {
+            if (comment.liked) nextLikedJournalComments.add(`${journalKey}:${comment.id}`);
+            (comment.replies || []).forEach((reply) => {
+              if (reply.liked) nextLikedJournalReplies.add(`${journalKey}:${comment.id}:${reply.id}`);
+            });
+          });
         });
         const apiJournalKeys = new Set(apiJournals.map(getJournalMergeKey));
         const localOnlyJournals = (currentProject.journals || []).filter((journal) => !apiJournalKeys.has(getJournalMergeKey(journal)));
         updateProjectJournals(projectId, [...mergedJournals, ...localOnlyJournals]);
+        setLikedJournals(nextLikedJournals);
+        setLikedJournalComments(nextLikedJournalComments);
+        setLikedJournalReplies(nextLikedJournalReplies);
       })
       .catch((error) => {
         console.warn(getFundingApiErrorMessage(error, '양조일지를 불러오지 못했습니다.'));
@@ -597,7 +631,7 @@ export default function FundingDetailScreen() {
     return () => {
       mounted = false;
     };
-  }, [activeTab, likedJournals, projectId, updateProjectJournals]);
+  }, [activeTab, projectId, updateProjectJournals]);
 
   useEffect(() => {
     let mounted = true;
@@ -622,6 +656,7 @@ export default function FundingDetailScreen() {
             content: reply.content,
             date: new Date(reply.createdAt).toLocaleDateString("ko-KR"),
             likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
+            liked: Boolean(reply.liked),
             isBrewery: true,
           })),
         }));
@@ -633,14 +668,18 @@ export default function FundingDetailScreen() {
           stored = null;
         }
         if (!mounted) return;
-        setLikedReplies(new Set(stored?.likedReplies || []));
         const mergedComments = mergeStoredQnaComments(apiComments, stored);
         const serverCommentIds = new Set(mergedComments.filter((comment) => comment.serverQuestionId).map((comment) => comment.id));
         const nextLikedComments = new Set((stored?.likedComments || []).filter((commentId) => !serverCommentIds.has(commentId)));
+        const nextLikedReplies = new Set(stored?.likedReplies || []);
         mergedComments.forEach((comment) => {
           if (comment.liked) nextLikedComments.add(comment.id);
+          comment.replies.forEach((reply) => {
+            if (reply.liked) nextLikedReplies.add(getQnaReplyLikeKey(comment.id, reply.id));
+          });
         });
         setLikedComments(nextLikedComments);
+        setLikedReplies(nextLikedReplies);
         setComments(mergedComments);
         qnaInteractionsLoadedRef.current = true;
       })
@@ -924,6 +963,7 @@ export default function FundingDetailScreen() {
         content,
         date: new Date().toLocaleDateString("ko-KR"),
         likes: 0,
+        liked: false,
         isBrewery: user?.type === "brewery",
       };
       setComments((prev) => prev.map(c => c.id === commentId ? { ...c, replies: [...c.replies, newReply] } : c));
@@ -996,13 +1036,15 @@ export default function FundingDetailScreen() {
     }
   };
 
-  const toggleReplyLike = (commentId: number, replyId: number) => {
+  const toggleReplyLike = async (commentId: number, replyId: number) => {
     if (!user) {
       showLoginRequired('펀딩 Q&A 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
+    const targetComment = comments.find((comment) => comment.id === commentId);
     const uniqueId = getQnaReplyLikeKey(commentId, replyId);
-    const targetReply = comments.find((comment) => comment.id === commentId)?.replies.find((reply) => reply.id === replyId);
+    const targetReply = targetComment?.replies.find((reply) => reply.id === replyId);
+    if (!targetComment || !targetReply) return;
     const isAlreadyLiked = Boolean(targetReply && likedReplies.has(uniqueId) && (targetReply.likes || 0) > 0);
     const newLiked = new Set(likedReplies);
     let diff = 0;
@@ -1015,9 +1057,41 @@ export default function FundingDetailScreen() {
     }
     setComments(comments.map(c => c.id === commentId ? {
       ...c,
-      replies: c.replies.map(r => r.id === replyId ? { ...r, likes: Math.max(0, (r.likes || 0) + diff) } : r)
+      replies: c.replies.map(r => r.id === replyId ? { ...r, likes: Math.max(0, (r.likes || 0) + diff), liked: !isAlreadyLiked } : r)
     } : c));
     setLikedReplies(newLiked);
+
+    const serverQuestionId = targetComment.serverQuestionId;
+    if (!serverQuestionId) return;
+
+    const previousComments = comments;
+    const previousLikedReplies = likedReplies;
+    try {
+      const response = isAlreadyLiked
+        ? await unlikeFundingQuestionReply(project.id, serverQuestionId, replyId)
+        : await likeFundingQuestionReply(project.id, serverQuestionId, replyId);
+      setComments((prev) => prev.map((comment) => comment.id === commentId ? {
+        ...comment,
+        replies: comment.replies.map((reply) =>
+          reply.id === replyId
+            ? { ...reply, likes: Math.max(response.likeCount, response.liked ? 1 : 0), liked: response.liked }
+            : reply
+        ),
+      } : comment));
+      setLikedReplies((prev) => {
+        const next = new Set(prev);
+        if (response.liked) next.add(uniqueId);
+        else next.delete(uniqueId);
+        return next;
+      });
+    } catch (error) {
+      setComments(previousComments);
+      setLikedReplies(previousLikedReplies);
+      setFeedbackModal({
+        title: '좋아요 처리 실패',
+        body: getFundingApiErrorMessage(error, 'Q&A 답글 좋아요 처리 중 문제가 발생했습니다.'),
+      });
+    }
   };
 
   const toggleExpandComment = (commentId: number) => {
@@ -1177,17 +1251,20 @@ export default function FundingDetailScreen() {
     }
   };
 
-  const handleJournalCommentLike = (journalKey: string, commentId: number) => {
+  const handleJournalCommentLike = async (journalKey: string, commentId: number) => {
     if (!user) {
       showLoginRequired('양조일지 댓글 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
 
     const likeKey = `${journalKey}:${commentId}`;
-    const targetComment = journals
-      .find((entry) => getJournalMergeKey(entry) === journalKey)
+    const targetJournal = journals.find((entry) => getJournalMergeKey(entry) === journalKey);
+    const targetComment = targetJournal
       ?.comments.find((comment) => comment.id === commentId);
+    if (!targetJournal || !targetComment) return;
     const isLiked = Boolean(targetComment && likedJournalComments.has(likeKey) && (targetComment.likes || 0) > 0);
+    const previousJournals = journals;
+    const previousLikedJournalComments = likedJournalComments;
     updateProjectJournals(
       project.id,
       journals.map((entry) => {
@@ -1196,7 +1273,7 @@ export default function FundingDetailScreen() {
           ...entry,
           comments: (entry.comments || []).map((comment) =>
             comment.id === commentId
-              ? { ...comment, likes: Math.max(0, (comment.likes || 0) + (isLiked ? -1 : 1)) }
+              ? { ...comment, likes: Math.max(0, (comment.likes || 0) + (isLiked ? -1 : 1)), liked: !isLiked }
               : comment
           ),
         };
@@ -1208,6 +1285,39 @@ export default function FundingDetailScreen() {
       else next.add(likeKey);
       return next;
     });
+
+    try {
+      const response = isLiked
+        ? await unlikeBreweryLogComment(project.id, targetJournal.id, commentId)
+        : await likeBreweryLogComment(project.id, targetJournal.id, commentId);
+      updateProjectJournals(
+        project.id,
+        (projectRef.current?.journals || []).map((entry) => {
+          if (getJournalMergeKey(entry) !== journalKey) return entry;
+          return {
+            ...entry,
+            comments: (entry.comments || []).map((comment) =>
+              comment.id === commentId
+                ? { ...comment, likes: Math.max(response.likeCount, response.liked ? 1 : 0), liked: response.liked }
+                : comment
+            ),
+          };
+        })
+      );
+      setLikedJournalComments((prev) => {
+        const next = new Set(prev);
+        if (response.liked) next.add(likeKey);
+        else next.delete(likeKey);
+        return next;
+      });
+    } catch (error) {
+      updateProjectJournals(project.id, previousJournals);
+      setLikedJournalComments(previousLikedJournalComments);
+      setFeedbackModal({
+        title: '좋아요 처리 실패',
+        body: getFundingApiErrorMessage(error, '양조일지 댓글 좋아요 처리 중 문제가 발생했습니다.'),
+      });
+    }
   };
 
   const handleJournalReplyOpen = (journalKey: string, commentId: number) => {
@@ -1300,18 +1410,21 @@ export default function FundingDetailScreen() {
     }
   };
 
-  const handleJournalReplyLike = (journalKey: string, commentId: number, replyId: number) => {
+  const handleJournalReplyLike = async (journalKey: string, commentId: number, replyId: number) => {
     if (!user) {
       showLoginRequired('양조일지 댓글 답글 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
 
     const likeKey = `${journalKey}:${commentId}:${replyId}`;
-    const targetReply = journals
-      .find((entry) => getJournalMergeKey(entry) === journalKey)
+    const targetJournal = journals.find((entry) => getJournalMergeKey(entry) === journalKey);
+    const targetReply = targetJournal
       ?.comments.find((comment) => comment.id === commentId)
       ?.replies.find((reply) => reply.id === replyId);
+    if (!targetJournal || !targetReply) return;
     const isLiked = Boolean(targetReply && likedJournalReplies.has(likeKey) && (targetReply.likes || 0) > 0);
+    const previousJournals = journals;
+    const previousLikedJournalReplies = likedJournalReplies;
     updateProjectJournals(
       project.id,
       journals.map((entry) => {
@@ -1324,7 +1437,7 @@ export default function FundingDetailScreen() {
               ...comment,
               replies: (comment.replies || []).map((reply) =>
                 reply.id === replyId
-                  ? { ...reply, likes: Math.max(0, (reply.likes || 0) + (isLiked ? -1 : 1)) }
+                  ? { ...reply, likes: Math.max(0, (reply.likes || 0) + (isLiked ? -1 : 1)), liked: !isLiked }
                   : reply
               ),
             };
@@ -1338,6 +1451,45 @@ export default function FundingDetailScreen() {
       else next.add(likeKey);
       return next;
     });
+
+    try {
+      const response = isLiked
+        ? await unlikeBreweryLogReply(project.id, targetJournal.id, commentId, replyId)
+        : await likeBreweryLogReply(project.id, targetJournal.id, commentId, replyId);
+      updateProjectJournals(
+        project.id,
+        (projectRef.current?.journals || []).map((entry) => {
+          if (getJournalMergeKey(entry) !== journalKey) return entry;
+          return {
+            ...entry,
+            comments: (entry.comments || []).map((comment) => {
+              if (comment.id !== commentId) return comment;
+              return {
+                ...comment,
+                replies: (comment.replies || []).map((reply) =>
+                  reply.id === replyId
+                    ? { ...reply, likes: Math.max(response.likeCount, response.liked ? 1 : 0), liked: response.liked }
+                    : reply
+                ),
+              };
+            }),
+          };
+        })
+      );
+      setLikedJournalReplies((prev) => {
+        const next = new Set(prev);
+        if (response.liked) next.add(likeKey);
+        else next.delete(likeKey);
+        return next;
+      });
+    } catch (error) {
+      updateProjectJournals(project.id, previousJournals);
+      setLikedJournalReplies(previousLikedJournalReplies);
+      setFeedbackModal({
+        title: '좋아요 처리 실패',
+        body: getFundingApiErrorMessage(error, '양조일지 답글 좋아요 처리 중 문제가 발생했습니다.'),
+      });
+    }
   };
 
   const handleReviewWrite = () => {

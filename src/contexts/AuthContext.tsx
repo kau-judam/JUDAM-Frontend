@@ -2,6 +2,7 @@ import { createContext, useContext, useState, ReactNode, useEffect } from "react
 import SafeStorage from "@/utils/storage";
 import {
   clearAuthTokens,
+  completeKakaoSignup,
   loginWithEmail,
   loginWithKakaoCode as requestKakaoLogin,
   saveAuthTokens,
@@ -55,6 +56,7 @@ export type KakaoLoginResult =
       nickname?: string;
       profileImage?: string | null;
       kakaoId?: string | number;
+      kakaoSignupToken?: string;
     };
 
 interface SignupData {
@@ -65,6 +67,7 @@ interface SignupData {
   type: UserType;
   marketingAgreed?: boolean;
   phoneVerificationToken?: string;
+  kakaoSignupToken?: string;
   breweryName?: string;
   breweryLocation?: string;
   breweryLocationDetail?: string;
@@ -130,6 +133,7 @@ function getKakaoSignupPayload(session: KakaoLoginResponse): Extract<KakaoLoginR
     nickname: session.nickname || session.kakaoNickname || user?.nickname,
     profileImage: session.profileImage || user?.profileImage,
     kakaoId: session.kakaoId,
+    kakaoSignupToken: session.kakaoSignupToken,
   };
 }
 
@@ -213,8 +217,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signup = async (data: SignupData) => {
-    const role = data.type === "brewery" ? "BREWERY_PENDING" : "USER";
-    const session = await signupWithEmail({
+    const role: SelectableAuthRole = data.type === "brewery" ? "BREWERY_PENDING" : "USER";
+    const signupPayload = {
       email: data.email.trim().toLowerCase(),
       password: data.password,
       nickname: data.name.trim(),
@@ -224,7 +228,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       marketingAgreed: Boolean(data.marketingAgreed),
       role,
       phoneVerificationToken: data.phoneVerificationToken,
-    });
+    };
+    const session = data.kakaoSignupToken
+      ? await completeKakaoSignup({
+          ...signupPayload,
+          kakaoSignupToken: data.kakaoSignupToken,
+        })
+      : await signupWithEmail(signupPayload);
     const fallbackUser: AuthApiUser = {
       userId: Math.random().toString(36).slice(2, 11),
       email: data.email.trim().toLowerCase(),

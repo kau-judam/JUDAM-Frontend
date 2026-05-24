@@ -164,6 +164,7 @@ export default function LoginScreen() {
             kakaoNickname: kakaoResult.nickname,
             kakaoProfileImage: kakaoResult.profileImage || undefined,
             kakaoId: kakaoResult.kakaoId ? String(kakaoResult.kakaoId) : undefined,
+            kakaoSignupToken: kakaoResult.kakaoSignupToken,
           },
         } as any);
         return;

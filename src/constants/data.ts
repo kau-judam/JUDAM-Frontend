@@ -49,6 +49,7 @@ export interface JournalReply {
   content: string;
   date: string;
   likes: number;
+  liked?: boolean;
 }
 
 export interface JournalComment {
@@ -59,6 +60,7 @@ export interface JournalComment {
   content: string;
   date: string;
   likes: number;
+  liked?: boolean;
   replies: JournalReply[];
 }
 
@@ -71,6 +73,7 @@ export interface JournalEntry {
   images?: string[];
   videoUrl?: string;
   likes: number;
+  liked?: boolean;
   comments: JournalComment[];
 }
 
@@ -92,6 +95,10 @@ export interface FundingProject {
   breweryId?: string;
   liked?: boolean;
   favoriteCount?: number;
+  sulbtiMatchScore?: number | null;
+  matchScore?: number | null;
+  tasteMatchScore?: number | null;
+  matchRate?: number | null;
   goalAmount: number;
   currentAmount: number;
   backers: number;

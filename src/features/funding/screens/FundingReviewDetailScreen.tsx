@@ -11,13 +11,15 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Heart, MessageCircle, Package, Send, Star, ChevronLeft } from 'lucide-react-native';
+import { Heart, MessageCircle, Package, Send, Star, ChevronLeft, Pencil, Trash2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
-import { fundingReviewComments, type FundingReviewComment } from '@/features/funding/reviews';
+import { deleteFundingReviewApi, getFundingApiErrorMessage, getFundingReviewDetail } from '@/features/funding/api';
+import { mapFundingReview } from '@/features/funding/apiMappers';
+import { fundingReviewComments, isFundingReviewOwnedByUser, type FundingReviewComment } from '@/features/funding/reviews';
 
 type ReviewDetailAlert = {
   title: string;
@@ -30,7 +32,7 @@ export default function FundingReviewDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id, reviewId } = useLocalSearchParams<{ id?: string; reviewId?: string }>();
   const { user } = useAuth();
-  const { projects, fundingReviews } = useFunding();
+  const { projects, fundingReviews, deleteFundingReview, mergeFundingReviews } = useFunding();
   const projectId = Number(Array.isArray(id) ? id[0] : id);
   const targetReviewId = Number(Array.isArray(reviewId) ? reviewId[0] : reviewId);
   const project = useMemo(() => projects.find((item) => item.id === projectId) || null, [projectId, projects]);
@@ -47,6 +49,8 @@ export default function FundingReviewDetailScreen() {
   const [likeCount, setLikeCount] = useState(review?.likes || 0);
   const [comments, setComments] = useState<FundingReviewComment[]>(initialReviewComments);
   const [alertModal, setAlertModal] = useState<ReviewDetailAlert | null>(null);
+  const [isReviewLoading, setIsReviewLoading] = useState(false);
+  const canManageReview = Boolean(review && isFundingReviewOwnedByUser(review, user));
 
   const showLoginRequired = (message: string) => {
     setAlertModal({
@@ -66,6 +70,28 @@ export default function FundingReviewDetailScreen() {
     setLiked(false);
     setLikeCount(review?.likes || 0);
   }, [initialReviewComments, review?.likes]);
+
+  useEffect(() => {
+    if (!project || !Number.isFinite(projectId) || !Number.isFinite(targetReviewId) || targetReviewId <= 0) return;
+
+    let isMounted = true;
+    setIsReviewLoading(true);
+    getFundingReviewDetail(projectId, targetReviewId)
+      .then((item) => {
+        if (!isMounted) return;
+        mergeFundingReviews(projectId, [mapFundingReview(projectId, item)]);
+      })
+      .catch(() => {
+        // 목록에서 이미 받은 후기가 있으면 그대로 보여주고, 없을 때만 아래 빈 상태로 안내한다.
+      })
+      .finally(() => {
+        if (isMounted) setIsReviewLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [mergeFundingReviews, project, projectId, targetReviewId]);
 
   const handleBackToFundingReviews = () => {
     if (!project) {
@@ -121,7 +147,46 @@ export default function FundingReviewDetailScreen() {
     );
   };
 
-  if (!project || !review) {
+  const handleEditReview = () => {
+    if (!project || !review) return;
+    router.push(`/archive/review/${project.id}?reviewId=${review.id}` as any);
+  };
+
+  const handleDeleteReview = async () => {
+    if (!project || !review) return;
+    try {
+      await deleteFundingReviewApi(project.id, review.id);
+      deleteFundingReview(review.id);
+      setAlertModal({
+        title: '후기가 삭제되었습니다',
+        body: '펀딩 후기 목록으로 돌아갑니다.',
+        tone: 'success',
+        buttons: [
+          { label: '확인', onPress: () => router.replace(`/funding/${project.id}?tab=review&fromReview=1` as any) },
+        ],
+      });
+    } catch (error) {
+      setAlertModal({
+        title: '후기 삭제 실패',
+        body: getFundingApiErrorMessage(error, '후기를 삭제하지 못했습니다.'),
+        tone: 'warning',
+      });
+    }
+  };
+
+  const handleDeleteReviewPress = () => {
+    setAlertModal({
+      title: '후기를 삭제할까요?',
+      body: '삭제한 후기는 다시 복구할 수 없습니다.',
+      tone: 'warning',
+      buttons: [
+        { label: '삭제', variant: 'danger', onPress: () => { void handleDeleteReview(); } },
+        { label: '취소', variant: 'secondary' },
+      ],
+    });
+  };
+
+  if (!project || (!review && !isReviewLoading)) {
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
         <Text style={styles.noticeTitle}>후기를 찾을 수 없습니다</Text>
@@ -129,6 +194,15 @@ export default function FundingReviewDetailScreen() {
         <TouchableOpacity style={styles.noticeButton} onPress={() => router.back()}>
           <Text style={styles.noticeButtonText}>돌아가기</Text>
         </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!review) {
+    return (
+      <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
+        <Text style={styles.noticeTitle}>후기를 불러오는 중입니다</Text>
+        <Text style={styles.noticeBody}>서버에서 최신 후기 정보를 확인하고 있어요.</Text>
       </View>
     );
   }
@@ -221,6 +295,19 @@ export default function FundingReviewDetailScreen() {
             <Text style={styles.actionText}>{comments.length}</Text>
           </View>
         </View>
+
+        {canManageReview && (
+          <View style={styles.manageRow}>
+            <TouchableOpacity style={styles.manageButton} onPress={handleEditReview} activeOpacity={0.84}>
+              <Pencil size={15} color="#111827" />
+              <Text style={styles.manageButtonText}>수정</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.manageButton, styles.manageDangerButton]} onPress={handleDeleteReviewPress} activeOpacity={0.84}>
+              <Trash2 size={15} color="#DC2626" />
+              <Text style={styles.manageDangerText}>삭제</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.commentsSection}>
           <Text style={styles.commentsTitle}>댓글 {comments.length}</Text>
@@ -327,6 +414,11 @@ const styles = StyleSheet.create({
   actionButton: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   actionText: { fontSize: 14, fontWeight: '800', color: '#4B5563' },
   actionTextActive: { color: '#EF4444' },
+  manageRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 },
+  manageButton: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 38, borderRadius: 12, backgroundColor: '#F3F4F6', paddingHorizontal: 12 },
+  manageButtonText: { fontSize: 12, fontWeight: '900', color: '#111827' },
+  manageDangerButton: { backgroundColor: '#FEF2F2' },
+  manageDangerText: { fontSize: 12, fontWeight: '900', color: '#DC2626' },
   commentsSection: { borderTopWidth: 8, borderTopColor: '#F3F4F6', marginHorizontal: -16, paddingHorizontal: 16, paddingTop: 16 },
   commentsTitle: { fontSize: 17, fontWeight: '900', color: '#111', marginBottom: 16 },
   commentList: { gap: 18 },

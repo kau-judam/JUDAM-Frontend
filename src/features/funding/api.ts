@@ -547,6 +547,9 @@ type UpdateFundingReviewPayload = {
   pairing?: string;
   tags?: string[];
   recordVisibility?: boolean;
+  imageUrls?: string[];
+  images?: FundingUploadFile[];
+  deleteImageUrls?: string[];
 };
 
 type FundingLikeResponse = {
@@ -561,6 +564,23 @@ type FundingQuestionLikeResponse = {
   questionId: number;
   liked: boolean;
   likeCount: number;
+  message: string;
+};
+
+type FundingEntityLikeResponse = {
+  fundingId: number;
+  breweryLogId?: number;
+  questionId?: number;
+  commentId?: number;
+  replyId?: number;
+  liked: boolean;
+  likeCount: number;
+  message: string;
+};
+
+type DeleteFundingReviewResponse = {
+  reviewId: number;
+  deleted: boolean;
   message: string;
 };
 
@@ -607,6 +627,10 @@ export type FundingListItem = {
   endDate: string;
   liked?: boolean;
   likeCount?: number;
+  sulbtiMatchScore?: number | null;
+  matchScore?: number | null;
+  tasteMatchScore?: number | null;
+  matchRate?: number | null;
 };
 
 export type FundingListResponse = {
@@ -649,6 +673,10 @@ export type FundingDetailResponse = {
   alcoholPercentage?: number;
   liked?: boolean;
   likeCount?: number;
+  sulbtiMatchScore?: number | null;
+  matchScore?: number | null;
+  tasteMatchScore?: number | null;
+  matchRate?: number | null;
   legalInfo?: FundingDraftPreviewResponse['legalInfo'];
   plan?: FundingDraftPreviewResponse['plan'];
   breweryInfo?: FundingDraftPreviewResponse['breweryInfo'];
@@ -767,11 +795,17 @@ type CreateFundingReplyResponse = {
 
 export type FundingReviewItem = {
   reviewId: number;
+  fundingId?: number;
+  writerId?: number | string;
   writerNickname: string;
   rating: number;
   content: string;
   imageUrls: string[];
   createdAt: string;
+  mood?: string;
+  pairing?: string;
+  tags?: string[];
+  recordVisibility?: boolean;
 };
 
 export type FundingReviewsResponse = {
@@ -1173,11 +1207,17 @@ function normalizeBreweryLogMutationResponse(response: unknown): FundingBreweryL
 function normalizeFundingReviewItem(source: Record<string, unknown>): FundingReviewItem {
   return {
     reviewId: readFundingApiNumber(source, ['reviewId', 'review_id', 'id']),
+    fundingId: readFundingApiNumber(source, ['fundingId', 'funding_id']) || undefined,
+    writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']),
     rating: readFundingApiNumber(source, ['rating']),
-    content: readFundingApiString(source, ['content', 'comment', 'reviewContent', 'review_content', 'body']),
+    content: readFundingApiString(source, ['content', 'detailReview', 'detail_review', 'comment', 'reviewContent', 'review_content', 'body']),
     imageUrls: readFundingApiStringArray(source, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
     createdAt: readFundingApiString(source, ['createdAt', 'created_at', 'date']),
+    mood: readFundingApiString(source, ['mood']) || undefined,
+    pairing: readFundingApiString(source, ['pairing']) || undefined,
+    tags: readFundingApiStringArray(source, ['tags']),
+    recordVisibility: readFundingApiBoolean(source, ['recordVisibility', 'record_visibility', 'showRecord', 'show_record']),
   };
 }
 
@@ -1202,6 +1242,15 @@ function normalizeCreateFundingReviewResponse(response: unknown): CreateFundingR
     rating: readFundingApiNumber(data, ['rating']),
     imageUrls: readFundingApiStringArray(data, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
     message: readFundingApiString(responseData, ['message']) || readFundingApiString(data, ['message']),
+  };
+}
+
+function normalizeDeleteFundingReviewResponse(response: unknown): DeleteFundingReviewResponse {
+  const data = getFundingApiObject(response);
+  return {
+    reviewId: readFundingApiNumber(data, ['reviewId', 'review_id', 'id']),
+    deleted: readFundingApiBoolean(data, ['deleted']),
+    message: readFundingApiString(data, ['message']),
   };
 }
 
@@ -1341,6 +1390,20 @@ function normalizeFundingQuestionLikeResponse(response: unknown): FundingQuestio
   return {
     fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
     questionId: readFundingApiNumber(data, ['questionId', 'question_id']),
+    liked: readFundingApiBoolean(data, ['liked']),
+    likeCount: readFundingApiNumber(data, ['likeCount', 'like_count']),
+    message: readFundingApiString(data, ['message']),
+  };
+}
+
+function normalizeFundingEntityLikeResponse(response: unknown): FundingEntityLikeResponse {
+  const data = getFundingApiObject(response);
+  return {
+    fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
+    breweryLogId: readFundingApiNumber(data, ['breweryLogId', 'brewery_log_id', 'logId', 'log_id']) || undefined,
+    questionId: readFundingApiNumber(data, ['questionId', 'question_id']) || undefined,
+    commentId: readFundingApiNumber(data, ['commentId', 'comment_id']) || undefined,
+    replyId: readFundingApiNumber(data, ['replyId', 'reply_id']) || undefined,
     liked: readFundingApiBoolean(data, ['liked']),
     likeCount: readFundingApiNumber(data, ['likeCount', 'like_count']),
     message: readFundingApiString(data, ['message']),
@@ -1960,6 +2023,38 @@ export async function createBreweryLogCommentReply(fundingId: number, breweryLog
   } satisfies FundingBreweryLogReplyItem;
 }
 
+export async function likeBreweryLogComment(fundingId: number, breweryLogId: number, commentId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/comments/${commentId}/likes`, {
+    method: 'POST',
+    auth: true,
+  });
+  return normalizeFundingEntityLikeResponse(result);
+}
+
+export async function unlikeBreweryLogComment(fundingId: number, breweryLogId: number, commentId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/comments/${commentId}/likes`, {
+    method: 'DELETE',
+    auth: true,
+  });
+  return normalizeFundingEntityLikeResponse(result);
+}
+
+export async function likeBreweryLogReply(fundingId: number, breweryLogId: number, commentId: number, replyId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/comments/${commentId}/replies/${replyId}/likes`, {
+    method: 'POST',
+    auth: true,
+  });
+  return normalizeFundingEntityLikeResponse(result);
+}
+
+export async function unlikeBreweryLogReply(fundingId: number, breweryLogId: number, commentId: number, replyId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/comments/${commentId}/replies/${replyId}/likes`, {
+    method: 'DELETE',
+    auth: true,
+  });
+  return normalizeFundingEntityLikeResponse(result);
+}
+
 export async function createFundingOrder(fundingId: number, payload: CreateFundingOrderPayload) {
   const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/orders`, {
     method: 'POST',
@@ -2124,6 +2219,22 @@ export async function unlikeFundingQuestion(fundingId: number, questionId: numbe
   return normalizeFundingQuestionLikeResponse(result);
 }
 
+export async function likeFundingQuestionReply(fundingId: number, questionId: number, replyId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/questions/${questionId}/replies/${replyId}/likes`, {
+    method: 'POST',
+    auth: true,
+  });
+  return normalizeFundingEntityLikeResponse(result);
+}
+
+export async function unlikeFundingQuestionReply(fundingId: number, questionId: number, replyId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/questions/${questionId}/replies/${replyId}/likes`, {
+    method: 'DELETE',
+    auth: true,
+  });
+  return normalizeFundingEntityLikeResponse(result);
+}
+
 export async function getFundingReviews(fundingId: number, params: {
   page?: number;
   size?: number;
@@ -2135,6 +2246,12 @@ export async function getFundingReviews(fundingId: number, params: {
   query.set('sort', params.sort ?? 'LATEST');
   const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews?${query.toString()}`);
   return normalizeFundingReviewsResponse(result);
+}
+
+export async function getFundingReviewDetail(fundingId: number, reviewId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}`);
+  const data = getFundingApiObject(result);
+  return normalizeFundingReviewItem(getFundingApiNestedObject(data, ['review', 'fundingReview', 'funding_review', 'data']));
 }
 
 export async function createFundingReview(fundingId: number, payload: CreateFundingReviewPayload) {
@@ -2158,15 +2275,50 @@ export async function createFundingReview(fundingId: number, payload: CreateFund
 }
 
 export async function updateFundingReviewApi(fundingId: number, reviewId: number, payload: UpdateFundingReviewPayload) {
+  const shouldUseFormData = Boolean(payload.images?.length || payload.imageUrls?.length || payload.deleteImageUrls?.length);
+
+  if (shouldUseFormData) {
+    const formData = new FormData();
+    formData.append('rating', String(payload.rating));
+    const detailReview = payload.detailReview || payload.content || '';
+    formData.append('content', detailReview);
+    formData.append('detailReview', detailReview);
+    if (payload.mood) formData.append('mood', payload.mood);
+    if (payload.pairing) formData.append('pairing', payload.pairing);
+    if (payload.recordVisibility !== undefined) {
+      formData.append('recordVisibility', String(payload.recordVisibility));
+      formData.append('showRecord', String(payload.recordVisibility));
+    }
+    if (payload.tags) formData.append('tags', JSON.stringify(payload.tags));
+    if (payload.imageUrls) formData.append('imageUrls', JSON.stringify(payload.imageUrls));
+    if (payload.deleteImageUrls) formData.append('deleteImageUrls', JSON.stringify(payload.deleteImageUrls));
+    appendFundingFormFiles(formData, 'images', payload.images);
+
+    const result = await requestFundingForm<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}`, formData, {
+      method: 'PATCH',
+      auth: true,
+    });
+    return normalizeCreateFundingReviewResponse(result);
+  }
+
   const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}`, {
     method: 'PATCH',
     auth: true,
     body: JSON.stringify({
       ...payload,
       detailReview: payload.detailReview || payload.content,
+      showRecord: payload.recordVisibility,
     }),
   });
   return normalizeCreateFundingReviewResponse(result);
+}
+
+export async function deleteFundingReviewApi(fundingId: number, reviewId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}`, {
+    method: 'DELETE',
+    auth: true,
+  });
+  return normalizeDeleteFundingReviewResponse(result);
 }
 
 export async function getFundingSupportOptions(fundingId: number) {

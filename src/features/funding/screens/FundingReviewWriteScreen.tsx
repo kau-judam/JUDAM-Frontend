@@ -266,6 +266,9 @@ export default function FundingReviewWriteScreen() {
     setIsLoading(true);
     try {
       const imageFiles = uploadedImages.map((image) => imageFilesByUri[image]).filter((file): file is FundingUploadFile => Boolean(file));
+      const deleteImageUrls = isEditMode && editableReview
+        ? (editableReview.images || []).filter((imageUrl) => !uploadedImages.includes(imageUrl))
+        : [];
       const response = isArchiveMode
         ? null
         : isEditMode && editableReview
@@ -277,6 +280,8 @@ export default function FundingReviewWriteScreen() {
               pairing: pairing.trim() || undefined,
               tags: allTags,
               recordVisibility: true,
+              images: imageFiles,
+              deleteImageUrls,
             })
           : await createFundingReview(projectId, {
               rating,

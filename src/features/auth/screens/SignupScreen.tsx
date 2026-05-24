@@ -146,7 +146,9 @@ export default function SignupScreen() {
     kakaoNickname?: string;
     kakaoProfileImage?: string;
     kakaoId?: string;
+    kakaoSignupToken?: string;
   }>();
+  const initialKakaoSignupToken = getFirstParam(params.kakaoSignupToken) || '';
 
   const [formData, setFormData] = useState({
     name: '',
@@ -166,6 +168,7 @@ export default function SignupScreen() {
   const [isPhoneVerificationChecking, setIsPhoneVerificationChecking] = useState(false);
   const [phoneVerificationGuide, setPhoneVerificationGuide] = useState('');
   const [phoneVerificationToken, setPhoneVerificationToken] = useState<string | undefined>();
+  const [kakaoSignupToken, setKakaoSignupToken] = useState(initialKakaoSignupToken);
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
   const [isEmailChecked, setIsEmailChecked] = useState(false);
   const [isEmailAvailable, setIsEmailAvailable] = useState(false);
@@ -187,7 +190,7 @@ export default function SignupScreen() {
   const passwordStrength = useMemo(() => getPasswordStrength(formData.password), [formData.password]);
   const passwordMatches = formData.confirmPassword.length > 0 && formData.password === formData.confirmPassword;
   const passwordMismatch = formData.confirmPassword.length > 0 && formData.password !== formData.confirmPassword;
-  const isKakaoSignup = Boolean(getFirstParam(params.kakaoEmail));
+  const isKakaoSignup = Boolean(kakaoSignupToken || getFirstParam(params.kakaoEmail));
 
   useEffect(() => {
     RNStatusBar.setHidden(true, 'none');
@@ -205,6 +208,13 @@ export default function SignupScreen() {
     setIsEmailChecked(true);
     setIsEmailAvailable(true);
   }, [params.kakaoEmail]);
+
+  useEffect(() => {
+    const nextToken = getFirstParam(params.kakaoSignupToken);
+    if (nextToken) {
+      setKakaoSignupToken(nextToken);
+    }
+  }, [params.kakaoSignupToken]);
 
   const panGesture = Gesture.Pan()
     .onStart(() => {
@@ -391,6 +401,10 @@ export default function SignupScreen() {
       showNotice('필수 약관에 동의해주세요.');
       return;
     }
+    if (isKakaoSignup && !kakaoSignupToken) {
+      showNotice('카카오 회원가입 토큰을 받지 못했습니다. 카카오 로그인을 다시 진행해주세요.');
+      return;
+    }
 
     setIsLoading(true);
     try {
@@ -402,6 +416,7 @@ export default function SignupScreen() {
         type: 'user',
         marketingAgreed: terms.marketing,
         phoneVerificationToken,
+        kakaoSignupToken: kakaoSignupToken || undefined,
       });
       setIsLoading(false);
       RNStatusBar.setHidden(false, 'fade');
@@ -435,6 +450,9 @@ export default function SignupScreen() {
       const kakaoResult = await loginWithKakaoCode(code, false);
       RNStatusBar.setHidden(false, 'fade');
       if (kakaoResult.status === 'signupRequired') {
+        if (kakaoResult.kakaoSignupToken) {
+          setKakaoSignupToken(kakaoResult.kakaoSignupToken);
+        }
         setFormData((prev) => ({
           ...prev,
           email: kakaoResult.email || prev.email,

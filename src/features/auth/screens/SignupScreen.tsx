@@ -1,7 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import * as WebBrowser from 'expo-web-browser';
 import {
   CheckCircle2,
   ChevronLeft,
@@ -48,6 +47,12 @@ import {
   getKakaoLoginUrl,
   requestPhoneVerification,
 } from '@/features/auth/api';
+import {
+  getKakaoAuthUrl,
+  getKakaoCallbackCode,
+  getKakaoRedirectUri,
+  openKakaoAuthSession,
+} from '@/features/auth/kakaoAuth';
 import {
   digitsOnly,
   formatPhoneNumber,
@@ -431,23 +436,19 @@ export default function SignupScreen() {
     setIsLoading(true);
     try {
       const kakao = await getKakaoLoginUrl();
-      const kakaoUrl = kakao.url || kakao.loginUrl || kakao.authUrl;
+      const kakaoUrl = getKakaoAuthUrl(kakao);
       if (!kakaoUrl) {
         showNotice('카카오 로그인 URL을 받지 못했습니다.');
         return;
       }
-      const redirectUri = new URL(kakaoUrl).searchParams.get('redirect_uri') || undefined;
-      const result = await WebBrowser.openAuthSessionAsync(kakaoUrl, redirectUri);
+      const redirectUri = getKakaoRedirectUri(kakaoUrl);
+      const result = await openKakaoAuthSession(kakaoUrl);
       if (result.type !== 'success' || !result.url) {
         showNotice('카카오 로그인 창을 열었습니다. 로그인이 완료되지 않았다면 다시 시도해주세요.');
         return;
       }
-      const code = new URL(result.url).searchParams.get('code');
-      if (!code) {
-        showNotice('카카오 인가 코드를 받지 못했습니다. 백엔드 콜백 URL 확인이 필요합니다.');
-        return;
-      }
-      const kakaoResult = await loginWithKakaoCode(code, false);
+      const code = getKakaoCallbackCode(result.url);
+      const kakaoResult = await loginWithKakaoCode(code, false, redirectUri);
       RNStatusBar.setHidden(false, 'fade');
       if (kakaoResult.status === 'signupRequired') {
         if (kakaoResult.kakaoSignupToken) {

@@ -347,8 +347,9 @@ export async function confirmPhoneVerification(phoneNumber: string, verification
   return unwrapAuthData<PhoneVerificationConfirmResponse>(response);
 }
 
-export async function getKakaoLoginUrl() {
-  const response = await requestAuthJson<AuthApiEnvelope<KakaoLoginUrlResponse>>('/api/auth/kakao/url');
+export async function getKakaoLoginUrl(appRedirectUri?: string) {
+  const query = appRedirectUri ? `?appRedirectUri=${encodeURIComponent(appRedirectUri)}` : '';
+  const response = await requestAuthJson<AuthApiEnvelope<KakaoLoginUrlResponse>>(`/api/auth/kakao/url${query}`);
   return unwrapAuthData<KakaoLoginUrlResponse>(response);
 }
 

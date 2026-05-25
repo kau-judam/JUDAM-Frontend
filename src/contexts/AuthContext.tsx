@@ -5,6 +5,9 @@ import SafeStorage from "@/utils/storage";
 import {
   clearAuthTokens,
   completeKakaoSignup,
+  getAuthAccessToken,
+  getAuthSessionAccessToken,
+  getAuthSessionRefreshToken,
   loginWithEmail,
   loginWithKakaoCode as requestKakaoLogin,
   saveAuthTokens,
@@ -187,6 +190,12 @@ function isIncompleteKakaoUser(session: KakaoLoginResponse) {
   return !session.user?.email || !session.user?.phoneNumber;
 }
 
+function assertAuthSessionToken(session: { accessToken?: string; access_token?: string; token?: string; jwt?: string } | null | undefined) {
+  if (!getAuthSessionAccessToken(session)) {
+    throw new Error("로그인 응답에서 accessToken을 받지 못했습니다. 다시 로그인해주세요.");
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -197,13 +206,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const keepLoggedIn = await SafeStorage.getItem(KEEP_LOGIN_KEY);
         const savedUser = await SafeStorage.getItem("judam_user");
         if (keepLoggedIn !== "true") {
-          if (savedUser) {
-            await SafeStorage.removeItem("judam_user");
-            await clearAuthTokens();
-          }
+          await SafeStorage.removeItem("judam_user");
+          await clearAuthTokens();
           return;
         }
         if (savedUser) {
+          const accessToken = await getAuthAccessToken();
+          if (!accessToken) {
+            await SafeStorage.removeItem("judam_user");
+            await SafeStorage.removeItem(KEEP_LOGIN_KEY);
+            await clearAuthTokens();
+            return;
+          }
           const parsedUser = normalizeTemporaryUser(JSON.parse(savedUser) as User);
           await SafeStorage.setItem("judam_user", JSON.stringify(parsedUser));
           setUser(parsedUser);
@@ -219,15 +233,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string, type: UserType, keepLoggedIn = false) => {
     const session = await loginWithEmail(email.trim().toLowerCase(), password);
+    assertAuthSessionToken(session);
     const nextUser = mapAuthApiUser(session.user, type);
-    setUser(nextUser);
     try {
-      await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
-      await saveAuthTokens(session.accessToken, session.refreshToken);
+      await saveAuthTokens(getAuthSessionAccessToken(session), getAuthSessionRefreshToken(session));
       await SafeStorage.setItem(KEEP_LOGIN_KEY, keepLoggedIn ? "true" : "false");
+      await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
     }
+    setUser(nextUser);
 
     return nextUser;
   };
@@ -243,15 +258,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (shouldSignup || !apiUser) {
       return getKakaoSignupPayload(session);
     }
+    assertAuthSessionToken(session);
     const nextUser = mapAuthApiUser(apiUser);
-    setUser(nextUser);
     try {
-      await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
-      await saveAuthTokens(session.accessToken, session.refreshToken);
+      await saveAuthTokens(getAuthSessionAccessToken(session), getAuthSessionRefreshToken(session));
       await SafeStorage.setItem(KEEP_LOGIN_KEY, keepLoggedIn ? "true" : "false");
+      await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
     } catch (e) {
       console.error("Failed to save Kakao user to SafeStorage", e);
     }
+    setUser(nextUser);
 
     return { status: "loggedIn" as const, user: nextUser };
   }, []);
@@ -345,16 +361,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!session?.user) {
       throw new Error("회원가입 응답에서 사용자 정보를 받지 못했습니다.");
     }
+    assertAuthSessionToken(session);
     const nextUser = mapAuthApiUser(session.user, data.type);
 
-    setUser(nextUser);
     try {
-      await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
-      await saveAuthTokens(session?.accessToken, session?.refreshToken);
+      await saveAuthTokens(getAuthSessionAccessToken(session), getAuthSessionRefreshToken(session));
       await SafeStorage.setItem(KEEP_LOGIN_KEY, "false");
+      await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
     } catch (e) {
       console.error("Failed to save user to SafeStorage", e);
     }
+    setUser(nextUser);
   };
 
   const verifyBrewery = async (data: BreweryVerificationData) => {

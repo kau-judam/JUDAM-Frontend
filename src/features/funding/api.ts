@@ -725,7 +725,10 @@ export type FundingBreweryLogsResponse = {
 
 export type FundingBreweryLogReplyItem = {
   replyId: number;
+  writerId?: number | string;
   writerNickname?: string;
+  writerRole?: string;
+  isBrewery?: boolean;
   content: string;
   createdAt: string;
   likeCount?: number;
@@ -734,7 +737,10 @@ export type FundingBreweryLogReplyItem = {
 
 export type FundingBreweryLogCommentItem = {
   commentId: number;
+  writerId?: number | string;
   writerNickname?: string;
+  writerRole?: string;
+  isBrewery?: boolean;
   content: string;
   createdAt: string;
   likeCount?: number;
@@ -748,7 +754,10 @@ type FundingBreweryLogCommentsResponse = {
 
 export type FundingQuestionItem = {
   questionId: number;
+  writerId?: number | string;
   writerNickname: string;
+  writerRole?: string;
+  isBrewery?: boolean;
   title: string;
   content: string;
   answered: boolean;
@@ -760,7 +769,10 @@ export type FundingQuestionItem = {
 
 export type FundingQuestionReplyItem = {
   replyId: number;
+  writerId?: number | string;
   writerNickname?: string;
+  writerRole?: string;
+  isBrewery?: boolean;
   content: string;
   createdAt: string;
   likeCount?: number;
@@ -1197,14 +1209,24 @@ function normalizeBreweryLogsResponse(response: unknown): FundingBreweryLogsResp
 function normalizeBreweryLogCommentItem(source: Record<string, unknown>): FundingBreweryLogCommentItem {
   return {
     commentId: readFundingApiNumber(source, ['commentId', 'comment_id', 'id']),
+    writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+    writerRole: readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
+    isBrewery:
+      readFundingApiBoolean(source, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
+      readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
     content: readFundingApiString(source, ['content', 'body']),
     createdAt: readFundingApiString(source, ['createdAt', 'created_at', 'date']),
     likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
     liked: readFundingApiBoolean(source, ['liked']),
     replies: readFundingApiArray<Record<string, unknown>>(source, ['replies', 'answers']).map((reply) => ({
       replyId: readFundingApiNumber(reply, ['replyId', 'reply_id', 'id']),
+      writerId: readFundingApiString(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
       writerNickname: readFundingApiString(reply, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+      writerRole: readFundingApiString(reply, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
+      isBrewery:
+        readFundingApiBoolean(reply, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
+        readFundingApiString(reply, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
       content: readFundingApiString(reply, ['content', 'body']),
       createdAt: readFundingApiString(reply, ['createdAt', 'created_at', 'date']),
       likeCount: readFundingApiNumber(reply, ['likeCount', 'like_count', 'likes']),
@@ -1476,7 +1498,12 @@ function normalizeFundingEntityLikeResponse(response: unknown): FundingEntityLik
 function normalizeFundingQuestionItem(source: Record<string, unknown>): FundingQuestionItem {
   return {
     questionId: readFundingApiNumber(source, ['questionId', 'question_id', 'id']),
+    writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname'], '사용자'),
+    writerRole: readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
+    isBrewery:
+      readFundingApiBoolean(source, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
+      readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
     title: readFundingApiString(source, ['title']),
     content: readFundingApiString(source, ['content', 'body']),
     answered: readFundingApiBoolean(source, ['answered']),
@@ -1485,7 +1512,12 @@ function normalizeFundingQuestionItem(source: Record<string, unknown>): FundingQ
     liked: readFundingApiBoolean(source, ['liked']),
     replies: readFundingApiArray<Record<string, unknown>>(source, ['replies', 'answers']).map((reply) => ({
       replyId: readFundingApiNumber(reply, ['replyId', 'reply_id', 'id']),
+      writerId: readFundingApiString(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
       writerNickname: readFundingApiString(reply, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+      writerRole: readFundingApiString(reply, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
+      isBrewery:
+        readFundingApiBoolean(reply, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
+        readFundingApiString(reply, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
       content: readFundingApiString(reply, ['content', 'body']),
       createdAt: readFundingApiString(reply, ['createdAt', 'created_at', 'date']),
       likeCount: readFundingApiNumber(reply, ['likeCount', 'like_count', 'likes']),
@@ -2088,7 +2120,12 @@ export async function createBreweryLogCommentReply(fundingId: number, breweryLog
   const data = getFundingApiNestedObject(responseData, ['reply', 'data']);
   return {
     replyId: readFundingApiNumber(data, ['replyId', 'reply_id', 'id']),
+    writerId: readFundingApiString(data, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(data, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(data, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+    writerRole: readFundingApiString(data, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
+    isBrewery:
+      readFundingApiBoolean(data, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
+      readFundingApiString(data, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
     content: readFundingApiString(data, ['content', 'body']),
     createdAt: readFundingApiString(data, ['createdAt', 'created_at', 'date']),
     likeCount: readFundingApiNumber(data, ['likeCount', 'like_count', 'likes']),

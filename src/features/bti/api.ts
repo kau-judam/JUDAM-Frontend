@@ -1,4 +1,5 @@
 import type { BtiSurveyPayload, BtiSurveyTasteVector } from '@/features/bti/data';
+import { getAuthAccessToken } from '@/features/auth/api';
 
 const JUDAM_API_BASE_URL = 'http://43.202.24.223:3000';
 
@@ -13,6 +14,7 @@ export type SurveyConvertData = {
   taste_vector: BtiSurveyTasteVector;
   bti_code?: string;
   character_name?: string;
+  alcohol_label?: string;
   experience_level?: string;
   preferred_abv?: string;
   preferred_body?: string;
@@ -30,10 +32,15 @@ function getSurveyConvertData(response: SurveyConvertEnvelope | SurveyConvertDat
 
 export async function convertBtiSurvey(payload: BtiSurveyPayload, userId?: string | number) {
   const query = userId ? `?user_id=${encodeURIComponent(String(userId))}` : '';
+  const accessToken = await getAuthAccessToken();
+  if (userId && !accessToken) {
+    throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+  }
   const response = await fetch(`${JUDAM_API_BASE_URL}/api/survey/convert${query}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: JSON.stringify(payload),
   });

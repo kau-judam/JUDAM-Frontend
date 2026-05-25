@@ -153,6 +153,9 @@ export type FundingDraftPreviewResponse = {
   };
   breweryInfo?: {
     breweryName?: string;
+    creatorName?: string;
+    profileImageUrl?: string;
+    creatorIntroduction?: string;
     representativeName?: string;
     businessRegistrationNumber?: string;
     businessAddress?: string;
@@ -161,6 +164,15 @@ export type FundingDraftPreviewResponse = {
     bankName?: string;
     accountNumber?: string;
     accountHolder?: string;
+    businessType?: string;
+    businessName?: string;
+    businessCategory?: string;
+    businessItem?: string;
+    taxEmail?: string;
+    phoneVerified?: boolean;
+    accountVerified?: boolean;
+    identityDocumentUrl?: string;
+    businessRegistrationFileUrl?: string;
   };
   notices?: {
     refundPolicy?: string;
@@ -285,6 +297,11 @@ export type FundingDocumentType =
   | 'salesPermit'
   | 'alcoholPermit'
   | 'manufacturingLicense'
+  | 'ID_CARD'
+  | 'BUSINESS_LICENSE'
+  | 'SALES_PERMIT'
+  | 'ALCOHOL_PERMIT'
+  | 'MANUFACTURING_LICENSE'
   | 'BUSINESS_REGISTRATION'
   | 'MAIL_ORDER_BUSINESS'
   | 'LIQUOR_LICENSE'
@@ -1157,6 +1174,9 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
     },
     breweryInfo: {
       breweryName: readFundingApiString(breweryInfo, ['breweryName', 'brewery_name']),
+      creatorName: readFundingApiString(breweryInfo, ['creatorName', 'creator_name']),
+      profileImageUrl: readFundingApiString(breweryInfo, ['profileImageUrl', 'profile_image_url', 'profileImage', 'profile_image']),
+      creatorIntroduction: readFundingApiString(breweryInfo, ['creatorIntroduction', 'creator_introduction', 'breweryBio', 'brewery_bio']),
       representativeName: readFundingApiString(breweryInfo, ['representativeName', 'representative_name']),
       businessRegistrationNumber: readFundingApiString(breweryInfo, ['businessRegistrationNumber', 'business_registration_number']),
       businessAddress: readFundingApiString(breweryInfo, ['businessAddress', 'business_address']),
@@ -1165,6 +1185,15 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       bankName: readFundingApiString(breweryInfo, ['bankName', 'bank_name']),
       accountNumber: readFundingApiString(breweryInfo, ['accountNumber', 'account_number']),
       accountHolder: readFundingApiString(breweryInfo, ['accountHolder', 'account_holder']),
+      businessType: readFundingApiString(breweryInfo, ['businessType', 'business_type']),
+      businessName: readFundingApiString(breweryInfo, ['businessName', 'business_name']),
+      businessCategory: readFundingApiString(breweryInfo, ['businessCategory', 'business_category']),
+      businessItem: readFundingApiString(breweryInfo, ['businessItem', 'business_item']),
+      taxEmail: readFundingApiString(breweryInfo, ['taxEmail', 'tax_email']),
+      phoneVerified: readFundingApiBoolean(breweryInfo, ['phoneVerified', 'phone_verified']),
+      accountVerified: readFundingApiBoolean(breweryInfo, ['accountVerified', 'account_verified']),
+      identityDocumentUrl: readFundingApiString(breweryInfo, ['identityDocumentUrl', 'identity_document_url', 'idCardUrl', 'id_card_url']),
+      businessRegistrationFileUrl: readFundingApiString(breweryInfo, ['businessRegistrationFileUrl', 'business_registration_file_url', 'businessLicenseUrl', 'business_license_url']),
     },
     notices: {
       refundPolicy: readFundingApiString(notices, ['refundPolicy', 'refund_policy']),

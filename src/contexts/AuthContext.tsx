@@ -13,6 +13,7 @@ import {
   saveAuthTokens,
   signupWithEmail,
   updateMyRole,
+  updateMyBreweryApplication,
   type AuthApiUser,
   type AuthRole,
   type KakaoLoginResponse,
@@ -375,29 +376,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const verifyBrewery = async (data: BreweryVerificationData) => {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
     if (!user) {
       throw new Error("Login is required to verify brewery");
     }
 
-    if (user) {
-      const updatedUser: User = {
-        ...user,
-        type: "brewery",
-        isBreweryVerified: true,
-        breweryName: data.breweryName,
-        breweryLocation: data.breweryLocation,
-        breweryLocationDetail: data.breweryLocationDetail,
-        businessNumber: data.businessNumber,
-        phone: data.phone,
-      };
-      setUser(updatedUser);
-      try {
-        await SafeStorage.setItem("judam_user", JSON.stringify(updatedUser));
-      } catch (e) {
-        console.error("Failed to save updated user to SafeStorage", e);
-      }
+    if (!user.isBreweryVerified) {
+      throw new Error("승인된 양조장 계정만 정보를 수정할 수 있습니다.");
+    }
+
+    await updateMyBreweryApplication({
+      breweryName: data.breweryName.trim(),
+      location: data.breweryLocation.trim(),
+    });
+
+    const updatedUser: User = {
+      ...user,
+      type: "brewery",
+      isBreweryVerified: true,
+      breweryName: data.breweryName,
+      breweryLocation: data.breweryLocation,
+      breweryLocationDetail: data.breweryLocationDetail,
+      businessNumber: data.businessNumber,
+      phone: data.phone,
+    };
+    setUser(updatedUser);
+    try {
+      await SafeStorage.setItem("judam_user", JSON.stringify(updatedUser));
+    } catch (e) {
+      console.error("Failed to save updated user to SafeStorage", e);
     }
   };
 

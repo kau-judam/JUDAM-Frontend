@@ -92,6 +92,8 @@ type AuthTokenSource = {
   refresh_token?: string;
 } | null | undefined;
 
+type AuthRefreshResponse = Partial<NonNullable<AuthTokenSource>>;
+
 export type AuthAvailabilityResponse = {
   email?: string;
   nickname?: string;
@@ -293,6 +295,20 @@ export async function saveAuthTokens(accessToken?: string, refreshToken?: string
   }
 }
 
+async function getStoredAuthRefreshToken() {
+  const tokenKeys = ['judam_refresh_token', 'refreshToken', 'refresh_token'];
+  for (const key of tokenKeys) {
+    const token = sanitizeAuthToken(await SafeStorage.getItem(key));
+    if (!token) continue;
+    if (isAuthJwtExpired(token)) {
+      await clearAuthTokens();
+      return null;
+    }
+    return token;
+  }
+  return null;
+}
+
 export async function clearAuthTokens() {
   await Promise.all([
     SafeStorage.removeItem('judam_access_token'),
@@ -305,18 +321,56 @@ export async function clearAuthTokens() {
   ]);
 }
 
-export async function getAuthAccessToken() {
+let refreshAccessTokenPromise: Promise<string | null> | null = null;
+
+export async function refreshAuthAccessToken() {
+  if (refreshAccessTokenPromise) return refreshAccessTokenPromise;
+
+  refreshAccessTokenPromise = (async () => {
+    const refreshToken = await getStoredAuthRefreshToken();
+    if (!refreshToken) return null;
+
+    try {
+      const response = await requestAuthJson<AuthApiEnvelope<AuthRefreshResponse>>('/api/auth/refresh', {
+        method: 'POST',
+        body: JSON.stringify({ refreshToken }),
+      });
+      const data = unwrapAuthData<AuthRefreshResponse>(response);
+      const nextAccessToken = getAuthSessionAccessToken(data);
+      const nextRefreshToken = getAuthSessionRefreshToken(data) || refreshToken;
+
+      if (!nextAccessToken) {
+        await clearAuthTokens();
+        return null;
+      }
+
+      await saveAuthTokens(nextAccessToken, nextRefreshToken);
+      return nextAccessToken;
+    } catch {
+      await clearAuthTokens();
+      return null;
+    }
+  })();
+
+  try {
+    return await refreshAccessTokenPromise;
+  } finally {
+    refreshAccessTokenPromise = null;
+  }
+}
+
+export async function getAuthAccessToken(options: { allowRefresh?: boolean } = {}) {
+  const allowRefresh = options.allowRefresh !== false;
   const tokenKeys = ['judam_access_token', 'accessToken', 'access_token', 'token'];
   for (const key of tokenKeys) {
     const token = sanitizeAuthToken(await SafeStorage.getItem(key));
     if (!token) continue;
     if (isAuthJwtExpired(token)) {
-      await clearAuthTokens();
-      return null;
+      return allowRefresh ? refreshAuthAccessToken() : null;
     }
     return token;
   }
-  return null;
+  return allowRefresh ? refreshAuthAccessToken() : null;
 }
 
 export async function loginWithEmail(email: string, password: string) {

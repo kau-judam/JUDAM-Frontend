@@ -368,6 +368,8 @@ export default function FundingDetailScreen() {
   // Q&A State
   const [comments, setComments] = useState<FundingQuestionComment[]>([]);
   const [newComment, setNewComment] = useState("");
+  const qnaCommentInputRef = useRef<TextInput | null>(null);
+  const qnaReplyInputRefs = useRef<Record<number, TextInput | null>>({});
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
   const [likedComments, setLikedComments] = useState<Set<number>>(new Set());
@@ -988,8 +990,12 @@ export default function FundingDetailScreen() {
       showLoginRequired('펀딩 Q&A 답글은 로그인 후 이용할 수 있어요.');
       return;
     }
+    qnaCommentInputRef.current?.blur();
     setExpandedComments((prev) => new Set([...prev, commentId]));
     setReplyingTo(commentId);
+    requestAnimationFrame(() => {
+      qnaReplyInputRefs.current[commentId]?.focus();
+    });
   };
 
   const toggleJournalStage = (stageId: BrewingStage) => {
@@ -1530,7 +1536,7 @@ export default function FundingDetailScreen() {
       <ScrollView 
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false} 
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
         stickyHeaderIndices={[canManageOwnBreweryProject ? 5 : 4]}
         contentContainerStyle={{ paddingBottom: 120 }}
       >
@@ -2112,9 +2118,10 @@ export default function FundingDetailScreen() {
                    <Text style={styles.sectionHeaderTitle}>Q&A</Text>
                    {user ? (
                      <View style={styles.qaInputRow}>
-                        <TextInput
-                          style={styles.qaInput}
-                          placeholder="댓글을 입력하세요..."
+	                        <TextInput
+	                          ref={qnaCommentInputRef}
+	                          style={styles.qaInput}
+	                          placeholder="댓글을 입력하세요..."
                           placeholderTextColor="#9CA3AF"
                           value={newComment}
                           onChangeText={setNewComment}
@@ -2192,8 +2199,11 @@ export default function FundingDetailScreen() {
 
                            {replyingTo === c.id && (
                              <View style={styles.replyInputRow}>
-                                <TextInput
-                                  style={styles.replyInput}
+	                                <TextInput
+	                                  ref={(input) => {
+	                                    qnaReplyInputRefs.current[c.id] = input;
+	                                  }}
+	                                  style={styles.replyInput}
                                   placeholder="답글을 입력하세요..."
                                   placeholderTextColor="#9CA3AF"
                                   value={replyDrafts[c.id] || ""}

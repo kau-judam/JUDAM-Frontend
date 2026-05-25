@@ -278,7 +278,7 @@ export default function FundingReviewWriteScreen() {
               mood: mood.trim() || undefined,
               pairing: pairing.trim() || undefined,
               tags: allTags,
-              recordVisibility: true,
+              recordVisibility: showRecordInReview,
               images: imageFiles,
               deleteImageUrls,
             })
@@ -289,7 +289,7 @@ export default function FundingReviewWriteScreen() {
               mood: mood.trim() || undefined,
               pairing: pairing.trim() || undefined,
               tags: allTags,
-              recordVisibility: true,
+              recordVisibility: showRecordInReview,
               images: imageFiles,
             });
       const responseImageUrls = normalizeFundingImageUrls(response?.imageUrls);

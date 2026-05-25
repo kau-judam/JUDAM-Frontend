@@ -1,4 +1,4 @@
-import SafeStorage from '@/utils/storage';
+import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
 export const JUDAM_FUNDING_API_BASE_URL = 'http://43.202.24.223:3000';
 
@@ -744,6 +744,7 @@ export type FundingBreweryLogReplyItem = {
   replyId: number;
   writerId?: number | string;
   writerNickname?: string;
+  writerProfileImage?: string | null;
   writerRole?: string;
   isBrewery?: boolean;
   content: string;
@@ -756,6 +757,7 @@ export type FundingBreweryLogCommentItem = {
   commentId: number;
   writerId?: number | string;
   writerNickname?: string;
+  writerProfileImage?: string | null;
   writerRole?: string;
   isBrewery?: boolean;
   content: string;
@@ -773,6 +775,7 @@ export type FundingQuestionItem = {
   questionId: number;
   writerId?: number | string;
   writerNickname: string;
+  writerProfileImage?: string | null;
   writerRole?: string;
   isBrewery?: boolean;
   title: string;
@@ -788,6 +791,7 @@ export type FundingQuestionReplyItem = {
   replyId: number;
   writerId?: number | string;
   writerNickname?: string;
+  writerProfileImage?: string | null;
   writerRole?: string;
   isBrewery?: boolean;
   content: string;
@@ -851,6 +855,9 @@ export type FundingReviewCommentItem = {
   reviewId?: number;
   writerId?: number | string;
   writerNickname: string;
+  writerProfileImage?: string | null;
+  writerRole?: string;
+  isBrewery?: boolean;
   content: string;
   likeCount: number;
   liked: boolean;
@@ -955,14 +962,8 @@ type MyFundingOrdersResponse = {
   totalPages: number;
 };
 
-const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
-
 export async function getFundingAccessToken() {
-  for (const key of TOKEN_STORAGE_KEYS) {
-    const value = await SafeStorage.getItem(key);
-    if (value) return value;
-  }
-  return null;
+  return getAuthAccessToken();
 }
 
 function parseFundingResponseBody(path: string, response: Response, text: string) {
@@ -1065,6 +1066,11 @@ function readFundingApiStringArray(source: Record<string, unknown>, arrayKeys: s
   if (array.length > 0) return array;
   const singleValue = readFundingApiString(source, stringKeys);
   return singleValue ? [singleValue] : [];
+}
+
+function readFundingApiNullableString(source: Record<string, unknown>, keys: string[]) {
+  const value = readFundingApiString(source, keys);
+  return value || null;
 }
 
 function getFundingNestedObject(source: Record<string, unknown>, key: string) {
@@ -1240,6 +1246,7 @@ function normalizeBreweryLogCommentItem(source: Record<string, unknown>): Fundin
     commentId: readFundingApiNumber(source, ['commentId', 'comment_id', 'id']),
     writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+    writerProfileImage: readFundingApiNullableString(source, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
     writerRole: readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
     isBrewery:
       readFundingApiBoolean(source, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
@@ -1252,6 +1259,7 @@ function normalizeBreweryLogCommentItem(source: Record<string, unknown>): Fundin
       replyId: readFundingApiNumber(reply, ['replyId', 'reply_id', 'id']),
       writerId: readFundingApiString(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
       writerNickname: readFundingApiString(reply, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+      writerProfileImage: readFundingApiNullableString(reply, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
       writerRole: readFundingApiString(reply, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
       isBrewery:
         readFundingApiBoolean(reply, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
@@ -1322,6 +1330,11 @@ function normalizeFundingReviewCommentItem(source: Record<string, unknown>): Fun
     reviewId: readFundingApiNumber(source, ['reviewId', 'review_id']) || undefined,
     writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']),
+    writerProfileImage: readFundingApiNullableString(source, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
+    writerRole: readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
+    isBrewery:
+      readFundingApiBoolean(source, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
+      readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
     content: readFundingApiString(source, ['content', 'body', 'comment']),
     likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
     liked: readFundingApiBoolean(source, ['liked']),
@@ -1529,6 +1542,7 @@ function normalizeFundingQuestionItem(source: Record<string, unknown>): FundingQ
     questionId: readFundingApiNumber(source, ['questionId', 'question_id', 'id']),
     writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname'], '사용자'),
+    writerProfileImage: readFundingApiNullableString(source, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
     writerRole: readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
     isBrewery:
       readFundingApiBoolean(source, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
@@ -1543,6 +1557,7 @@ function normalizeFundingQuestionItem(source: Record<string, unknown>): FundingQ
       replyId: readFundingApiNumber(reply, ['replyId', 'reply_id', 'id']),
       writerId: readFundingApiString(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
       writerNickname: readFundingApiString(reply, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+      writerProfileImage: readFundingApiNullableString(reply, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
       writerRole: readFundingApiString(reply, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
       isBrewery:
         readFundingApiBoolean(reply, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
@@ -1650,29 +1665,35 @@ function normalizeBreweryId(value: unknown) {
 
 async function requestFundingJson<T>(path: string, options: RequestInit & { auth?: boolean } = {}) {
   const { auth, headers, ...requestOptions } = options;
-  const nextHeaders: Record<string, string> = {
+  const createHeaders = (token?: string | null): Record<string, string> => ({
     'Content-Type': 'application/json',
     ...(headers as Record<string, string> | undefined),
-  };
-
-  if (auth) {
-    const token = await getFundingAccessToken();
-    if (!token) {
-      throw new Error('NEEDS_ACCESS_TOKEN');
-    }
-    nextHeaders.Authorization = `Bearer ${token}`;
-  } else {
-    const token = await getFundingAccessToken();
-    if (token) nextHeaders.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
-    ...requestOptions,
-    headers: nextHeaders,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   });
 
-  const text = await response.text();
-  const data = parseFundingResponseBody(path, response, text);
+  const token = await getFundingAccessToken();
+  if (auth && !token) {
+    throw new Error('NEEDS_ACCESS_TOKEN');
+  }
+
+  let response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
+    ...requestOptions,
+    headers: createHeaders(token),
+  });
+  let text = await response.text();
+  let data = parseFundingResponseBody(path, response, text);
+
+  if (response.status === 401 && (auth || token)) {
+    const refreshedToken = await refreshAuthAccessToken();
+    if (refreshedToken) {
+      response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
+        ...requestOptions,
+        headers: createHeaders(refreshedToken),
+      });
+      text = await response.text();
+      data = parseFundingResponseBody(path, response, text);
+    }
+  }
 
   if (!response.ok) {
     const message = (data as FundingApiErrorBody | null)?.message || `HTTP ${response.status}`;
@@ -1684,29 +1705,36 @@ async function requestFundingJson<T>(path: string, options: RequestInit & { auth
 
 async function requestFundingForm<T>(path: string, formData: FormData, options: RequestInit & { auth?: boolean } = {}) {
   const { auth, headers, ...requestOptions } = options;
-  const nextHeaders: Record<string, string> = {
+  const createHeaders = (token?: string | null): Record<string, string> => ({
     ...(headers as Record<string, string> | undefined),
-  };
-
-  if (auth) {
-    const token = await getFundingAccessToken();
-    if (!token) {
-      throw new Error('NEEDS_ACCESS_TOKEN');
-    }
-    nextHeaders.Authorization = `Bearer ${token}`;
-  } else {
-    const token = await getFundingAccessToken();
-    if (token) nextHeaders.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
-    ...requestOptions,
-    headers: nextHeaders,
-    body: formData,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   });
 
-  const text = await response.text();
-  const data = parseFundingResponseBody(path, response, text);
+  const token = await getFundingAccessToken();
+  if (auth && !token) {
+    throw new Error('NEEDS_ACCESS_TOKEN');
+  }
+
+  let response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
+    ...requestOptions,
+    headers: createHeaders(token),
+    body: formData,
+  });
+  let text = await response.text();
+  let data = parseFundingResponseBody(path, response, text);
+
+  if (response.status === 401 && (auth || token)) {
+    const refreshedToken = await refreshAuthAccessToken();
+    if (refreshedToken) {
+      response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
+        ...requestOptions,
+        headers: createHeaders(refreshedToken),
+        body: formData,
+      });
+      text = await response.text();
+      data = parseFundingResponseBody(path, response, text);
+    }
+  }
 
   if (!response.ok) {
     const message = (data as FundingApiErrorBody | null)?.message || `HTTP ${response.status}`;
@@ -2123,9 +2151,7 @@ export async function unlikeBreweryLog(fundingId: number, breweryLogId: number) 
 }
 
 export async function getBreweryLogComments(fundingId: number, breweryLogId: number) {
-  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/comments`, {
-    auth: true,
-  });
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/brewery-logs/${breweryLogId}/comments`);
   return normalizeBreweryLogCommentsResponse(result);
 }
 
@@ -2151,6 +2177,7 @@ export async function createBreweryLogCommentReply(fundingId: number, breweryLog
     replyId: readFundingApiNumber(data, ['replyId', 'reply_id', 'id']),
     writerId: readFundingApiString(data, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(data, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(data, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
+    writerProfileImage: readFundingApiNullableString(data, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
     writerRole: readFundingApiString(data, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
     isBrewery:
       readFundingApiBoolean(data, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
@@ -2394,10 +2421,7 @@ export async function getFundingReviewDetail(fundingId: number, reviewId: number
 }
 
 export async function getFundingReviewComments(fundingId: number, reviewId: number) {
-  const accessToken = await getFundingAccessToken();
-  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}/comments`, {
-    auth: Boolean(accessToken),
-  });
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}/comments`);
   return normalizeFundingReviewCommentsResponse(result);
 }
 

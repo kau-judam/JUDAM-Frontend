@@ -1110,6 +1110,7 @@ export default function FundingDetailScreen() {
     });
     try {
       const response = await createBreweryLogComment(project.id, targetJournal.id, content);
+      const responseWriter = resolveBreweryLogWriter(response, user);
       updateProjectJournals(
         project.id,
         (projectRef.current?.journals || []).map((entry) => {
@@ -1121,8 +1122,8 @@ export default function FundingDetailScreen() {
                 ? {
                     ...comment,
                     id: response.commentId || comment.id,
-                    userName: user.type === "brewery" ? response.writerNickname || comment.userName : user.name || comment.userName,
-                    isBrewery: user.type === "brewery" && Boolean(user.isBreweryVerified),
+                    userName: responseWriter.userName || comment.userName,
+                    isBrewery: responseWriter.isBrewery,
                     date: formatApiDate(response.createdAt),
                   }
                 : comment
@@ -1276,6 +1277,7 @@ export default function FundingDetailScreen() {
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
     try {
       const response = await createBreweryLogCommentReply(project.id, targetJournal.id, commentId, content);
+      const responseWriter = resolveBreweryLogWriter(response, user);
       updateProjectJournals(
         project.id,
         (projectRef.current?.journals || []).map((entry) => {
@@ -1291,8 +1293,8 @@ export default function FundingDetailScreen() {
                     ? {
                         ...reply,
                         id: response.replyId || reply.id,
-                        userName: user.type === "brewery" ? response.writerNickname || reply.userName : user.name || reply.userName,
-                        isBrewery: user.type === "brewery" && Boolean(user.isBreweryVerified),
+                        userName: responseWriter.userName || reply.userName,
+                        isBrewery: responseWriter.isBrewery,
                         date: formatApiDate(response.createdAt),
                       }
                     : reply

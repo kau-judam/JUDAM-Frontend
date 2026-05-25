@@ -53,12 +53,16 @@ function mapReviewComment(
   currentUser: { id?: string; type?: string } | null
 ): FundingReviewComment {
   const writerId = item.writerId !== undefined ? String(item.writerId) : undefined;
+  const isMine = Boolean(writerId && writerId === currentUser?.id);
+  const isBrewery = isMine
+    ? currentUser?.type === 'brewery'
+    : Boolean(item.isBrewery || item.writerRole?.toUpperCase().includes('BREWERY'));
   return {
     id: item.commentId,
     projectId: item.fundingId || fallbackProjectId,
     reviewId: item.reviewId || fallbackReviewId,
     author: item.writerNickname || '사용자',
-    authorType: writerId && writerId === currentUser?.id && currentUser?.type === 'brewery' ? 'brewery' : 'user',
+    authorType: isBrewery ? 'brewery' : 'user',
     content: item.content,
     timestamp: formatReviewCommentTime(item.createdAt),
     likes: item.likeCount || 0,

@@ -191,14 +191,26 @@ export default function FundingListScreen() {
   );
   const localFundingStats = useMemo(() => getFundingListStats(projects), [projects]);
   const fundingStats = useMemo(() => {
-    if (!serverFundingStats) return localFundingStats;
+    if (!serverFundingStats) {
+      return {
+        ...localFundingStats,
+        totalRaisedTenMillion: localFundingStats.totalRaised / 10000000,
+        totalRaisedTenMillionUnit: '천만원',
+      };
+    }
     return {
       supportableCount: serverFundingStats.participationAvailableFunding,
       totalBackers: serverFundingStats.totalSupporterCount,
       completedCount: serverFundingStats.successfulProjectCount,
       totalRaised: serverFundingStats.totalRaisedAmount,
+      totalRaisedTenMillion: serverFundingStats.totalRaisedTenMillion,
+      totalRaisedTenMillionUnit: serverFundingStats.totalRaisedTenMillionUnit || '천만원',
     };
   }, [localFundingStats, serverFundingStats]);
+  const totalRaisedMilestoneText = useMemo(() => {
+    const amount = Number(fundingStats.totalRaisedTenMillion || 0);
+    return `${amount.toLocaleString(undefined, { maximumFractionDigits: 1 })}${fundingStats.totalRaisedTenMillionUnit || '천만원'}`;
+  }, [fundingStats.totalRaisedTenMillion, fundingStats.totalRaisedTenMillionUnit]);
 
   useEffect(() => {
     restorePaginationScroll();
@@ -460,7 +472,7 @@ export default function FundingListScreen() {
           <View style={styles.milestoneContainer}>
             <View style={styles.milestoneBox}>
               <Text style={styles.milestoneTxt}>
-                총 <Text style={styles.milestoneVal}>{(fundingStats.totalRaised / 100000000).toFixed(1)}억원</Text> 이상 모금 달성
+                총 <Text style={styles.milestoneVal}>{totalRaisedMilestoneText}</Text> 이상 모금 달성
               </Text>
             </View>
           </View>

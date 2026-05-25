@@ -106,6 +106,7 @@ type FundingDraftListResponse = {
 
 export type FundingDraftPreviewResponse = {
   draftId: number;
+  fundingId?: number;
   status: string;
   progressRate: number;
   basicInfo?: {
@@ -118,6 +119,7 @@ export type FundingDraftPreviewResponse = {
     summary?: string;
     thumbnailUrl?: string;
     imageUrls?: string[];
+    allImageUrls?: string[];
     tags?: string[];
   };
   schedule?: {
@@ -571,6 +573,7 @@ type FundingEntityLikeResponse = {
   fundingId: number;
   breweryLogId?: number;
   questionId?: number;
+  reviewId?: number;
   commentId?: number;
   replyId?: number;
   liked: boolean;
@@ -590,6 +593,8 @@ export type FundingStatsResponse = {
   successfulProjectCount: number;
   totalRaisedAmount: number;
   totalRaisedHundredMillion: number;
+  totalRaisedTenMillion: number;
+  totalRaisedTenMillionUnit: string;
   message: string;
 };
 
@@ -806,6 +811,9 @@ export type FundingReviewItem = {
   pairing?: string;
   tags?: string[];
   recordVisibility?: boolean;
+  showRecord?: boolean;
+  likeCount?: number;
+  liked?: boolean;
 };
 
 export type FundingReviewCommentItem = {
@@ -1090,6 +1098,7 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
 
   return {
     draftId: readFundingApiNumber(data, ['draftId', 'draft_id']),
+    fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']) || undefined,
     status: readFundingApiString(data, ['status']),
     progressRate: readFundingApiNumber(data, ['progressRate', 'progress_rate']),
     basicInfo: {
@@ -1101,7 +1110,8 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       alcoholPercentage: readFundingApiNumber(basicInfo, ['alcoholPercentage', 'alcohol_percentage']) || undefined,
       summary: readFundingApiString(basicInfo, ['summary']),
       thumbnailUrl: readFundingApiString(basicInfo, ['thumbnailUrl', 'thumbnail_url']),
-      imageUrls: readFundingApiStringArray(basicInfo, ['imageUrls', 'image_urls', 'allImageUrls', 'all_image_urls'], ['thumbnailUrl', 'thumbnail_url']),
+      imageUrls: readFundingApiStringArray(basicInfo, ['imageUrls', 'image_urls'], ['thumbnailUrl', 'thumbnail_url']),
+      allImageUrls: readFundingApiStringArray(basicInfo, ['allImageUrls', 'all_image_urls', 'imageUrls', 'image_urls'], ['thumbnailUrl', 'thumbnail_url']),
       tags: readFundingApiArray<string>(basicInfo, ['tags']),
     },
     schedule: {
@@ -1236,6 +1246,9 @@ function normalizeFundingReviewItem(source: Record<string, unknown>): FundingRev
     pairing: readFundingApiString(source, ['pairing']) || undefined,
     tags: readFundingApiStringArray(source, ['tags']),
     recordVisibility: readFundingApiBoolean(source, ['recordVisibility', 'record_visibility', 'showRecord', 'show_record']),
+    showRecord: readFundingApiBoolean(source, ['showRecord', 'show_record', 'recordVisibility', 'record_visibility']),
+    likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
+    liked: readFundingApiBoolean(source, ['liked', 'isLiked', 'is_liked']),
   };
 }
 
@@ -1299,6 +1312,11 @@ function normalizeDeleteFundingReviewResponse(response: unknown): DeleteFundingR
 function normalizeFundingStatsResponse(response: unknown): FundingStatsResponse {
   const data = getFundingApiObject(response);
   const totalRaisedAmount = readFundingApiNumber(data, ['totalRaisedAmount', 'total_raised_amount']);
+  const totalRaisedTenMillion = readFundingApiNumber(
+    data,
+    ['totalRaisedTenMillion', 'total_raised_ten_million'],
+    totalRaisedAmount / 10000000
+  );
   return {
     participationAvailableFunding: readFundingApiNumber(data, ['participationAvailableFunding', 'participation_available_funding']),
     totalSupporterCount: readFundingApiNumber(data, ['totalSupporterCount', 'total_supporter_count']),
@@ -1309,6 +1327,8 @@ function normalizeFundingStatsResponse(response: unknown): FundingStatsResponse 
       ['totalRaisedHundredMillion', 'total_raised_hundred_million'],
       totalRaisedAmount / 100000000
     ),
+    totalRaisedTenMillion,
+    totalRaisedTenMillionUnit: readFundingApiString(data, ['totalRaisedTenMillionUnit', 'total_raised_ten_million_unit'], '천만원'),
     message: readFundingApiString(data, ['message']),
   };
 }
@@ -1444,6 +1464,7 @@ function normalizeFundingEntityLikeResponse(response: unknown): FundingEntityLik
     fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
     breweryLogId: readFundingApiNumber(data, ['breweryLogId', 'brewery_log_id', 'logId', 'log_id']) || undefined,
     questionId: readFundingApiNumber(data, ['questionId', 'question_id']) || undefined,
+    reviewId: readFundingApiNumber(data, ['reviewId', 'review_id']) || undefined,
     commentId: readFundingApiNumber(data, ['commentId', 'comment_id']) || undefined,
     replyId: readFundingApiNumber(data, ['replyId', 'reply_id']) || undefined,
     liked: readFundingApiBoolean(data, ['liked']),
@@ -1784,6 +1805,13 @@ export async function deleteFundingDraft(draftId: number) {
 
 export async function getFundingDraftPreview(draftId: number) {
   const result = await requestFundingJson<unknown>(`/api/fundings/drafts/${draftId}/preview`, {
+    auth: true,
+  });
+  return normalizeFundingDraftPreviewResponse(result);
+}
+
+export async function getFundingDraftByFundingId(fundingId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/drafts/by-funding/${fundingId}`, {
     auth: true,
   });
   return normalizeFundingDraftPreviewResponse(result);
@@ -2302,6 +2330,22 @@ export async function getFundingReviewComments(fundingId: number, reviewId: numb
     auth: Boolean(accessToken),
   });
   return normalizeFundingReviewCommentsResponse(result);
+}
+
+export async function likeFundingReview(fundingId: number, reviewId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}/likes`, {
+    method: 'POST',
+    auth: true,
+  });
+  return normalizeFundingEntityLikeResponse(result);
+}
+
+export async function unlikeFundingReview(fundingId: number, reviewId: number) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}/likes`, {
+    method: 'DELETE',
+    auth: true,
+  });
+  return normalizeFundingEntityLikeResponse(result);
 }
 
 export async function createFundingReviewComment(fundingId: number, reviewId: number, content: string) {

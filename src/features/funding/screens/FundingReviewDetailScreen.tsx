@@ -23,8 +23,10 @@ import {
   getFundingApiErrorMessage,
   getFundingReviewComments,
   getFundingReviewDetail,
+  likeFundingReview,
   likeFundingReviewComment,
   type FundingReviewCommentItem,
+  unlikeFundingReview,
   unlikeFundingReviewComment,
 } from '@/features/funding/api';
 import { mapFundingReview } from '@/features/funding/apiMappers';
@@ -99,9 +101,9 @@ export default function FundingReviewDetailScreen() {
 
   useEffect(() => {
     setCommentInput('');
-    setLiked(false);
+    setLiked(Boolean(review?.liked));
     setLikeCount(review?.likes || 0);
-  }, [review?.id, review?.likes]);
+  }, [review?.id, review?.liked, review?.likes]);
 
   useEffect(() => {
     if (!project || !Number.isFinite(projectId) || !Number.isFinite(targetReviewId) || targetReviewId <= 0) return;
@@ -151,13 +153,37 @@ export default function FundingReviewDetailScreen() {
     router.replace(`/funding/${project.id}?tab=review&fromReview=1` as any);
   };
 
-  const handleLike = () => {
+  const handleLike = async () => {
     if (!user) {
       showLoginRequired('후기 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
-    setLiked((prev) => !prev);
-    setLikeCount((prev) => Math.max(0, prev + (liked ? -1 : 1)));
+    if (!review) return;
+
+    const previousLiked = liked;
+    const previousLikeCount = likeCount;
+    const nextLiked = !previousLiked;
+    setLiked(nextLiked);
+    setLikeCount((prev) => Math.max(0, prev + (nextLiked ? 1 : -1)));
+
+    try {
+      const response = previousLiked
+        ? await unlikeFundingReview(projectId, targetReviewId)
+        : await likeFundingReview(projectId, targetReviewId);
+      const serverLikeCount = Math.max(0, response.likeCount);
+      setLiked(response.liked);
+      setLikeCount(serverLikeCount);
+      mergeFundingReviews(projectId, [{ ...review, liked: response.liked, likes: serverLikeCount }]);
+    } catch (error) {
+      setLiked(previousLiked);
+      setLikeCount(previousLikeCount);
+      setAlertModal({
+        title: '좋아요 실패',
+        body: getFundingApiErrorMessage(error, '좋아요 상태를 저장하지 못했습니다.'),
+        tone: 'warning',
+        buttons: [{ label: '확인' }],
+      });
+    }
   };
 
   const handleCommentSubmit = async () => {

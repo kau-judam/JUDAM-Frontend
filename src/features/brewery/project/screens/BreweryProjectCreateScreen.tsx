@@ -39,7 +39,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
 
 import { Progress } from '@/components/ui/progress';
-import type { FundingProject, BudgetItem, ScheduleItem, ProjectStatus } from '@/constants/data';
+import type { FundingProject, ProjectStatus } from '@/constants/data';
 import { useAuth, type User as AuthUser } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import DaumAddressSearchModal from '@/features/funding/components/DaumAddressSearchModal';
@@ -277,40 +277,6 @@ function normalizeProjectDate(value?: string) {
   return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
 }
 
-function getDurationFromProject(project: FundingProject) {
-  const start = parseDate(normalizeProjectDate(project.startDate));
-  const end = parseDate(normalizeProjectDate(project.endDate));
-  if (start && end) {
-    const diff = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-    if (diff > 0) return String(diff);
-  }
-  return String(Math.max(1, project.daysLeft || 30));
-}
-
-function stripVolumeUnit(value?: string) {
-  return digitsOnly(value || '');
-}
-
-function stripAlcoholUnit(value?: string) {
-  return decimalOnly(value || '');
-}
-
-function getProjectImageUris(project: FundingProject) {
-  const localUri = project.localImage ? Image.resolveAssetSource(project.localImage)?.uri : '';
-  const images = project.images?.length ? project.images : [];
-  return [localUri, ...images, project.image].filter((image): image is string => Boolean(image));
-}
-
-function formatBudgetItems(items?: BudgetItem[]) {
-  if (!items?.length) return '';
-  return items.map((item) => `- ${item.item}: ${item.amount}만원`).join('\n');
-}
-
-function formatScheduleItems(items?: ScheduleItem[]) {
-  if (!items?.length) return '';
-  return items.map((item) => `- ${item.date}: ${item.description}`).join('\n');
-}
-
 function parseBudgetItems(value: string) {
   return parseTextLines(value).map((line) => {
     const match = line.match(/^(.*?)[\s:：-]+([0-9,]+)\s*만원?$/);
@@ -327,111 +293,6 @@ function parseScheduleItems(value: string) {
       description: description.length > 0 ? description.join(':').trim() : line,
     };
   });
-}
-
-function getProjectIngredients(project: FundingProject) {
-  if (project.ingredients?.length) {
-    return project.ingredients.map((item, index) => ({
-      id: index + 1,
-      ingredient: item.ingredient,
-      origin: item.origin,
-    }));
-  }
-  const ingredients = [
-    project.mainIngredients
-      ? {
-          id: 1,
-          ingredient: project.mainIngredients,
-          origin: project.location || '',
-        }
-      : null,
-    project.subIngredients
-      ? {
-          id: 2,
-          ingredient: project.subIngredients,
-          origin: project.location || '',
-        }
-      : null,
-  ].filter((item): item is { id: number; ingredient: string; origin: string } => Boolean(item));
-  return ingredients.length > 0 ? ingredients : [{ id: 1, ingredient: '', origin: '' }];
-}
-
-function createProjectEditDraft(project: FundingProject, user: AuthUser | null) {
-  const imageUris = getProjectImageUris(project);
-  const alcoholContent = stripAlcoholUnit(project.alcoholContent);
-  const volume = stripVolumeUnit(project.bottleSize || project.volume);
-  const breweryName = project.brewery || user?.breweryName || '';
-
-  return {
-    basicInfo: {
-      category: project.category || project.productType || '막걸리',
-      title: project.title || '',
-      shortTitle: project.shortTitle || project.title || '',
-      mainIngredient: project.mainIngredients || '',
-      subIngredient: project.subIngredients || '',
-      alcoholContent,
-      summary: project.projectSummary || project.shortDescription || '',
-      images: imageUris.slice(0, 5),
-      tags: normalizeProjectTags(project.tags),
-    },
-    fundingInfo: {
-      pricePerBottle: project.pricePerBottle ? String(project.pricePerBottle) : '',
-      bottleQuantity: project.targetQuantity || project.totalQuantity ? String(project.targetQuantity || project.totalQuantity) : '',
-      goalAmount: project.goalAmount ? String(project.goalAmount) : '',
-      startDate: normalizeProjectDate(project.startDate),
-      duration: getDurationFromProject(project),
-      expectedDeliveryDate: normalizeProjectDate(project.estimatedDelivery),
-    },
-    productInfo: {
-      productType: project.productType || project.category || '막걸리',
-      volume,
-      alcoholContent,
-      ingredients: getProjectIngredients(project),
-    },
-    tasteProfile: project.tasteProfile || {
-      sweetness: 50,
-      aroma: 50,
-      acidity: 50,
-      body: 60,
-      carbonation: 50,
-    },
-    projectPlan: {
-      introduction: project.introduction || project.story || project.projectSummary || '',
-      videoUrl: project.videoUrl || '',
-      budget: formatBudgetItems(project.budget),
-      schedule: formatScheduleItems(project.schedule),
-    },
-    trustInfo: {
-      projectPolicy: project.projectPolicy || DEFAULT_PROJECT_POLICY,
-      expectedDifficulties: project.expectedDifficulties || DEFAULT_EXPECTED_DIFFICULTIES,
-    },
-    creatorInfo: {
-      name: breweryName,
-      profileImage: project.breweryProfileImage || imageUris[0] || '',
-      bio: project.breweryBio || `${breweryName}의 전통주 프로젝트입니다.`,
-      phone: user?.phone || '',
-      accountBank: '',
-      accountNumber: '',
-    },
-    taxInfo: {
-      businessType: 'corporation',
-      businessName: breweryName,
-      businessNumber: user?.businessNumber || '',
-      ceoName: user?.name && user.name !== breweryName ? user.name : '',
-      address: project.location || user?.breweryLocation || '',
-      businessCategory: '',
-      businessItem: '',
-      email: user?.email || '',
-    },
-    uploadedFiles: {
-      profileImage: (project.breweryProfileImage || imageUris[0]) ? '기존 프로필 이미지' : '',
-      idCard: '기존 제출 서류',
-      businessLicense: '기존 사업자등록증 사본',
-      salesPermit: '기존 통신판매신고증',
-      alcoholPermit: '기존 주류 통신판매 승인서',
-      manufacturingLicense: '기존 전통주 제조면허증',
-    },
-  };
 }
 
 function formatBudgetPlanForDraft(items?: { category: string; amount: number }[]) {
@@ -454,17 +315,29 @@ function getUploadedFilesFromPreviewDocuments(documents?: FundingDraftPreviewRes
   const files = { ...EMPTY_UPLOADED_FILES };
   documents?.forEach((document) => {
     const fileName = document.fileName || '기존 제출 서류';
-    if (document.documentType === 'businessLicense' || document.documentType === 'BUSINESS_REGISTRATION') files.businessLicense = fileName;
-    if (document.documentType === 'salesPermit' || document.documentType === 'MAIL_ORDER_BUSINESS') files.salesPermit = fileName;
-    if (document.documentType === 'alcoholPermit') files.alcoholPermit = fileName;
-    if (document.documentType === 'manufacturingLicense') files.manufacturingLicense = fileName;
+    const documentType = document.documentType;
+    if (documentType === 'businessLicense' || documentType === 'BUSINESS_LICENSE' || documentType === 'BUSINESS_REGISTRATION') files.businessLicense = fileName;
+    if (documentType === 'salesPermit' || documentType === 'SALES_PERMIT' || documentType === 'MAIL_ORDER_BUSINESS') files.salesPermit = fileName;
+    if (documentType === 'alcoholPermit' || documentType === 'ALCOHOL_PERMIT') files.alcoholPermit = fileName;
+    if (documentType === 'manufacturingLicense' || documentType === 'MANUFACTURING_LICENSE') files.manufacturingLicense = fileName;
     if (document.documentType === 'LIQUOR_LICENSE') {
       files.alcoholPermit = files.alcoholPermit || fileName;
       files.manufacturingLicense = files.manufacturingLicense || fileName;
     }
-    if (document.documentType === 'idCard' || document.documentType === 'BANK_ACCOUNT_COPY' || document.documentType === 'ETC') files.idCard = files.idCard || fileName;
+    if (documentType === 'idCard' || documentType === 'ID_CARD' || documentType === 'BANK_ACCOUNT_COPY' || documentType === 'ETC') files.idCard = files.idCard || fileName;
   });
   return files;
+}
+
+function getUploadedFilesFromPreview(preview: FundingDraftPreviewResponse) {
+  const breweryInfo = preview.breweryInfo || {};
+  const documentFiles = getUploadedFilesFromPreviewDocuments(preview.documents);
+  return normalizeUploadedFiles({
+    ...documentFiles,
+    profileImage: breweryInfo.profileImageUrl || '',
+    idCard: documentFiles.idCard || breweryInfo.identityDocumentUrl || '',
+    businessLicense: documentFiles.businessLicense || breweryInfo.businessRegistrationFileUrl || '',
+  });
 }
 
 function createProjectDraftFromServerPreview(preview: FundingDraftPreviewResponse, user: AuthUser | null) {
@@ -490,7 +363,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
           : []
   );
   const alcoholContent = String(legalInfo.alcoholPercentage || basicInfo.alcoholPercentage || '');
-  const breweryName = breweryInfo.breweryName || user?.breweryName || '';
+  const breweryName = breweryInfo.breweryName || breweryInfo.creatorName || user?.breweryName || '';
 
   return {
     timestamp: preview.documents?.[0]?.createdAt || new Date().toISOString(),
@@ -538,29 +411,29 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
     },
     creatorInfo: {
       name: breweryName,
-      profileImage: thumbnailUrl,
-      bio: breweryName ? `${breweryName}의 전통주 프로젝트입니다.` : '',
+      profileImage: breweryInfo.profileImageUrl || '',
+      bio: breweryInfo.creatorIntroduction || '',
       phone: breweryInfo.contactPhone || user?.phone || '',
       accountBank: breweryInfo.bankName || '',
       accountNumber: breweryInfo.accountNumber || '',
     },
     taxInfo: {
-      businessType: 'corporation',
-      businessName: breweryName,
+      businessType: breweryInfo.businessType || '',
+      businessName: breweryInfo.businessName || breweryName,
       businessNumber: breweryInfo.businessRegistrationNumber || '',
       ceoName: breweryInfo.representativeName || breweryInfo.accountHolder || '',
       address: breweryInfo.businessAddress || '',
-      businessCategory: '제조업',
-      businessItem: `${basicInfo.category || '전통주'} 제조`,
-      email: breweryInfo.contactEmail || user?.email || '',
+      businessCategory: breweryInfo.businessCategory || '',
+      businessItem: breweryInfo.businessItem || '',
+      email: breweryInfo.taxEmail || breweryInfo.contactEmail || user?.email || '',
     },
     trustInfo: {
       projectPolicy: [notices.refundPolicy, notices.exchangePolicy, notices.adultVerificationNotice].filter(Boolean).join('\n\n') || DEFAULT_PROJECT_POLICY,
       expectedDifficulties: notices.riskNotice || DEFAULT_EXPECTED_DIFFICULTIES,
     },
-    uploadedFiles: getUploadedFilesFromPreviewDocuments(preview.documents),
-    phoneVerified: Boolean(breweryInfo.contactPhone),
-    accountVerified: Boolean(breweryInfo.bankName && breweryInfo.accountNumber),
+    uploadedFiles: getUploadedFilesFromPreview(preview),
+    phoneVerified: Boolean(breweryInfo.phoneVerified || breweryInfo.contactPhone),
+    accountVerified: Boolean(breweryInfo.accountVerified || (breweryInfo.bankName && breweryInfo.accountNumber)),
     serverDraft: {
       draftId: preview.draftId,
       status: preview.status,
@@ -710,10 +583,9 @@ export default function BreweryProjectCreateScreen() {
         applyEditDraft(createProjectDraftFromServerPreview(preview, user));
         appliedEditProjectKeyRef.current = editProjectKey;
       })
-      .catch(() => {
+      .catch((error) => {
         if (!isMounted) return;
-        applyEditDraft(createProjectEditDraft(editProject, user));
-        appliedEditProjectKeyRef.current = editProjectKey;
+        showAlert(getFundingApiErrorMessage(error, '서버에 저장된 관리하기 데이터를 불러오지 못했습니다. 다시 시도해주세요.'));
       });
 
     return () => {
@@ -730,6 +602,27 @@ export default function BreweryProjectCreateScreen() {
   useEffect(() => {
     const loadTempSaveMeta = async () => {
       const saved = await SafeStorage.getItem(tempSaveKey);
+      if (!saved && isEditMode && editProjectId) {
+        try {
+          const preview = await getFundingDraftByFundingId(editProjectId);
+          const timestamp = preview.documents?.[0]?.createdAt || new Date().toISOString();
+          await SafeStorage.setItem(tempSaveKey, JSON.stringify({
+            timestamp,
+            serverDraft: {
+              draftId: preview.draftId,
+              fundingId: preview.fundingId,
+              status: preview.status,
+              progressRate: preview.progressRate,
+              message: preview.message,
+            },
+          }));
+          setTempSaveTimestamp(timestamp);
+          setHasTempSave(true);
+        } catch (error) {
+          console.warn(getFundingApiErrorMessage(error, '서버 관리하기 임시저장을 불러오지 못했습니다.'));
+        }
+        return;
+      }
       if (!saved && !isEditMode) {
         try {
           const breweryId = Number(user?.id);
@@ -765,7 +658,7 @@ export default function BreweryProjectCreateScreen() {
       }
     };
     void loadTempSaveMeta();
-  }, [isEditMode, tempSaveKey, user?.id]);
+  }, [editProjectId, isEditMode, tempSaveKey, user?.id]);
 
   const today = useMemo(() => {
     const value = new Date();
@@ -1051,7 +944,11 @@ export default function BreweryProjectCreateScreen() {
 
   const ensureServerDraft = async () => {
     const savedDraft = await getSavedDraft();
-    const draftId = getDraftId(savedDraft) || (initialDraftId && Number.isFinite(initialDraftId) && initialDraftId > 0 ? initialDraftId : null);
+    let draftId = getDraftId(savedDraft) || (initialDraftId && Number.isFinite(initialDraftId) && initialDraftId > 0 ? initialDraftId : null);
+    if (!draftId && isEditMode && editProjectId) {
+      const preview = await getFundingDraftByFundingId(editProjectId);
+      draftId = preview.draftId;
+    }
     const serverDraft = await syncServerDraft(draftId);
     const draft = {
       ...createDraftPayload(),
@@ -1065,6 +962,96 @@ export default function BreweryProjectCreateScreen() {
       throw new Error('서버 임시저장 ID를 확인하지 못했습니다.');
     }
     return nextDraftId;
+  };
+
+  const uploadReadyProjectFilesToApi = async (draftId: number) => {
+    const profileImageFile = getLocalUploadFile(uploadedFiles.profileImage);
+    if (profileImageFile) {
+      await uploadFundingDraftFile(draftId, 'PROFILE_IMAGE', profileImageFile);
+    }
+    for (const key of DOCUMENT_FILE_KEYS) {
+      const file = getLocalUploadFile(uploadedFiles[key]);
+      if (file) {
+        await uploadFundingDocument(draftId, DOCUMENT_TYPE_BY_FILE_KEY[key], file);
+      }
+    }
+  };
+
+  const syncReadyProjectSectionsToApi = async (draftId: number) => {
+    const alcoholPercentage = Number(basicInfo.alcoholContent);
+    await saveFundingBasicInfo(draftId, {
+      title: basicInfo.title.trim() || undefined,
+      shortTitle: basicInfo.shortTitle.trim() || undefined,
+      category: basicInfo.category.trim() || '막걸리',
+      mainIngredient: basicInfo.mainIngredient.trim() || undefined,
+      subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
+      alcoholPercentage: Number.isFinite(alcoholPercentage) && basicInfo.alcoholContent.trim() ? alcoholPercentage : undefined,
+      summary: basicInfo.summary.trim() || undefined,
+      thumbnailUrl: basicInfo.images[0] || undefined,
+      imageUrls: basicInfo.images,
+      tags: getReadyTags(),
+    });
+
+    if (fundingInfo.pricePerBottle && fundingInfo.bottleQuantity && fundingInfo.startDate && fundingInfo.duration && fundingInfo.expectedDeliveryDate) {
+      await saveFundingSchedule(draftId, {
+        pricePerBottle: Number(fundingInfo.pricePerBottle),
+        totalQuantity: Number(fundingInfo.bottleQuantity),
+        fundingStartDate: fundingInfo.startDate,
+        fundingPeriodDays: Number(fundingInfo.duration),
+        expectedDeliveryDate: fundingInfo.expectedDeliveryDate,
+      });
+    }
+
+    const readyRawMaterials = productInfo.ingredients
+      .filter((item) => item.ingredient.trim() || item.origin.trim())
+      .map((item) => ({
+        name: item.ingredient.trim(),
+        origin: item.origin.trim(),
+      }));
+    const hasCompleteRawMaterials = readyRawMaterials.length > 0 && readyRawMaterials.every((item) => item.name && item.origin);
+    if (productInfo.volume && productInfo.alcoholContent && hasCompleteRawMaterials) {
+      await saveFundingLegalInfo(draftId, {
+        productType: 'MAKGEOLLI',
+        volume: Number(productInfo.volume),
+        alcoholPercentage: Number(productInfo.alcoholContent || basicInfo.alcoholContent),
+        rawMaterials: readyRawMaterials,
+      });
+    }
+
+    await saveFundingTasteProfile(draftId, {
+      sweetness: tasteProfile.sweetness,
+      acidity: tasteProfile.acidity,
+      body: tasteProfile.body,
+      carbonation: tasteProfile.carbonation,
+      alcoholIntensity: tasteProfile.aroma,
+      flavorNotes: getReadyTags(),
+    });
+
+    if (projectPlan.introduction.trim()) {
+      await saveFundingPlan(draftId, {
+        introduction: projectPlan.introduction.trim(),
+        videoUrl: projectPlan.videoUrl.trim() || undefined,
+        budgetPlan: getBudgetPlanForApi(),
+        schedulePlan: getSchedulePlanForApi(),
+      });
+    }
+
+    try {
+      await saveFundingBreweryInfo(draftId, getBreweryInfoForApi());
+    } catch (error) {
+      if (progress >= 100) throw error;
+    }
+
+    if (trustInfo.projectPolicy.trim() && trustInfo.expectedDifficulties.trim()) {
+      await saveFundingNotices(draftId, {
+        refundPolicy: trustInfo.projectPolicy.trim(),
+        exchangePolicy: trustInfo.projectPolicy.trim(),
+        adultVerificationNotice: '본 프로젝트는 성인인증을 완료한 후원자만 참여할 수 있습니다.',
+        riskNotice: trustInfo.expectedDifficulties.trim(),
+      });
+    }
+
+    await uploadReadyProjectFilesToApi(draftId);
   };
 
   const saveProjectSectionsToApi = async (draftId: number) => {
@@ -1174,32 +1161,15 @@ export default function BreweryProjectCreateScreen() {
   const saveDraft = async ({ showSavedModal = true, exitAfter = false }: { showSavedModal?: boolean; exitAfter?: boolean } = {}) => {
     setIsSaving(true);
     try {
+      const draftId = await ensureServerDraft();
+      await syncReadyProjectSectionsToApi(draftId);
       const savedDraft = await getSavedDraft();
-      const existingDraftId = getDraftId(savedDraft);
-      const draft = {
-        ...createDraftPayload(),
-        serverDraft: savedDraft?.serverDraft || null,
-      };
-      await SafeStorage.setItem(tempSaveKey, JSON.stringify(draft));
+      const nextTimestamp = savedDraft?.timestamp || new Date().toISOString();
       setHasTempSave(true);
-      setTempSaveTimestamp(draft.timestamp);
-
-      let syncError: unknown = null;
-      if (!isEditMode) {
-        try {
-          const serverDraft = await syncServerDraft(existingDraftId || (initialDraftId && Number.isFinite(initialDraftId) && initialDraftId > 0 ? initialDraftId : null));
-          await SafeStorage.setItem(tempSaveKey, JSON.stringify({ ...draft, serverDraft }));
-        } catch (error) {
-          syncError = error;
-        }
-      }
+      setTempSaveTimestamp(nextTimestamp);
 
       if (exitAfter) {
         navigateToExitRoute();
-        return;
-      }
-      if (syncError) {
-        showAlert(`기기에는 임시저장되었습니다. 서버 동기화는 실패했어요. ${getFundingApiErrorMessage(syncError, '')}`);
         return;
       }
       if (showSavedModal) {
@@ -1214,7 +1184,19 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const loadSavedDraft = async () => {
-    const draft = await getSavedDraft();
+    let draft = await getSavedDraft();
+    if (!draft && isEditMode && editProjectId) {
+      try {
+        const preview = await getFundingDraftByFundingId(editProjectId);
+        const serverDraft = createProjectDraftFromServerPreview(preview, user);
+        await SafeStorage.setItem(tempSaveKey, JSON.stringify(serverDraft));
+        draft = serverDraft;
+      } catch (error) {
+        setShowTempSaveModal(false);
+        showAlert(getFundingApiErrorMessage(error, '서버 임시저장 내용을 불러오지 못했습니다.'));
+        return;
+      }
+    }
     if (!draft) {
       setShowTempSaveModal(false);
       showAlert('불러올 임시저장 내용이 없습니다.');
@@ -1251,7 +1233,7 @@ export default function BreweryProjectCreateScreen() {
   const deleteSavedDraft = async () => {
     const draft = await getSavedDraft();
     const draftId = getDraftId(draft);
-    if (draftId && !isEditMode) {
+    if (draftId) {
       try {
         await deleteFundingDraft(draftId);
       } catch (error) {
@@ -1347,6 +1329,17 @@ export default function BreweryProjectCreateScreen() {
 
   const loadBreweryInfo = async () => {
     if (!user || user.type !== 'brewery') return;
+    if (isEditMode && editProjectId) {
+      try {
+        const preview = await getFundingDraftByFundingId(editProjectId);
+        applyLoadedBreweryInfo(preview.breweryInfo || {});
+        setUploadedFiles((prev) => normalizeUploadedFiles({ ...prev, ...getUploadedFilesFromPreview(preview) }));
+        showAlert('서버에 저장된 양조장 정보를 불러왔습니다.');
+      } catch (error) {
+        showAlert(getFundingApiErrorMessage(error, '서버 양조장 정보를 불러오지 못했습니다.'));
+      }
+      return;
+    }
     if (!isEditMode) {
       try {
         const draftId = await ensureServerDraft();
@@ -1355,7 +1348,8 @@ export default function BreweryProjectCreateScreen() {
         showAlert('서버에 저장된 양조장 정보를 불러왔습니다.');
         return;
       } catch (error) {
-        console.warn(getFundingApiErrorMessage(error, '서버 양조장 정보를 불러오지 못했습니다.'));
+        showAlert(getFundingApiErrorMessage(error, '서버 양조장 정보를 불러오지 못했습니다.'));
+        return;
       }
     }
     const loadedBreweryName = user.breweryName || '';
@@ -1770,6 +1764,9 @@ export default function BreweryProjectCreateScreen() {
         }
       }
       if (isEditMode && editProjectId) {
+        const draftId = await ensureServerDraft();
+        await saveProjectSectionsToApi(draftId);
+        await uploadProjectDocumentsToApi(draftId);
         await updateFundingProjectApi(editProjectId, {
           title: basicInfo.title.trim(),
           description: projectPlan.introduction.trim() || basicInfo.summary.trim(),

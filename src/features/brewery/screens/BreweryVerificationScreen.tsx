@@ -218,7 +218,8 @@ export default function BreweryVerificationScreen() {
           },
         });
         const latestUser = application.user || application.application?.user;
-        const isApproved = isApprovedBreweryApplication(latestUser?.role, application.status || application.application?.status);
+        const applicationStatus = application.status || application.application?.status;
+        const isApproved = isApprovedBreweryApplication(latestUser?.role, applicationStatus);
 
         await updateUser({
           type: 'brewery',
@@ -557,8 +558,8 @@ export default function BreweryVerificationScreen() {
                 <View style={styles.infoBox}>
                   <Text style={styles.infoTitle}>인증 안내</Text>
                   <Text style={styles.infoTxt}>• 사업자등록증은 영업 중인 양조장임을 확인하는 용도로만 사용됩니다.</Text>
-                  <Text style={styles.infoTxt}>• 인증은 영업일 기준 1~2일 내에 완료됩니다.</Text>
-                  <Text style={styles.infoTxt}>• 인증 완료 후 프로젝트 생성이 가능합니다.</Text>
+                  <Text style={styles.infoTxt}>• 신청이 정상 처리되면 즉시 양조장 인증 완료 상태로 반영됩니다.</Text>
+                  <Text style={styles.infoTxt}>• 인증 완료 후 바로 프로젝트 생성이 가능합니다.</Text>
                 </View>
               )}
 

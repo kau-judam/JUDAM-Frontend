@@ -1,5 +1,5 @@
 import type { BtiSurveyTasteVector } from '@/features/bti/data';
-import { getAuthAccessToken } from '@/features/auth/api';
+import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
 export const JUDAM_MYPAGE_API_BASE_URL = 'http://43.202.24.223:3000';
 
@@ -205,19 +205,30 @@ async function requestMyPageJson<T>(path: string, options: RequestInit = {}) {
     throw new Error('NEEDS_ACCESS_TOKEN');
   }
 
-  const nextHeaders: Record<string, string> = {
+  const createHeaders = (accessToken: string): Record<string, string> => ({
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
+    Authorization: `Bearer ${accessToken}`,
     ...(headers as Record<string, string> | undefined),
-  };
-
-  const response = await fetch(`${JUDAM_MYPAGE_API_BASE_URL}${path}`, {
-    ...requestOptions,
-    headers: nextHeaders,
   });
 
-  const text = await response.text();
-  const data = parseMyPageResponseBody(path, response, text);
+  let response = await fetch(`${JUDAM_MYPAGE_API_BASE_URL}${path}`, {
+    ...requestOptions,
+    headers: createHeaders(token),
+  });
+  let text = await response.text();
+  let data = parseMyPageResponseBody(path, response, text);
+
+  if (response.status === 401) {
+    const refreshedToken = await refreshAuthAccessToken();
+    if (refreshedToken) {
+      response = await fetch(`${JUDAM_MYPAGE_API_BASE_URL}${path}`, {
+        ...requestOptions,
+        headers: createHeaders(refreshedToken),
+      });
+      text = await response.text();
+      data = parseMyPageResponseBody(path, response, text);
+    }
+  }
 
   if (!response.ok) {
     const message = (data as MyPageApiErrorBody | null)?.message || `HTTP ${response.status}`;
@@ -234,20 +245,33 @@ async function requestMyPageForm<T>(path: string, formData: FormData, options: R
     throw new Error('NEEDS_ACCESS_TOKEN');
   }
 
-  const nextHeaders: Record<string, string> = {
-    Authorization: `Bearer ${token}`,
+  const createHeaders = (accessToken: string): Record<string, string> => ({
+    Authorization: `Bearer ${accessToken}`,
     ...(headers as Record<string, string> | undefined),
-  };
+  });
 
-  const response = await fetch(`${JUDAM_MYPAGE_API_BASE_URL}${path}`, {
+  let response = await fetch(`${JUDAM_MYPAGE_API_BASE_URL}${path}`, {
     ...requestOptions,
     method: requestOptions.method || 'PATCH',
     body: formData,
-    headers: nextHeaders,
+    headers: createHeaders(token),
   });
+  let text = await response.text();
+  let data = parseMyPageResponseBody(path, response, text);
 
-  const text = await response.text();
-  const data = parseMyPageResponseBody(path, response, text);
+  if (response.status === 401) {
+    const refreshedToken = await refreshAuthAccessToken();
+    if (refreshedToken) {
+      response = await fetch(`${JUDAM_MYPAGE_API_BASE_URL}${path}`, {
+        ...requestOptions,
+        method: requestOptions.method || 'PATCH',
+        body: formData,
+        headers: createHeaders(refreshedToken),
+      });
+      text = await response.text();
+      data = parseMyPageResponseBody(path, response, text);
+    }
+  }
 
   if (!response.ok) {
     const message = (data as MyPageApiErrorBody | null)?.message || `HTTP ${response.status}`;

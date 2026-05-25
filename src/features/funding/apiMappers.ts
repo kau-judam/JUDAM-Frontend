@@ -287,7 +287,8 @@ export function mapFundingReview(projectId: number, item: FundingReviewItem): Fu
     pairing: item.pairing,
     showRecordInReview: item.recordVisibility,
     tags: item.tags || [],
-    likes: 0,
+    likes: item.likeCount || 0,
+    liked: item.liked,
     timestamp: formatDate(item.createdAt),
   };
 }

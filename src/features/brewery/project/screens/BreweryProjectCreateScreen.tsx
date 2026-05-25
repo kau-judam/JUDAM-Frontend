@@ -48,6 +48,7 @@ import {
   createFundingDraft,
   deleteFundingDraft,
   getFundingApiErrorMessage,
+  getFundingDraftByFundingId,
   getFundingDraftList,
   getFundingDraftPreview,
   saveFundingBasicInfo,
@@ -191,6 +192,11 @@ function alcoholText(value: string) {
 function normalizeProjectTags(tags?: string[]) {
   if (!tags?.length) return [];
   return Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean))).slice(0, 10);
+}
+
+function normalizeProjectImageUrls(images?: string[]) {
+  if (!images?.length) return [];
+  return Array.from(new Set(images.map((image) => image.trim()).filter(Boolean))).slice(0, 5);
 }
 
 function parseTextLines(value: string) {
@@ -473,7 +479,15 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
     : [{ name: basicInfo.mainIngredient || '', origin: '' }];
   const subIngredients = basicInfo.subIngredients || [];
   const thumbnailUrl = basicInfo.thumbnailUrl || '';
-  const imageUrls = basicInfo.imageUrls?.length ? basicInfo.imageUrls : (thumbnailUrl ? [thumbnailUrl] : []);
+  const imageUrls = normalizeProjectImageUrls(
+    basicInfo.allImageUrls?.length
+      ? basicInfo.allImageUrls
+      : basicInfo.imageUrls?.length
+        ? basicInfo.imageUrls
+        : thumbnailUrl
+          ? [thumbnailUrl]
+          : []
+  );
   const alcoholContent = String(legalInfo.alcoholPercentage || basicInfo.alcoholPercentage || '');
   const breweryName = breweryInfo.breweryName || user?.breweryName || '';
 
@@ -487,7 +501,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       subIngredient: subIngredients[0] || '',
       alcoholContent,
       summary: basicInfo.summary || '',
-      images: imageUrls.slice(0, 5),
+      images: imageUrls,
       tags: normalizeProjectTags(basicInfo.tags?.length ? basicInfo.tags : tasteProfile.flavorNotes),
     },
     fundingInfo: {
@@ -664,27 +678,45 @@ export default function BreweryProjectCreateScreen() {
   const [uploadedFiles, setUploadedFiles] = useState<Record<FileKey, UploadedFileValue>>(EMPTY_UPLOADED_FILES);
 
   useEffect(() => {
-    if (!editProject || !canEditProject) return;
+    if (!editProject || !editProjectId || !canEditProject) return;
     const editProjectKey = `${editProject.id}:${editProject.updatedAt || editProject.createdAt || ''}`;
     if (appliedEditProjectKeyRef.current === editProjectKey) return;
-    const draft = createProjectEditDraft(editProject, user);
-    setBasicInfo(draft.basicInfo);
-    setTagDraft('');
-    setFundingInfo(draft.fundingInfo);
-    setProductInfo(draft.productInfo);
-    setTasteProfile(draft.tasteProfile);
-    setProjectPlan(draft.projectPlan);
-    setTrustInfo(draft.trustInfo);
-    setCreatorInfo(draft.creatorInfo);
-    setTaxInfo(draft.taxInfo);
-    setUploadedFiles(normalizeUploadedFiles(draft.uploadedFiles));
-    setPhoneVerified(true);
-    setPhoneVerificationSent(false);
-    setPhoneVerificationCode('');
-    setPhoneTimer(0);
-    setAccountVerified(true);
-    appliedEditProjectKeyRef.current = editProjectKey;
-  }, [canEditProject, editProject, user]);
+
+    let isMounted = true;
+    const applyEditDraft = (draft: any) => {
+      setBasicInfo(draft.basicInfo);
+      setTagDraft('');
+      setFundingInfo(draft.fundingInfo);
+      setProductInfo(draft.productInfo);
+      setTasteProfile(draft.tasteProfile);
+      setProjectPlan(draft.projectPlan);
+      setTrustInfo(draft.trustInfo);
+      setCreatorInfo(draft.creatorInfo);
+      setTaxInfo(draft.taxInfo);
+      setUploadedFiles(normalizeUploadedFiles(draft.uploadedFiles));
+      setPhoneVerified('phoneVerified' in draft ? Boolean(draft.phoneVerified) : true);
+      setPhoneVerificationSent(false);
+      setPhoneVerificationCode('');
+      setPhoneTimer(0);
+      setAccountVerified('accountVerified' in draft ? Boolean(draft.accountVerified) : true);
+    };
+
+    getFundingDraftByFundingId(editProjectId)
+      .then((preview) => {
+        if (!isMounted) return;
+        applyEditDraft(createProjectDraftFromServerPreview(preview, user));
+        appliedEditProjectKeyRef.current = editProjectKey;
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        applyEditDraft(createProjectEditDraft(editProject, user));
+        appliedEditProjectKeyRef.current = editProjectKey;
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [canEditProject, editProject, editProjectId, user]);
 
   useEffect(() => {
     if (phoneTimer <= 0) return;

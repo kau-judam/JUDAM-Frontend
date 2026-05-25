@@ -13,6 +13,7 @@ export interface FundingReview {
   showRecordInReview?: boolean;
   tags: string[];
   likes: number;
+  liked?: boolean;
   timestamp: string;
 }
 

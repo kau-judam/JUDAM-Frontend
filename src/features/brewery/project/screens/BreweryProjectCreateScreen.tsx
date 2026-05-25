@@ -44,6 +44,7 @@ import { useAuth, type User as AuthUser } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import DaumAddressSearchModal from '@/features/funding/components/DaumAddressSearchModal';
 import FundingAlertModal from '@/features/funding/components/FundingAlertModal';
+import { confirmPhoneVerification, requestPhoneVerification } from '@/features/auth/api';
 import {
   createFundingDraft,
   deleteFundingDraft,
@@ -610,6 +611,7 @@ export default function BreweryProjectCreateScreen() {
   const [createdProjectId, setCreatedProjectId] = useState<number | null>(null);
   const [phoneVerificationSent, setPhoneVerificationSent] = useState(false);
   const [phoneVerificationCode, setPhoneVerificationCode] = useState('');
+  const [phoneVerificationGuideMessage, setPhoneVerificationGuideMessage] = useState('');
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [phoneTimer, setPhoneTimer] = useState(0);
   const [accountVerified, setAccountVerified] = useState(false);
@@ -697,6 +699,7 @@ export default function BreweryProjectCreateScreen() {
       setPhoneVerified('phoneVerified' in draft ? Boolean(draft.phoneVerified) : true);
       setPhoneVerificationSent(false);
       setPhoneVerificationCode('');
+      setPhoneVerificationGuideMessage('');
       setPhoneTimer(0);
       setAccountVerified('accountVerified' in draft ? Boolean(draft.accountVerified) : true);
     };
@@ -730,7 +733,8 @@ export default function BreweryProjectCreateScreen() {
       if (!saved && !isEditMode) {
         try {
           const breweryId = Number(user?.id);
-          const response = await getFundingDraftList(Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1);
+          if (!Number.isFinite(breweryId) || breweryId <= 0) return;
+          const response = await getFundingDraftList(breweryId);
           const draft = response.drafts.find((item) => item.status === 'DRAFT');
           if (!draft) return;
           const timestamp = draft.updatedAt || draft.createdAt || new Date().toISOString();
@@ -922,7 +926,10 @@ export default function BreweryProjectCreateScreen() {
 
   const getBreweryId = () => {
     const breweryId = Number(user?.id);
-    return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1;
+    if (!Number.isFinite(breweryId) || breweryId <= 0) {
+      throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+    }
+    return breweryId;
   };
 
   const createDraftApiPayload = () => {
@@ -1383,6 +1390,7 @@ export default function BreweryProjectCreateScreen() {
     setPhoneVerified(false);
     setPhoneVerificationSent(false);
     setPhoneVerificationCode('');
+    setPhoneVerificationGuideMessage('');
     setPhoneTimer(0);
     setAccountVerified(false);
     showAlert('양조장 정보를 불러왔습니다. 본인 인증과 입금 계좌는 직접 입력해주세요.');
@@ -1490,30 +1498,45 @@ export default function BreweryProjectCreateScreen() {
     }));
   };
 
-  const handleSendPhoneVerification = () => {
+  const handleSendPhoneVerification = async () => {
     if (!canSendPhoneVerification) {
       showAlert('휴대폰 번호를 정확히 입력해주세요.');
       return;
     }
-    const wasAlreadySent = phoneVerificationSent;
-    setPhoneVerificationSent(true);
-    setPhoneVerificationCode('');
-    setPhoneTimer(180);
-    showAlert(wasAlreadySent ? '인증번호가 재전송되었습니다.' : '인증번호가 전송되었습니다.');
+    try {
+      const result = await requestPhoneVerification(digitsOnly(creatorInfo.phone));
+      if (!result.verificationCode) {
+        throw new Error('인증 코드가 내려오지 않았습니다.');
+      }
+      setPhoneVerificationSent(true);
+      setPhoneVerificationCode(result.verificationCode);
+      setPhoneVerificationGuideMessage(
+        result.guideMessage || `휴대폰 문자로 ${result.verificationCode}을 ${result.sendTo || '1666-3538'}로 보내주세요.`
+      );
+      setPhoneTimer(180);
+      showAlert(result.guideMessage || `휴대폰 문자로 ${result.verificationCode}을 ${result.sendTo || '1666-3538'}로 보내주세요.`);
+    } catch (error) {
+      showAlert(getFundingApiErrorMessage(error, '전화번호 인증 요청에 실패했습니다.'));
+    }
   };
 
-  const handleVerifyPhone = () => {
+  const handleVerifyPhone = async () => {
     if (!phoneVerificationCode) {
-      showAlert('인증번호를 입력해주세요.');
+      showAlert('먼저 인증 요청을 진행해주세요.');
       return;
     }
-    if (phoneVerificationCode === '1234') {
+    try {
+      const result = await confirmPhoneVerification(digitsOnly(creatorInfo.phone), phoneVerificationCode);
+      if (!result.verified || !result.phoneVerificationToken) {
+        throw new Error('전화번호 인증이 완료되지 않았습니다.');
+      }
       setPhoneVerified(true);
       setPhoneTimer(0);
+      setPhoneVerificationGuideMessage('');
       showAlert('인증이 완료되었습니다.');
-      return;
+    } catch (error) {
+      showAlert(getFundingApiErrorMessage(error, '전화번호 인증 확인에 실패했습니다.'));
     }
-    showAlert('인증번호가 일치하지 않습니다.');
   };
 
   const handleVerifyAccount = () => {
@@ -2319,6 +2342,7 @@ export default function BreweryProjectCreateScreen() {
                   setPhoneVerified(false);
                   setPhoneVerificationSent(false);
                   setPhoneVerificationCode('');
+                  setPhoneVerificationGuideMessage('');
                   setPhoneTimer(0);
                 }}
                 placeholder="010-1234-5678"
@@ -2346,7 +2370,7 @@ export default function BreweryProjectCreateScreen() {
             {phoneVerificationSent && !phoneVerified && (
               <View style={styles.verificationBlock}>
                 <View style={styles.rowBetween}>
-                  <Text style={styles.smallSubLabel}>인증번호</Text>
+                  <Text style={styles.smallSubLabel}>문자 인증</Text>
                   {phoneTimer > 0 && (
                     <View style={styles.timerRow}>
                       <Clock size={12} color="#DC2626" />
@@ -2354,20 +2378,12 @@ export default function BreweryProjectCreateScreen() {
                     </View>
                   )}
                 </View>
-                <View style={styles.inlineRow}>
-                  <TextInput
-                    style={[styles.input, styles.inlineInput]}
-                    value={phoneVerificationCode}
-                    onChangeText={(value) => setPhoneVerificationCode(digitsOnly(value))}
-                    placeholder="인증번호 입력"
-                    placeholderTextColor="#9CA3AF"
-                    keyboardType="number-pad"
-                  />
-                  <TouchableOpacity style={styles.inlineBlackButton} onPress={handleVerifyPhone}>
-                    <Text style={styles.inlineBlackButtonText}>인증하기</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.helper}>* 테스트용 인증번호: 1234</Text>
+                <Text style={styles.helper}>
+                  {phoneVerificationGuideMessage || '안내된 인증 코드를 문자로 보낸 뒤 인증 확인을 눌러주세요.'}
+                </Text>
+                <TouchableOpacity style={styles.inlineBlackButton} onPress={handleVerifyPhone}>
+                  <Text style={styles.inlineBlackButtonText}>인증 확인</Text>
+                </TouchableOpacity>
               </View>
             )}
             <View style={styles.formGroup}>

@@ -109,8 +109,7 @@ import {
 import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/funding/reviews';
 import { normalizeFundingImageUrl } from '@/features/funding/imageUrls';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
-import { canAccessFundingReviews, isTemporarySansaReviewTestProject } from '@/features/funding/permissions';
-import SafeStorage from '@/utils/storage';
+import { canAccessFundingReviews } from '@/features/funding/permissions';
 
 const HERO_IMAGE_HEIGHT = 256;
 type FundingQuestionComment = {
@@ -133,9 +132,6 @@ type FundingQuestionComment = {
   }[];
 };
 
-const initialComments: FundingQuestionComment[] = [];
-
-const initialCommentIds = new Set(initialComments.map((comment) => comment.id));
 const JOURNALS_PER_STAGE = 1;
 const DEFAULT_PROJECT_BUDGET: NonNullable<FundingProject['budget']> = [];
 const DEFAULT_PROJECT_SCHEDULE: NonNullable<FundingProject['schedule']> = [];
@@ -209,57 +205,6 @@ function mapBreweryLogComments(comments: FundingBreweryLogCommentItem[], journal
       liked: Boolean(reply.liked),
     })),
   }));
-}
-
-function getJournalInteractionStorageKey(projectId: number, userId?: string) {
-  return `judam_funding_journal_interactions:${projectId}:${userId || 'guest'}`;
-}
-
-type StoredJournalInteractions = {
-  likedJournals?: string[];
-  likedJournalComments?: string[];
-  likedJournalReplies?: string[];
-};
-
-type StoredQnaInteractions = {
-  comments?: FundingQuestionComment[];
-  likedComments?: number[];
-  likedReplies?: number[];
-};
-
-function getQnaInteractionStorageKey(projectId: number, userId?: string) {
-  return `judam_funding_qna_interactions:${projectId}:${userId || 'guest'}`;
-}
-
-function mergeStoredQnaReplies(
-  apiReplies: FundingQuestionComment['replies'],
-  storedReplies: FundingQuestionComment['replies'] = []
-) {
-  if (!storedReplies.length) return apiReplies;
-  const apiReplyIds = new Set(apiReplies.map((reply) => reply.id));
-  const localOnlyReplies = storedReplies.filter((reply) => !apiReplyIds.has(reply.id));
-  return [...apiReplies, ...localOnlyReplies];
-}
-
-function mergeStoredQnaComments(apiComments: FundingQuestionComment[], stored?: StoredQnaInteractions | null) {
-  if (!stored?.comments?.length) return withUniqueQnaCommentIds(apiComments);
-  const normalizedApiComments = withUniqueQnaCommentIds(apiComments);
-  const storedById = new Map(stored.comments.map((comment) => [getQnaCommentServerKey(comment), comment]));
-  const apiIds = new Set(normalizedApiComments.map(getQnaCommentServerKey));
-  const merged = normalizedApiComments.map((comment) => {
-    const storedComment = storedById.get(getQnaCommentServerKey(comment));
-    if (!storedComment) return comment;
-    return {
-      ...comment,
-      replies: mergeStoredQnaReplies(comment.replies, storedComment.replies),
-    };
-  });
-  const localOnly = stored.comments.filter((comment) => !apiIds.has(getQnaCommentServerKey(comment)));
-  return withUniqueQnaCommentIds([...merged, ...localOnly]);
-}
-
-function getQnaCommentServerKey(comment: FundingQuestionComment) {
-  return String(comment.serverQuestionId || comment.id);
 }
 
 function createLocalQnaCommentId(baseId: number, index: number) {
@@ -425,8 +370,6 @@ export default function FundingDetailScreen() {
   const [likedJournals, setLikedJournals] = useState<Set<string>>(new Set());
   const [likedJournalComments, setLikedJournalComments] = useState<Set<string>>(new Set());
   const [likedJournalReplies, setLikedJournalReplies] = useState<Set<string>>(new Set());
-  const qnaInteractionsLoadedRef = useRef(false);
-  const journalInteractionsLoadedRef = useRef(false);
 
   useEffect(() => {
     setActiveTab(getInitialTab(tab));
@@ -454,7 +397,6 @@ export default function FundingDetailScreen() {
     setReplyContent("");
     setLikedComments(new Set());
     setLikedReplies(new Set());
-    qnaInteractionsLoadedRef.current = false;
     setExpandedComments(new Set([1]));
     setExpandedJournalStages(new Set());
     setExpandedJournalComments(new Set());
@@ -470,59 +412,6 @@ export default function FundingDetailScreen() {
     setSelectedQuantity(1);
     setSupportOptionId(1);
   }, [projectId]);
-
-  useEffect(() => {
-    let mounted = true;
-    journalInteractionsLoadedRef.current = false;
-    setLikedJournals(new Set());
-    setLikedJournalComments(new Set());
-    setLikedJournalReplies(new Set());
-
-    if (!Number.isFinite(projectId) || !user?.id) {
-      journalInteractionsLoadedRef.current = true;
-      return () => {
-        mounted = false;
-      };
-    }
-
-    SafeStorage.getItem(getJournalInteractionStorageKey(projectId, user.id))
-      .then((value) => {
-        if (!mounted || !value) return;
-        const parsed = JSON.parse(value) as StoredJournalInteractions;
-        const nextLikedJournals = new Set(parsed.likedJournals || []);
-        const nextLikedJournalComments = new Set(parsed.likedJournalComments || []);
-        const nextLikedJournalReplies = new Set(parsed.likedJournalReplies || []);
-        setLikedJournals(nextLikedJournals);
-        setLikedJournalComments(nextLikedJournalComments);
-        setLikedJournalReplies(nextLikedJournalReplies);
-        updateProjectJournals(
-          projectId,
-          (projectRef.current?.journals || []).map((entry) =>
-            nextLikedJournals.has(getJournalMergeKey(entry)) && (entry.likes || 0) === 0
-              ? { ...entry, likes: 1 }
-              : entry
-          )
-        );
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (mounted) journalInteractionsLoadedRef.current = true;
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, [projectId, updateProjectJournals, user?.id]);
-
-  useEffect(() => {
-    if (!journalInteractionsLoadedRef.current || !Number.isFinite(projectId) || !user?.id) return;
-    const payload: StoredJournalInteractions = {
-      likedJournals: Array.from(likedJournals),
-      likedJournalComments: Array.from(likedJournalComments),
-      likedJournalReplies: Array.from(likedJournalReplies),
-    };
-    SafeStorage.setItem(getJournalInteractionStorageKey(projectId, user.id), JSON.stringify(payload)).catch(() => undefined);
-  }, [likedJournalComments, likedJournalReplies, likedJournals, projectId, user?.id]);
 
   useEffect(() => {
     let mounted = true;
@@ -636,10 +525,9 @@ export default function FundingDetailScreen() {
   useEffect(() => {
     let mounted = true;
     if (!Number.isFinite(projectId) || activeTab !== "Q&A") return;
-    qnaInteractionsLoadedRef.current = false;
 
     getFundingQuestions(projectId, { page: 0, size: 20 })
-      .then(async (response) => {
+      .then((response) => {
         if (!mounted) return;
         const apiComments: FundingQuestionComment[] = response.content.map((item) => ({
           id: item.questionId,
@@ -660,18 +548,9 @@ export default function FundingDetailScreen() {
             isBrewery: true,
           })),
         }));
-        let stored: StoredQnaInteractions | null = null;
-        try {
-          const saved = await SafeStorage.getItem(getQnaInteractionStorageKey(projectId, user?.id));
-          stored = saved ? JSON.parse(saved) as StoredQnaInteractions : null;
-        } catch {
-          stored = null;
-        }
-        if (!mounted) return;
-        const mergedComments = mergeStoredQnaComments(apiComments, stored);
-        const serverCommentIds = new Set(mergedComments.filter((comment) => comment.serverQuestionId).map((comment) => comment.id));
-        const nextLikedComments = new Set((stored?.likedComments || []).filter((commentId) => !serverCommentIds.has(commentId)));
-        const nextLikedReplies = new Set(stored?.likedReplies || []);
+        const mergedComments = withUniqueQnaCommentIds(apiComments);
+        const nextLikedComments = new Set<number>();
+        const nextLikedReplies = new Set<number>();
         mergedComments.forEach((comment) => {
           if (comment.liked) nextLikedComments.add(comment.id);
           comment.replies.forEach((reply) => {
@@ -681,43 +560,19 @@ export default function FundingDetailScreen() {
         setLikedComments(nextLikedComments);
         setLikedReplies(nextLikedReplies);
         setComments(mergedComments);
-        qnaInteractionsLoadedRef.current = true;
       })
-      .catch(async (error) => {
-        if (isFundingApiMissingEndpointError(error)) {
-          try {
-            const saved = await SafeStorage.getItem(getQnaInteractionStorageKey(projectId, user?.id));
-            const stored = saved ? JSON.parse(saved) as StoredQnaInteractions : null;
-            if (!mounted) return;
-            setLikedComments(new Set(stored?.likedComments || []));
-            setLikedReplies(new Set(stored?.likedReplies || []));
-            setComments(withUniqueQnaCommentIds(stored?.comments || []));
-            qnaInteractionsLoadedRef.current = true;
-          } catch {
-            if (!mounted) return;
-            setComments((prev) => prev.filter((comment) => !initialCommentIds.has(comment.id)));
-            qnaInteractionsLoadedRef.current = true;
-          }
-          return;
-        }
+      .catch((error) => {
+        if (!mounted) return;
+        setLikedComments(new Set());
+        setLikedReplies(new Set());
+        setComments([]);
         console.warn(getFundingApiErrorMessage(error, 'Q&A를 불러오지 못했습니다.'));
-        qnaInteractionsLoadedRef.current = true;
       });
 
     return () => {
       mounted = false;
     };
   }, [activeTab, project?.brewery, projectId, user?.id]);
-
-  useEffect(() => {
-    if (!qnaInteractionsLoadedRef.current || !Number.isFinite(projectId) || activeTab !== "Q&A") return;
-    const payload: StoredQnaInteractions = {
-      comments,
-      likedComments: Array.from(likedComments),
-      likedReplies: Array.from(likedReplies),
-    };
-    SafeStorage.setItem(getQnaInteractionStorageKey(projectId, user?.id), JSON.stringify(payload)).catch(() => undefined);
-  }, [activeTab, comments, likedComments, likedReplies, projectId, user?.id]);
 
   useEffect(() => {
     let mounted = true;
@@ -803,7 +658,6 @@ export default function FundingDetailScreen() {
     () => (project ? canAccessFundingReviews(project) : false),
     [project]
   );
-  const canBypassParticipationForReview = isTemporarySansaReviewTestProject(project);
   const heroImageSources = useMemo(
     () => (project ? getFundingProjectImageSources(project) : []),
     [project]
@@ -925,7 +779,7 @@ export default function FundingDetailScreen() {
         content,
         date: new Date().toLocaleDateString("ko-KR"),
         likes: 0,
-        isBrewery: user?.type === "brewery",
+        isBrewery: user?.type === "brewery" && Boolean(user?.isBreweryVerified),
         replies: [],
       };
       setComments((prev) => withUniqueQnaCommentIds([comment, ...prev]));
@@ -964,7 +818,7 @@ export default function FundingDetailScreen() {
         date: new Date().toLocaleDateString("ko-KR"),
         likes: 0,
         liked: false,
-        isBrewery: user?.type === "brewery",
+        isBrewery: user?.type === "brewery" && Boolean(user?.isBreweryVerified),
       };
       setComments((prev) => prev.map(c => c.id === commentId ? { ...c, replies: [...c.replies, newReply] } : c));
       const replyLikeKey = getQnaReplyLikeKey(commentId, newReply.id);
@@ -1199,12 +1053,16 @@ export default function FundingDetailScreen() {
       id: commentId,
       journalId: targetJournal.id,
       userName: user.name || "사용자",
-      isBrewery: user.type === "brewery",
+      isBrewery: user.type === "brewery" && Boolean(user.isBreweryVerified),
       content,
       date: todayText(),
       likes: 0,
       replies: [],
     };
+    const previousJournals = journals;
+    const previousCommentDrafts = journalCommentDrafts;
+    const previousExpandedJournalComments = expandedJournalComments;
+    const previousLikedJournalComments = likedJournalComments;
 
     updateProjectJournals(
       project.id,
@@ -1238,7 +1096,8 @@ export default function FundingDetailScreen() {
                 ? {
                     ...comment,
                     id: response.commentId || comment.id,
-                    userName: response.writerNickname || comment.userName,
+                    userName: user.type === "brewery" ? response.writerNickname || comment.userName : user.name || comment.userName,
+                    isBrewery: user.type === "brewery" && Boolean(user.isBreweryVerified),
                     date: formatApiDate(response.createdAt),
                   }
                 : comment
@@ -1247,7 +1106,14 @@ export default function FundingDetailScreen() {
         })
       );
     } catch (error) {
-      if (!isFundingApiMissingEndpointError(error)) console.warn(getFundingApiErrorMessage(error, '양조일지 댓글을 저장하지 못했습니다.'));
+      updateProjectJournals(project.id, previousJournals);
+      setJournalCommentDrafts(previousCommentDrafts);
+      setExpandedJournalComments(previousExpandedJournalComments);
+      setLikedJournalComments(previousLikedJournalComments);
+      setFeedbackModal({
+        title: '댓글 저장 실패',
+        body: getFundingApiErrorMessage(error, '양조일지 댓글을 저장하지 못했습니다.'),
+      });
     }
   };
 
@@ -1348,11 +1214,18 @@ export default function FundingDetailScreen() {
       id: replyId,
       commentId,
       userName: user.name || "사용자",
-      isBrewery: user.type === "brewery",
+      isBrewery: user.type === "brewery" && Boolean(user.isBreweryVerified),
       content,
       date: todayText(),
       likes: 0,
     };
+    const targetJournal = journals.find((entry) => getJournalMergeKey(entry) === journalKey);
+    if (!targetJournal) return;
+    const previousJournals = journals;
+    const previousReplyDrafts = journalReplyDrafts;
+    const previousReplyingToJournalComment = replyingToJournalComment;
+    const previousExpandedJournalReplies = expandedJournalReplies;
+    const previousLikedJournalReplies = likedJournalReplies;
 
     updateProjectJournals(
       project.id,
@@ -1376,8 +1249,6 @@ export default function FundingDetailScreen() {
     setJournalReplyDrafts((prev) => ({ ...prev, [replyKey]: "" }));
     setReplyingToJournalComment(null);
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
-    const targetJournal = journals.find((entry) => getJournalMergeKey(entry) === journalKey);
-    if (!targetJournal) return;
     try {
       const response = await createBreweryLogCommentReply(project.id, targetJournal.id, commentId, content);
       updateProjectJournals(
@@ -1395,7 +1266,8 @@ export default function FundingDetailScreen() {
                     ? {
                         ...reply,
                         id: response.replyId || reply.id,
-                        userName: response.writerNickname || reply.userName,
+                        userName: user.type === "brewery" ? response.writerNickname || reply.userName : user.name || reply.userName,
+                        isBrewery: user.type === "brewery" && Boolean(user.isBreweryVerified),
                         date: formatApiDate(response.createdAt),
                       }
                     : reply
@@ -1406,7 +1278,15 @@ export default function FundingDetailScreen() {
         })
       );
     } catch (error) {
-      if (!isFundingApiMissingEndpointError(error)) console.warn(getFundingApiErrorMessage(error, '양조일지 답글을 저장하지 못했습니다.'));
+      updateProjectJournals(project.id, previousJournals);
+      setJournalReplyDrafts(previousReplyDrafts);
+      setReplyingToJournalComment(previousReplyingToJournalComment);
+      setExpandedJournalReplies(previousExpandedJournalReplies);
+      setLikedJournalReplies(previousLikedJournalReplies);
+      setFeedbackModal({
+        title: '답글 저장 실패',
+        body: getFundingApiErrorMessage(error, '양조일지 답글을 저장하지 못했습니다.'),
+      });
     }
   };
 
@@ -1505,7 +1385,7 @@ export default function FundingDetailScreen() {
       return;
     }
     const hasParticipated = participatedFundings.some((item) => item.fundingId === project.id);
-    if (!hasParticipated && !canBypassParticipationForReview) {
+    if (!hasParticipated) {
       setFeedbackModal({
         title: '후기 작성 불가',
         body: '해당 펀딩에 참여하지 않았습니다.',

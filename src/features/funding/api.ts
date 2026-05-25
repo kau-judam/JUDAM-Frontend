@@ -1581,7 +1581,10 @@ function normalizeAdminRejectFundingDraftResponse(response: unknown): AdminRejec
 
 function normalizeBreweryId(value: unknown) {
   const breweryId = Number(value);
-  return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1;
+  if (!Number.isFinite(breweryId) || breweryId <= 0) {
+    throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+  }
+  return breweryId;
 }
 
 async function requestFundingJson<T>(path: string, options: RequestInit & { auth?: boolean } = {}) {

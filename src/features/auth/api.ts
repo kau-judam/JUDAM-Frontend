@@ -227,13 +227,16 @@ async function requestAuthForm<T>(path: string, formData: FormData, options: Req
 }
 
 export async function saveAuthTokens(accessToken?: string, refreshToken?: string) {
+  await clearAuthTokens();
   if (accessToken) {
     await SafeStorage.setItem('judam_access_token', accessToken);
     await SafeStorage.setItem('accessToken', accessToken);
+    await SafeStorage.setItem('access_token', accessToken);
   }
   if (refreshToken) {
     await SafeStorage.setItem('judam_refresh_token', refreshToken);
     await SafeStorage.setItem('refreshToken', refreshToken);
+    await SafeStorage.setItem('refresh_token', refreshToken);
   }
 }
 
@@ -353,10 +356,15 @@ export async function resetPassword(payload: {
   email: string;
   verificationCode: string;
   newPassword: string;
+  confirmPassword: string;
 }) {
   return requestAuthJson<AuthApiEnvelope<null>>('/api/auth/password/reset', {
     method: 'PATCH',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      newPasswordConfirm: payload.confirmPassword,
+      passwordConfirm: payload.confirmPassword,
+    }),
   });
 }
 

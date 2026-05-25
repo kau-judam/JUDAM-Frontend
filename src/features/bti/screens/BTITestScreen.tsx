@@ -18,7 +18,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { convertBtiSurvey } from '@/features/bti/api';
-import { saveMyPageSulbti } from '@/features/mypage/api';
 import {
   BTI_QUESTIONS,
   BtiAnswers,
@@ -32,11 +31,6 @@ import {
 
 const QUESTIONS_PER_PAGE = 5;
 const TOTAL_PAGES = Math.ceil(BTI_QUESTIONS.length / QUESTIONS_PER_PAGE);
-
-function clampBtiScore(value?: number) {
-  if (!Number.isFinite(value)) return 3;
-  return Math.max(1, Math.min(5, Math.round(value || 3)));
-}
 
 export default function BTITestScreen() {
   const insets = useSafeAreaInsets();
@@ -125,18 +119,14 @@ export default function BTITestScreen() {
         throw new Error('LOGIN_REQUIRED');
       }
       const surveyPayload = buildBtiSurveyPayload(mergedAnswers);
-      const conversion = await convertBtiSurvey(surveyPayload, user.id);
+      const userId = user.id && user.id !== 'undefined' ? user.id : undefined;
+      if (!userId) {
+        throw new Error('USER_ID_REQUIRED');
+      }
+      const conversion = await convertBtiSurvey(surveyPayload, userId);
       const resultType = resolveSulbtiCode(getSulbtiCodeFromSurveyResult(conversion.bti_code, conversion.taste_vector));
       if (!resultType) throw new Error('Invalid sulbti result');
       const tasteScores = getBtiTasteAxisValuesFromTasteVector(conversion.taste_vector);
-      await saveMyPageSulbti({
-        type: resultType.split('-')[0],
-        sweetnessScore: clampBtiScore(tasteScores.sweetness),
-        bodyScore: clampBtiScore(tasteScores.body),
-        carbonationScore: clampBtiScore(tasteScores.carbonation),
-        flavorScore: clampBtiScore(6 - (tasteScores.tradition || 3)),
-        abvScore: clampBtiScore(tasteScores.alcohol),
-      });
       await updateUser({
         sulbti: resultType,
         sulbtiProfile: tasteScores,
@@ -145,11 +135,15 @@ export default function BTITestScreen() {
       router.replace(`/bti-result/${resultType}` as any);
     } catch (error) {
       setIsSubmitting(false);
+      console.warn('술BTI 결과 저장 실패', error);
+      const errorMessage = error instanceof Error ? error.message : '';
       Alert.alert(
         error instanceof Error && error.message === 'INCOMPLETE_BTI_ANSWERS' ? '답변 확인' : '결과 저장 실패',
-        error instanceof Error && error.message === 'INCOMPLETE_BTI_ANSWERS'
+        errorMessage === 'INCOMPLETE_BTI_ANSWERS'
           ? '아직 답변하지 않은 문항이 있어요. 처음부터 다시 확인해주세요.'
-          : '잠시 후 다시 시도해 주세요.'
+          : errorMessage === 'USER_ID_REQUIRED'
+            ? '로그인 사용자 ID를 확인하지 못해 서버에 결과를 저장할 수 없어요. 다시 로그인한 뒤 시도해주세요.'
+            : errorMessage || '잠시 후 다시 시도해 주세요.'
       );
     }
   };

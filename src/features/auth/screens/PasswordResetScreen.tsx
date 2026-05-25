@@ -46,6 +46,14 @@ const STEP_COPY = {
 
 const STEP_ORDER: ResetStep[] = ['email', 'verify', 'newPassword'];
 
+function getPasswordResetErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : '비밀번호 재설정에 실패했습니다.';
+  if (message.includes('새 비밀번호와 비밀번호 확인') && message.includes('일치하지')) {
+    return '새 비밀번호와 이전 비밀번호가 일치합니다.';
+  }
+  return message;
+}
+
 export default function PasswordResetScreen() {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<ResetStep>('email');
@@ -153,10 +161,11 @@ export default function PasswordResetScreen() {
         email,
         verificationCode: verificationCode.trim(),
         newPassword,
+        confirmPassword,
       });
       showNotice('비밀번호가 재설정되었습니다.');
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : '비밀번호 재설정에 실패했습니다.');
+      showNotice(getPasswordResetErrorMessage(error));
     } finally {
       setIsLoading(false);
     }

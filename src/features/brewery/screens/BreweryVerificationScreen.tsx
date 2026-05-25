@@ -38,6 +38,12 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const BG_IMAGE = require('../../../../newpicutre/ok.jpg');
 const MAX_LICENSE_FILE_SIZE = 10 * 1024 * 1024;
 
+function isApprovedBreweryApplication(role?: string, status?: string) {
+  const normalizedRole = String(role || '').toUpperCase();
+  const normalizedStatus = String(status || '').toUpperCase();
+  return normalizedRole === 'BREWERY' || normalizedRole === 'BREWERY_APPROVED' || normalizedStatus === 'APPROVED';
+}
+
 type BusinessLicenseFile = {
   name: string;
   uri: string;
@@ -212,10 +218,11 @@ export default function BreweryVerificationScreen() {
           },
         });
         const latestUser = application.user || application.application?.user;
+        const isApproved = isApprovedBreweryApplication(latestUser?.role, application.status || application.application?.status);
 
         await updateUser({
           type: 'brewery',
-          isBreweryVerified: false,
+          isBreweryVerified: isApproved,
           name: latestUser?.nickname || user.name,
           email: latestUser?.email || user.email,
           profileImage: latestUser?.profileImage || user.profileImage,
@@ -227,7 +234,7 @@ export default function BreweryVerificationScreen() {
         });
       }
 
-      Alert.alert('알림', isEditMode ? "양조장 정보가 수정되었습니다!" : "양조장 인증 신청이 접수되었습니다!", [
+      Alert.alert('알림', isEditMode ? "양조장 정보가 수정되었습니다!" : "양조장 인증이 완료되었습니다!", [
         { text: '확인', onPress: () => router.replace('/(tabs)' as any) }
       ]);
     } catch (error) {

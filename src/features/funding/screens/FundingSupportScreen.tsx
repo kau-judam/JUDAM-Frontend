@@ -63,14 +63,12 @@ import {
   getProjectShippingFee,
   getProjectUnitPrice,
   getPrimaryRewardItem,
-  getRecentShippingKey,
   messageOptions,
   paymentMethods,
   type InfoModalType,
   type PaymentMethod,
   type ShippingInfo,
 } from '@/features/funding/supportConfig';
-import SafeStorage from '@/utils/storage';
 import { formatPhoneNumber, isValidEmail, isValidPhone } from '@/utils/validation';
 
 type FundingSupportAlert = {
@@ -203,26 +201,10 @@ export default function FundingSupportScreen() {
           });
           return;
         }
-        return SafeStorage.getItem(getRecentShippingKey(user.id)).then((saved) => {
-          if (!mounted || !saved) return;
-          const parsed = JSON.parse(saved) as ShippingInfo;
-          if (parsed?.recipientName && parsed?.address && parsed?.phone) {
-            setRecentShippingInfo(parsed);
-          }
-        });
+        setRecentShippingInfo(null);
       })
       .catch(() => {
-        SafeStorage.getItem(getRecentShippingKey(user.id))
-          .then((saved) => {
-            if (!mounted || !saved) return;
-            const parsed = JSON.parse(saved) as ShippingInfo;
-            if (parsed?.recipientName && parsed?.address && parsed?.phone) {
-              setRecentShippingInfo(parsed);
-            }
-          })
-          .catch(() => {
-            if (mounted) setRecentShippingInfo(null);
-          });
+        if (mounted) setRecentShippingInfo(null);
       });
     return () => {
       mounted = false;
@@ -431,12 +413,7 @@ export default function FundingSupportScreen() {
       } catch (detailError) {
         console.warn(getFundingApiErrorMessage(detailError, '주문 상세를 불러오지 못했습니다.'));
       }
-      try {
-        await SafeStorage.setItem(getRecentShippingKey(user.id), JSON.stringify(shippingInfo));
-        setRecentShippingInfo(shippingInfo);
-      } catch (storageError) {
-        console.warn('Failed to save recent shipping info.', storageError);
-      }
+      setRecentShippingInfo(shippingInfo);
       addParticipation(project.id, paidAmount);
       updateProjectFunding(project.id, paidAmount);
       setShowSuccessModal(true);

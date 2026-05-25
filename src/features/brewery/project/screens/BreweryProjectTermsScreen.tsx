@@ -102,7 +102,10 @@ export default function BreweryProjectTermsScreen() {
 
   const getBreweryId = () => {
     const breweryId = Number(user?.id);
-    return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : 1;
+    if (!Number.isFinite(breweryId) || breweryId <= 0) {
+      throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+    }
+    return breweryId;
   };
 
   const getProjectCreateRoute = (draftId?: number) => {
@@ -134,11 +137,6 @@ export default function BreweryProjectTermsScreen() {
       router.push(getProjectCreateRoute(agreement.draftId) as any);
     } catch (error) {
       const message = getFundingApiErrorMessage(error, '약관 동의 저장 중 문제가 발생했습니다.');
-      if (message.includes('필수 약관') && allTermIds.every((termId) => agreedTerms.includes(termId))) {
-        console.warn('Funding agreement API rejected a locally complete agreement:', message);
-        router.push(getProjectCreateRoute() as any);
-        return;
-      }
       setAlertModal({
         title: '약관 동의 저장 실패',
         body: message,

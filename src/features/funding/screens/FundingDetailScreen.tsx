@@ -357,7 +357,7 @@ export default function FundingDetailScreen() {
   const [comments, setComments] = useState<FundingQuestionComment[]>([]);
   const [newComment, setNewComment] = useState("");
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [replyContent, setReplyContent] = useState("");
+  const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
   const [likedComments, setLikedComments] = useState<Set<number>>(new Set());
   const [likedReplies, setLikedReplies] = useState<Set<number>>(new Set());
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set([1]));
@@ -394,7 +394,7 @@ export default function FundingDetailScreen() {
     setComments([]);
     setNewComment("");
     setReplyingTo(null);
-    setReplyContent("");
+    setReplyDrafts({});
     setLikedComments(new Set());
     setLikedReplies(new Set());
     setExpandedComments(new Set([1]));
@@ -799,12 +799,12 @@ export default function FundingDetailScreen() {
   };
 
   const handleAddReply = async (commentId: number) => {
-    if (!replyContent.trim()) return;
+    const content = replyDrafts[commentId]?.trim();
+    if (!content) return;
     if (!user) {
       showLoginRequired('펀딩 Q&A 답글은 로그인 후 이용할 수 있어요.');
       return;
     }
-    const content = replyContent.trim();
     const targetComment = comments.find((comment) => comment.id === commentId);
     const serverQuestionId = targetComment?.serverQuestionId || targetComment?.id || commentId;
     try {
@@ -828,9 +828,9 @@ export default function FundingDetailScreen() {
         next.delete(replyLikeKey);
         return next;
       });
-      setReplyContent("");
-      setReplyingTo(null);
-      setExpandedComments(new Set([...expandedComments, commentId]));
+      setReplyDrafts((prev) => ({ ...prev, [commentId]: "" }));
+      setReplyingTo(commentId);
+      setExpandedComments((prev) => new Set([...prev, commentId]));
     } catch (error) {
       setFeedbackModal({
         title: '답글 등록 실패',
@@ -968,9 +968,8 @@ export default function FundingDetailScreen() {
       showLoginRequired('펀딩 Q&A 답글은 로그인 후 이용할 수 있어요.');
       return;
     }
-    setReplyContent("");
-    setExpandedComments(new Set([...expandedComments, commentId]));
-    setReplyingTo(replyingTo === commentId ? null : commentId);
+    setExpandedComments((prev) => new Set([...prev, commentId]));
+    setReplyingTo(commentId);
   };
 
   const toggleJournalStage = (stageId: BrewingStage) => {
@@ -1194,7 +1193,7 @@ export default function FundingDetailScreen() {
 
     const replyKey = `${journalKey}:${commentId}`;
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
-    setReplyingToJournalComment(replyingToJournalComment === replyKey ? null : replyKey);
+    setReplyingToJournalComment(replyKey);
   };
 
   const handleAddJournalReply = async (journalKey: string, commentId: number) => {
@@ -1247,7 +1246,7 @@ export default function FundingDetailScreen() {
       return next;
     });
     setJournalReplyDrafts((prev) => ({ ...prev, [replyKey]: "" }));
-    setReplyingToJournalComment(null);
+    setReplyingToJournalComment(replyKey);
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
     try {
       const response = await createBreweryLogCommentReply(project.id, targetJournal.id, commentId, content);
@@ -1956,6 +1955,7 @@ export default function FundingDetailScreen() {
                                                     placeholder="댓글을 입력하세요..."
                                                     placeholderTextColor="#9CA3AF"
                                                     returnKeyType="send"
+                                                    blurOnSubmit={false}
                                                     onSubmitEditing={() => handleAddJournalComment(entry, journalKey)}
                                                   />
                                                   <TouchableOpacity style={styles.journalCommentSend} onPress={() => handleAddJournalComment(entry, journalKey)}>
@@ -2043,6 +2043,7 @@ export default function FundingDetailScreen() {
                                                               placeholder="답글을 입력하세요..."
                                                               placeholderTextColor="#9CA3AF"
                                                               returnKeyType="send"
+                                                              blurOnSubmit={false}
                                                               onSubmitEditing={() => handleAddJournalReply(journalKey, comment.id)}
                                                               autoFocus
                                                             />
@@ -2098,6 +2099,7 @@ export default function FundingDetailScreen() {
                           value={newComment}
                           onChangeText={setNewComment}
                           returnKeyType="send"
+                          blurOnSubmit={false}
                           onSubmitEditing={handleAddComment}
                         />
                         <TouchableOpacity style={styles.qaSend} onPress={handleAddComment}>
@@ -2170,13 +2172,14 @@ export default function FundingDetailScreen() {
 
                            {replyingTo === c.id && (
                              <View style={styles.replyInputRow}>
-                                <TextInput 
-                                  style={styles.replyInput} 
-                                  placeholder="답글을 입력하세요..." 
+                                <TextInput
+                                  style={styles.replyInput}
+                                  placeholder="답글을 입력하세요..."
                                   placeholderTextColor="#9CA3AF"
-                                  value={replyContent} 
-                                  onChangeText={setReplyContent} 
+                                  value={replyDrafts[c.id] || ""}
+                                  onChangeText={(text) => setReplyDrafts((prev) => ({ ...prev, [c.id]: text }))}
                                   returnKeyType="send"
+                                  blurOnSubmit={false}
                                   onSubmitEditing={() => handleAddReply(c.id)}
                                   autoFocus
                                 />

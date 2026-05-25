@@ -1,4 +1,5 @@
 import SafeStorage from '@/utils/storage';
+import type { BtiSurveyTasteVector } from '@/features/bti/data';
 
 export const JUDAM_MYPAGE_API_BASE_URL = 'http://43.202.24.223:3000';
 
@@ -45,8 +46,12 @@ export type MyPageSummary = {
   sulbti: {
     hasResult: boolean;
     type: string | null;
+    btiCode?: string | null;
     title: string | null;
     summary: string | null;
+    description?: string | null;
+    characterName?: string | null;
+    alcoholLabel?: string | null;
     tags: string[];
   };
 };
@@ -57,14 +62,19 @@ export type MyPageSulbtiScores = {
   carbonation: number;
   flavor: number;
   abv: number;
+  alcohol?: number;
 };
 
 export type MyPageSulbtiResult = {
   hasResult: boolean;
   type: string | null;
+  btiCode?: string | null;
   title: string | null;
   description: string | null;
   scores: MyPageSulbtiScores | null;
+  tasteVector?: BtiSurveyTasteVector | null;
+  characterName?: string | null;
+  alcoholLabel?: string | null;
   tags: string[];
   createdAt: string | null;
   updatedAt: string | null;

@@ -94,7 +94,7 @@ export default function MyPageScreen() {
       .then((nextSummary) => {
         if (!mounted) return;
         setSummary(nextSummary);
-        const summaryType = nextSummary.sulbti?.hasResult ? resolveSulbtiCode(nextSummary.sulbti.type) : null;
+        const summaryType = nextSummary.sulbti?.hasResult ? resolveSulbtiCode(nextSummary.sulbti.btiCode || nextSummary.sulbti.type) : null;
         if (summaryType && summaryType !== resolveSulbtiCode(user.sulbti)) {
           updateUser({ sulbti: summaryType });
         }
@@ -205,7 +205,7 @@ export default function MyPageScreen() {
 
   const initial = user.name?.[0] || 'U';
   const isBrewery = user.type === 'brewery';
-  const summaryBtiCode = summary?.sulbti?.hasResult ? resolveSulbtiCode(summary.sulbti.type) : null;
+  const summaryBtiCode = summary?.sulbti?.hasResult ? resolveSulbtiCode(summary.sulbti.btiCode || summary.sulbti.type) : null;
   const savedBtiCode = resolveSulbtiCode(user.sulbti) || summaryBtiCode;
   const savedBtiType = resolveBtiType(savedBtiCode);
   const btiResult = savedBtiCode ? getBtiResult(savedBtiCode) : null;

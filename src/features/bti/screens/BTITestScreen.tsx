@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { convertBtiSurvey } from '@/features/bti/api';
+import { getMyPageSulbti } from '@/features/mypage/api';
 import {
   BTI_QUESTIONS,
   BtiAnswers,
@@ -124,9 +125,22 @@ export default function BTITestScreen() {
         throw new Error('USER_ID_REQUIRED');
       }
       const conversion = await convertBtiSurvey(surveyPayload, userId);
-      const resultType = resolveSulbtiCode(getSulbtiCodeFromSurveyResult(conversion.bti_code, conversion.taste_vector));
+      const savedResult = await getMyPageSulbti();
+      const resultType = resolveSulbtiCode(
+        savedResult.hasResult
+          ? savedResult.btiCode || savedResult.type
+          : getSulbtiCodeFromSurveyResult(conversion.bti_code, conversion.taste_vector)
+      );
       if (!resultType) throw new Error('Invalid sulbti result');
-      const tasteScores = getBtiTasteAxisValuesFromTasteVector(conversion.taste_vector);
+      const tasteScores = savedResult.scores
+        ? {
+            sweetness: savedResult.scores.sweetness,
+            body: savedResult.scores.body,
+            carbonation: savedResult.scores.carbonation,
+            tradition: 6 - savedResult.scores.flavor,
+            alcohol: savedResult.scores.abv ?? savedResult.scores.alcohol,
+          }
+        : getBtiTasteAxisValuesFromTasteVector(savedResult.tasteVector || conversion.taste_vector);
       await updateUser({
         sulbti: resultType,
         sulbtiProfile: tasteScores,

@@ -16,7 +16,7 @@ import { ArrowLeft, Home, Lock, RotateCcw, Share2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { getBtiDisplayType, getBtiResult, normalizeBtiTasteAxisValue, resolveSulbtiCode } from '@/features/bti/data';
+import { getBtiDisplayType, getBtiResult, getBtiTasteAxisValuesFromTasteVector, normalizeBtiTasteAxisValue, resolveSulbtiCode } from '@/features/bti/data';
 import { getMyPageApiErrorMessage, getMyPageSulbti } from '@/features/mypage/api';
 
 const BTI_CHARACTER_IMAGES: Record<string, ImageSourcePropType> = {
@@ -76,17 +76,21 @@ export default function BTIResultScreen() {
     let mounted = true;
     getMyPageSulbti()
       .then((result) => {
-        if (!mounted || !result.hasResult || !result.type) return;
+        if (!mounted || !result.hasResult) return;
+        const savedType = resolveSulbtiCode(result.btiCode || result.type);
+        if (!savedType) return;
         updateUser({
-          sulbti: result.type,
+          sulbti: savedType,
           sulbtiProfile: result.scores
             ? {
               sweetness: result.scores.sweetness,
               body: result.scores.body,
               carbonation: result.scores.carbonation,
               tradition: 6 - result.scores.flavor,
-              alcohol: result.scores.abv,
+              alcohol: result.scores.abv ?? result.scores.alcohol,
             }
+            : result.tasteVector
+              ? getBtiTasteAxisValuesFromTasteVector(result.tasteVector)
             : undefined,
         });
       })

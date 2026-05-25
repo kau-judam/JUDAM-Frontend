@@ -445,6 +445,7 @@ export default function FundingReviewDetailScreen() {
               placeholder="댓글을 입력하세요..."
               placeholderTextColor="#9CA3AF"
               returnKeyType="send"
+              blurOnSubmit={false}
               onSubmitEditing={handleCommentSubmit}
             />
             <TouchableOpacity

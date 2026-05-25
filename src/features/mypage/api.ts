@@ -1,5 +1,5 @@
-import SafeStorage from '@/utils/storage';
 import type { BtiSurveyTasteVector } from '@/features/bti/data';
+import { getAuthAccessToken } from '@/features/auth/api';
 
 export const JUDAM_MYPAGE_API_BASE_URL = 'http://43.202.24.223:3000';
 
@@ -182,14 +182,8 @@ export type MyPageArchiveTagGroup = {
   }[];
 };
 
-const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
-
 export async function getMyPageAccessToken() {
-  for (const key of TOKEN_STORAGE_KEYS) {
-    const value = await SafeStorage.getItem(key);
-    if (value) return value;
-  }
-  return null;
+  return getAuthAccessToken();
 }
 
 function parseMyPageResponseBody(path: string, response: Response, text: string) {

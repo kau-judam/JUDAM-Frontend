@@ -23,7 +23,11 @@ export type AuthApiUser = {
 
 export type AuthSession = {
   accessToken?: string;
+  access_token?: string;
+  token?: string;
+  jwt?: string;
   refreshToken?: string;
+  refresh_token?: string;
   user: AuthApiUser;
 };
 
@@ -78,6 +82,15 @@ export type KakaoLoginResponse = Partial<AuthSession> & {
   kakaoProfile?: KakaoProfilePayload;
   existingUserId?: string | number;
 };
+
+type AuthTokenSource = {
+  accessToken?: string;
+  access_token?: string;
+  token?: string;
+  jwt?: string;
+  refreshToken?: string;
+  refresh_token?: string;
+} | null | undefined;
 
 export type AuthAvailabilityResponse = {
   email?: string;
@@ -226,17 +239,57 @@ async function requestAuthForm<T>(path: string, formData: FormData, options: Req
   return data as T;
 }
 
+function sanitizeAuthToken(token?: string | null) {
+  if (!token) return undefined;
+  return token.replace(/^Bearer\s+/i, '').trim() || undefined;
+}
+
+export function getAuthSessionAccessToken(session: AuthTokenSource) {
+  return sanitizeAuthToken(session?.accessToken || session?.access_token || session?.token || session?.jwt);
+}
+
+export function getAuthSessionRefreshToken(session: AuthTokenSource) {
+  return sanitizeAuthToken(session?.refreshToken || session?.refresh_token);
+}
+
+type AuthJwtPayload = {
+  exp?: number;
+};
+
+function decodeAuthJwtPayload(token: string): AuthJwtPayload | null {
+  try {
+    const [, payload] = token.split('.');
+    if (!payload || typeof atob !== 'function') return null;
+    const normalizedPayload = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedPayload = normalizedPayload.padEnd(
+      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
+      '='
+    );
+    return JSON.parse(atob(paddedPayload)) as AuthJwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+export function isAuthJwtExpired(token: string, now = Date.now()) {
+  const payload = decodeAuthJwtPayload(token);
+  if (!payload?.exp) return false;
+  return payload.exp * 1000 <= now;
+}
+
 export async function saveAuthTokens(accessToken?: string, refreshToken?: string) {
   await clearAuthTokens();
-  if (accessToken) {
-    await SafeStorage.setItem('judam_access_token', accessToken);
-    await SafeStorage.setItem('accessToken', accessToken);
-    await SafeStorage.setItem('access_token', accessToken);
+  const cleanAccessToken = sanitizeAuthToken(accessToken);
+  const cleanRefreshToken = sanitizeAuthToken(refreshToken);
+  if (cleanAccessToken) {
+    await SafeStorage.setItem('judam_access_token', cleanAccessToken);
+    await SafeStorage.setItem('accessToken', cleanAccessToken);
+    await SafeStorage.setItem('access_token', cleanAccessToken);
   }
-  if (refreshToken) {
-    await SafeStorage.setItem('judam_refresh_token', refreshToken);
-    await SafeStorage.setItem('refreshToken', refreshToken);
-    await SafeStorage.setItem('refresh_token', refreshToken);
+  if (cleanRefreshToken) {
+    await SafeStorage.setItem('judam_refresh_token', cleanRefreshToken);
+    await SafeStorage.setItem('refreshToken', cleanRefreshToken);
+    await SafeStorage.setItem('refresh_token', cleanRefreshToken);
   }
 }
 
@@ -255,8 +308,13 @@ export async function clearAuthTokens() {
 export async function getAuthAccessToken() {
   const tokenKeys = ['judam_access_token', 'accessToken', 'access_token', 'token'];
   for (const key of tokenKeys) {
-    const token = await SafeStorage.getItem(key);
-    if (token) return token;
+    const token = sanitizeAuthToken(await SafeStorage.getItem(key));
+    if (!token) continue;
+    if (isAuthJwtExpired(token)) {
+      await clearAuthTokens();
+      return null;
+    }
+    return token;
   }
   return null;
 }

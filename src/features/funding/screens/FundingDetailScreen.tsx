@@ -41,7 +41,7 @@ import { StatusBar } from 'expo-status-bar';
 import Svg, { Polygon, Line, Circle, Text as SvgText } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, type User } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
 import { Progress } from '@/components/ui/progress';
@@ -186,11 +186,23 @@ function formatApiDate(value?: string) {
   return `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function mapBreweryLogComments(comments: FundingBreweryLogCommentItem[], journalId: number): JournalComment[] {
+function resolveBreweryLogWriter(
+  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery'>,
+  currentUser?: User | null
+) {
+  const isMine = writer.writerId !== undefined && currentUser?.id !== undefined && String(writer.writerId) === String(currentUser.id);
+  const isMineAsBrewery = Boolean(isMine && currentUser?.type === 'brewery' && currentUser.isBreweryVerified);
+  return {
+    userName: isMine ? currentUser?.name || '사용자' : writer.writerNickname || '사용자',
+    isBrewery: isMine ? isMineAsBrewery : Boolean(writer.isBrewery),
+  };
+}
+
+function mapBreweryLogComments(comments: FundingBreweryLogCommentItem[], journalId: number, currentUser?: User | null): JournalComment[] {
   return comments.map((comment) => ({
     id: comment.commentId,
     journalId,
-    userName: comment.writerNickname || '사용자',
+    ...resolveBreweryLogWriter(comment, currentUser),
     content: comment.content,
     date: formatApiDate(comment.createdAt),
     likes: Math.max(comment.likeCount || 0, comment.liked ? 1 : 0),
@@ -198,7 +210,7 @@ function mapBreweryLogComments(comments: FundingBreweryLogCommentItem[], journal
     replies: (comment.replies || []).map((reply) => ({
       id: reply.replyId,
       commentId: comment.commentId,
-      userName: reply.writerNickname || '사용자',
+      ...resolveBreweryLogWriter(reply, currentUser),
       content: reply.content,
       date: formatApiDate(reply.createdAt),
       likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
@@ -471,7 +483,7 @@ export default function FundingDetailScreen() {
           mapBreweryLogs(response.logs).map(async (journal) => {
             try {
               const comments = await getBreweryLogComments(projectId, journal.id);
-              return { ...journal, comments: mapBreweryLogComments(comments.content, journal.id) };
+              return { ...journal, comments: mapBreweryLogComments(comments.content, journal.id, user) };
             } catch {
               return journal;
             }
@@ -520,7 +532,7 @@ export default function FundingDetailScreen() {
     return () => {
       mounted = false;
     };
-  }, [activeTab, projectId, updateProjectJournals]);
+  }, [activeTab, projectId, updateProjectJournals, user]);
 
   useEffect(() => {
     let mounted = true;
@@ -529,25 +541,33 @@ export default function FundingDetailScreen() {
     getFundingQuestions(projectId, { page: 0, size: 20 })
       .then((response) => {
         if (!mounted) return;
-        const apiComments: FundingQuestionComment[] = response.content.map((item) => ({
-          id: item.questionId,
-          serverQuestionId: item.questionId,
-          userName: item.writerNickname,
-          content: item.content || item.title,
-          date: new Date(item.createdAt).toLocaleDateString("ko-KR"),
-          likes: Math.max(item.likeCount || 0, item.liked ? 1 : 0),
-          liked: Boolean(item.liked),
-          isBrewery: false,
-          replies: (item.replies || []).map((reply) => ({
-            id: reply.replyId,
-            userName: reply.writerNickname || project?.brewery || '양조장',
-            content: reply.content,
-            date: new Date(reply.createdAt).toLocaleDateString("ko-KR"),
-            likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
-            liked: Boolean(reply.liked),
-            isBrewery: true,
-          })),
-        }));
+        const apiComments: FundingQuestionComment[] = response.content.map((item) => {
+          const isMine = item.writerId !== undefined && user?.id !== undefined && String(item.writerId) === String(user.id);
+          const isMineAsBrewery = Boolean(isMine && user.type === "brewery" && user.isBreweryVerified);
+          return {
+            id: item.questionId,
+            serverQuestionId: item.questionId,
+            userName: isMine ? user.name : item.writerNickname || '사용자',
+            content: item.content || item.title,
+            date: new Date(item.createdAt).toLocaleDateString("ko-KR"),
+            likes: Math.max(item.likeCount || 0, item.liked ? 1 : 0),
+            liked: Boolean(item.liked),
+            isBrewery: isMine ? isMineAsBrewery : Boolean(item.isBrewery),
+            replies: (item.replies || []).map((reply) => {
+              const isMyReply = reply.writerId !== undefined && user?.id !== undefined && String(reply.writerId) === String(user.id);
+              const isMyReplyAsBrewery = Boolean(isMyReply && user.type === "brewery" && user.isBreweryVerified);
+              return {
+                id: reply.replyId,
+                userName: isMyReply ? user.name : reply.writerNickname || '사용자',
+                content: reply.content,
+                date: new Date(reply.createdAt).toLocaleDateString("ko-KR"),
+                likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
+                liked: Boolean(reply.liked),
+                isBrewery: isMyReply ? isMyReplyAsBrewery : Boolean(reply.isBrewery),
+              };
+            }),
+          };
+        });
         const mergedComments = withUniqueQnaCommentIds(apiComments);
         const nextLikedComments = new Set<number>();
         const nextLikedReplies = new Set<number>();
@@ -572,7 +592,7 @@ export default function FundingDetailScreen() {
     return () => {
       mounted = false;
     };
-  }, [activeTab, project?.brewery, projectId, user?.id]);
+  }, [activeTab, projectId, user?.id, user?.isBreweryVerified, user?.name, user?.type]);
 
   useEffect(() => {
     let mounted = true;

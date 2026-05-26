@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -29,6 +29,8 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useFunding } from '@/contexts/FundingContext';
 import { getFundingProjectImageSource, getPopularRecipes, isCompletedFundingStatus, sortFundingProjectsByPopularity } from '@/constants/data';
+import type { Recipe } from '@/constants/data';
+import { fetchPopularRecipes } from '@/features/recipe/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -75,11 +77,31 @@ export default function HomeScreen() {
   const colors = Colors[colorScheme];
   const { projects } = useFunding();
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [popularRecipes, setPopularRecipes] = useState<Recipe[]>(() => getPopularRecipes(3));
   const popularFundingProjects = sortFundingProjectsByPopularity(projects).slice(0, 3);
-  const popularRecipes = getPopularRecipes(3);
   const totalBackers = projects.reduce((sum, project) => sum + project.backers, 0);
   const activeProjects = projects.filter((project) => !isCompletedFundingStatus(project.status)).length;
   const completedProjects = projects.filter((project) => isCompletedFundingStatus(project.status)).length;
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPopularRecipes = async () => {
+      try {
+        const recipes = await fetchPopularRecipes(3);
+        if (mounted && recipes.length > 0) {
+          setPopularRecipes(recipes);
+        }
+      } catch (error) {
+        console.warn('Failed to load popular recipes from API', error);
+      }
+    };
+
+    loadPopularRecipes();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

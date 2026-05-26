@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   TextInput,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Settings,
   Wine,
@@ -42,7 +43,7 @@ import { Button } from '@/components/ui/button';
 import { getFundingApiErrorMessage, getMyFundingOrders, isFundingApiMissingEndpointError } from '@/features/funding/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 import { getBtiResult, resolveBtiType, resolveSulbtiCode } from '@/features/bti/data';
-import { getMyPageApiErrorMessage, getMyPageProfile, getMyPageSummary, MyPageSummary } from '@/features/mypage/api';
+import { getMyPageApiErrorMessage, getMyPageBadges, getMyPageProfile, getMyPageSummary, MyPageSummary } from '@/features/mypage/api';
 
 const FAQ_ITEMS = [
   { id: 1, q: "펀딩 취소·환불은 어떻게 하나요?", a: "펀딩 취소는 마감일 전까지 마이페이지에서 직접 취소하실 수 있습니다. 단, 제조가 시작된 경우 취소가 불가할 수 있습니다." },
@@ -56,13 +57,13 @@ export default function MyPageScreen() {
   const [supportVisible, setSupportVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [summary, setSummary] = useState<MyPageSummary | null>(null);
+  const [earnedBadgeCount, setEarnedBadgeCount] = useState<number | null>(null);
 
-  useEffect(() => {
+  const refreshMyPageData = useCallback((mountedRef: { current: boolean }) => {
     if (!user) return;
-    let mounted = true;
     getMyPageProfile()
       .then((profile) => {
-        if (!mounted) return;
+        if (!mountedRef.current) return;
         const nextUser = {
           id: profile.userId || user.id,
           uid: profile.userId || user.uid,
@@ -82,7 +83,7 @@ export default function MyPageScreen() {
 
     getMyFundingOrders({ page: 0, size: 20 })
       .then((response) => {
-        if (!mounted) return;
+        if (!mountedRef.current) return;
         mergeParticipationsFromOrders(response.content);
       })
       .catch((error) => {
@@ -92,7 +93,7 @@ export default function MyPageScreen() {
 
     getMyPageSummary()
       .then((nextSummary) => {
-        if (!mounted) return;
+        if (!mountedRef.current) return;
         setSummary(nextSummary);
         const summaryType = nextSummary.sulbti?.hasResult ? resolveSulbtiCode(nextSummary.sulbti.btiCode || nextSummary.sulbti.type) : null;
         if (summaryType && summaryType !== resolveSulbtiCode(user.sulbti)) {
@@ -103,10 +104,26 @@ export default function MyPageScreen() {
         console.warn(getMyPageApiErrorMessage(error, '마이페이지 요약 정보를 불러오지 못했습니다.'));
       });
 
-    return () => {
-      mounted = false;
-    };
+    getMyPageBadges()
+      .then((badges) => {
+        if (!mountedRef.current) return;
+        setEarnedBadgeCount(badges.filter((badge) => badge.earned).length);
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '뱃지 목록을 불러오지 못했습니다.'));
+      });
+
   }, [mergeParticipationsFromOrders, updateUser, user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const mountedRef = { current: true };
+      refreshMyPageData(mountedRef);
+      return () => {
+        mountedRef.current = false;
+      };
+    }, [refreshMyPageData])
+  );
 
   if (!user) {
     return (
@@ -217,7 +234,7 @@ export default function MyPageScreen() {
   };
   const fundedCount = summary?.participatedFundingCount ?? (isBrewery ? 6 : participatedFundings.length);
   const archiveCount = summary?.archiveCount ?? 12;
-  const badgeCount = summary?.badgeCount ?? 5;
+  const badgeCount = earnedBadgeCount ?? summary?.badgeCount ?? 0;
 
   return (
     <View style={styles.container}>

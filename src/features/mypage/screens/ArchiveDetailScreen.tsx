@@ -40,78 +40,6 @@ type ArchiveDetailData = {
   projectTitle?: string;
 };
 
-const SAMPLE_ARCHIVES: ArchiveDetailData[] = [
-  {
-    id: 201,
-    title: '달빛 담은 배 막걸리',
-    subtitle: '주담 테스트 양조장 · 막걸리',
-    badge: '펀딩 술',
-    brewery: '주담 테스트 양조장',
-    alcohol: '6%',
-    userName: '나',
-    date: '2026.05.21',
-    rating: 4.5,
-    body: '펀딩으로 받아본 전통주 기록입니다. 배의 은은한 단맛과 막걸리 특유의 부드러운 질감이 잘 어울렸어요.',
-    rewardName: '달빛 담은 배 막걸리 1병',
-    images: [require('../../../../newpicutre/funding3.jpg')],
-    mood: '기다린 만큼 반가웠던 날',
-    pairing: '감자전',
-    tags: ['부드러움', '은은한단맛'],
-    likes: 0,
-  },
-  {
-    id: 101,
-    title: '안동 증류식 소주',
-    subtitle: '안동양조 · 소주',
-    badge: '일반 술',
-    alcohol: '13%',
-    userName: '나',
-    date: '2025.02.20',
-    rating: 4,
-    body: '향은 깔끔하고 끝맛은 묵직했어요. 기름진 음식과 같이 마셨을 때 밸런스가 좋았습니다.',
-    rewardName: '안동 증류식 소주',
-    images: [require('../../../../newpicutre/bottle.jpg')],
-    mood: '차분하게 마신 날',
-    pairing: '전, 묵은지',
-    tags: ['깔끔함', '묵직함'],
-    likes: 0,
-  },
-  {
-    id: 102,
-    title: '꽃향기 주',
-    subtitle: '과일청양조 · 청주',
-    badge: '일반 술',
-    alcohol: '6%',
-    userName: '나',
-    date: '2025.01.30',
-    rating: 5,
-    body: '과실 향이 먼저 올라오고 뒤에는 은은한 단맛이 남았습니다. 가볍게 마시기 좋았어요.',
-    rewardName: '꽃향기 주',
-    images: [require('../../../../newpicutre/food.jpg')],
-    mood: '기분 좋은 저녁',
-    pairing: '치즈, 과일',
-    tags: ['과일향', '깔끔함'],
-    likes: 0,
-  },
-  {
-    id: 103,
-    title: '감귤 막걸리',
-    subtitle: '꽃담양조 · 막걸리',
-    badge: '일반 술',
-    alcohol: '6%',
-    userName: '나',
-    date: '2025.01.15',
-    rating: 4.5,
-    body: '상큼한 감귤 향이 막걸리의 부드러운 질감과 잘 어울렸습니다.',
-    rewardName: '감귤 막걸리',
-    images: [require('../../../../newpicutre/funding3.jpg')],
-    mood: '가볍게 들뜬 날',
-    pairing: '감자전',
-    tags: ['상큼함', '과일향'],
-    likes: 0,
-  },
-];
-
 function getImageSource(image: string | ImageSourcePropType) {
   return typeof image === 'string' ? { uri: image } : image;
 }
@@ -129,7 +57,7 @@ export default function ArchiveDetailScreen() {
   const rawKind = Array.isArray(kind) ? kind[0] : kind;
 
   useEffect(() => {
-    if (!Number.isFinite(targetArchiveId) || rawKind === 'sample' || rawKind === 'funding') return;
+    if (!Number.isFinite(targetArchiveId) || rawKind === 'funding') return;
     let mounted = true;
     setIsArchiveLoading(true);
     setArchiveLoadFailed(false);
@@ -176,9 +104,6 @@ export default function ArchiveDetailScreen() {
       };
     }
 
-    if (rawKind === 'sample') {
-      return SAMPLE_ARCHIVES.find((item) => item.id === targetArchiveId) || null;
-    }
 
     const savedReview = fundingReviews.find((item) => item.id === targetArchiveId);
     if (savedReview) {

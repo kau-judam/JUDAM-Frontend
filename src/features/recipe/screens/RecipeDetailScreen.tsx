@@ -74,6 +74,7 @@ const personImages = [
 
 const getAvatarSource = (avatar?: ImageSourcePropType | string) =>
   typeof avatar === 'string' ? { uri: avatar } : avatar || personImages[0];
+const getCurrentUserAvatar = (profileImage?: string | null) => profileImage || personImages[0];
 
 interface RecipeCommentReply {
   id: number;
@@ -381,7 +382,7 @@ export default function RecipeDetailScreen() {
         {
           id: response.comment.comment_id,
           author: user.name,
-          avatar: personImages[prev.length % personImages.length],
+          avatar: getCurrentUserAvatar(user.profileImage),
           content: response.comment.content,
           timestamp: '방금 전',
           likes: 0,
@@ -425,7 +426,7 @@ export default function RecipeDetailScreen() {
       const newReply: RecipeCommentReply = {
         id: response.reply.comment_id,
         author: response.reply.nickname || user.name,
-        avatar: personImages[(comments.length + commentId) % personImages.length],
+        avatar: getCurrentUserAvatar(user.profileImage),
         content: response.reply.content,
         timestamp: '방금 전',
         likes: response.reply.like_count,

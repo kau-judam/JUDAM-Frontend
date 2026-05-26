@@ -1183,6 +1183,15 @@ Current screen gap:
 
 ## Brewery Recipe Create
 
+2026-05-26 update from user-provided `레시피 작성.md`:
+- The current frontend brewery recipe creation flow must not use the old separate JSON create call as its active implementation.
+- Brewery recipe creation should use the same endpoint as consumer recipe creation: `POST {baseURI}/api/recipes`.
+- Request must be `multipart/form-data`; text fields are appended to `FormData`.
+- Local Expo ImagePicker files must be sent as the multipart file field `image`, not stored as `image_url: "file:///..."`.
+- Do not send `author_type`; the backend reads JWT `role` and stores `BREWERY` automatically.
+- Current code path: `src/features/recipe/api.ts` `createRecipe` posts `FormData` to `/api/recipes`, and `src/features/recipe/screens/RecipeCreateScreen.tsx` uses that function for logged-in USER/BREWERY sessions.
+- The legacy `/api/recipes/brewery` JSON endpoint below is reference-only for this frontend flow and should not be used by the current `[주담]` recipe create screen.
+
 Source PDF:
 - `746fc50d-6f68-4f36-9062-16d7294d39ad_양조장_레시피_등록.pdf`
 
@@ -2451,6 +2460,46 @@ Frontend connection:
   - `src/features/bti/screens/BTITestScreen.tsx` saves SulBTI after survey conversion succeeds.
   - `src/features/bti/screens/BTIResultScreen.tsx` loads the saved SulBTI result.
 
+### My Page Badges
+
+Endpoint:
+```http
+GET {baseURI}/api/mypage/badges
+```
+
+Response:
+```json
+{
+  "status": 200,
+  "message": "마이페이지 뱃지 목록 조회 성공",
+  "data": {
+    "badges": [
+      {
+        "badgeId": "welcome",
+        "name": "반가워요!",
+        "displayOrder": 1,
+        "earned": true,
+        "earnedAt": "2026-05-22T14:54:32.629Z"
+      }
+    ]
+  }
+}
+```
+
+Badge IDs:
+- `welcome`
+- `communicate`
+- `funding-beginner`
+- `funding-intermediate`
+- `funding-expert`
+- `co-creator`
+
+Frontend connection:
+- Connected on 2026-05-26.
+- API client: `src/features/mypage/api.ts` `getMyPageBadges`.
+- Screen: `src/features/mypage/screens/BadgeScreen.tsx`.
+- The screen sorts badges by `displayOrder`, maps `badgeId` to local badge images, and displays earned/unearned states from `earned`.
+
 ### Archive Record Date
 
 Archive create/update can include:
@@ -2716,3 +2765,135 @@ Frontend connection:
 - Request mapping: `message` from current input, `user_id` from `AuthContext.user.id`, `history` from previous local chat messages as `{ role, content }`.
 - Response mapping: `data.response` becomes the assistant bubble, `data.suggested_questions` becomes follow-up chips, backend error `message` is shown in-chat.
 - The frontend calls only the backend proxy and does not call the AI server directly.
+
+## My Page Activity APIs
+
+Source:
+- User-provided backend markdown specs on 2026-05-26.
+
+Common:
+- Base URL: `http://43.202.24.223:3000`
+- All endpoints require `Authorization: Bearer {access_token}`.
+- List pagination starts at `page=0`; default `size=20`.
+
+### My Recipes
+
+```http
+GET {baseURI}/api/users/me/recipes?page=0&size=20
+```
+
+Response:
+- `recipes[]`: `recipe_id`, `title`, `summary`, `main_ingredient`, `status`, `is_fundable`, `interest_count`, `image_url`, `created_at`
+- `totalElements`, `totalPages`, `currentPage`
+
+Frontend connection:
+- API client: `src/features/mypage/api.ts` `getMyPageMyRecipes`.
+- Screen: `src/features/mypage/screens/MyActivityCategoryScreen.tsx` recipe activity `작성` tab.
+
+### Interested Recipes
+
+```http
+GET {baseURI}/api/users/me/interests/recipes?page=0&size=20
+```
+
+Response:
+- `recipes[]`: `recipe_id`, `title`, `summary`, `main_ingredient`, `author_type`, `status`, `is_fundable`, `interest_count`, `image_url`, `interested_at`
+- `totalElements`, `totalPages`, `currentPage`
+
+Frontend connection:
+- API client: `src/features/mypage/api.ts` `getMyPageInterestedRecipes`.
+- Screen: recipe activity `관심` tab.
+
+### My Recipe Comments
+
+```http
+GET {baseURI}/api/users/me/recipe-comments?page=0&size=20
+```
+
+Response:
+- `comments[]`: `comment_id`, `content`, `like_count`, `created_at`, `updated_at`
+- Each comment includes `recipe`: `recipe_id`, `title`, `status`
+- `totalElements`, `totalPages`, `currentPage`
+
+Frontend connection:
+- API client: `src/features/mypage/api.ts` `getMyPageRecipeComments`.
+- Screen: recipe activity `댓글` tab.
+
+### My Community Posts
+
+```http
+GET {baseURI}/api/users/me/posts
+```
+
+Response:
+- `posts[]`: `post_id`, `title`, `board_type`, `like_count`, `comment_count`, `created_at`
+- `totalElements`
+- Backend returns the latest 3 posts for the mypage summary-style list.
+
+Frontend connection:
+- API client: `src/features/mypage/api.ts` `getMyPageMyPosts`.
+- Screen: community activity `작성` tab.
+
+### Liked Community Posts
+
+```http
+GET {baseURI}/api/users/me/likes/posts?page=0&size=20
+```
+
+Response:
+- `posts[]`: `post_id`, `title`, `board_type`, `like_count`, `comment_count`, `created_at`, `liked_at`
+- `totalElements`, `totalPages`, `currentPage`
+
+Frontend connection:
+- API client: `src/features/mypage/api.ts` `getMyPageLikedPosts`.
+- Screen: community activity `좋아요` tab.
+
+### My Community Post Comments
+
+```http
+GET {baseURI}/api/users/me/post-comments?page=0&size=20
+```
+
+Response:
+- `comments[]`: `comment_id`, `content`, `like_count`, `created_at`, `updated_at`
+- Each comment includes `post`: `post_id`, `title`, `board_type`
+- `totalElements`, `totalPages`, `currentPage`
+
+Frontend connection:
+- API client: `src/features/mypage/api.ts` `getMyPagePostComments`.
+- Screen: community activity `댓글` tab.
+
+2026-05-26 frontend connection:
+- Connected the recipe and community activity screens to the above APIs.
+- Removed dummy data from the recipe and community activity tabs.
+- Funding activity remains unchanged because this API batch did not include funding activity endpoints.
+
+2026-05-26 sub ingredient AI reconnection:
+- Reconnected the recipe create sub ingredient `AI ??` button to `suggestRecipeSubIngredients` in `src/features/recipe/screens/RecipeCreateScreen.tsx`.
+- Removed the local temporary sub ingredient suggestions from the active button flow.
+- The request sends joined `main_ingredient` and inferred `region`; if no Korean region word is found, `region` is an empty string.
+- Verification used `npx.cmd tsc --noEmit` and `npm.cmd run lint`. The usage-billed API server was not manually called.
+
+2026-05-26 recipe API object error message handling:
+- Updated `src/features/recipe/api.ts` so backend error fields such as `message`, `error`, or `errors` can be strings, arrays, or objects.
+- Object/array errors are now flattened into readable strings instead of surfacing as `[object Object]`.
+- Verification used `npx.cmd tsc --noEmit` and `npm.cmd run lint`.
+
+2026-05-26 sub ingredient AI region optional update:
+- Backend changed `POST /api/recipe/suggest-sub-ingredients` so `region`, `location`, and `area` are optional.
+- Required field is now only `mainIngredient` or `main_ingredient`.
+- Updated `src/features/recipe/screens/RecipeCreateScreen.tsx` to stop inferring/sending region and send only `main_ingredient`.
+- Updated `SuggestSubIngredientsPayload` in `src/features/recipe/api.ts` so region/location/area are optional and camelCase `mainIngredient` is allowed.
+
+2026-05-26 sub ingredient AI 422 compatibility update:
+- A runtime warning showed `status: 422` and `message: [object Object]` from `POST /api/recipe/suggest-sub-ingredients`.
+- Updated the frontend request to send both `main_ingredient` and `mainIngredient` with the same value, because backend validation may still be checking only one naming convention despite the API note allowing both.
+- Updated recipe API error stringification to ignore literal `[object Object]` strings when trying to build a readable message.
+- Verification used `npx.cmd tsc --noEmit` and `npm.cmd run lint`.
+
+2026-05-26 temporary sub ingredient AI disconnection:
+- Temporarily disconnected only the recipe create sub ingredient `AI ??` button from `suggestRecipeSubIngredients`.
+- The button now shows local temporary suggestions: `??`, `?`, `??`, `??`, `?`.
+- Flavor tag and summary AI suggestion APIs remain connected.
+- Selected sub ingredients still submit to `POST /api/recipes` as `sub_ingredient`.
+- Verification used `npx.cmd tsc --noEmit` and `npm.cmd run lint`.

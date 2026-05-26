@@ -30,7 +30,24 @@ import { markCurrentUserRecipe } from '@/features/recipe/interestState';
 
 const ALCOHOL_RANGES = ['3%~5%', '6%~8%', '9%~12%', '13%~15%', '15% 이상'];
 const DUMMY_IMAGE = 'https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?w=800&h=600&fit=crop';
-const TEMP_SUB_INGREDIENT_SUGGESTIONS = ['누룩', '물', '유자', '생강', '꿀'];
+
+type SubIngredientRegionSuggestion = {
+  region: string;
+  subIngredients: string[];
+};
+
+const TEMP_SUB_INGREDIENT_REGION_SUGGESTIONS: SubIngredientRegionSuggestion[] = [
+  { region: '경기', subIngredients: ['누룩', '배', '잣', '오미자'] },
+  { region: '강원', subIngredients: ['옥수수', '메밀', '감자', '산머루'] },
+  { region: '충북', subIngredients: ['사과', '대추', '복숭아', '생강'] },
+  { region: '충남', subIngredients: ['밤', '꿀', '구기자', '배'] },
+  { region: '전북', subIngredients: ['복분자', '오디', '생강', '배'] },
+  { region: '전남', subIngredients: ['유자', '매실', '석류', '녹차'] },
+  { region: '경북', subIngredients: ['사과', '대추', '오미자', '꿀'] },
+  { region: '경남', subIngredients: ['단감', '매실', '유자', '생강'] },
+  { region: '제주', subIngredients: ['감귤', '한라봉', '청귤', '꿀'] },
+  { region: '서울', subIngredients: ['배', '오미자', '누룩', '꿀'] },
+];
 
 type NoticeState = {
   title: string;
@@ -48,6 +65,9 @@ export default function RecipeCreateScreen() {
   const [mainIngredients, setMainIngredients] = useState(
     editRecipe?.ingredients?.length ? editRecipe.ingredients.slice(0, 3) : ['']
   );
+  const [subIngredientRegions, setSubIngredientRegions] = useState<SubIngredientRegionSuggestion[]>([]);
+  const [selectedSubIngredientRegion, setSelectedSubIngredientRegion] =
+    useState<SubIngredientRegionSuggestion | null>(null);
   const [generatedSubIngredients, setGeneratedSubIngredients] = useState<string[]>([]);
   const [selectedSubIngredients, setSelectedSubIngredients] = useState<string[]>([]);
   const [alcoholRange, setAlcoholRange] = useState('');
@@ -95,11 +115,19 @@ export default function RecipeCreateScreen() {
 
   const handleGenerateSubIngredients = () => {
     if (!hasMainIngredient) {
-      showNotice('메인 재료를 입력해주세요.');
+      showNotice('\uBA54\uC778 \uC7AC\uB8CC\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694.');
       return;
     }
-    setGeneratedSubIngredients(TEMP_SUB_INGREDIENT_SUGGESTIONS);
+    setSubIngredientRegions(TEMP_SUB_INGREDIENT_REGION_SUGGESTIONS.slice(0, 10));
+    setSelectedSubIngredientRegion(null);
+    setGeneratedSubIngredients([]);
     setSelectedSubIngredients([]);
+  };
+
+  const handleSelectSubIngredientRegion = (suggestion: SubIngredientRegionSuggestion) => {
+    setSelectedSubIngredientRegion(suggestion);
+    setSelectedSubIngredients([]);
+    setGeneratedSubIngredients(suggestion.subIngredients);
   };
 
   const toggleSubIngredient = (ingredient: string) => {
@@ -372,6 +400,35 @@ export default function RecipeCreateScreen() {
               <Text style={styles.labelNoMargin}>서브 재료</Text>
               <SmallDarkButton label="AI 생성" icon={<Wand2 size={12} color="#FFF" />} onPress={handleGenerateSubIngredients} />
             </View>
+            {subIngredientRegions.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.regionScrollContent}
+                style={styles.regionScroll}
+              >
+                {subIngredientRegions.map((suggestion) => (
+                  <TouchableOpacity
+                    key={suggestion.region}
+                    style={[
+                      styles.regionChip,
+                      selectedSubIngredientRegion?.region === suggestion.region && styles.regionChipActive,
+                    ]}
+                    onPress={() => handleSelectSubIngredientRegion(suggestion)}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.regionChipText,
+                        selectedSubIngredientRegion?.region === suggestion.region && styles.regionChipTextActive,
+                      ]}
+                    >
+                      {suggestion.region}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : null}
             {generatedSubIngredients.length > 0 ? (
               <View style={styles.chipWrap}>
                 {generatedSubIngredients.map((ingredient) => (
@@ -628,6 +685,21 @@ const styles = StyleSheet.create({
   },
   smallDarkText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
   helpText: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', lineHeight: 18 },
+  regionScroll: { marginBottom: 12 },
+  regionScrollContent: { gap: 8, paddingRight: 8 },
+  regionChip: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  regionChipActive: { backgroundColor: '#111', borderColor: '#111' },
+  regionChipText: { fontSize: 13, fontWeight: '800', color: '#4B5563' },
+  regionChipTextActive: { color: '#FFF' },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     minHeight: 38,

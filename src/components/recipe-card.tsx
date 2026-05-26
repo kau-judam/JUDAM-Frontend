@@ -8,10 +8,12 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { router } from 'expo-router';
-import { Heart, MessageCircle, Sparkles } from 'lucide-react-native';
+import { Heart, MessageCircle } from 'lucide-react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { getImageSource } from '@/constants/data';
+
+const DEFAULT_RECIPE_IMAGE = require('../../newpicutre/recipe1.jpg');
 
 interface RecipeCardProps {
   recipe: {
@@ -42,13 +44,7 @@ export function RecipeCard({ recipe, index = 0, onLike, onComment, showLikeButto
         <View style={styles.inner}>
           {/* Left: Thumbnail */}
           <View style={styles.thumbBox}>
-            {recipe.image ? (
-              <Image source={getImageSource(recipe.image)!} style={styles.thumb} resizeMode="contain" />
-            ) : (
-              <View style={styles.placeholder}>
-                <Sparkles size={24} color="#9CA3AF" />
-              </View>
-            )}
+            <Image source={getImageSource(recipe.image) || DEFAULT_RECIPE_IMAGE} style={styles.thumb} resizeMode="contain" />
           </View>
 
           {/* Right: Content */}
@@ -109,7 +105,6 @@ const styles = StyleSheet.create({
   inner: { flexDirection: 'row', gap: 16 },
   thumbBox: { width: 96, height: 96, borderRadius: 16, overflow: 'hidden', backgroundColor: '#F9FAFB' },
   thumb: { width: '100%', height: '100%', objectFit: 'contain' },
-  placeholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { flex: 1, justifyContent: 'space-between' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   author: { fontSize: 12, fontWeight: '800', color: '#6B7280' },

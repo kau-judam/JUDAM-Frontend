@@ -1,12 +1,26 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Image, ImageSourcePropType, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { ArrowLeft, ChevronDown, ChevronUp, Heart, HelpCircle, MessageCircle, PenSquare, type LucideIcon } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RecipeCard } from '@/components/recipe-card';
 import type { FundingProject } from '@/constants/data';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
+import {
+  getMyPageApiErrorMessage,
+  getMyPageInterestedRecipes,
+  getMyPageLikedPosts,
+  getMyPageMyPosts,
+  getMyPageMyRecipes,
+  getMyPagePostComments,
+  getMyPageRecipeComments,
+  type MyPageCommunityPostActivityDto,
+  type MyPagePostCommentActivityDto,
+  type MyPageRecipeActivityDto,
+  type MyPageRecipeCommentActivityDto,
+} from '@/features/mypage/api';
 
 type ActivityTab = {
   id: string;
@@ -14,6 +28,8 @@ type ActivityTab = {
   Icon: LucideIcon;
   emptyTitle: string;
   items?: ActivityItem[];
+  loading?: boolean;
+  error?: string | null;
 };
 
 type ActivityCategoryProps = {
@@ -41,7 +57,7 @@ type ActivityItem = {
     comments: number;
     timestamp: string;
     liked?: boolean;
-    image?: string;
+    image?: string | ImageSourcePropType;
   };
   community?: {
     id: number;
@@ -58,6 +74,12 @@ type ActivityItem = {
   funding?: FundingProject;
   comment?: string;
   answer?: string;
+};
+
+type LoadState<T> = {
+  loading: boolean;
+  error: string | null;
+  data: T;
 };
 
 export function MyActivityCategoryScreen({ title, tabs, description }: ActivityCategoryProps) {
@@ -109,7 +131,17 @@ export function MyActivityCategoryScreen({ title, tabs, description }: ActivityC
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 96 }]}
       >
-        {items.length > 0 ? (
+        {active.loading ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>목록을 불러오고 있어요.</Text>
+            <Text style={styles.emptyDescription}>{description}</Text>
+          </View>
+        ) : active.error ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyTitle}>목록을 불러오지 못했습니다.</Text>
+            <Text style={styles.emptyDescription}>{active.error}</Text>
+          </View>
+        ) : items.length > 0 ? (
           <View style={styles.list}>
             {items.map((item, index) => {
               if (item.kind === 'recipe' && item.recipe) {
@@ -125,7 +157,7 @@ export function MyActivityCategoryScreen({ title, tabs, description }: ActivityC
                   <FundingProjectCard
                     key={item.id}
                     project={item.funding}
-                    favorite={true}
+                    favorite
                     onPress={() => router.push(`/funding/${item.funding?.id}` as any)}
                     onFavoritePress={() => undefined}
                   />
@@ -155,7 +187,7 @@ export function MyActivityCategoryScreen({ title, tabs, description }: ActivityC
                             toggleAnswer(item.id);
                           }}
                         >
-                          <Text style={styles.answerToggleText}>답변보기</Text>
+                          <Text style={styles.answerToggleText}>답변 보기</Text>
                           {answerOpened ? <ChevronUp size={16} color="#6B7280" /> : <ChevronDown size={16} color="#6B7280" />}
                         </TouchableOpacity>
                         {answerOpened && (
@@ -219,7 +251,7 @@ function CommunityActivityCard({ item }: { item: NonNullable<ActivityItem['commu
         </View>
       </View>
       <Text style={styles.communityTitle} numberOfLines={1}>{item.title}</Text>
-      <Text style={styles.communityContent} numberOfLines={2}>{item.content}</Text>
+      {item.content ? <Text style={styles.communityContent} numberOfLines={2}>{item.content}</Text> : null}
       <View style={styles.communityFooter}>
         <View style={styles.communityStat}>
           <Heart size={16} color={item.liked ? '#111827' : '#9CA3AF'} fill={item.liked ? '#111827' : 'transparent'} />
@@ -234,7 +266,156 @@ function CommunityActivityCard({ item }: { item: NonNullable<ActivityItem['commu
   );
 }
 
+function formatActivityDate(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+}
+
+function getCommunityBoardLabel(boardType?: string) {
+  return boardType === 'INFO' ? '정보' : '자유';
+}
+
+function mapMyPageRecipe(item: MyPageRecipeActivityDto, liked = false): ActivityItem {
+  return {
+    id: `recipe-${item.recipe_id}`,
+    eyebrow: liked ? '관심 레시피' : '작성 레시피',
+    title: item.title,
+    description: item.summary,
+    meta: formatActivityDate(item.interested_at || item.created_at),
+    statLabel: '관심',
+    statValue: String(item.interest_count),
+    kind: 'recipe',
+    recipe: {
+      id: item.recipe_id,
+      title: item.title,
+      author: '나',
+      description: item.summary,
+      likes: item.interest_count,
+      comments: 0,
+      timestamp: formatActivityDate(item.interested_at || item.created_at),
+      liked,
+      image: item.image_url || undefined,
+    },
+  };
+}
+
+function mapMyPageRecipeComment(item: MyPageRecipeCommentActivityDto): ActivityItem {
+  return {
+    id: `recipe-comment-${item.comment_id}`,
+    eyebrow: '댓글 단 레시피',
+    title: item.recipe.title,
+    description: '',
+    meta: formatActivityDate(item.created_at),
+    statLabel: '좋아요',
+    statValue: String(item.like_count),
+    kind: 'comment',
+    comment: item.content,
+    route: `/recipe/${item.recipe.recipe_id}`,
+  };
+}
+
+function mapMyPageCommunityPost(item: MyPageCommunityPostActivityDto, liked = false): ActivityItem {
+  return {
+    id: `community-${item.post_id}`,
+    eyebrow: liked ? '좋아요한 글' : '작성한 글',
+    title: item.title,
+    description: '',
+    meta: formatActivityDate(item.liked_at || item.created_at),
+    statLabel: '댓글',
+    statValue: String(item.comment_count),
+    kind: 'community',
+    community: {
+      id: item.post_id,
+      title: item.title,
+      content: '',
+      author: '나',
+      category: getCommunityBoardLabel(item.board_type),
+      timestamp: formatActivityDate(item.liked_at || item.created_at),
+      likes: item.like_count,
+      comments: item.comment_count,
+      liked,
+    },
+  };
+}
+
+function mapMyPagePostComment(item: MyPagePostCommentActivityDto): ActivityItem {
+  return {
+    id: `post-comment-${item.comment_id}`,
+    eyebrow: '댓글 단 글',
+    title: item.post.title,
+    description: '',
+    meta: formatActivityDate(item.created_at),
+    statLabel: '좋아요',
+    statValue: String(item.like_count),
+    kind: 'comment',
+    comment: item.content,
+    route: `/community/${item.post.post_id}`,
+  };
+}
+
 export function RecipeActivityScreen() {
+  const [written, setWritten] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
+  const [liked, setLiked] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
+  const [commented, setCommented] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      const load = async () => {
+        setWritten((prev) => ({ ...prev, loading: true, error: null }));
+        setLiked((prev) => ({ ...prev, loading: true, error: null }));
+        setCommented((prev) => ({ ...prev, loading: true, error: null }));
+
+        const [myRecipesResult, likedRecipesResult, commentsResult] = await Promise.allSettled([
+          getMyPageMyRecipes(),
+          getMyPageInterestedRecipes(),
+          getMyPageRecipeComments(),
+        ]);
+
+        if (!active) return;
+
+        if (myRecipesResult.status === 'fulfilled') {
+          setWritten({ loading: false, error: null, data: myRecipesResult.value.recipes.map((item) => mapMyPageRecipe(item)) });
+        } else {
+          setWritten({
+            loading: false,
+            error: getMyPageApiErrorMessage(myRecipesResult.reason, '작성한 레시피를 불러오지 못했습니다.'),
+            data: [],
+          });
+        }
+
+        if (likedRecipesResult.status === 'fulfilled') {
+          setLiked({ loading: false, error: null, data: likedRecipesResult.value.recipes.map((item) => mapMyPageRecipe(item, true)) });
+        } else {
+          setLiked({
+            loading: false,
+            error: getMyPageApiErrorMessage(likedRecipesResult.reason, '관심 레시피를 불러오지 못했습니다.'),
+            data: [],
+          });
+        }
+
+        if (commentsResult.status === 'fulfilled') {
+          setCommented({ loading: false, error: null, data: commentsResult.value.comments.map(mapMyPageRecipeComment) });
+        } else {
+          setCommented({
+            loading: false,
+            error: getMyPageApiErrorMessage(commentsResult.reason, '레시피 댓글을 불러오지 못했습니다.'),
+            data: [],
+          });
+        }
+      };
+
+      void load();
+
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
   return (
     <MyActivityCategoryScreen
       title="레시피"
@@ -245,75 +426,27 @@ export function RecipeActivityScreen() {
           label: '작성',
           Icon: PenSquare,
           emptyTitle: '작성한 레시피가 없습니다',
-          items: [
-            {
-              id: 'dummy-recipe-written-1',
-              eyebrow: '작성한 레시피',
-              title: '막걸리 크림 파스타',
-              description: '은은한 산미의 막걸리를 소스에 더해 부드럽게 완성한 주담 테스트 레시피',
-              meta: '2026.05.22',
-              statLabel: '좋아요',
-              statValue: '24',
-              kind: 'recipe',
-              recipe: {
-                id: 900101,
-                title: '막걸리 크림 파스타',
-                author: '나',
-                description: '은은한 산미의 막걸리를 소스에 더해 부드럽게 완성한 레시피',
-                likes: 24,
-                comments: 7,
-                timestamp: '2026.05.22',
-              },
-            },
-          ],
+          items: written.data,
+          loading: written.loading,
+          error: written.error,
         },
         {
           id: 'liked',
           label: '관심',
           Icon: Heart,
           emptyTitle: '관심 표시한 레시피가 없습니다',
-          items: [
-            {
-              id: 'dummy-recipe-liked-1',
-              eyebrow: '관심 레시피',
-              title: '약주 봉골레',
-              description: '약주의 향을 조개 육수에 더한 깔끔한 주담 테스트 레시피',
-              meta: '2026.05.20',
-              statLabel: '좋아요',
-              statValue: '38',
-              kind: 'recipe',
-              recipe: {
-                id: 900102,
-                title: '약주 봉골레',
-                author: '주담키친',
-                description: '약주의 향을 조개 육수에 더해 깔끔하게 마무리한 파스타',
-                likes: 38,
-                comments: 12,
-                timestamp: '2026.05.20',
-                liked: true,
-              },
-            },
-          ],
+          items: liked.data,
+          loading: liked.loading,
+          error: liked.error,
         },
         {
           id: 'commented',
           label: '댓글',
           Icon: MessageCircle,
           emptyTitle: '댓글을 남긴 레시피가 없습니다',
-          items: [
-            {
-              id: 'dummy-recipe-comment-1',
-              eyebrow: '댓글 단 레시피',
-              title: '청주 토마토 절임',
-              description: '',
-              meta: '2026.05.19',
-              statLabel: '',
-              statValue: '',
-              kind: 'comment',
-              comment: '토마토 단맛이 청주 향이랑 잘 맞을 것 같아요. 주말에 한번 따라 해볼게요.',
-              route: '/recipe/900103',
-            },
-          ],
+          items: commented.data,
+          loading: commented.loading,
+          error: commented.error,
         },
       ]}
     />
@@ -323,7 +456,7 @@ export function RecipeActivityScreen() {
 export function FundingActivityScreen() {
   const dummyFunding: FundingProject = {
     id: 900301,
-    title: '달빛 담은 배 막걸리',
+    title: '샘플 펀딩 막걸리',
     brewery: '주담 테스트 양조장',
     location: '충북 충주',
     category: '막걸리',
@@ -333,10 +466,10 @@ export function FundingActivityScreen() {
     currentAmount: 3600000,
     backers: 128,
     daysLeft: 0,
-    status: '펀딩 성공' as FundingProject['status'],
+    status: '펀딩성공' as FundingProject['status'],
     bottleSize: '500ml',
     alcoholContent: '6%',
-    rewardItems: ['달빛 담은 배 막걸리 1병'],
+    rewardItems: ['샘플 막걸리 1병'],
     shippingFee: 3000,
     mainIngredients: '쌀, 배',
   };
@@ -355,8 +488,8 @@ export function FundingActivityScreen() {
             {
               id: 'dummy-funding-1',
               eyebrow: '관심 펀딩',
-              title: '달빛 담은 배 막걸리',
-              description: '배의 은은한 단맛과 쌀의 고소함을 담은 펀딩 프로젝트 더미 항목',
+              title: '샘플 펀딩 막걸리',
+              description: '펀딩 활동 API는 아직 전달되지 않아 기존 화면을 유지합니다.',
               meta: '목표 120%',
               statLabel: '참여자',
               statValue: '128명',
@@ -370,41 +503,14 @@ export function FundingActivityScreen() {
           label: '댓글',
           Icon: MessageCircle,
           emptyTitle: '댓글을 남긴 펀딩이 없습니다',
-          items: [
-            {
-              id: 'dummy-funding-comment-1',
-              eyebrow: '댓글 단 펀딩',
-              title: '달빛 담은 배 막걸리',
-              description: '',
-              meta: '',
-              statLabel: '',
-              statValue: '',
-              kind: 'comment',
-              comment: '배 향이 어느 정도로 올라오는지 궁금했는데 설명을 보니 기대돼요.',
-              route: '/funding/900301',
-            },
-          ],
+          items: [],
         },
         {
           id: 'qna',
           label: 'Q&A',
           Icon: HelpCircle,
           emptyTitle: '작성한 Q&A가 없습니다',
-          items: [
-            {
-              id: 'dummy-funding-qna-1',
-              eyebrow: '작성한 Q&A',
-              title: '달빛 담은 배 막걸리',
-              description: '',
-              meta: '',
-              statLabel: '',
-              statValue: '',
-              kind: 'comment',
-              comment: '배송은 몇 월 초쯤 시작될 예정인가요?',
-              answer: '현재 일정 기준으로 6월 첫째 주부터 순차 배송을 준비하고 있습니다. 정확한 출고일은 배송 시작 전 알림으로 안내드릴게요.',
-              route: '/funding/900301',
-            },
-          ],
+          items: [],
         },
       ]}
     />
@@ -412,6 +518,66 @@ export function FundingActivityScreen() {
 }
 
 export function CommunityActivityScreen() {
+  const [written, setWritten] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
+  const [liked, setLiked] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
+  const [commented, setCommented] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      const load = async () => {
+        setWritten((prev) => ({ ...prev, loading: true, error: null }));
+        setLiked((prev) => ({ ...prev, loading: true, error: null }));
+        setCommented((prev) => ({ ...prev, loading: true, error: null }));
+
+        const [myPostsResult, likedPostsResult, commentsResult] = await Promise.allSettled([
+          getMyPageMyPosts(),
+          getMyPageLikedPosts(),
+          getMyPagePostComments(),
+        ]);
+
+        if (!active) return;
+
+        if (myPostsResult.status === 'fulfilled') {
+          setWritten({ loading: false, error: null, data: myPostsResult.value.posts.map((item) => mapMyPageCommunityPost(item)) });
+        } else {
+          setWritten({
+            loading: false,
+            error: getMyPageApiErrorMessage(myPostsResult.reason, '작성한 게시글을 불러오지 못했습니다.'),
+            data: [],
+          });
+        }
+
+        if (likedPostsResult.status === 'fulfilled') {
+          setLiked({ loading: false, error: null, data: likedPostsResult.value.posts.map((item) => mapMyPageCommunityPost(item, true)) });
+        } else {
+          setLiked({
+            loading: false,
+            error: getMyPageApiErrorMessage(likedPostsResult.reason, '좋아요한 게시글을 불러오지 못했습니다.'),
+            data: [],
+          });
+        }
+
+        if (commentsResult.status === 'fulfilled') {
+          setCommented({ loading: false, error: null, data: commentsResult.value.comments.map(mapMyPagePostComment) });
+        } else {
+          setCommented({
+            loading: false,
+            error: getMyPageApiErrorMessage(commentsResult.reason, '게시글 댓글을 불러오지 못했습니다.'),
+            data: [],
+          });
+        }
+      };
+
+      void load();
+
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
   return (
     <MyActivityCategoryScreen
       title="커뮤니티"
@@ -422,77 +588,27 @@ export function CommunityActivityScreen() {
           label: '작성',
           Icon: PenSquare,
           emptyTitle: '작성한 게시글이 없습니다',
-          items: [
-            {
-              id: 'dummy-community-1',
-              eyebrow: '작성한 글',
-              title: '이번 주말에 마신 전통주 추천',
-              description: '가볍게 마시기 좋았던 술과 안주 조합을 공유하는 커뮤니티 더미 게시글',
-              meta: '방금 전',
-              statLabel: '댓글',
-              statValue: '7',
-              kind: 'community',
-              community: {
-                id: 900201,
-                title: '이번 주말에 마신 전통주 추천',
-                content: '가볍게 마시기 좋았던 술과 안주 조합을 공유하는 커뮤니티 더미 게시글',
-                author: '나',
-                category: '자유',
-                timestamp: '방금 전',
-                likes: 18,
-                comments: 7,
-              },
-            },
-          ],
+          items: written.data,
+          loading: written.loading,
+          error: written.error,
         },
         {
           id: 'liked',
-          label: '관심',
+          label: '좋아요',
           Icon: Heart,
-          emptyTitle: '관심 표시한 게시글이 없습니다',
-          items: [
-            {
-              id: 'dummy-community-liked-1',
-              eyebrow: '관심 글',
-              title: '비 오는 날 어울리는 전통주',
-              description: '비 오는 날 마시기 좋은 술 이야기를 나누는 커뮤니티 더미 게시글',
-              meta: '1시간 전',
-              statLabel: '댓글',
-              statValue: '11',
-              kind: 'community',
-              community: {
-                id: 900202,
-                title: '비 오는 날 어울리는 전통주',
-                content: '파전과 함께 마셨을 때 좋았던 술을 서로 추천해보면 좋겠어요.',
-                author: '술친구',
-                category: '추천',
-                timestamp: '1시간 전',
-                likes: 31,
-                comments: 11,
-                liked: true,
-              },
-            },
-          ],
+          emptyTitle: '좋아요한 게시글이 없습니다',
+          items: liked.data,
+          loading: liked.loading,
+          error: liked.error,
         },
         {
           id: 'commented',
           label: '댓글',
           Icon: MessageCircle,
           emptyTitle: '댓글을 남긴 게시글이 없습니다',
-          items: [
-            {
-              id: 'dummy-community-comment-1',
-              eyebrow: '댓글 단 글',
-              title: '첫 전통주로 뭐가 좋을까요?',
-              description: '',
-              meta: '',
-              statLabel: '',
-              statValue: '',
-              kind: 'comment',
-              comment: '처음이면 향이 너무 강하지 않은 막걸리나 약주부터 시작해보는 것도 좋아요.',
-              route: '/community/900203',
-            },
-          ],
+          items: commented.data,
+          loading: commented.loading,
+          error: commented.error,
         },
       ]}
     />
@@ -602,7 +718,7 @@ const styles = StyleSheet.create({
   communityCategoryText: { fontSize: 10, fontWeight: '800', color: '#6B7280' },
   communityTime: { fontSize: 12, color: '#6B7280', fontWeight: '700' },
   communityTitle: { fontSize: 15, lineHeight: 21, color: '#111827', fontWeight: '900', marginBottom: 8 },
-  communityContent: { minHeight: 44, fontSize: 14, lineHeight: 22, color: '#374151', fontWeight: '600' },
+  communityContent: { fontSize: 14, lineHeight: 22, color: '#374151', fontWeight: '600' },
   communityFooter: { flexDirection: 'row', gap: 18, marginTop: 14 },
   communityStat: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   communityStatText: { fontSize: 13, fontWeight: '800', color: '#6B7280' },

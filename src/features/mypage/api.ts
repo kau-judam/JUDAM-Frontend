@@ -182,6 +182,92 @@ export type MyPageArchiveTagGroup = {
   }[];
 };
 
+export type MyPageBadge = {
+  badgeId: string;
+  name: string;
+  displayOrder: number;
+  earned: boolean;
+  earnedAt: string | null;
+};
+
+export type MyPageRecipeActivityDto = {
+  recipe_id: number;
+  title: string;
+  summary: string;
+  main_ingredient: string;
+  author_type?: string;
+  status: string;
+  is_fundable: boolean;
+  interest_count: number;
+  image_url: string | null;
+  created_at?: string;
+  interested_at?: string;
+};
+
+export type MyPageCommunityPostActivityDto = {
+  post_id: number;
+  title: string;
+  board_type: string;
+  like_count: number;
+  comment_count: number;
+  created_at: string;
+  liked_at?: string;
+};
+
+export type MyPageRecipeCommentActivityDto = {
+  comment_id: number;
+  content: string;
+  like_count: number;
+  created_at: string;
+  updated_at: string | null;
+  recipe: {
+    recipe_id: number;
+    title: string;
+    status: string;
+  };
+};
+
+export type MyPagePostCommentActivityDto = {
+  comment_id: number;
+  content: string;
+  like_count: number;
+  created_at: string;
+  updated_at: string | null;
+  post: {
+    post_id: number;
+    title: string;
+    board_type: string;
+  };
+};
+
+export type MyPageRecipeActivityList = {
+  recipes: MyPageRecipeActivityDto[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+};
+
+export type MyPageCommunityPostActivityList = {
+  posts: MyPageCommunityPostActivityDto[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+};
+
+export type MyPageRecipeCommentActivityList = {
+  comments: MyPageRecipeCommentActivityDto[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+};
+
+export type MyPagePostCommentActivityList = {
+  comments: MyPagePostCommentActivityDto[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+};
+
 export async function getMyPageAccessToken() {
   return getAuthAccessToken();
 }
@@ -484,6 +570,50 @@ export async function deleteMyPageArchive(archiveId: string | number) {
 export async function getMyPageArchiveTags() {
   const response = await requestMyPageJson<MyPageApiEnvelope<MyPageArchiveTagGroup[]>>('/api/mypage/archives/tags');
   return unwrapMyPageData<MyPageArchiveTagGroup[]>(response);
+}
+
+export async function getMyPageBadges() {
+  const response = await requestMyPageJson<MyPageApiEnvelope<{ badges: MyPageBadge[] }>>('/api/mypage/badges');
+  return unwrapMyPageData<{ badges: MyPageBadge[] }>(response).badges;
+}
+
+function buildActivityPageQuery(page = 0, size = 20) {
+  return new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  }).toString();
+}
+
+export async function getMyPageMyRecipes(page = 0, size = 20) {
+  return requestMyPageJson<MyPageRecipeActivityList>(`/api/users/me/recipes?${buildActivityPageQuery(page, size)}`);
+}
+
+export async function getMyPageInterestedRecipes(page = 0, size = 20) {
+  return requestMyPageJson<MyPageRecipeActivityList>(
+    `/api/users/me/interests/recipes?${buildActivityPageQuery(page, size)}`
+  );
+}
+
+export async function getMyPageRecipeComments(page = 0, size = 20) {
+  return requestMyPageJson<MyPageRecipeCommentActivityList>(
+    `/api/users/me/recipe-comments?${buildActivityPageQuery(page, size)}`
+  );
+}
+
+export async function getMyPageMyPosts() {
+  return requestMyPageJson<MyPageCommunityPostActivityList>('/api/users/me/posts');
+}
+
+export async function getMyPageLikedPosts(page = 0, size = 20) {
+  return requestMyPageJson<MyPageCommunityPostActivityList>(
+    `/api/users/me/likes/posts?${buildActivityPageQuery(page, size)}`
+  );
+}
+
+export async function getMyPagePostComments(page = 0, size = 20) {
+  return requestMyPageJson<MyPagePostCommentActivityList>(
+    `/api/users/me/post-comments?${buildActivityPageQuery(page, size)}`
+  );
 }
 
 export async function uploadMyPageArchiveImages(archiveId: string | number, images: MyPageImageUploadFile[]) {

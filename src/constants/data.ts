@@ -91,6 +91,9 @@ export interface FundingProject {
   localImage?: ImageSourcePropType;
   videoUrl?: string;
   popularRank?: number;
+  isMine?: boolean;
+  breweryUserId?: string;
+  ownerUserId?: string;
   creatorId?: string;
   breweryId?: string;
   liked?: boolean;

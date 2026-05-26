@@ -65,7 +65,6 @@ import {
   type FundingDocumentType,
   type FundingDraftPreviewResponse,
   loadFundingBreweryInfo,
-  updateFundingDraft,
   updateFundingProjectApi,
 } from '@/features/funding/api';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
@@ -86,6 +85,14 @@ type DatePickerTarget = 'startDate' | 'expectedDeliveryDate';
 type TempSaveMode = 'saved' | 'existing' | 'exitExisting';
 type PreviewBudgetPlan = NonNullable<FundingDraftPreviewResponse['plan']>['budgetPlan'];
 type PreviewSchedulePlan = NonNullable<FundingDraftPreviewResponse['plan']>['schedulePlan'];
+type ProjectPlanDraft = {
+  introduction?: string;
+  videoUrl?: string;
+  budget?: string;
+  schedule?: string;
+  budgetGuide?: string;
+  scheduleGuide?: string;
+};
 
 interface IngredientRow {
   id: number;
@@ -202,6 +209,10 @@ function normalizeProjectImageUrls(images?: string[]) {
   return Array.from(new Set(images.map((image) => image.trim()).filter(Boolean))).slice(0, 5);
 }
 
+function normalizeServerProjectImageUrls(images?: string[]) {
+  return normalizeProjectImageUrls(images).filter((image) => /^https?:\/\//i.test(image));
+}
+
 function parseTextLines(value: string) {
   return value
     .split('\n')
@@ -310,6 +321,21 @@ function formatSchedulePlanForDraft(items?: PreviewSchedulePlan) {
   return items.map((item) => `- ${item.date}: ${item.description}`).join('\n');
 }
 
+function getTasteAromaValue(tasteProfile?: FundingDraftPreviewResponse['tasteProfile']) {
+  return tasteProfile?.finish ?? tasteProfile?.aftertaste ?? tasteProfile?.aromaIntensity ?? tasteProfile?.alcoholIntensity ?? tasteProfile?.alcohol;
+}
+
+function normalizeProjectPlanDraft(plan?: ProjectPlanDraft) {
+  return {
+    introduction: plan?.introduction || '',
+    videoUrl: plan?.videoUrl || '',
+    budget: plan?.budget || '',
+    schedule: plan?.schedule || '',
+    budgetGuide: plan?.budgetGuide || '',
+    scheduleGuide: plan?.scheduleGuide || '',
+  };
+}
+
 function tasteScaleToPercent(value?: number) {
   if (typeof value !== 'number') return 50;
   if (value <= 5) return Math.max(0, Math.min(100, value * 20));
@@ -403,7 +429,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
     },
     tasteProfile: {
       sweetness: tasteScaleToPercent(tasteProfile.sweetness),
-      aroma: tasteScaleToPercent(tasteProfile.alcoholIntensity),
+      aroma: tasteScaleToPercent(getTasteAromaValue(tasteProfile)),
       acidity: tasteScaleToPercent(tasteProfile.acidity),
       body: tasteScaleToPercent(tasteProfile.body),
       carbonation: tasteScaleToPercent(tasteProfile.carbonation),
@@ -413,6 +439,8 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       videoUrl: plan.videoUrl || '',
       budget: formatBudgetPlanForDraft(plan.budgetPlan),
       schedule: formatSchedulePlanForDraft(plan.schedulePlan),
+      budgetGuide: plan.budgetPlanGuide || '',
+      scheduleGuide: plan.schedulePlanGuide || '',
     },
     creatorInfo: {
       name: breweryName,
@@ -533,6 +561,8 @@ export default function BreweryProjectCreateScreen() {
     videoUrl: '',
     budget: '',
     schedule: '',
+    budgetGuide: '',
+    scheduleGuide: '',
   });
   const [creatorInfo, setCreatorInfo] = useState({
     name: '',
@@ -570,7 +600,7 @@ export default function BreweryProjectCreateScreen() {
       setFundingInfo(draft.fundingInfo);
       setProductInfo(draft.productInfo);
       setTasteProfile(draft.tasteProfile);
-      setProjectPlan(draft.projectPlan);
+      setProjectPlan(normalizeProjectPlanDraft(draft.projectPlan));
       setTrustInfo(draft.trustInfo);
       setCreatorInfo(draft.creatorInfo);
       setTaxInfo(draft.taxInfo);
@@ -846,23 +876,6 @@ export default function BreweryProjectCreateScreen() {
     };
   };
 
-  const createDraftUpdateApiPayload = () => {
-    const alcoholPercentage = Number(basicInfo.alcoholContent);
-
-    return {
-      title: basicInfo.title.trim() || undefined,
-      shortTitle: basicInfo.shortTitle.trim() || undefined,
-      category: basicInfo.category.trim() || '막걸리',
-      mainIngredient: basicInfo.mainIngredient.trim() || undefined,
-      subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : undefined,
-      summary: basicInfo.summary.trim() || undefined,
-      alcoholPercentage: Number.isFinite(alcoholPercentage) && basicInfo.alcoholContent.trim() ? alcoholPercentage : undefined,
-      thumbnailUrl: basicInfo.images[0] || undefined,
-      imageUrls: basicInfo.images,
-      tags: getReadyTags(),
-    };
-  };
-
   const getBudgetPlanForApi = () => {
     const parsed = parseBudgetItems(projectPlan.budget)
       .filter((item) => item.item.trim())
@@ -879,6 +892,25 @@ export default function BreweryProjectCreateScreen() {
         date: normalizeProjectDate(item.date) || fundingInfo.startDate,
       }));
     return parsed.length > 0 ? parsed : null;
+  };
+
+  const getServerProjectImageUrls = () => normalizeServerProjectImageUrls(basicInfo.images);
+
+  const getTasteProfileForApi = () => {
+    const flavor = getReadyTags();
+    return {
+      sweetness: tasteProfile.sweetness,
+      acidity: tasteProfile.acidity,
+      body: tasteProfile.body,
+      carbonation: tasteProfile.carbonation,
+      alcoholIntensity: tasteProfile.aroma,
+      aromaIntensity: tasteProfile.aroma,
+      finish: tasteProfile.aroma,
+      aftertaste: tasteProfile.aroma,
+      alcohol: tasteProfile.aroma,
+      flavor,
+      flavorNotes: flavor,
+    };
   };
 
   const getBreweryInfoForApi = () => {
@@ -922,6 +954,7 @@ export default function BreweryProjectCreateScreen() {
       businessName: taxInfo.businessName.trim(),
       businessCategory: taxInfo.businessCategory.trim(),
       businessItem: taxInfo.businessItem.trim(),
+      creatorIntroduction: creatorInfo.bio.trim(),
       phoneVerified,
       accountVerified,
     };
@@ -932,18 +965,15 @@ export default function BreweryProjectCreateScreen() {
     return Number.isFinite(value) && value > 0 ? value : null;
   };
 
-  const shouldCreateNewServerDraft = (error: unknown) => {
-    const message = getFundingApiErrorMessage(error, '');
-    return message.includes('찾을 수 없습니다') || message.includes('404');
-  };
-
   const syncServerDraft = async (existingDraftId: number | null) => {
     if (existingDraftId) {
-      try {
-        return await updateFundingDraft(existingDraftId, createDraftUpdateApiPayload());
-      } catch (error) {
-        if (!shouldCreateNewServerDraft(error)) throw error;
-      }
+      return {
+        draftId: existingDraftId,
+        breweryId: getBreweryId(),
+        status: 'DRAFT',
+        progressRate: progress,
+        message: '',
+      };
     }
     return createFundingDraft(createDraftApiPayload());
   };
@@ -985,6 +1015,7 @@ export default function BreweryProjectCreateScreen() {
 
   const syncReadyProjectSectionsToApi = async (draftId: number) => {
     const alcoholPercentage = Number(basicInfo.alcoholContent);
+    const serverImageUrls = getServerProjectImageUrls();
     await saveFundingBasicInfo(draftId, {
       title: basicInfo.title.trim() || undefined,
       shortTitle: basicInfo.shortTitle.trim() || undefined,
@@ -993,8 +1024,8 @@ export default function BreweryProjectCreateScreen() {
       subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
       alcoholPercentage: Number.isFinite(alcoholPercentage) && basicInfo.alcoholContent.trim() ? alcoholPercentage : undefined,
       summary: basicInfo.summary.trim() || undefined,
-      thumbnailUrl: basicInfo.images[0] || undefined,
-      imageUrls: basicInfo.images,
+      thumbnailUrl: serverImageUrls[0] || undefined,
+      imageUrls: serverImageUrls,
       tags: getReadyTags(),
     });
 
@@ -1024,14 +1055,7 @@ export default function BreweryProjectCreateScreen() {
       });
     }
 
-    await saveFundingTasteProfile(draftId, {
-      sweetness: tasteProfile.sweetness,
-      acidity: tasteProfile.acidity,
-      body: tasteProfile.body,
-      carbonation: tasteProfile.carbonation,
-      alcoholIntensity: tasteProfile.aroma,
-      flavorNotes: getReadyTags(),
-    });
+    await saveFundingTasteProfile(draftId, getTasteProfileForApi());
 
     if (projectPlan.introduction.trim()) {
       await saveFundingPlan(draftId, {
@@ -1063,6 +1087,7 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const saveProjectSectionsToApi = async (draftId: number) => {
+    const serverImageUrls = getServerProjectImageUrls();
     await saveFundingBasicInfo(draftId, {
       title: basicInfo.title.trim(),
       shortTitle: basicInfo.shortTitle.trim() || undefined,
@@ -1071,8 +1096,8 @@ export default function BreweryProjectCreateScreen() {
       subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
       alcoholPercentage: Number(basicInfo.alcoholContent),
       summary: basicInfo.summary.trim(),
-      thumbnailUrl: basicInfo.images[0],
-      imageUrls: basicInfo.images,
+      thumbnailUrl: serverImageUrls[0] || undefined,
+      imageUrls: serverImageUrls,
       tags: getReadyTags(),
     });
     await saveFundingSchedule(draftId, {
@@ -1093,14 +1118,7 @@ export default function BreweryProjectCreateScreen() {
           origin: item.origin.trim(),
         })),
     });
-    await saveFundingTasteProfile(draftId, {
-      sweetness: tasteProfile.sweetness,
-      acidity: tasteProfile.acidity,
-      body: tasteProfile.body,
-      carbonation: tasteProfile.carbonation,
-      alcoholIntensity: tasteProfile.aroma,
-      flavorNotes: getReadyTags(),
-    });
+    await saveFundingTasteProfile(draftId, getTasteProfileForApi());
     await saveFundingPlan(draftId, {
       introduction: projectPlan.introduction.trim(),
       videoUrl: projectPlan.videoUrl.trim() || undefined,
@@ -1146,7 +1164,7 @@ export default function BreweryProjectCreateScreen() {
     if (draft.fundingInfo) setFundingInfo(draft.fundingInfo);
     if (draft.productInfo) setProductInfo({ ...draft.productInfo, productType: '막걸리' });
     if (draft.tasteProfile) setTasteProfile(draft.tasteProfile);
-    if (draft.projectPlan) setProjectPlan({ ...draft.projectPlan, videoUrl: draft.projectPlan.videoUrl || '' });
+    if (draft.projectPlan) setProjectPlan(normalizeProjectPlanDraft(draft.projectPlan));
     if (draft.creatorInfo) setCreatorInfo(draft.creatorInfo);
     if (draft.taxInfo) setTaxInfo(draft.taxInfo);
     if (draft.trustInfo) setTrustInfo(draft.trustInfo);
@@ -1243,7 +1261,7 @@ export default function BreweryProjectCreateScreen() {
   const deleteSavedDraft = async () => {
     const draft = await getSavedDraft();
     const draftId = getDraftId(draft);
-    if (draftId) {
+    if (draftId && !isEditMode) {
       try {
         await deleteFundingDraft(draftId);
       } catch (error) {
@@ -1258,7 +1276,7 @@ export default function BreweryProjectCreateScreen() {
     setHasTempSave(false);
     setTempSaveTimestamp('');
     setShowTempSaveModal(false);
-    showAlert('임시저장 내용이 삭제되었습니다.');
+    showAlert(isEditMode ? '기기에 저장된 수정 임시저장 내용이 삭제되었습니다.' : '임시저장 내용이 삭제되었습니다.');
   };
 
   const overwriteSavedDraft = async () => {
@@ -1318,6 +1336,7 @@ export default function BreweryProjectCreateScreen() {
     setCreatorInfo((prev) => ({
       ...prev,
       name: loadedBreweryName,
+      bio: info.creatorIntroduction || prev.bio,
       phone: info.contactPhone || prev.phone,
       accountBank: info.bankName || prev.accountBank,
       accountNumber: info.accountNumber || prev.accountNumber,
@@ -1780,7 +1799,7 @@ export default function BreweryProjectCreateScreen() {
         await updateFundingProjectApi(editProjectId, {
           title: basicInfo.title.trim(),
           description: projectPlan.introduction.trim() || basicInfo.summary.trim(),
-          thumbnailUrl: basicInfo.images[0] || undefined,
+          thumbnailUrl: getServerProjectImageUrls()[0] || undefined,
           goalAmount: Number(fundingInfo.goalAmount),
           startDate: fundingInfo.startDate,
           endDate: endDateText,
@@ -2253,6 +2272,12 @@ export default function BreweryProjectCreateScreen() {
     if (activeTab === 'plan') {
       return (
         <View style={styles.tabContent}>
+          <View style={styles.grayGuide}>
+            <Text style={styles.grayGuideText}>프로젝트 예산은 - 항목명: 금액만원 형식으로 작성해야 화면에 정확히 반영됩니다.</Text>
+            {Boolean(projectPlan.budgetGuide) && <Text style={styles.grayGuideText}>{projectPlan.budgetGuide}</Text>}
+            <Text style={styles.grayGuideText}>프로젝트 일정은 - 일정명: 일정내용 형식으로 작성해야 화면에 정확히 반영됩니다.</Text>
+            {Boolean(projectPlan.scheduleGuide) && <Text style={styles.grayGuideText}>{projectPlan.scheduleGuide}</Text>}
+          </View>
           <TextArea
             label="프로젝트 소개"
             required

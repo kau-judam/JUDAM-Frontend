@@ -134,7 +134,7 @@ export default function FundingListScreen() {
     return () => {
       mounted = false;
     };
-  }, [mergeProjects, selectedSort, selectedStatus]);
+  }, [mergeProjects, selectedSort, selectedStatus, user?.id]);
 
   useEffect(() => {
     let mounted = true;

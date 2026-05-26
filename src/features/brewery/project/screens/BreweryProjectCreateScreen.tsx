@@ -280,17 +280,18 @@ function normalizeProjectDate(value?: string) {
 function parseBudgetItems(value: string) {
   return parseTextLines(value).map((line) => {
     const match = line.match(/^(.*?)[\s:：-]+([0-9,]+)\s*만원?$/);
-    if (!match) return { item: line, amount: 0 };
-    return { item: match[1].trim(), amount: Number(match[2].replace(/,/g, '')) || 0 };
+    if (!match) return { item: line.replace(/^\s*[-•]\s*/, '').trim(), amount: 0 };
+    return { item: match[1].replace(/^\s*[-•]\s*/, '').trim(), amount: Number(match[2].replace(/,/g, '')) || 0 };
   });
 }
 
 function parseScheduleItems(value: string) {
   return parseTextLines(value).map((line) => {
-    const [date, ...description] = line.split(':');
+    const normalizedLine = line.replace(/^\s*[-•]\s*/, '').trim();
+    const [date, ...description] = normalizedLine.split(':');
     return {
       date: date?.trim() || '일정',
-      description: description.length > 0 ? description.join(':').trim() : line,
+      description: description.length > 0 ? description.join(':').trim() : normalizedLine,
     };
   });
 }
@@ -2261,9 +2262,14 @@ export default function BreweryProjectCreateScreen() {
             label="프로젝트 예산 (선택)"
             value={projectPlan.budget}
             onChangeText={(value) => setProjectPlan((prev) => ({ ...prev, budget: value }))}
-            placeholder={'예시:\n- 원료비: 200만원\n- 인건비: 150만원\n- 포장비: 100만원'}
+            placeholder={'반드시 아래 형식으로 작성해주세요.\n- 시제품 제작비: 25만원\n- 원료비: 200만원\n- 포장비: 100만원'}
             minHeight={150}
-            helper="목표 금액을 어디에 사용할지 구체적으로 작성해주세요."
+            helper="예산은 한 줄에 하나씩 '- 항목명: 금액만원' 형식으로 작성해야 화면에 정확히 반영됩니다."
+            guideLines={[
+              "반드시 '- 항목명: 금액만원' 형식으로 작성해주세요.",
+              '예: - 시제품 제작비: 25만원',
+              '여러 항목은 줄바꿈해서 각각 입력해주세요.',
+            ]}
             mono
           />
           <Field
@@ -2278,8 +2284,14 @@ export default function BreweryProjectCreateScreen() {
             label="프로젝트 일정 (선택)"
             value={projectPlan.schedule}
             onChangeText={(value) => setProjectPlan((prev) => ({ ...prev, schedule: value }))}
-            placeholder={'예시:\n- 4월 1일: 발효 시작\n- 4월 20일: 1차 숙성 완료\n- 5월 10일: 병입 작업\n- 5월 20일: 라벨링 및 포장\n- 6월 1일: 배송 시작'}
+            placeholder={'반드시 아래 형식으로 작성해주세요.\n- 원재료 수급: 2026-06-01\n- 발효 시작: 2026-06-10\n- 배송 시작: 2026-07-01'}
             minHeight={190}
+            helper="일정은 한 줄에 하나씩 '- 일정명: 날짜' 형식으로 작성해야 화면에 정확히 반영됩니다."
+            guideLines={[
+              "반드시 '- 일정명: 날짜' 형식으로 작성해주세요.",
+              '예: - 원재료 수급: 2026-06-01',
+              '여러 일정은 줄바꿈해서 각각 입력해주세요.',
+            ]}
             mono
           />
         </View>

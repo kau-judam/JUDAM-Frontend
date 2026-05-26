@@ -437,6 +437,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
     accountVerified: Boolean(breweryInfo.accountVerified || (breweryInfo.bankName && breweryInfo.accountNumber)),
     serverDraft: {
       draftId: preview.draftId,
+      fundingId: preview.fundingId,
       status: preview.status,
       progressRate: preview.progressRate,
       message: preview.message,

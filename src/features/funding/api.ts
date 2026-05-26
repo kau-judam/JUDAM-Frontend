@@ -142,7 +142,12 @@ export type FundingDraftPreviewResponse = {
     acidity?: number;
     body?: number;
     carbonation?: number;
+    alcohol?: number;
     alcoholIntensity?: number;
+    aromaIntensity?: number;
+    finish?: number;
+    aftertaste?: number;
+    flavor?: string[];
     flavorNotes?: string[];
   };
   plan?: {
@@ -150,6 +155,8 @@ export type FundingDraftPreviewResponse = {
     videoUrl?: string;
     budgetPlan?: { category: string; amount: number }[] | string;
     schedulePlan?: { step: string; description: string; date: string }[] | string;
+    budgetPlanGuide?: string;
+    schedulePlanGuide?: string;
     policy?: string;
   };
   breweryInfo?: {
@@ -232,6 +239,11 @@ type FundingTasteProfilePayload = {
   body: number;
   carbonation: number;
   alcoholIntensity: number;
+  aromaIntensity?: number;
+  finish?: number;
+  aftertaste?: number;
+  alcohol?: number;
+  flavor?: string[];
   flavorNotes?: string[];
 };
 
@@ -257,6 +269,7 @@ type FundingBreweryInfoPayload = {
   businessName?: string;
   businessCategory?: string;
   businessItem?: string;
+  creatorIntroduction?: string;
   phoneVerified?: boolean;
   accountVerified?: boolean;
 };
@@ -725,7 +738,12 @@ export type FundingDetailResponse = {
     acidity: number;
     body: number;
     carbonation: number;
+    alcohol?: number;
     alcoholIntensity: number;
+    aromaIntensity?: number;
+    finish?: number;
+    aftertaste?: number;
+    flavor?: string[];
     flavorNotes?: string[];
   };
   supportOptions?: FundingSupportOption[];
@@ -1204,21 +1222,28 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       acidity: readFundingApiNumber(tasteProfile, ['acidity']) || undefined,
       body: readFundingApiNumber(tasteProfile, ['body']) || undefined,
       carbonation: readFundingApiNumber(tasteProfile, ['carbonation']) || undefined,
+      alcohol: readFundingApiNumber(tasteProfile, ['alcohol']) || undefined,
       alcoholIntensity: readFundingApiNumber(tasteProfile, ['alcoholIntensity', 'alcohol_intensity']) || undefined,
-      flavorNotes: readFundingApiArray<string>(tasteProfile, ['flavorNotes', 'flavor_notes']),
+      aromaIntensity: readFundingApiNumber(tasteProfile, ['aromaIntensity', 'aroma_intensity']) || undefined,
+      finish: readFundingApiNumber(tasteProfile, ['finish']) || undefined,
+      aftertaste: readFundingApiNumber(tasteProfile, ['aftertaste', 'after_taste']) || undefined,
+      flavor: readFundingApiStringArray(tasteProfile, ['flavor'], ['flavor']),
+      flavorNotes: readFundingApiStringArray(tasteProfile, ['flavorNotes', 'flavor_notes'], ['flavor']),
     },
     plan: {
       introduction: readFundingApiString(plan, ['introduction']),
       videoUrl: readFundingApiString(plan, ['videoUrl', 'video_url']),
-      budgetPlan: readFundingApiArrayOrString<{ category: string; amount: number }>(plan, ['budgetPlan', 'budget_plan']),
-      schedulePlan: readFundingApiArrayOrString<{ step: string; description: string; date: string }>(plan, ['schedulePlan', 'schedule_plan']),
-      policy: readFundingApiString(plan, ['policy', 'projectPolicy', 'project_policy']),
+      budgetPlan: readFundingApiArrayOrString<{ category: string; amount: number }>(plan, ['budgetPlanRaw', 'budget_plan_raw', 'budgetPlanInput', 'budget_plan_input', 'budgetPlanText', 'budget_plan_text', 'budgetPlan', 'budget_plan']),
+      schedulePlan: readFundingApiArrayOrString<{ step: string; description: string; date: string }>(plan, ['schedulePlanRaw', 'schedule_plan_raw', 'schedulePlanInput', 'schedule_plan_input', 'schedulePlanText', 'schedule_plan_text', 'schedulePlan', 'schedule_plan']),
+      budgetPlanGuide: readFundingApiString(plan, ['budgetPlanGuide', 'budget_plan_guide']),
+      schedulePlanGuide: readFundingApiString(plan, ['schedulePlanGuide', 'schedule_plan_guide']),
+      policy: readFundingApiString(plan, ['policyRaw', 'policy_raw', 'policyText', 'policy_text', 'policy', 'projectPolicy', 'project_policy']),
     },
     breweryInfo: {
       breweryName: readFundingApiString(breweryInfo, ['breweryName', 'brewery_name']),
       creatorName: readFundingApiString(breweryInfo, ['creatorName', 'creator_name']),
       profileImageUrl: readFundingApiString(breweryInfo, ['profileImageUrl', 'profile_image_url', 'profileImage', 'profile_image']),
-      creatorIntroduction: readFundingApiString(breweryInfo, ['creatorIntroduction', 'creator_introduction', 'breweryBio', 'brewery_bio']),
+      creatorIntroduction: readFundingApiString(breweryInfo, ['creatorIntroduction', 'creator_introduction', 'creatorBio', 'creator_bio', 'breweryBio', 'brewery_bio', 'introduction', 'bio', 'description']),
       representativeName: readFundingApiString(breweryInfo, ['representativeName', 'representative_name']),
       businessRegistrationNumber: readFundingApiString(breweryInfo, ['businessRegistrationNumber', 'business_registration_number']),
       businessAddress: readFundingApiString(breweryInfo, ['businessAddress', 'business_address']),
@@ -1700,15 +1725,15 @@ function normalizeBreweryId(value: unknown) {
   return breweryId;
 }
 
-async function requestFundingJson<T>(path: string, options: RequestInit & { auth?: boolean } = {}) {
-  const { auth, headers, ...requestOptions } = options;
+async function requestFundingJson<T>(path: string, options: RequestInit & { auth?: boolean; skipAuth?: boolean } = {}) {
+  const { auth, skipAuth, headers, ...requestOptions } = options;
   const createHeaders = (token?: string | null): Record<string, string> => ({
     'Content-Type': 'application/json',
     ...(headers as Record<string, string> | undefined),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   });
 
-  const token = await getFundingAccessToken();
+  const token = skipAuth ? null : await getFundingAccessToken();
   if (auth && !token) {
     throw new Error('NEEDS_ACCESS_TOKEN');
   }
@@ -1720,7 +1745,7 @@ async function requestFundingJson<T>(path: string, options: RequestInit & { auth
   let text = await response.text();
   let data = parseFundingResponseBody(path, response, text);
 
-  if (response.status === 401 && (auth || token)) {
+  if (response.status === 401 && !skipAuth && (auth || token)) {
     const refreshedToken = await refreshAuthAccessToken();
     if (refreshedToken) {
       response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
@@ -2015,6 +2040,7 @@ export async function saveFundingBreweryInfo(draftId: number, payload: FundingBr
       business_name: payload.businessName,
       business_category: payload.businessCategory,
       business_item: payload.businessItem,
+      creator_introduction: payload.creatorIntroduction,
       phone_verified: payload.phoneVerified,
       account_verified: payload.accountVerified,
     },
@@ -2039,6 +2065,8 @@ export async function saveFundingBreweryInfo(draftId: number, payload: FundingBr
       businessName: payload.businessName,
       businessCategory: payload.businessCategory,
       businessItem: payload.businessItem,
+      creatorIntroduction: payload.creatorIntroduction,
+      breweryBio: payload.creatorIntroduction,
       phoneVerified: payload.phoneVerified,
       accountVerified: payload.accountVerified,
     },
@@ -2080,6 +2108,7 @@ export async function loadFundingBreweryInfo(draftId: number) {
     businessName: readFundingApiString(breweryInfo, ['businessName', 'business_name']),
     businessCategory: readFundingApiString(breweryInfo, ['businessCategory', 'business_category']),
     businessItem: readFundingApiString(breweryInfo, ['businessItem', 'business_item']),
+    creatorIntroduction: readFundingApiString(breweryInfo, ['creatorIntroduction', 'creator_introduction', 'creatorBio', 'creator_bio', 'breweryBio', 'brewery_bio', 'introduction', 'bio', 'description']),
     phoneVerified: readFundingApiBoolean(breweryInfo, ['phoneVerified', 'phone_verified']),
     accountVerified: readFundingApiBoolean(breweryInfo, ['accountVerified', 'account_verified']),
   } satisfies Partial<FundingBreweryInfoPayload>;
@@ -2320,6 +2349,7 @@ export async function getFundingList(params: {
   const suffix = query.toString();
   const result = await requestFundingJson<FundingListApiResponse>(`/api/fundings${suffix ? `?${suffix}` : ''}`, {
     auth: params.mine,
+    skipAuth: !params.mine,
   });
   const data = Array.isArray(result.data) ? result.data : result.content ?? [];
   return {

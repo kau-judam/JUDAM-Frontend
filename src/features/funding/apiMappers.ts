@@ -238,13 +238,17 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     tasteProfile: sameProject && detail.tasteProfile
       ? {
           sweetness: normalizeTasteValue(detail.tasteProfile.sweetness),
-          aroma: existing.tasteProfile?.aroma ?? normalizeTasteValue(detail.tasteProfile.alcoholIntensity),
+          aroma: existing.tasteProfile?.aroma ?? normalizeTasteValue(detail.tasteProfile.finish ?? detail.tasteProfile.aftertaste ?? detail.tasteProfile.aromaIntensity ?? detail.tasteProfile.alcoholIntensity),
           acidity: normalizeTasteValue(detail.tasteProfile.acidity),
           body: normalizeTasteValue(detail.tasteProfile.body),
           carbonation: normalizeTasteValue(detail.tasteProfile.carbonation),
         }
       : existing.tasteProfile,
-    tags: sameProject && detail.tasteProfile?.flavorNotes?.length ? detail.tasteProfile.flavorNotes : existing.tags,
+    tags: sameProject && detail.tasteProfile?.flavorNotes?.length
+      ? detail.tasteProfile.flavorNotes
+      : sameProject && detail.tasteProfile?.flavor?.length
+        ? detail.tasteProfile.flavor
+        : existing.tags,
     introduction: sameProject ? detail.plan?.introduction || existing.introduction : existing.introduction,
     story: sameProject ? detail.plan?.introduction || existing.story : existing.story,
     videoUrl: sameProject ? detail.plan?.videoUrl || existing.videoUrl : existing.videoUrl,

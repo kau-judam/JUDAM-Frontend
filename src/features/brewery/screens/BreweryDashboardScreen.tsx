@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -43,6 +43,8 @@ import {
   isSupportableFundingStatus,
   type ProjectStatus,
 } from '@/constants/data';
+import { getFundingApiErrorMessage, getFundingList } from '@/features/funding/api';
+import { mergeFundingListItem } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { initialNotifications, type AppNotification } from '@/features/notifications/data';
 
@@ -89,7 +91,8 @@ const statusOptions: ProjectStatus[] = [
 export default function BreweryDashboardScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { projects, updateProjectStatus } = useFunding();
+  const { projects, mergeProjects, updateProjectStatus } = useFunding();
+  const projectsRef = useRef(projects);
   const [fundingFilter, setFundingFilter] = useState<"active" | "completed">("active");
   const [fundingPage, setFundingPage] = useState(0);
   const [selectedProject, setSelectedProject] = useState<any>(null);
@@ -104,16 +107,10 @@ export default function BreweryDashboardScreen() {
     병입: { content: "", images: [], isCompleted: false },
   });
 
+  const currentUserId = user?.id;
+  const currentUserType = user?.type;
   const ownProjects = projects.filter((project) => isFundingProjectOwnedByBrewery(user, project));
-  const fallbackProjects = ownProjects.length > 0 ? ownProjects : projects.filter((project) => project.brewery === "술샘양조장");
-  const completedShowcaseProject = projects.find(
-    (project) =>
-      isCompletedFundingStatus(project.status) &&
-      !fallbackProjects.some((fallbackProject) => fallbackProject.id === project.id),
-  );
-  const dashboardProjects = completedShowcaseProject
-    ? [...fallbackProjects, completedShowcaseProject]
-    : fallbackProjects;
+  const dashboardProjects = ownProjects;
   const filteredFundings = fundingFilter === "active"
     ? dashboardProjects.filter((project) => isSupportableFundingStatus(project.status) || project.status === "심사 중" || project.status === "펀딩 예정")
     : dashboardProjects.filter((project) => isCompletedFundingStatus(project.status));
@@ -131,6 +128,32 @@ export default function BreweryDashboardScreen() {
     ? projects.find((project) => project.id === selectedStatusProject)
     : null;
   const currentJournalEntry = journalData[selectedJournalStage];
+
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  useEffect(() => {
+    if (!currentUserId || currentUserType !== 'brewery') return;
+
+    let mounted = true;
+
+    getFundingList({ mine: true, page: 0, size: 50 })
+      .then((response) => {
+        if (!mounted) return;
+        const nextProjects = response.data.map((item) =>
+          mergeFundingListItem(projectsRef.current.find((project) => project.id === item.fundingId), item)
+        );
+        mergeProjects(nextProjects);
+      })
+      .catch((error) => {
+        console.warn(getFundingApiErrorMessage(error, '내 프로젝트 목록을 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [currentUserId, currentUserType, mergeProjects]);
 
   useEffect(() => {
     setFundingPage(0);

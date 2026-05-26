@@ -84,6 +84,8 @@ type UploadedFileValue = string | {
 };
 type DatePickerTarget = 'startDate' | 'expectedDeliveryDate';
 type TempSaveMode = 'saved' | 'existing' | 'exitExisting';
+type PreviewBudgetPlan = NonNullable<FundingDraftPreviewResponse['plan']>['budgetPlan'];
+type PreviewSchedulePlan = NonNullable<FundingDraftPreviewResponse['plan']>['schedulePlan'];
 
 interface IngredientRow {
   id: number;
@@ -296,12 +298,14 @@ function parseScheduleItems(value: string) {
   });
 }
 
-function formatBudgetPlanForDraft(items?: { category: string; amount: number }[]) {
+function formatBudgetPlanForDraft(items?: PreviewBudgetPlan) {
+  if (typeof items === 'string') return items;
   if (!items?.length) return '';
   return items.map((item) => `- ${item.category}: ${item.amount}만원`).join('\n');
 }
 
-function formatSchedulePlanForDraft(items?: { step: string; description: string; date: string }[]) {
+function formatSchedulePlanForDraft(items?: PreviewSchedulePlan) {
+  if (typeof items === 'string') return items;
   if (!items?.length) return '';
   return items.map((item) => `- ${item.date}: ${item.description}`).join('\n');
 }
@@ -429,7 +433,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       email: breweryInfo.taxEmail || breweryInfo.contactEmail || user?.email || '',
     },
     trustInfo: {
-      projectPolicy: [notices.refundPolicy, notices.exchangePolicy, notices.adultVerificationNotice].filter(Boolean).join('\n\n') || DEFAULT_PROJECT_POLICY,
+      projectPolicy: plan.policy || notices.policy || notices.refundPolicy || DEFAULT_PROJECT_POLICY,
       expectedDifficulties: notices.riskNotice || DEFAULT_EXPECTED_DIFFICULTIES,
     },
     uploadedFiles: getUploadedFilesFromPreview(preview),
@@ -1033,8 +1037,9 @@ export default function BreweryProjectCreateScreen() {
       await saveFundingPlan(draftId, {
         introduction: projectPlan.introduction.trim(),
         videoUrl: projectPlan.videoUrl.trim() || undefined,
-        budgetPlan: getBudgetPlanForApi(),
-        schedulePlan: getSchedulePlanForApi(),
+        budgetPlan: projectPlan.budget.trim() || getBudgetPlanForApi(),
+        schedulePlan: projectPlan.schedule.trim() || getSchedulePlanForApi(),
+        policy: trustInfo.projectPolicy.trim() || undefined,
       });
     }
 
@@ -1046,6 +1051,7 @@ export default function BreweryProjectCreateScreen() {
 
     if (trustInfo.projectPolicy.trim() && trustInfo.expectedDifficulties.trim()) {
       await saveFundingNotices(draftId, {
+        policy: trustInfo.projectPolicy.trim(),
         refundPolicy: trustInfo.projectPolicy.trim(),
         exchangePolicy: trustInfo.projectPolicy.trim(),
         adultVerificationNotice: '본 프로젝트는 성인인증을 완료한 후원자만 참여할 수 있습니다.',
@@ -1098,11 +1104,13 @@ export default function BreweryProjectCreateScreen() {
     await saveFundingPlan(draftId, {
       introduction: projectPlan.introduction.trim(),
       videoUrl: projectPlan.videoUrl.trim() || undefined,
-      budgetPlan: getBudgetPlanForApi(),
-      schedulePlan: getSchedulePlanForApi(),
+      budgetPlan: projectPlan.budget.trim() || getBudgetPlanForApi(),
+      schedulePlan: projectPlan.schedule.trim() || getSchedulePlanForApi(),
+      policy: trustInfo.projectPolicy.trim() || undefined,
     });
     await saveFundingBreweryInfo(draftId, getBreweryInfoForApi());
     await saveFundingNotices(draftId, {
+      policy: trustInfo.projectPolicy.trim(),
       refundPolicy: trustInfo.projectPolicy.trim(),
       exchangePolicy: trustInfo.projectPolicy.trim(),
       adultVerificationNotice: '본 프로젝트는 성인인증을 완료한 후원자만 참여할 수 있습니다.',

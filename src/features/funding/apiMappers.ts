@@ -218,7 +218,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     introduction: sameProject ? detail.plan?.introduction || existing.introduction : existing.introduction,
     story: sameProject ? detail.plan?.introduction || existing.story : existing.story,
     videoUrl: sameProject ? detail.plan?.videoUrl || existing.videoUrl : existing.videoUrl,
-    projectPolicy: sameProject ? detail.notices?.refundPolicy || existing.projectPolicy : existing.projectPolicy,
+    projectPolicy: sameProject ? detail.plan?.policy || detail.notices?.policy || detail.notices?.refundPolicy || existing.projectPolicy : existing.projectPolicy,
     expectedDifficulties: sameProject ? detail.notices?.riskNotice || existing.expectedDifficulties : existing.expectedDifficulties,
     ingredients: sameProject && detail.legalInfo?.rawMaterials?.length
       ? detail.legalInfo.rawMaterials.map((item, index) => ({ id: index + 1, ingredient: item.name, origin: item.origin }))

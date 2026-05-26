@@ -148,8 +148,9 @@ export type FundingDraftPreviewResponse = {
   plan?: {
     introduction?: string;
     videoUrl?: string;
-    budgetPlan?: { category: string; amount: number }[];
-    schedulePlan?: { step: string; description: string; date: string }[];
+    budgetPlan?: { category: string; amount: number }[] | string;
+    schedulePlan?: { step: string; description: string; date: string }[] | string;
+    policy?: string;
   };
   breweryInfo?: {
     breweryName?: string;
@@ -175,6 +176,7 @@ export type FundingDraftPreviewResponse = {
     businessRegistrationFileUrl?: string;
   };
   notices?: {
+    policy?: string;
     refundPolicy?: string;
     exchangePolicy?: string;
     adultVerificationNotice?: string;
@@ -236,8 +238,9 @@ type FundingTasteProfilePayload = {
 type FundingPlanPayload = {
   introduction: string;
   videoUrl?: string;
-  budgetPlan?: { category: string; amount: number }[] | null;
-  schedulePlan?: { step: string; description: string; date: string }[] | null;
+  budgetPlan?: { category: string; amount: number }[] | string | null;
+  schedulePlan?: { step: string; description: string; date: string }[] | string | null;
+  policy?: string;
 };
 
 type FundingBreweryInfoPayload = {
@@ -259,6 +262,7 @@ type FundingBreweryInfoPayload = {
 };
 
 type FundingNoticesPayload = {
+  policy?: string;
   refundPolicy: string;
   exchangePolicy: string;
   adultVerificationNotice: string;
@@ -1068,6 +1072,25 @@ function readFundingApiStringArray(source: Record<string, unknown>, arrayKeys: s
   return singleValue ? [singleValue] : [];
 }
 
+function readFundingApiArrayOrString<T>(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = source[key];
+    if (Array.isArray(value)) return value as T[];
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return '';
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed as T[];
+      } catch {
+        return value;
+      }
+      return value;
+    }
+  }
+  return [];
+}
+
 function readFundingApiNullableString(source: Record<string, unknown>, keys: string[]) {
   const value = readFundingApiString(source, keys);
   return value || null;
@@ -1175,8 +1198,9 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
     plan: {
       introduction: readFundingApiString(plan, ['introduction']),
       videoUrl: readFundingApiString(plan, ['videoUrl', 'video_url']),
-      budgetPlan: readFundingApiArray<{ category: string; amount: number }>(plan, ['budgetPlan', 'budget_plan']),
-      schedulePlan: readFundingApiArray<{ step: string; description: string; date: string }>(plan, ['schedulePlan', 'schedule_plan']),
+      budgetPlan: readFundingApiArrayOrString<{ category: string; amount: number }>(plan, ['budgetPlan', 'budget_plan']),
+      schedulePlan: readFundingApiArrayOrString<{ step: string; description: string; date: string }>(plan, ['schedulePlan', 'schedule_plan']),
+      policy: readFundingApiString(plan, ['policy', 'projectPolicy', 'project_policy']),
     },
     breweryInfo: {
       breweryName: readFundingApiString(breweryInfo, ['breweryName', 'brewery_name']),
@@ -1202,6 +1226,7 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       businessRegistrationFileUrl: readFundingApiString(breweryInfo, ['businessRegistrationFileUrl', 'business_registration_file_url', 'businessLicenseUrl', 'business_license_url']),
     },
     notices: {
+      policy: readFundingApiString(notices, ['policy', 'projectPolicy', 'project_policy']),
       refundPolicy: readFundingApiString(notices, ['refundPolicy', 'refund_policy']),
       exchangePolicy: readFundingApiString(notices, ['exchangePolicy', 'exchange_policy']),
       adultVerificationNotice: readFundingApiString(notices, ['adultVerificationNotice', 'adult_verification_notice']),

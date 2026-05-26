@@ -645,6 +645,12 @@ export type FundingListItem = {
   recipeTitle?: string;
   thumbnailUrl: string | null;
   breweryName: string;
+  isMine?: boolean;
+  is_mine?: boolean;
+  breweryUserId?: number | string;
+  brewery_user_id?: number | string;
+  ownerUserId?: number | string;
+  owner_user_id?: number | string;
   currentAmount: number;
   targetAmount: number;
   achievementRate: number;
@@ -684,6 +690,12 @@ export type FundingDetailResponse = {
   imageUrls?: string[];
   allImageUrls?: string[];
   breweryName: string;
+  isMine?: boolean;
+  is_mine?: boolean;
+  breweryUserId?: number | string;
+  brewery_user_id?: number | string;
+  ownerUserId?: number | string;
+  owner_user_id?: number | string;
   status: FundingListStatus | string;
   currentAmount: number;
   targetAmount: number;
@@ -2295,16 +2307,20 @@ export async function completeFundingPayment(orderId: number) {
 export async function getFundingList(params: {
   status?: FundingListStatus;
   sort?: FundingListSort;
+  mine?: boolean;
   page?: number;
   size?: number;
 } = {}) {
   const query = new URLSearchParams();
   if (params.status) query.set('status', params.status);
   if (params.sort) query.set('sort', params.sort);
+  if (params.mine) query.set('mine', 'true');
   query.set('page', String(params.page ?? 0));
   query.set('size', String(params.size ?? 10));
   const suffix = query.toString();
-  const result = await requestFundingJson<FundingListApiResponse>(`/api/fundings${suffix ? `?${suffix}` : ''}`);
+  const result = await requestFundingJson<FundingListApiResponse>(`/api/fundings${suffix ? `?${suffix}` : ''}`, {
+    auth: params.mine,
+  });
   const data = Array.isArray(result.data) ? result.data : result.content ?? [];
   return {
     ...result,

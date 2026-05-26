@@ -85,6 +85,30 @@ function normalizeText(value?: string) {
   return (value || '').replace(/\s/g, '').toLowerCase();
 }
 
+function normalizeOwnerId(value?: number | string | null) {
+  if (value === null || value === undefined) return undefined;
+  const normalized = String(value).trim();
+  return normalized || undefined;
+}
+
+function getFundingIsMine(item: { isMine?: boolean; is_mine?: boolean }) {
+  return item.isMine ?? item.is_mine;
+}
+
+function getFundingBreweryUserId(item: {
+  breweryUserId?: number | string;
+  brewery_user_id?: number | string;
+}) {
+  return normalizeOwnerId(item.breweryUserId ?? item.brewery_user_id);
+}
+
+function getFundingOwnerUserId(item: {
+  ownerUserId?: number | string;
+  owner_user_id?: number | string;
+}) {
+  return normalizeOwnerId(item.ownerUserId ?? item.owner_user_id);
+}
+
 export function normalizeSupportOptionId(value: FundingSupportOption['optionId'] | null | undefined) {
   const optionId = Number(value);
   return Number.isFinite(optionId) ? optionId : null;
@@ -114,6 +138,9 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     images: existing?.images,
     localImage: existing?.localImage,
     popularRank: existing?.popularRank,
+    isMine: getFundingIsMine(item) ?? existing?.isMine,
+    breweryUserId: getFundingBreweryUserId(item) ?? existing?.breweryUserId,
+    ownerUserId: getFundingOwnerUserId(item) ?? existing?.ownerUserId,
     creatorId: existing?.creatorId,
     breweryId: existing?.breweryId,
     liked: item.liked ?? existing?.liked,
@@ -199,6 +226,9 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     bottleSize: sameProject ? bottleSize || existing.bottleSize : existing.bottleSize,
     volume: sameProject ? bottleSize || existing.volume : existing.volume,
     alcoholContent: sameProject ? alcoholContent || existing.alcoholContent : existing.alcoholContent,
+    isMine: sameProject ? getFundingIsMine(detail) ?? existing.isMine : existing.isMine,
+    breweryUserId: sameProject ? getFundingBreweryUserId(detail) ?? existing.breweryUserId : existing.breweryUserId,
+    ownerUserId: sameProject ? getFundingOwnerUserId(detail) ?? existing.ownerUserId : existing.ownerUserId,
     liked: sameProject ? detail.liked ?? existing.liked : existing.liked,
     favoriteCount: sameProject ? detail.likeCount ?? existing.favoriteCount : existing.favoriteCount,
     sulbtiMatchScore: sameProject ? matchScore ?? existing.sulbtiMatchScore : existing.sulbtiMatchScore,

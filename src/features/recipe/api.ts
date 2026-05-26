@@ -9,28 +9,46 @@ export type RecipeSort = 'newest' | 'popular';
 
 type ApiErrorBody = {
   status?: number;
-  message?: string;
+  message?: unknown;
+  error?: unknown;
+  errors?: unknown;
+  data?: unknown;
 };
 
 export type RecipeListItemDto = {
   recipe_id: number;
+  recipeId?: number;
   user_id?: number | string;
+  userId?: number | string;
   title: string;
   summary: string;
   main_ingredient: string;
+  mainIngredient?: string;
   author_type: 'USER' | 'BREWERY' | 'CONSUMER' | string;
+  authorType?: 'USER' | 'BREWERY' | 'CONSUMER' | string;
   status: string;
   is_fundable: boolean;
+  isFundable?: boolean;
   interest_count: number;
+  interestCount?: number;
   image_url: string | null;
+  imageUrl?: string | null;
   created_at: string;
+  createdAt?: string;
   comment_count?: number;
+  commentCount?: number;
   is_interested?: boolean;
+  isInterested?: boolean;
   is_liked?: boolean;
+  isLiked?: boolean;
   author_nickname?: string;
+  authorNickname?: string;
   author_name?: string;
+  authorName?: string;
   author_profile_image?: string | null;
+  authorProfileImage?: string | null;
   author_profile_image_url?: string | null;
+  authorProfileImageUrl?: string | null;
 };
 
 export type RecipeDetailDto = RecipeListItemDto & {
@@ -85,8 +103,11 @@ export type CreateRecipeFundingPayload = {
 };
 
 export type SuggestSubIngredientsPayload = {
-  main_ingredient: string;
-  region: string;
+  main_ingredient?: string;
+  mainIngredient?: string;
+  region?: string;
+  location?: string;
+  area?: string;
 };
 
 export type SuggestFlavorTagsPayload = {
@@ -107,6 +128,15 @@ type RecipeListResponse = {
   totalPages: number;
   currentPage: number;
 };
+
+type PopularRecipeListResponse =
+  | RecipeListItemDto[]
+  | RecipeListResponse
+  | {
+      status?: number;
+      message?: string;
+      data?: RecipeListItemDto[] | RecipeListResponse;
+    };
 
 type RecipeDetailResponse = {
   recipe: RecipeDetailDto;
@@ -296,6 +326,38 @@ function parseRecipeResponseBody(path: string, response: Response, text: string)
   }
 }
 
+function stringifyRecipeApiError(value: unknown): string | null {
+  if (typeof value === 'string') return value === '[object Object]' ? null : value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    const messages = value
+      .map((item) => stringifyRecipeApiError(item))
+      .filter((item): item is string => Boolean(item));
+    return messages.length > 0 ? messages.join('\n') : null;
+  }
+  if (value && typeof value === 'object') {
+    const messages = Object.entries(value)
+      .map(([key, item]) => {
+        const message = stringifyRecipeApiError(item);
+        return message ? `${key}: ${message}` : null;
+      })
+      .filter((item): item is string => Boolean(item));
+    return messages.length > 0 ? messages.join('\n') : JSON.stringify(value);
+  }
+  return null;
+}
+
+function getRecipeApiErrorMessage(data: unknown, fallback: string) {
+  if (!data || typeof data !== 'object') return fallback;
+  const body = data as ApiErrorBody;
+  const message =
+    stringifyRecipeApiError(body.message) ||
+    stringifyRecipeApiError(body.error) ||
+    stringifyRecipeApiError(body.errors) ||
+    stringifyRecipeApiError(body.data);
+  if (message && message !== '[object Object]') return message;
+  return stringifyRecipeApiError(data) || fallback;
+}
 async function requestJson<T>(path: string, options: RequestInit & { auth?: boolean } = {}) {
   const { auth, headers, ...requestOptions } = options;
   const nextHeaders: Record<string, string> = {
@@ -323,8 +385,7 @@ async function requestJson<T>(path: string, options: RequestInit & { auth?: bool
   const data = parseRecipeResponseBody(path, response, text);
 
   if (!response.ok) {
-    const message = (data as ApiErrorBody | null)?.message || `HTTP ${response.status}`;
-    throw new Error(message);
+    throw new Error(getRecipeApiErrorMessage(data, `HTTP ${response.status}`));
   }
 
   return data as T;
@@ -358,8 +419,13 @@ async function requestFormJson<T>(path: string, formData: FormData, options: Req
   const data = parseRecipeResponseBody(path, response, text);
 
   if (!response.ok) {
-    const message = (data as ApiErrorBody | null)?.message || `HTTP ${response.status}`;
-    throw new Error(message);
+    console.warn('Recipe API error response', {
+      path,
+      status: response.status,
+      data,
+      raw: text,
+    });
+    throw new Error(getRecipeApiErrorMessage(data, `HTTP ${response.status}`));
   }
 
   return data as T;
@@ -396,22 +462,27 @@ export function getRecipeAuthorLabel(item: { author_nickname?: string; author_na
 }
 
 export function mapRecipeListItem(item: RecipeListItemDto): Recipe {
+  const recipeId = item.recipe_id ?? item.recipeId ?? 0;
+  const mainIngredient = item.main_ingredient ?? item.mainIngredient ?? '';
+  const authorType = item.author_type ?? item.authorType ?? '';
+  const imageUrl = item.image_url ?? item.imageUrl ?? null;
+  const createdAt = item.created_at ?? item.createdAt ?? '';
   return {
-    id: item.recipe_id,
+    id: recipeId,
     title: item.title,
     author: getRecipeAuthorLabel(item),
     description: item.summary,
-    ingredients: splitRecipeField(item.main_ingredient),
-    likes: item.interest_count,
-    comments: item.comment_count ?? 0,
-    timestamp: formatRecipeTimestamp(item.created_at),
-    liked: Boolean(item.is_interested ?? item.is_liked),
-    image: item.image_url || undefined,
+    ingredients: splitRecipeField(mainIngredient),
+    likes: item.interest_count ?? item.interestCount ?? 0,
+    comments: item.comment_count ?? item.commentCount ?? 0,
+    timestamp: formatRecipeTimestamp(createdAt),
+    liked: Boolean(item.is_interested ?? item.isInterested ?? item.is_liked ?? item.isLiked),
+    image: imageUrl || undefined,
     status: item.status,
-    isFundable: item.is_fundable,
-    authorType: item.author_type,
-    authorId: item.user_id ? String(item.user_id) : undefined,
-    createdAt: item.created_at,
+    isFundable: item.is_fundable ?? item.isFundable,
+    authorType,
+    authorId: item.user_id || item.userId ? String(item.user_id ?? item.userId) : undefined,
+    createdAt,
   };
 }
 
@@ -458,6 +529,20 @@ export async function fetchRecipes({ sort, page = 0, size = 20 }: { sort: Recipe
     ...data,
     recipes: data.recipes.map(mapRecipeListItem),
   };
+}
+
+function getPopularRecipeItems(data: PopularRecipeListResponse) {
+  if (Array.isArray(data)) return data;
+  const nestedData = 'data' in data ? data.data : undefined;
+  if (Array.isArray(nestedData)) return nestedData;
+  if (nestedData && 'recipes' in nestedData) return nestedData.recipes;
+  if ('recipes' in data) return data.recipes;
+  return [];
+}
+
+export async function fetchPopularRecipes(limit = 3) {
+  const data = await requestJson<PopularRecipeListResponse>('/api/recipes/popular');
+  return getPopularRecipeItems(data).map(mapRecipeListItem).slice(0, limit);
 }
 
 export async function fetchBreweryConsumerRecipes({

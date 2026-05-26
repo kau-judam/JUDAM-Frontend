@@ -16,7 +16,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { AlertCircle, BookOpen, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Star, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFundingProjectImageSource, type FundingProject } from '@/constants/data';
+import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
@@ -67,25 +67,6 @@ const ARCHIVE_TAG_ID_BY_NAME: Record<string, number> = {
   '들뜬': 43,
   '차분한': 44,
 };
-const ARCHIVE_DUMMY_FUNDING_PROJECT: FundingProject = {
-  id: -1001,
-  title: '아카이브 테스트 펀딩 전통주',
-  brewery: '주담 테스트 양조장',
-  location: '서울',
-  category: '막걸리',
-  image: '',
-  localImage: require('../../../../newpicutre/funding3.jpg'),
-  goalAmount: 3000000,
-  currentAmount: 3000000,
-  backers: 128,
-  daysLeft: 0,
-  status: '완료' as FundingProject['status'],
-  bottleSize: '375ml',
-  alcoholContent: '6%',
-  rewardItems: ['테스트 리워드 1병'],
-  mainIngredients: '쌀',
-};
-
 function getTodayArchiveDate() {
   const today = new Date();
   return `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, '0')}. ${String(today.getDate()).padStart(2, '0')}`;
@@ -153,7 +134,7 @@ export default function ArchiveWriteScreen() {
   const project = useMemo(
     () =>
       archiveKind === 'funding'
-        ? projects.find((item) => item.id === projectId) || (projectId === ARCHIVE_DUMMY_FUNDING_PROJECT.id ? ARCHIVE_DUMMY_FUNDING_PROJECT : null)
+        ? projects.find((item) => item.id === projectId)
         : null,
     [archiveKind, projectId, projects]
   );

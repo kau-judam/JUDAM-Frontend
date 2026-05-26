@@ -44,6 +44,11 @@ export interface User {
   breweryName?: string;
   breweryLocation?: string;
   breweryLocationDetail?: string;
+  breweryBrandStory?: string;
+  breweryDescription?: string;
+  breweryBrandStoryLong?: string;
+  breweryHistory?: string;
+  breweryEstablished?: string;
   businessNumber?: string;
   sulbti?: string;
   sulbtiProfile?: BtiTasteAxisValues;

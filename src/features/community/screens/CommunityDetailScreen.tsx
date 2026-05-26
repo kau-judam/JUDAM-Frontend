@@ -43,6 +43,7 @@ const person5 = require('../../../../newpicutre/person5.png');
 const person6 = require('../../../../newpicutre/person6.png');
 const getAvatarSource = (avatar: ImageSourcePropType | string) =>
   typeof avatar === 'string' ? { uri: avatar } : avatar;
+const getCurrentUserAvatar = (profileImage?: string | null) => profileImage || person3;
 
 interface CommunityPostDetail {
   id: number;
@@ -402,7 +403,7 @@ export default function CommunityDetailScreen() {
       id: comments.length + 1,
       author: user.name,
       authorType: 'user',
-      avatar: person3,
+      avatar: getCurrentUserAvatar(user.profileImage),
       content: commentInput.trim(),
       timestamp: '방금 전',
       likes: 0,
@@ -502,7 +503,7 @@ export default function CommunityDetailScreen() {
       id: Date.now(),
       author: user.name,
       authorType: user.type || 'user',
-      avatar: person3,
+      avatar: getCurrentUserAvatar(user.profileImage),
       content: replyInput.trim(),
       timestamp: '방금',
       likes: 0,

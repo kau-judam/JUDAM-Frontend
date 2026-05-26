@@ -12,19 +12,7 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import {
-  ArrowLeft,
-  Camera,
-  CheckCircle2,
-  ChevronRight,
-  Hash,
-  Lock,
-  Mail,
-  Phone,
-  ShieldCheck,
-  UserRound,
-  X,
-} from 'lucide-react-native';
+import { ArrowLeft, Camera, CheckCircle2, ChevronRight, Hash, Lock, Mail, Phone, UserRound, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -32,14 +20,13 @@ import {
   checkMyPageNickname,
   getMyPageApiErrorMessage,
   getMyPageProfile,
-  updateMyPageProfileImage,
   updateMyPageNickname,
-  updateMyPagePhone,
+  updateMyPageProfileImage,
 } from '@/features/mypage/api';
 import { showLoginRequired } from '@/utils/authPrompt';
-import { formatPhoneNumber, isValidEmail, isValidPhone } from '@/utils/validation';
+import { formatPhoneNumber, isValidEmail } from '@/utils/validation';
 
-type EditableField = 'nickname' | 'phone' | 'email';
+type EditableField = 'nickname' | 'email';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -49,12 +36,10 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [isNicknameChecked, setIsNicknameChecked] = useState(false);
   const [isNicknameAvailable, setIsNicknameAvailable] = useState(false);
-  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
 
   useEffect(() => {
     if (!user) {
-      showLoginRequired('?꾨줈?꾩? 濡쒓렇?????댁슜?????덉뼱??');
+      showLoginRequired('프로필은 로그인 후 이용할 수 있어요.');
       router.replace('/login' as any);
       return;
     }
@@ -75,7 +60,7 @@ export default function ProfileScreen() {
         if (changed) updateUser(nextUser);
       })
       .catch((error) => {
-        console.warn(getMyPageApiErrorMessage(error, '?꾨줈???뺣낫瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??'));
+        console.warn(getMyPageApiErrorMessage(error, '프로필 정보를 불러오지 못했습니다.'));
       });
 
     return () => {
@@ -93,11 +78,7 @@ export default function ProfileScreen() {
     setEditingField(field);
     setIsNicknameChecked(false);
     setIsNicknameAvailable(false);
-    setIsPhoneVerified(false);
-    setIsEmailVerified(false);
-    if (field === 'nickname') setDraftValue(displayName);
-    if (field === 'phone') setDraftValue(formattedPhone);
-    if (field === 'email') setDraftValue(user.email || '');
+    setDraftValue(field === 'nickname' ? displayName : user.email || '');
   };
 
   const closeEdit = () => {
@@ -107,30 +88,27 @@ export default function ProfileScreen() {
   };
 
   const handleDraftChange = (value: string) => {
-    const nextValue = editingField === 'phone' ? formatPhoneNumber(value) : value;
-    setDraftValue(nextValue);
+    setDraftValue(value);
     if (editingField === 'nickname') {
       setIsNicknameChecked(false);
       setIsNicknameAvailable(false);
     }
-    if (editingField === 'phone') setIsPhoneVerified(false);
-    if (editingField === 'email') setIsEmailVerified(false);
   };
 
   const handleCheckNickname = async () => {
     const nickname = draftValue.trim();
     if (nickname.length < 2 || nickname.length > 12) {
-      Alert.alert('?됰꽕???뺤씤', '?됰꽕?꾩? 2???댁긽 12???댄븯濡??낅젰?댁＜?몄슂.');
+      Alert.alert('닉네임 확인', '닉네임은 2자 이상 12자 이하로 입력해주세요.');
       return;
     }
     if (!/^[가-힣a-zA-Z0-9]+$/.test(nickname)) {
-      Alert.alert('?됰꽕???뺤씤', '?됰꽕?꾩뿉???뱀닔臾몄옄瑜??ъ슜?????놁뒿?덈떎.');
+      Alert.alert('닉네임 확인', '닉네임은 한글, 영문, 숫자만 사용할 수 있어요.');
       return;
     }
     if (nickname === displayName) {
       setIsNicknameChecked(true);
       setIsNicknameAvailable(true);
-      Alert.alert('?됰꽕???뺤씤', '?꾩옱 ?ъ슜 以묒씤 ?됰꽕?꾩엯?덈떎.');
+      Alert.alert('닉네임 확인', '현재 사용 중인 닉네임입니다.');
       return;
     }
 
@@ -139,39 +117,19 @@ export default function ProfileScreen() {
       const result = await checkMyPageNickname(nickname);
       setIsNicknameChecked(true);
       setIsNicknameAvailable(result.isAvailable);
-      Alert.alert('?됰꽕???뺤씤', result.isAvailable ? '?ъ슜 媛?ν븳 ?됰꽕?꾩엯?덈떎.' : '?대? ?ъ슜 以묒씤 ?됰꽕?꾩엯?덈떎.');
+      Alert.alert('닉네임 확인', result.isAvailable ? '사용 가능한 닉네임입니다.' : '이미 사용 중인 닉네임입니다.');
     } catch (error) {
-      Alert.alert('?뺤씤 ?ㅽ뙣', getMyPageApiErrorMessage(error, '?됰꽕??以묐났 ?뺤씤???ㅽ뙣?덉뒿?덈떎.'));
+      Alert.alert('확인 실패', getMyPageApiErrorMessage(error, '닉네임 중복 확인에 실패했습니다.'));
     } finally {
       setSaving(false);
     }
-  };
-
-  const handlePhoneVerification = () => {
-    if (!isValidPhone(draftValue)) {
-      Alert.alert('?꾪솕踰덊샇 ?뺤씤', '?꾪솕踰덊샇瑜??뺥솗???낅젰?댁＜?몄슂.');
-      return;
-    }
-    setIsPhoneVerified(true);
-    Alert.alert('?몄쬆 ?꾨즺', '?꾪솕踰덊샇 ?몄쬆???꾨즺?섏뿀?듬땲??');
-  };
-
-  const handleEmailVerification = () => {
-    const email = draftValue.trim().toLowerCase();
-    if (!isValidEmail(email)) {
-      Alert.alert('?대찓???뺤씤', '?щ컮瑜??대찓???뺤떇???꾨떃?덈떎.');
-      return;
-    }
-    setDraftValue(email);
-    setIsEmailVerified(true);
-    Alert.alert('?몄쬆 ?꾨즺', '?대찓???몄쬆 UI媛 ?꾨즺 ?곹깭濡??쒖떆?⑸땲??');
   };
 
   const saveEdit = async () => {
     if (!editingField || saving) return;
     const value = draftValue.trim();
     if (!value) {
-      Alert.alert('?낅젰 ?뺤씤', '蹂寃쏀븷 媛믪쓣 ?낅젰?댁＜?몄슂.');
+      Alert.alert('입력 확인', '변경할 값을 입력해주세요.');
       return;
     }
 
@@ -179,7 +137,7 @@ export default function ProfileScreen() {
       setSaving(true);
       if (editingField === 'nickname') {
         if (!isNicknameChecked || !isNicknameAvailable) {
-          Alert.alert('?됰꽕???뺤씤', '?됰꽕??以묐났 ?뺤씤???꾨즺?댁＜?몄슂.');
+          Alert.alert('닉네임 확인', '닉네임 중복 확인을 완료해주세요.');
           return;
         }
         const result = await updateMyPageNickname(value);
@@ -189,31 +147,26 @@ export default function ProfileScreen() {
         });
       }
 
-      if (editingField === 'phone') {
-        if (!isPhoneVerified) {
-          Alert.alert('?꾪솕踰덊샇 ?몄쬆', '?꾪솕踰덊샇 ?몄쬆???꾨즺?댁＜?몄슂.');
+      if (editingField === 'email') {
+        const email = value.toLowerCase();
+        if (!isValidEmail(email)) {
+          Alert.alert('이메일 확인', '올바른 이메일 주소를 입력해주세요.');
           return;
         }
-        const phoneNumber = value.replace(/\D/g, '');
-        const result = await updateMyPagePhone(phoneNumber);
-        await updateUser({ phone: result.phoneNumber });
+        await updateUser({ email });
       }
 
-      if (editingField === 'email') {
-        Alert.alert('???遺덇?', '?대찓???섏젙 API媛 ?꾩쭅 ?쒓났?섏? ?딆븯?듬땲?? ?꾩옱???몄쬆 UI留??뺤씤?????덉뼱??');
-        return;
-      }
-
-      Alert.alert('????꾨즺', '?꾨줈???뺣낫媛 蹂寃쎈릺?덉뒿?덈떎.');
+      Alert.alert('저장 완료', '프로필 정보가 변경되었습니다.');
       closeEdit();
     } catch (error) {
-      Alert.alert('????ㅽ뙣', getMyPageApiErrorMessage(error, '?꾨줈???뺣낫瑜???ν븯吏 紐삵뻽?듬땲??'));
+      Alert.alert('저장 실패', getMyPageApiErrorMessage(error, '프로필 정보를 저장하지 못했습니다.'));
     } finally {
       setSaving(false);
     }
   };
 
   const pickProfileImage = async () => {
+    if (saving) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('권한 필요', '프로필 사진을 변경하려면 갤러리 접근 권한이 필요합니다.');
@@ -221,8 +174,7 @@ export default function ProfileScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
+      allowsEditing: false,
       quality: 0.85,
     });
     if (result.canceled) return;
@@ -244,6 +196,7 @@ export default function ProfileScreen() {
       setSaving(false);
     }
   };
+
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
@@ -260,7 +213,12 @@ export default function ProfileScreen() {
             <View style={styles.largeAvatar}>
               {profileImage ? <Image source={{ uri: profileImage }} style={styles.avatarImage} /> : <UserRound size={42} color="#9CA3AF" />}
             </View>
-            <TouchableOpacity style={styles.cameraButton} onPress={pickProfileImage} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={[styles.cameraButton, saving && styles.cameraButtonDisabled]}
+              onPress={pickProfileImage}
+              activeOpacity={0.85}
+              disabled={saving}
+            >
               <Camera size={15} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
@@ -269,7 +227,7 @@ export default function ProfileScreen() {
         <Text style={styles.sectionTitle}>계정 정보</Text>
         <View style={styles.card}>
           <InfoRow icon={<UserRound size={18} color="#4B5563" />} label="닉네임" value={displayName} onPress={() => openEdit('nickname')} />
-          <InfoRow icon={<Phone size={18} color="#4B5563" />} label="전화번호" value={formattedPhone || '전화번호 없음'} onPress={() => openEdit('phone')} />
+          <InfoRow icon={<Phone size={18} color="#4B5563" />} label="전화번호" value={formattedPhone || '전화번호 없음'} />
           <InfoRow icon={<Mail size={18} color="#4B5563" />} label="이메일" value={user.email || '이메일 없음'} onPress={() => openEdit('email')} last />
         </View>
 
@@ -294,13 +252,10 @@ export default function ProfileScreen() {
               <View style={styles.labelRow}>
                 <Text style={styles.label}>{getInputLabel(editingField)}</Text>
                 {editingField === 'nickname' && isNicknameChecked && isNicknameAvailable ? <VerifiedLabel text="사용 가능" /> : null}
-                {editingField === 'phone' && isPhoneVerified ? <VerifiedLabel text="인증 완료" /> : null}
-                {editingField === 'email' && isEmailVerified ? <VerifiedLabel text="인증 완료" /> : null}
               </View>
               <View style={styles.row}>
                 <View style={[styles.inputBox, { flex: 1 }]}>
                   {editingField === 'nickname' ? <UserRound size={18} color="#9CA3AF" style={styles.inputIcon} /> : null}
-                  {editingField === 'phone' ? <Phone size={18} color="#9CA3AF" style={styles.inputIcon} /> : null}
                   {editingField === 'email' ? <Mail size={18} color="#9CA3AF" style={styles.inputIcon} /> : null}
                   <TextInput
                     style={styles.input}
@@ -308,7 +263,7 @@ export default function ProfileScreen() {
                     onChangeText={handleDraftChange}
                     placeholder={getPlaceholder(editingField)}
                     placeholderTextColor="#9CA3AF"
-                    keyboardType={editingField === 'phone' ? 'phone-pad' : editingField === 'email' ? 'email-address' : 'default'}
+                    keyboardType={editingField === 'email' ? 'email-address' : 'default'}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
@@ -322,37 +277,12 @@ export default function ProfileScreen() {
                     <Text style={styles.smallButtonText}>{isNicknameChecked && isNicknameAvailable ? '확인완료' : '중복확인'}</Text>
                   </TouchableOpacity>
                 ) : null}
-                {editingField === 'phone' ? (
-                  <TouchableOpacity
-                    style={[styles.verifyButton, isPhoneVerified ? styles.smallButtonDone : null]}
-                    onPress={handlePhoneVerification}
-                    disabled={isPhoneVerified}
-                  >
-                    <ShieldCheck size={15} color="#FFFFFF" />
-                    <Text style={styles.smallButtonText}>{isPhoneVerified ? '완료' : '인증'}</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {editingField === 'email' ? (
-                  <TouchableOpacity
-                    style={[styles.verifyButton, isEmailVerified ? styles.smallButtonDone : null]}
-                    onPress={handleEmailVerification}
-                    disabled={isEmailVerified}
-                  >
-                    <Mail size={15} color="#FFFFFF" />
-                    <Text style={styles.smallButtonText}>{isEmailVerified ? '완료' : '인증'}</Text>
-                  </TouchableOpacity>
-                ) : null}
               </View>
-              <Text style={styles.helperText}>{getHelperText(editingField)}</Text>
+              {getHelperText(editingField) ? <Text style={styles.helperText}>{getHelperText(editingField)}</Text> : null}
             </View>
 
-            <TouchableOpacity
-              style={[styles.saveButton, saving && styles.disabledButton]}
-              onPress={saveEdit}
-              activeOpacity={0.85}
-              disabled={saving}
-            >
-              <Text style={styles.saveButtonText}>{saving ? '저장 중...' : editingField === 'email' ? '저장 API 대기 중' : '저장'}</Text>
+            <TouchableOpacity style={[styles.saveButton, saving && styles.disabledButton]} onPress={saveEdit} activeOpacity={0.85} disabled={saving}>
+              <Text style={styles.saveButtonText}>{saving ? '저장 중...' : '저장'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -401,29 +331,24 @@ function VerifiedLabel({ text }: { text: string }) {
 
 function getSheetTitle(field: EditableField | null) {
   if (field === 'nickname') return '닉네임 변경';
-  if (field === 'phone') return '전화번호 인증';
-  if (field === 'email') return '이메일 인증';
+  if (field === 'email') return '이메일 변경';
   return '';
 }
 
 function getInputLabel(field: EditableField | null) {
   if (field === 'nickname') return '닉네임';
-  if (field === 'phone') return '전화번호';
   if (field === 'email') return '이메일';
   return '';
 }
 
 function getPlaceholder(field: EditableField | null) {
   if (field === 'nickname') return '새 닉네임을 입력하세요';
-  if (field === 'phone') return '010-0000-0000';
   if (field === 'email') return 'example@email.com';
   return '';
 }
 
 function getHelperText(field: EditableField | null) {
   if (field === 'nickname') return '2~12자, 한글/영문/숫자만 사용할 수 있어요.';
-  if (field === 'phone') return '인증 후 저장할 수 있어요.';
-  if (field === 'email') return '';
   return '';
 }
 
@@ -479,6 +404,7 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 5,
   },
+  cameraButtonDisabled: { opacity: 0.55 },
   sectionTitle: { fontSize: 12, fontWeight: '800', color: '#9CA3AF', marginLeft: 4, marginBottom: 12 },
   card: {
     backgroundColor: '#FFFFFF',
@@ -532,17 +458,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#111827',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  verifyButton: {
-    height: 52,
-    minWidth: 82,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 5,
   },
   smallButtonDone: { backgroundColor: '#059669' },
   smallButtonText: { color: '#FFFFFF', fontSize: 12.5, fontWeight: '800' },

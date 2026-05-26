@@ -14,10 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { ArrowLeft, ChevronRight, Droplet, Plus, Search, Star, Wine, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
-import { useFunding } from '@/contexts/FundingContext';
-import { isFundingReviewOwnedByUser } from '@/features/funding/reviews';
 import { getMyPageApiErrorMessage, getMyPageArchives, type MyPageArchive } from '@/features/mypage/api';
 
 type ArchiveTab = 'all' | 'funded' | 'general';
@@ -38,21 +35,6 @@ type ArchiveDrink = {
   isServer?: boolean;
 };
 
-const SAMPLE_FUNDING_DRINKS: ArchiveDrink[] = [
-  {
-    id: 201,
-    name: '달빛 담은 배 막걸리',
-    brewery: '주담 테스트 양조장',
-    category: '막걸리',
-    image: require('../../../../newpicutre/funding3.jpg'),
-    rating: 4.5,
-    date: '2026.05.21',
-    tags: ['부드러움', '은은한단맛'],
-    isFunding: true,
-    alcohol: 6,
-  },
-];
-
 const TAB_LABELS: Record<ArchiveTab, string> = {
   all: '전체',
   funded: '펀딩 술',
@@ -62,7 +44,6 @@ const TAB_LABELS: Record<ArchiveTab, string> = {
 export default function MyArchiveScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { projects, participatedFundings, fundingReviews } = useFunding();
   const [activeTab, setActiveTab] = useState<ArchiveTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [serverArchives, setServerArchives] = useState<MyPageArchive[]>([]);
@@ -96,78 +77,25 @@ export default function MyArchiveScreen() {
 
   useFocusEffect(loadServerArchives);
 
-  const fundedDrinks = useMemo<ArchiveDrink[]>(() => {
-    const nextDrinks: ArchiveDrink[] = [];
-    participatedFundings.forEach((participation, index) => {
-      const project = projects.find((item) => item.id === participation.fundingId);
-      if (!project) return;
-      nextDrinks.push({
-          id: project.id,
-          name: project.shortTitle || project.title.replace(/\s*프로젝트$/, ''),
-          brewery: project.brewery,
-          category: project.category,
-          image: getFundingProjectImageSource(project)!,
-          rating: index === 1 ? 5.0 : 4.5,
-          date: participation.date,
-          tags: index === 1 ? ['묵직한', '고소한'] : ['달콤한', '부드러운'],
-          isFunding: true,
-          alcohol: Number.parseFloat(project.alcoholContent || '') || 6,
-          fundingId: project.id,
-      });
-    });
-    return nextDrinks;
-  }, [participatedFundings, projects]);
 
   const savedArchiveDrinks = useMemo<ArchiveDrink[]>(() => {
-    if (serverArchives.length > 0) {
-      return serverArchives.map((archive) => ({
-        id: archive.archiveId,
-        listKey: `server-${archive.archiveType.toLowerCase()}-${archive.archiveId}`,
-        name: archive.drinkName || '나의 전통주 기록',
-        brewery: archive.archiveType === 'FUNDING' ? '펀딩 술' : '직접 기록',
-        category: archive.category || (archive.archiveType === 'FUNDING' ? '펀딩' : '일반 술'),
-        image: archive.images[0]?.imageUrl ? { uri: archive.images[0].imageUrl } : undefined,
-        rating: archive.rating || 0,
-        date: archive.recordDate || archive.createdAt?.slice(0, 10) || '',
-        tags: archive.tags.map((tag) => tag.name),
-        isFunding: archive.archiveType === 'FUNDING',
-        alcohol: archive.abv || 0,
-        fundingId: archive.fundingId || undefined,
-        isServer: true,
-      }));
-    }
-
-    return fundingReviews
-      .filter((review) => isFundingReviewOwnedByUser(review, user))
-      .map((review) => {
-        const project = projects.find((item) => item.id === review.projectId);
-        const isFunding = Boolean(project);
-        const image = review.images[0]
-          ? { uri: review.images[0] }
-          : project
-            ? getFundingProjectImageSource(project)!
-            : undefined;
-        return {
-          id: review.id,
-          listKey: `local-${isFunding ? 'funded' : 'general'}-${review.id}`,
-          name: isFunding ? project!.shortTitle || project!.title : review.rewardName || '나의 전통주 기록',
-          brewery: isFunding ? project!.brewery : '직접 기록',
-          category: isFunding ? project!.category : '일반 술',
-          image,
-          rating: review.rating,
-          date: review.date,
-          tags: review.tags,
-          isFunding,
-          alcohol: isFunding ? Number.parseFloat(project!.alcoholContent || '') || 6 : 0,
-          fundingId: isFunding ? project!.id : undefined,
-        };
-      });
-  }, [fundingReviews, projects, serverArchives, user]);
-
-  const allDrinks = useMemo(
-    () => (serverArchives.length > 0 ? savedArchiveDrinks : [...savedArchiveDrinks, ...SAMPLE_FUNDING_DRINKS, ...fundedDrinks]),
-    [fundedDrinks, savedArchiveDrinks, serverArchives.length]
-  );
+    return serverArchives.map((archive) => ({
+      id: archive.archiveId,
+      listKey: `server-${archive.archiveType.toLowerCase()}-${archive.archiveId}`,
+      name: archive.drinkName || '나의 전통주 기록',
+      brewery: archive.archiveType === 'FUNDING' ? '펀딩 술' : '직접 기록',
+      category: archive.category || (archive.archiveType === 'FUNDING' ? '펀딩' : '일반 술'),
+      image: archive.images[0]?.imageUrl ? { uri: archive.images[0].imageUrl } : undefined,
+      rating: archive.rating || 0,
+      date: archive.recordDate || archive.createdAt?.slice(0, 10) || '',
+      tags: archive.tags.map((tag) => tag.name),
+      isFunding: archive.archiveType === 'FUNDING',
+      alcohol: archive.abv || 0,
+      fundingId: archive.fundingId || undefined,
+      isServer: true,
+    }));
+  }, [serverArchives]);
+  const allDrinks = useMemo(() => savedArchiveDrinks, [savedArchiveDrinks]);
 
   const filteredDrinks = useMemo(() => {
     const source =
@@ -273,7 +201,7 @@ export default function MyArchiveScreen() {
 
 function ArchiveDrinkCard({ drink }: { drink: ArchiveDrink }) {
   const goDetail = () => {
-    const kind = drink.isServer ? 'archive' : drink.fundingId ? 'funding' : drink.id >= 100 ? 'sample' : 'archive';
+    const kind = drink.isServer ? 'archive' : drink.fundingId ? 'funding' : 'archive';
     const fundingQuery = drink.fundingId ? `&fundingId=${drink.fundingId}` : '';
     router.push(`/mypage/archive/detail/${drink.id}?kind=${kind}${fundingQuery}` as any);
   };

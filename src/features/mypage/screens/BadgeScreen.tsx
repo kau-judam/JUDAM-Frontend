@@ -1,57 +1,81 @@
-import React from 'react';
-import { Image, ImageSourcePropType, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  ImageSourcePropType,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { router } from 'expo-router';
 import { ArrowLeft, Lock } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type BadgeItem = {
-  id: string;
-  name: string;
+import { getMyPageApiErrorMessage, getMyPageBadges, type MyPageBadge } from '@/features/mypage/api';
+
+type BadgeViewItem = MyPageBadge & {
   image: ImageSourcePropType;
-  earned: boolean;
 };
 
-const BADGES: BadgeItem[] = [
-  {
-    id: 'welcome',
-    name: '반가워요!',
-    image: require('../../../../assets/images/badges/welcome.png'),
-    earned: true,
-  },
-  {
-    id: 'communicate',
-    name: '주담과 소통하기',
-    image: require('../../../../assets/images/badges/communicate.png'),
-    earned: false,
-  },
-  {
-    id: 'funding-beginner',
-    name: '펀딩 입문자',
-    image: require('../../../../assets/images/badges/funding_beginner.png'),
-    earned: false,
-  },
-  {
-    id: 'funding-intermediate',
-    name: '펀딩 중급자',
-    image: require('../../../../assets/images/badges/funding_intermediate.png'),
-    earned: false,
-  },
-  {
-    id: 'funding-expert',
-    name: '펀딩 숙련가',
-    image: require('../../../../assets/images/badges/funding_expert.png'),
-    earned: false,
-  },
-  {
-    id: 'co-creator',
-    name: '공동 제작자',
-    image: require('../../../../assets/images/badges/co_creator.png'),
-    earned: false,
-  },
+const BADGE_IMAGES: Record<string, ImageSourcePropType> = {
+  welcome: require('../../../../assets/images/badges/welcome.png'),
+  communicate: require('../../../../assets/images/badges/communicate.png'),
+  'funding-beginner': require('../../../../assets/images/badges/funding_beginner.png'),
+  'funding-intermediate': require('../../../../assets/images/badges/funding_intermediate.png'),
+  'funding-expert': require('../../../../assets/images/badges/funding_expert.png'),
+  'co-creator': require('../../../../assets/images/badges/co_creator.png'),
+};
+
+const FALLBACK_BADGES: MyPageBadge[] = [
+  { badgeId: 'welcome', name: '반가워요!', displayOrder: 1, earned: false, earnedAt: null },
+  { badgeId: 'communicate', name: '주담과 소통하기', displayOrder: 2, earned: false, earnedAt: null },
+  { badgeId: 'funding-beginner', name: '펀딩 입문자', displayOrder: 3, earned: false, earnedAt: null },
+  { badgeId: 'funding-intermediate', name: '펀딩 중급자', displayOrder: 4, earned: false, earnedAt: null },
+  { badgeId: 'funding-expert', name: '펀딩 숙련가', displayOrder: 5, earned: false, earnedAt: null },
+  { badgeId: 'co-creator', name: '공동 제작자', displayOrder: 6, earned: false, earnedAt: null },
 ];
 
 export default function BadgeScreen() {
   const insets = useSafeAreaInsets();
+  const [badges, setBadges] = useState<MyPageBadge[]>(FALLBACK_BADGES);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getMyPageBadges()
+      .then((nextBadges) => {
+        if (!mounted) return;
+        setBadges(nextBadges);
+        setErrorMessage(null);
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setErrorMessage(getMyPageApiErrorMessage(error, '뱃지 목록을 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const displayBadges = useMemo<BadgeViewItem[]>(
+    () =>
+      [...badges]
+        .sort((a, b) => a.displayOrder - b.displayOrder)
+        .filter((badge) => BADGE_IMAGES[badge.badgeId])
+        .map((badge) => ({
+          ...badge,
+          image: BADGE_IMAGES[badge.badgeId],
+        })),
+    [badges]
+  );
 
   return (
     <View style={styles.container}>
@@ -64,9 +88,17 @@ export default function BadgeScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 80 }]}>
+        {isLoading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator color="#111827" />
+          </View>
+        ) : null}
+
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
         <View style={styles.grid}>
-          {BADGES.map((badge) => (
-            <View key={badge.id} style={styles.badgeCard}>
+          {displayBadges.map((badge) => (
+            <View key={badge.badgeId} style={styles.badgeCard}>
               <View style={[styles.badgeCircle, badge.earned && styles.badgeCircleEarned]}>
                 {badge.earned ? (
                   <Image source={badge.image} style={styles.badgeImage} />
@@ -102,6 +134,8 @@ const styles = StyleSheet.create({
   headerTitle: { flex: 1, textAlign: 'center', fontSize: 20, fontWeight: '900', color: '#111827' },
   headerSpacer: { width: 44 },
   content: { paddingHorizontal: 24, paddingTop: 24 },
+  loadingBox: { alignItems: 'center', paddingVertical: 16 },
+  errorText: { marginBottom: 14, fontSize: 13, fontWeight: '800', color: '#EF4444', textAlign: 'center' },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

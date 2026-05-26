@@ -23,17 +23,31 @@ type BreweryProfileForm = {
 };
 
 const DEFAULT_PROFILE: BreweryProfileForm = {
-  breweryName: '솔샘양조장',
-  brandStory: '전통주 장인',
-  description: '백두대간의 청정수와 우리 쌀로 빚어내는 전통의 맛. 40년간 정성을 다해 전통주를 빚어온 장인의 양조장입니다.',
-  brandStoryLong: '40년 전통을 이어온 솔샘양조장은 백두대간의 맑은 물과 우리 땅에서 자란 쌀만을 사용합니다. 3대째 이어져 내려오는 전통 방식으로 정직하게 술을 빚으며, 한 잔 한 잔에 장인의 정성을 담아냅니다.',
-  history: '1985년 설립되어 3대째 이어져 내려오는 전통주 양조장입니다. 우리 쌀과 전통 누룩만을 사용하여 정직하게 술을 빚고 있습니다.',
-  address: '경기도 양평군 청운면 솔샘로 123',
-  businessNumber: '123-45-67890',
-  representative: '홍길동',
-  phone: '010-1234-5678',
-  email: 'solsaem@brewery.com',
-  established: '1985',
+  breweryName: '',
+  brandStory: '',
+  description: '',
+  brandStoryLong: '',
+  history: '',
+  address: '',
+  businessNumber: '',
+  representative: '',
+  phone: '',
+  email: '',
+  established: '',
+};
+
+const PROFILE_PLACEHOLDERS: BreweryProfileForm = {
+  breweryName: '양조장 이름',
+  brandStory: '한 줄 소개',
+  description: '양조장을 간단히 소개해주세요.',
+  brandStoryLong: '양조장의 철학과 이야기를 작성해주세요.',
+  history: '양조장의 연혁과 술 빚는 방식을 작성해주세요.',
+  address: '양조장 소재지',
+  businessNumber: '사업자등록번호',
+  representative: '대표자명',
+  phone: '전화번호',
+  email: '이메일',
+  established: '설립연도',
 };
 
 export default function BreweryProfileScreen() {
@@ -50,14 +64,17 @@ export default function BreweryProfileScreen() {
   );
   const profileValues = useMemo<BreweryProfileForm>(() => ({
     ...DEFAULT_PROFILE,
-    breweryName: isOwnProfile ? user?.breweryName || DEFAULT_PROFILE.breweryName : project?.brewery || DEFAULT_PROFILE.breweryName,
-    description: project?.breweryBio || DEFAULT_PROFILE.description,
-    history: project?.breweryBio || DEFAULT_PROFILE.history,
-    address: isOwnProfile ? user?.breweryLocation || DEFAULT_PROFILE.address : project?.location || DEFAULT_PROFILE.address,
-    businessNumber: isOwnProfile ? user?.businessNumber || DEFAULT_PROFILE.businessNumber : DEFAULT_PROFILE.businessNumber,
-    representative: user?.name || DEFAULT_PROFILE.representative,
-    phone: user?.phone || DEFAULT_PROFILE.phone,
-    email: user?.email || DEFAULT_PROFILE.email,
+    breweryName: isOwnProfile ? user?.breweryName || '' : project?.brewery || '',
+    brandStory: isOwnProfile ? user?.breweryBrandStory || '' : '',
+    description: isOwnProfile ? user?.breweryDescription || '' : project?.breweryBio || '',
+    brandStoryLong: isOwnProfile ? user?.breweryBrandStoryLong || '' : '',
+    history: isOwnProfile ? user?.breweryHistory || '' : project?.breweryBio || '',
+    address: isOwnProfile ? user?.breweryLocation || '' : project?.location || '',
+    businessNumber: isOwnProfile ? user?.businessNumber || '' : '',
+    representative: user?.name || '',
+    phone: user?.phone || '',
+    email: user?.email || '',
+    established: isOwnProfile ? user?.breweryEstablished || '' : '',
   }), [isOwnProfile, project?.brewery, project?.breweryBio, project?.location, user]);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -74,6 +91,20 @@ export default function BreweryProfileScreen() {
         <Text style={styles.guardDesc}>양조장 프로필은 로그인 후 확인할 수 있습니다.</Text>
         <TouchableOpacity style={styles.guardButton} onPress={() => router.replace('/(auth)/login' as any)}>
           <Text style={styles.guardButtonText}>로그인하기</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const isPublicProfileIncomplete = !isOwnProfile && !profileValues.description.trim() && !profileValues.history.trim();
+
+  if (isPublicProfileIncomplete) {
+    return (
+      <View style={[styles.guardContainer, { paddingTop: insets.top }]}>
+        <Text style={styles.guardTitle}>아직 준비 중인 양조장입니다</Text>
+        <Text style={styles.guardDesc}>양조장이 프로필 소개를 작성하면 확인할 수 있습니다.</Text>
+        <TouchableOpacity style={styles.guardButton} onPress={() => router.back()}>
+          <Text style={styles.guardButtonText}>돌아가기</Text>
         </TouchableOpacity>
       </View>
     );
@@ -104,6 +135,11 @@ export default function BreweryProfileScreen() {
       await updateUser({
         breweryName: form.breweryName.trim(),
         breweryLocation: form.address.trim(),
+        breweryBrandStory: form.brandStory.trim(),
+        breweryDescription: form.description.trim(),
+        breweryBrandStoryLong: form.brandStoryLong.trim(),
+        breweryHistory: form.history.trim(),
+        breweryEstablished: form.established.trim(),
         name: form.representative.trim() || user?.name,
         email: form.email.trim() || user?.email,
       });
@@ -121,16 +157,30 @@ export default function BreweryProfileScreen() {
     setIsEditing(false);
   };
 
+  const handleBack = () => {
+    if (isEditing) {
+      handleCancel();
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace(isOwnProfile ? '/brewery/dashboard' : '/(tabs)/funding' as any);
+  };
+
   const handleCall = () => {
     if (isEditing) {
       openVerificationEdit();
       return;
     }
+    if (!form.phone.trim()) return;
     Linking.openURL(`tel:${form.phone}`);
   };
 
   const handleEmail = () => {
     if (isEditing) return;
+    if (!form.email.trim()) return;
     Linking.openURL(`mailto:${form.email}`);
   };
 
@@ -140,14 +190,14 @@ export default function BreweryProfileScreen() {
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity
-          onPress={() => (isEditing ? handleCancel() : router.back())}
+          onPress={handleBack}
           style={styles.headerButton}
           accessibilityRole="button"
           accessibilityLabel="뒤로가기"
         >
           <ArrowLeft size={22} color="#111827" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>양조장 프로필</Text>
+        <Text style={styles.headerTitle} pointerEvents="none">양조장 프로필</Text>
         {isOwnProfile ? (
           <TouchableOpacity
             onPress={() => (isEditing ? handleSave() : setIsEditing(true))}
@@ -168,6 +218,7 @@ export default function BreweryProfileScreen() {
           <View style={styles.heroOverlay}>
             <EditableText
               value={form.breweryName}
+              placeholder={PROFILE_PLACEHOLDERS.breweryName}
               editable={canEditInline}
               onChangeText={(value) => updateField('breweryName', value)}
               textStyle={styles.heroTitle}
@@ -176,6 +227,7 @@ export default function BreweryProfileScreen() {
             <View style={styles.storyBadge}>
               <EditableText
                 value={form.brandStory}
+                placeholder={PROFILE_PLACEHOLDERS.brandStory}
                 editable={canEditInline}
                 onChangeText={(value) => updateField('brandStory', value)}
                 textStyle={styles.storyBadgeText}
@@ -184,6 +236,7 @@ export default function BreweryProfileScreen() {
             </View>
             <EditableText
               value={form.description}
+              placeholder={PROFILE_PLACEHOLDERS.description}
               editable={canEditInline}
               onChangeText={(value) => updateField('description', value)}
               textStyle={styles.heroDesc}
@@ -198,6 +251,7 @@ export default function BreweryProfileScreen() {
           <View style={styles.storyCard}>
             <EditableText
               value={form.brandStoryLong}
+              placeholder={PROFILE_PLACEHOLDERS.brandStoryLong}
               editable={canEditInline}
               onChangeText={(value) => updateField('brandStoryLong', value)}
               textStyle={styles.storyText}
@@ -212,6 +266,7 @@ export default function BreweryProfileScreen() {
           <View style={styles.whiteCard}>
             <EditableText
               value={form.history}
+              placeholder={PROFILE_PLACEHOLDERS.history}
               editable={canEditInline}
               onChangeText={(value) => updateField('history', value)}
               textStyle={styles.bodyText}
@@ -224,9 +279,9 @@ export default function BreweryProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionEyebrow}>기본 정보</Text>
           <View style={styles.infoList}>
-            <ProfileInfoItem label="설립연도" value={form.established} suffix="년" editable={canEditInline} onChangeText={(value) => updateField('established', value)} />
-            <ProfileInfoItem label="대표자명" value={form.representative} editable={canEditInline} onChangeText={(value) => updateField('representative', value)} />
-            <ProfileInfoItem label="소재지" value={form.address} editable={canEditInline} onChangeText={(value) => updateField('address', value)} />
+            <ProfileInfoItem label="설립연도" value={form.established} suffix="년" placeholder={PROFILE_PLACEHOLDERS.established} editable={canEditInline} onChangeText={(value) => updateField('established', value)} />
+            <ProfileInfoItem label="대표자명" value={form.representative} placeholder={PROFILE_PLACEHOLDERS.representative} editable={canEditInline} onChangeText={(value) => updateField('representative', value)} />
+            <ProfileInfoItem label="소재지" value={form.address} placeholder={PROFILE_PLACEHOLDERS.address} editable={canEditInline} onChangeText={(value) => updateField('address', value)} />
           </View>
         </View>
 
@@ -238,7 +293,7 @@ export default function BreweryProfileScreen() {
             onPress={isEditing ? openVerificationEdit : undefined}
           >
             <Text style={styles.businessLabel}>사업자등록번호</Text>
-            <Text style={styles.businessValue}>{form.businessNumber}</Text>
+            <Text style={form.businessNumber ? styles.businessValue : styles.placeholderText}>{form.businessNumber || PROFILE_PLACEHOLDERS.businessNumber}</Text>
             {isEditing && <Text style={styles.lockedEditHint}>정보 수정 페이지에서 변경</Text>}
           </TouchableOpacity>
         </View>
@@ -251,7 +306,7 @@ export default function BreweryProfileScreen() {
                 <Phone size={20} color="#FFF" />
               </View>
               <Text style={styles.contactLabel}>전화</Text>
-              <Text style={styles.contactValue} numberOfLines={1}>{form.phone}</Text>
+              <Text style={form.phone ? styles.contactValue : styles.placeholderText} numberOfLines={1}>{form.phone || PROFILE_PLACEHOLDERS.phone}</Text>
               {isEditing && <Text style={styles.lockedEditHint}>정보 수정 페이지</Text>}
             </TouchableOpacity>
             <TouchableOpacity style={styles.contactCard} onPress={handleEmail} activeOpacity={isEditing ? 1 : 0.85}>
@@ -264,12 +319,13 @@ export default function BreweryProfileScreen() {
                   value={form.email}
                   onChangeText={(value) => updateField('email', value)}
                   style={[styles.editInput, styles.contactInput]}
+                  placeholder={PROFILE_PLACEHOLDERS.email}
                   placeholderTextColor="#9CA3AF"
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
               ) : (
-                <Text style={styles.contactValue} numberOfLines={1}>{form.email}</Text>
+                <Text style={form.email ? styles.contactValue : styles.placeholderText} numberOfLines={1}>{form.email || PROFILE_PLACEHOLDERS.email}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -281,6 +337,7 @@ export default function BreweryProfileScreen() {
 
 function EditableText({
   value,
+  placeholder,
   editable,
   onChangeText,
   textStyle,
@@ -288,6 +345,7 @@ function EditableText({
   multiline,
 }: {
   value: string;
+  placeholder?: string;
   editable: boolean;
   onChangeText: (value: string) => void;
   textStyle: object;
@@ -301,24 +359,27 @@ function EditableText({
         onChangeText={onChangeText}
         style={inputStyle}
         multiline={multiline}
+        placeholder={placeholder}
         placeholderTextColor="#9CA3AF"
         textAlignVertical={multiline ? 'top' : 'center'}
       />
     );
   }
 
-  return <Text style={textStyle}>{value}</Text>;
+  return <Text style={value ? textStyle : [textStyle, styles.placeholderText]}>{value || placeholder}</Text>;
 }
 
 function ProfileInfoItem({
   label,
   value,
+  placeholder,
   suffix,
   editable,
   onChangeText,
 }: {
   label: string;
   value: string;
+  placeholder?: string;
   suffix?: string;
   editable: boolean;
   onChangeText: (value: string) => void;
@@ -334,12 +395,13 @@ function ProfileInfoItem({
               value={value}
               onChangeText={onChangeText}
               style={[styles.editInput, styles.infoInput]}
+              placeholder={placeholder}
               placeholderTextColor="#9CA3AF"
             />
             {suffix && <Text style={styles.infoSuffix}>{suffix}</Text>}
           </View>
         ) : (
-          <Text style={styles.infoValue}>{suffix ? `${value}${suffix}` : value}</Text>
+          <Text style={value ? styles.infoValue : styles.placeholderText}>{value ? (suffix ? `${value}${suffix}` : value) : placeholder}</Text>
         )}
       </View>
     </View>
@@ -363,9 +425,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 12,
   },
-  headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   headerTitle: { position: 'absolute', left: 0, right: 0, bottom: 18, textAlign: 'center', fontSize: 16, fontWeight: '800', color: '#111827' },
-  editButton: { minWidth: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  editButton: { minWidth: 44, height: 44, alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   editButtonText: { fontSize: 14, fontWeight: '800', color: '#111827' },
   content: { paddingBottom: 36 },
   hero: {
@@ -412,6 +474,7 @@ const styles = StyleSheet.create({
   contactLabel: { fontSize: 12, fontWeight: '700', color: '#6B7280', marginBottom: 4 },
   contactValue: { maxWidth: '100%', fontSize: 12, fontWeight: '900', color: '#111827' },
   contactInput: { width: '100%', minHeight: 36, textAlign: 'center', fontSize: 12, fontWeight: '900', color: '#111827' },
+  placeholderText: { color: '#9CA3AF' },
   editInput: {
     borderWidth: 1,
     borderColor: '#D1D5DB',

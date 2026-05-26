@@ -202,6 +202,7 @@ export default function SignupScreen() {
   const kakaoEmail = getFirstParam(params.kakaoEmail);
   const isKakaoSignup = Boolean(kakaoSignupToken || kakaoEmail);
   const isKakaoEmailLocked = Boolean(kakaoEmail);
+  const shouldCollectPassword = !isKakaoSignup;
 
   useEffect(() => {
     RNStatusBar.setHidden(true, 'none');
@@ -397,11 +398,11 @@ export default function SignupScreen() {
       showNotice('이메일 중복 확인을 완료해주세요.');
       return;
     }
-    if (!isPasswordReady(formData.password)) {
+    if (shouldCollectPassword && !isPasswordReady(formData.password)) {
       showNotice('비밀번호는 8자 이상, 영문 대소문자와 숫자를 포함해야 합니다.');
       return;
     }
-    if (formData.password !== formData.confirmPassword) {
+    if (shouldCollectPassword && formData.password !== formData.confirmPassword) {
       showNotice('비밀번호가 일치하지 않습니다.');
       return;
     }
@@ -611,66 +612,79 @@ export default function SignupScreen() {
                   {isKakaoEmailLocked && <Text style={styles.helperText}>카카오 계정 이메일은 변경할 수 없어요.</Text>}
                 </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>비밀번호</Text>
-                  <View style={styles.inputBox}>
-                    <Lock size={18} color="#9CA3AF" style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="••••••••"
-                      placeholderTextColor="#9CA3AF"
-                      value={formData.password}
-                      onChangeText={(value) => handleInputChange('password', value)}
-                      secureTextEntry={!showPw}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                    <TouchableOpacity onPress={() => setShowPw(!showPw)}>
-                      {showPw ? <EyeOff size={18} color="#9CA3AF" /> : <Eye size={18} color="#9CA3AF" />}
-                    </TouchableOpacity>
-                  </View>
-                  {formData.password.length > 0 && (
-                    <View style={styles.strengthArea}>
-                      <View style={styles.strengthBars}>
-                        {[1, 2, 3].map((index) => (
-                          <View
-                            key={index}
-                            style={[
-                              styles.strengthBar,
-                              index <= passwordStrength.score ? { backgroundColor: passwordStrength.color } : null,
-                            ]}
-                          />
-                        ))}
+                {shouldCollectPassword ? (
+                  <>
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.label}>비밀번호</Text>
+                      <View style={styles.inputBox}>
+                        <Lock size={18} color="#9CA3AF" style={styles.inputIcon} />
+                        <TextInput
+                          style={styles.input}
+                          placeholder="••••••••"
+                          placeholderTextColor="#9CA3AF"
+                          value={formData.password}
+                          onChangeText={(value) => handleInputChange('password', value)}
+                          secureTextEntry={!showPw}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                        <TouchableOpacity onPress={() => setShowPw(!showPw)}>
+                          {showPw ? <EyeOff size={18} color="#9CA3AF" /> : <Eye size={18} color="#9CA3AF" />}
+                        </TouchableOpacity>
                       </View>
-                      <Text style={[styles.strengthText, { color: passwordStrength.color }]}>
-                        비밀번호 강도: {passwordStrength.label}
-                      </Text>
+                      {formData.password.length > 0 && (
+                        <View style={styles.strengthArea}>
+                          <View style={styles.strengthBars}>
+                            {[1, 2, 3].map((index) => (
+                              <View
+                                key={index}
+                                style={[
+                                  styles.strengthBar,
+                                  index <= passwordStrength.score ? { backgroundColor: passwordStrength.color } : null,
+                                ]}
+                              />
+                            ))}
+                          </View>
+                          <Text style={[styles.strengthText, { color: passwordStrength.color }]}>
+                            비밀번호 강도: {passwordStrength.label}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={styles.helperText}>8자 이상, 영문 대소문자와 숫자 포함</Text>
                     </View>
-                  )}
-                  <Text style={styles.helperText}>8자 이상, 영문 대소문자와 숫자 포함</Text>
-                </View>
 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>비밀번호 확인</Text>
-                  <View style={styles.inputBox}>
-                    <Lock size={18} color="#9CA3AF" style={styles.inputIcon} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="••••••••"
-                      placeholderTextColor="#9CA3AF"
-                      value={formData.confirmPassword}
-                      onChangeText={(value) => handleInputChange('confirmPassword', value)}
-                      secureTextEntry={!showConfirmPw}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                    <TouchableOpacity onPress={() => setShowConfirmPw(!showConfirmPw)}>
-                      {showConfirmPw ? <EyeOff size={18} color="#9CA3AF" /> : <Eye size={18} color="#9CA3AF" />}
-                    </TouchableOpacity>
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.label}>비밀번호 확인</Text>
+                      <View style={styles.inputBox}>
+                        <Lock size={18} color="#9CA3AF" style={styles.inputIcon} />
+                        <TextInput
+                          style={styles.input}
+                          placeholder="••••••••"
+                          placeholderTextColor="#9CA3AF"
+                          value={formData.confirmPassword}
+                          onChangeText={(value) => handleInputChange('confirmPassword', value)}
+                          secureTextEntry={!showConfirmPw}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                        />
+                        <TouchableOpacity onPress={() => setShowConfirmPw(!showConfirmPw)}>
+                          {showConfirmPw ? <EyeOff size={18} color="#9CA3AF" /> : <Eye size={18} color="#9CA3AF" />}
+                        </TouchableOpacity>
+                      </View>
+                      {passwordMatches && <Text style={styles.matchText}>비밀번호가 일치합니다.</Text>}
+                      {passwordMismatch && <Text style={styles.errorText}>비밀번호가 일치하지 않습니다.</Text>}
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>비밀번호</Text>
+                    <View style={[styles.inputBox, styles.disabledInputBox]}>
+                      <Lock size={18} color="#D1D5DB" style={styles.inputIcon} />
+                      <Text style={styles.disabledInputText}>카카오 계정으로 가입합니다</Text>
+                    </View>
+                    <Text style={styles.helperText}>카카오 가입은 별도 비밀번호 입력이 필요 없어요.</Text>
                   </View>
-                  {passwordMatches && <Text style={styles.matchText}>비밀번호가 일치합니다.</Text>}
-                  {passwordMismatch && <Text style={styles.errorText}>비밀번호가 일치하지 않습니다.</Text>}
-                </View>
+                )}
 
                 <View style={styles.inputGroup}>
                   <View style={styles.labelRow}>
@@ -900,6 +914,8 @@ const styles = StyleSheet.create({
   inputBox: { height: 48, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
   inputIcon: { marginRight: 12 },
   input: { flex: 1, fontSize: 14, fontWeight: '600', color: '#111' },
+  disabledInputBox: { backgroundColor: '#F3F4F6', borderColor: '#E5E7EB' },
+  disabledInputText: { flex: 1, color: '#9CA3AF', fontSize: 13.5, fontWeight: '700' },
   smallBtn: { height: 48, paddingHorizontal: 16, backgroundColor: '#111827', borderRadius: 12, justifyContent: 'center', alignItems: 'center', minWidth: 80 },
   passBtn: { height: 48, paddingHorizontal: 13, backgroundColor: '#111827', borderRadius: 12, justifyContent: 'center', alignItems: 'center', minWidth: 96, flexDirection: 'row', gap: 5 },
   smallBtnDone: { backgroundColor: '#059669' },

@@ -344,7 +344,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const role: SelectableAuthRole = data.type === "brewery" ? "BREWERY_PENDING" : "USER";
     const signupPayload = {
       email: data.email.trim().toLowerCase(),
-      password: data.password,
       nickname: data.name.trim(),
       phoneNumber: digitsOnly(data.phone || ""),
       termsAgreed: true,
@@ -358,7 +357,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ...signupPayload,
           kakaoSignupToken: data.kakaoSignupToken,
         })
-      : await signupWithEmail(signupPayload);
+      : await signupWithEmail({
+          ...signupPayload,
+          password: data.password,
+        });
     if (!session?.user) {
       throw new Error("회원가입 응답에서 사용자 정보를 받지 못했습니다.");
     }

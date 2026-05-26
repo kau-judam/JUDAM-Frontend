@@ -109,7 +109,7 @@ import {
 import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/funding/reviews';
 import { normalizeFundingImageUrl } from '@/features/funding/imageUrls';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
-import { canAccessFundingReviews } from '@/features/funding/permissions';
+import { canAccessFundingReviews, canBypassFundingReviewParticipation } from '@/features/funding/permissions';
 
 const HERO_IMAGE_HEIGHT = 256;
 type FundingQuestionComment = {
@@ -1412,7 +1412,7 @@ export default function FundingDetailScreen() {
       return;
     }
     const hasParticipated = participatedFundings.some((item) => item.fundingId === project.id);
-    if (!hasParticipated) {
+    if (!hasParticipated && !canBypassFundingReviewParticipation(project)) {
       setFeedbackModal({
         title: '후기 작성 불가',
         body: '해당 펀딩에 참여하지 않았습니다.',

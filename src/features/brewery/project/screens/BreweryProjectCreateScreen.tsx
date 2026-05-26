@@ -322,7 +322,7 @@ function formatSchedulePlanForDraft(items?: PreviewSchedulePlan) {
 }
 
 function getTasteAromaValue(tasteProfile?: FundingDraftPreviewResponse['tasteProfile']) {
-  return tasteProfile?.finish ?? tasteProfile?.aftertaste ?? tasteProfile?.aromaIntensity ?? tasteProfile?.alcoholIntensity;
+  return tasteProfile?.finish ?? tasteProfile?.aftertaste ?? tasteProfile?.aromaIntensity ?? tasteProfile?.alcoholIntensity ?? tasteProfile?.alcohol;
 }
 
 function normalizeProjectPlanDraft(plan?: ProjectPlanDraft) {
@@ -907,6 +907,7 @@ export default function BreweryProjectCreateScreen() {
       aromaIntensity: tasteProfile.aroma,
       finish: tasteProfile.aroma,
       aftertaste: tasteProfile.aroma,
+      alcohol: tasteProfile.aroma,
       flavor,
       flavorNotes: flavor,
     };

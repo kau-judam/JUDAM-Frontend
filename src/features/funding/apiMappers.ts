@@ -238,7 +238,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     tasteProfile: sameProject && detail.tasteProfile
       ? {
           sweetness: normalizeTasteValue(detail.tasteProfile.sweetness),
-          aroma: existing.tasteProfile?.aroma ?? normalizeTasteValue(detail.tasteProfile.finish ?? detail.tasteProfile.aftertaste ?? detail.tasteProfile.aromaIntensity ?? detail.tasteProfile.alcoholIntensity),
+          aroma: existing.tasteProfile?.aroma ?? normalizeTasteValue(detail.tasteProfile.finish ?? detail.tasteProfile.aftertaste ?? detail.tasteProfile.aromaIntensity ?? detail.tasteProfile.alcoholIntensity ?? detail.tasteProfile.alcohol),
           acidity: normalizeTasteValue(detail.tasteProfile.acidity),
           body: normalizeTasteValue(detail.tasteProfile.body),
           carbonation: normalizeTasteValue(detail.tasteProfile.carbonation),

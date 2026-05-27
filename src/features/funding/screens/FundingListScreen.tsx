@@ -61,10 +61,10 @@ function getFundingApiStatus(status: FundingStatusFilter) {
 }
 
 function getFundingApiSort(sort: FundingSortOption) {
-  if (sort === "추천순") return "RECOMMENDED";
-  if (sort === "마감임박") return "DEADLINE";
-  if (sort === "최신순") return "LATEST";
-  return "POPULAR";
+  if (sort === "추천순") return "recommended";
+  if (sort === "마감임박") return "endingSoon";
+  if (sort === "최신순") return "latest";
+  return "popular";
 }
 
 export default function FundingListScreen() {
@@ -83,6 +83,7 @@ export default function FundingListScreen() {
   const [currentPage, setCurrentPage] = useState(1);
   const [alertModal, setAlertModal] = useState<FundingListAlert | null>(null);
   const [serverFundingStats, setServerFundingStats] = useState<FundingStatsResponse | null>(null);
+  const [serverFundingOrderIds, setServerFundingOrderIds] = useState<number[]>([]);
 
   const isBreweryAccount = user?.type === "brewery";
   const isVerifiedBrewery = isBreweryAccount && user?.isBreweryVerified;
@@ -118,6 +119,7 @@ export default function FundingListScreen() {
     let mounted = true;
     const status = getFundingApiStatus(selectedStatus);
     const apiSort = getFundingApiSort(selectedSort);
+    setServerFundingOrderIds([]);
 
     getFundingList({ status, sort: apiSort, page: 0, size: 10 })
       .then((response) => {
@@ -125,6 +127,7 @@ export default function FundingListScreen() {
         const nextProjects = response.data.map((item) =>
           mergeFundingListItem(projectsRef.current.find((project) => project.id === item.fundingId), item)
         );
+        setServerFundingOrderIds(nextProjects.map((project) => project.id));
         mergeProjects(nextProjects);
       })
       .catch((error) => {
@@ -179,8 +182,19 @@ export default function FundingListScreen() {
   }, [projects, searchTerm, selectedStatus]);
 
   const sortedProjects = useMemo(() => {
+    if (serverFundingOrderIds.length > 0) {
+      const orderMap = new Map(serverFundingOrderIds.map((id, index) => [id, index]));
+      const serverSortedProjects = filteredProjects
+        .filter((project) => orderMap.has(project.id))
+        .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
+      const localOnlyProjects = filteredProjects.filter((project) => !orderMap.has(project.id));
+      return [
+        ...serverSortedProjects,
+        ...sortFundingProjectsForDisplay(localOnlyProjects, selectedSort, userTasteProfile, favoriteFundings),
+      ];
+    }
     return sortFundingProjectsForDisplay(filteredProjects, selectedSort, userTasteProfile, favoriteFundings);
-  }, [favoriteFundings, filteredProjects, selectedSort, userTasteProfile]);
+  }, [favoriteFundings, filteredProjects, selectedSort, serverFundingOrderIds, userTasteProfile]);
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(sortedProjects.length / FUNDING_ITEMS_PER_PAGE)),
     [sortedProjects.length]

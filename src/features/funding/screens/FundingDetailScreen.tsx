@@ -186,23 +186,64 @@ function formatApiDate(value?: string) {
   return `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function resolveBreweryLogWriter(
+function normalizeFundingOwnerId(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value).trim();
+  return normalized || null;
+}
+
+function getFundingProjectOwnerIds(project: FundingProject | null | undefined) {
+  if (!project) return [];
+  return [project.breweryUserId, project.ownerUserId, project.creatorId, project.breweryId]
+    .map(normalizeFundingOwnerId)
+    .filter((id): id is string => Boolean(id));
+}
+
+function isProjectOwnerBreweryWriter(
   writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery'>,
+  project: FundingProject | null | undefined,
   currentUser?: User | null
 ) {
+  if (!project) return false;
+  const writerId = normalizeFundingOwnerId(writer.writerId);
+  const ownerIds = getFundingProjectOwnerIds(project);
+  if (writerId && ownerIds.length > 0) return ownerIds.includes(writerId);
+
+  const currentUserIds = currentUser
+    ? [currentUser.id, currentUser.uid].map(normalizeFundingOwnerId).filter((id): id is string => Boolean(id))
+    : [];
+  if (writerId && currentUserIds.includes(writerId)) return isFundingProjectOwnedByBrewery(currentUser, project);
+
+  if (ownerIds.length === 0 && writer.isBrewery) {
+    const writerName = writer.writerNickname?.trim();
+    return Boolean(writerName && project.brewery && writerName === project.brewery.trim());
+  }
+
+  return false;
+}
+
+function resolveBreweryLogWriter(
+  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery'>,
+  currentUser: User | null | undefined,
+  project: FundingProject | null | undefined
+) {
   const isMine = writer.writerId !== undefined && currentUser?.id !== undefined && String(writer.writerId) === String(currentUser.id);
-  const isMineAsBrewery = Boolean(isMine && currentUser?.type === 'brewery' && currentUser.isBreweryVerified);
   return {
     userName: isMine ? currentUser?.name || '사용자' : writer.writerNickname || '사용자',
-    isBrewery: isMine ? isMineAsBrewery : Boolean(writer.isBrewery),
+    isBrewery: isProjectOwnerBreweryWriter(writer, project, currentUser),
   };
 }
 
-function mapBreweryLogComments(comments: FundingBreweryLogCommentItem[], journalId: number, currentUser?: User | null): JournalComment[] {
+function mapBreweryLogComments(
+  comments: FundingBreweryLogCommentItem[],
+  journalId: number,
+  currentUser: User | null | undefined,
+  project: FundingProject | null | undefined
+): JournalComment[] {
   return comments.map((comment) => ({
     id: comment.commentId,
     journalId,
-    ...resolveBreweryLogWriter(comment, currentUser),
+    ...resolveBreweryLogWriter(comment, currentUser, project),
     content: comment.content,
     date: formatApiDate(comment.createdAt),
     likes: Math.max(comment.likeCount || 0, comment.liked ? 1 : 0),
@@ -210,7 +251,7 @@ function mapBreweryLogComments(comments: FundingBreweryLogCommentItem[], journal
     replies: (comment.replies || []).map((reply) => ({
       id: reply.replyId,
       commentId: comment.commentId,
-      ...resolveBreweryLogWriter(reply, currentUser),
+      ...resolveBreweryLogWriter(reply, currentUser, project),
       content: reply.content,
       date: formatApiDate(reply.createdAt),
       likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
@@ -485,7 +526,7 @@ export default function FundingDetailScreen() {
           mapBreweryLogs(response.logs).map(async (journal) => {
             try {
               const comments = await getBreweryLogComments(projectId, journal.id);
-              return { ...journal, comments: mapBreweryLogComments(comments.content, journal.id, user) };
+              return { ...journal, comments: mapBreweryLogComments(comments.content, journal.id, user, currentProject) };
             } catch {
               return journal;
             }
@@ -538,14 +579,14 @@ export default function FundingDetailScreen() {
 
   useEffect(() => {
     let mounted = true;
-    if (!Number.isFinite(projectId) || activeTab !== "Q&A") return;
+    const currentProject = projectRef.current;
+    if (!Number.isFinite(projectId) || activeTab !== "Q&A" || !currentProject) return;
 
     getFundingQuestions(projectId, { page: 0, size: 20 })
       .then((response) => {
         if (!mounted) return;
         const apiComments: FundingQuestionComment[] = response.content.map((item) => {
           const isMine = item.writerId !== undefined && user?.id !== undefined && String(item.writerId) === String(user.id);
-          const isMineAsBrewery = Boolean(isMine && user.type === "brewery" && user.isBreweryVerified);
           return {
             id: item.questionId,
             serverQuestionId: item.questionId,
@@ -554,10 +595,9 @@ export default function FundingDetailScreen() {
             date: new Date(item.createdAt).toLocaleDateString("ko-KR"),
             likes: Math.max(item.likeCount || 0, item.liked ? 1 : 0),
             liked: Boolean(item.liked),
-            isBrewery: isMine ? isMineAsBrewery : Boolean(item.isBrewery),
+            isBrewery: isProjectOwnerBreweryWriter(item, currentProject, user),
             replies: (item.replies || []).map((reply) => {
               const isMyReply = reply.writerId !== undefined && user?.id !== undefined && String(reply.writerId) === String(user.id);
-              const isMyReplyAsBrewery = Boolean(isMyReply && user.type === "brewery" && user.isBreweryVerified);
               return {
                 id: reply.replyId,
                 userName: isMyReply ? user.name : reply.writerNickname || '사용자',
@@ -565,7 +605,7 @@ export default function FundingDetailScreen() {
                 date: new Date(reply.createdAt).toLocaleDateString("ko-KR"),
                 likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
                 liked: Boolean(reply.liked),
-                isBrewery: isMyReply ? isMyReplyAsBrewery : Boolean(reply.isBrewery),
+                isBrewery: isProjectOwnerBreweryWriter(reply, currentProject, user),
               };
             }),
           };
@@ -594,7 +634,21 @@ export default function FundingDetailScreen() {
     return () => {
       mounted = false;
     };
-  }, [activeTab, projectId, user?.id, user?.isBreweryVerified, user?.name, user?.type]);
+  }, [
+    activeTab,
+    project?.brewery,
+    project?.breweryId,
+    project?.breweryUserId,
+    project?.creatorId,
+    project?.ownerUserId,
+    projectId,
+    user,
+    user?.id,
+    user?.isBreweryVerified,
+    user?.name,
+    user?.type,
+    user?.uid,
+  ]);
 
   useEffect(() => {
     let mounted = true;
@@ -806,7 +860,7 @@ export default function FundingDetailScreen() {
         content,
         date: new Date().toLocaleDateString("ko-KR"),
         likes: 0,
-        isBrewery: user?.type === "brewery" && Boolean(user?.isBreweryVerified),
+        isBrewery: canManageOwnBreweryProject,
         replies: [],
       };
       setComments((prev) => withUniqueQnaCommentIds([comment, ...prev]));
@@ -845,7 +899,7 @@ export default function FundingDetailScreen() {
         date: new Date().toLocaleDateString("ko-KR"),
         likes: 0,
         liked: false,
-        isBrewery: user?.type === "brewery" && Boolean(user?.isBreweryVerified),
+        isBrewery: canManageOwnBreweryProject,
       };
       setComments((prev) => prev.map(c => c.id === commentId ? { ...c, replies: [...c.replies, newReply] } : c));
       const replyLikeKey = getQnaReplyLikeKey(commentId, newReply.id);
@@ -1083,7 +1137,7 @@ export default function FundingDetailScreen() {
       id: commentId,
       journalId: targetJournal.id,
       userName: user.name || "사용자",
-      isBrewery: user.type === "brewery" && Boolean(user.isBreweryVerified),
+      isBrewery: canManageOwnBreweryProject,
       content,
       date: todayText(),
       likes: 0,
@@ -1115,7 +1169,7 @@ export default function FundingDetailScreen() {
     });
     try {
       const response = await createBreweryLogComment(project.id, targetJournal.id, content);
-      const responseWriter = resolveBreweryLogWriter(response, user);
+      const responseWriter = resolveBreweryLogWriter(response, user, project);
       updateProjectJournals(
         project.id,
         (projectRef.current?.journals || []).map((entry) => {
@@ -1245,7 +1299,7 @@ export default function FundingDetailScreen() {
       id: replyId,
       commentId,
       userName: user.name || "사용자",
-      isBrewery: user.type === "brewery" && Boolean(user.isBreweryVerified),
+      isBrewery: canManageOwnBreweryProject,
       content,
       date: todayText(),
       likes: 0,
@@ -1282,7 +1336,7 @@ export default function FundingDetailScreen() {
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
     try {
       const response = await createBreweryLogCommentReply(project.id, targetJournal.id, commentId, content);
-      const responseWriter = resolveBreweryLogWriter(response, user);
+      const responseWriter = resolveBreweryLogWriter(response, user, project);
       updateProjectJournals(
         project.id,
         (projectRef.current?.journals || []).map((entry) => {

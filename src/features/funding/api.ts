@@ -512,8 +512,10 @@ type CreateFundingOrderPayload = {
   recipientPhone: string;
   shippingAddress: string;
   shippingDetailAddress?: string;
+  postalCode?: string;
   additionalSupportAmount?: number;
   message?: string;
+  supportMessage?: string;
   adultVerified: boolean;
   privacyAgreed?: boolean;
   privacyThirdPartyAgreed?: boolean;
@@ -524,11 +526,17 @@ type CreateFundingOrderPayload = {
 };
 
 type CreateFundingOrderResponse = {
-  orderId: number;
+  orderId: string | number;
+  numericOrderId?: number;
   fundingId: number;
   optionId: number;
   quantity: number;
+  amount: number;
   totalAmount: number;
+  orderName?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerMobilePhone?: string;
   orderStatus: string;
   message: string;
 };
@@ -544,7 +552,7 @@ type RequestPaymentPayload = {
 };
 
 type RequestPaymentResponse = {
-  orderId: number;
+  orderId: string | number;
   paymentId: number;
   paymentStatus: string;
   paymentUrl?: string;
@@ -558,7 +566,7 @@ type ConfirmTossPaymentPayload = {
 };
 
 type ConfirmTossPaymentResponse = {
-  orderId: number;
+  orderId: string | number;
   paymentId: number;
   paymentStatus: string;
   paidAmount: number;
@@ -567,7 +575,7 @@ type ConfirmTossPaymentResponse = {
 
 type FundingPaymentInfoResponse = {
   paymentId: number;
-  orderId: number;
+  orderId: string | number;
   paymentMethod: string;
   paymentProvider: string;
   paymentStatus: string;
@@ -577,7 +585,7 @@ type FundingPaymentInfoResponse = {
 };
 
 type CompleteFundingPaymentResponse = {
-  orderId: number;
+  orderId: string | number;
   paymentId: number;
   paymentStatus: string;
   paidAmount: number;
@@ -1030,7 +1038,7 @@ type FundingSupportOptionsApiResponse = FundingSupportOptionsResponse | FundingA
 type FundingDetailApiResponse = FundingDetailResponse | FundingApiEnvelope<FundingDetailResponse>;
 
 export type FundingOrderDetailResponse = {
-  orderId: number;
+  orderId: string | number;
   fundingId: number;
   fundingTitle: string;
   optionName: string;
@@ -1633,12 +1641,21 @@ function normalizeFundingDraftSubmitResponse(response: unknown): FundingDraftSub
 
 function normalizeFundingOrderResponse(response: unknown): CreateFundingOrderResponse {
   const data = getFundingApiObject(response);
+  const orderId = readFundingApiString(data, ['orderId', 'order_id']);
+  const numericOrderId = readFundingApiOptionalNumber(data, ['numericOrderId', 'numeric_order_id']);
+  const amount = readFundingApiNumber(data, ['amount', 'totalAmount', 'total_amount']);
   return {
-    orderId: readFundingApiNumber(data, ['orderId', 'order_id']),
+    orderId: orderId || numericOrderId || 0,
+    numericOrderId,
     fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
     optionId: readFundingApiNumber(data, ['optionId', 'option_id']),
     quantity: readFundingApiNumber(data, ['quantity']),
-    totalAmount: readFundingApiNumber(data, ['totalAmount', 'total_amount']),
+    amount,
+    totalAmount: amount,
+    orderName: readFundingApiString(data, ['orderName', 'order_name']) || undefined,
+    customerName: readFundingApiString(data, ['customerName', 'customer_name']) || undefined,
+    customerEmail: readFundingApiString(data, ['customerEmail', 'customer_email']) || undefined,
+    customerMobilePhone: readFundingApiString(data, ['customerMobilePhone', 'customer_mobile_phone']) || undefined,
     orderStatus: readFundingApiString(data, ['orderStatus', 'order_status']),
     message: readFundingApiString(data, ['message']),
   };
@@ -1647,7 +1664,7 @@ function normalizeFundingOrderResponse(response: unknown): CreateFundingOrderRes
 function normalizeFundingPaymentResponse(response: unknown): RequestPaymentResponse {
   const data = getFundingApiObject(response);
   return {
-    orderId: readFundingApiNumber(data, ['orderId', 'order_id']),
+    orderId: readFundingApiString(data, ['orderId', 'order_id']),
     paymentId: readFundingApiNumber(data, ['paymentId', 'payment_id']),
     paymentStatus: readFundingApiString(data, ['paymentStatus', 'payment_status']),
     paymentUrl: readFundingApiString(data, ['paymentUrl', 'payment_url', 'checkoutUrl', 'checkout_url', 'redirectUrl', 'redirect_url']) || undefined,
@@ -1660,11 +1677,12 @@ function normalizeConfirmTossPaymentResponse(response: unknown): ConfirmTossPaym
   const payment = getFundingNestedObject(data, 'payment');
   const nestedPayment = getFundingNestedObject(payment, 'payment');
   const tossPayment = getFundingNestedObject(payment, 'tossPayment');
+  const orderId =
+    readFundingApiString(data, ['orderId', 'order_id']) ||
+    readFundingApiString(nestedPayment, ['orderId', 'order_id']) ||
+    readFundingApiString(tossPayment, ['orderId', 'order_id']);
   return {
-    orderId:
-      readFundingApiNumber(data, ['orderId', 'order_id']) ||
-      readFundingApiNumber(nestedPayment, ['orderId', 'order_id']) ||
-      readFundingApiNumber(tossPayment, ['orderId', 'order_id']),
+    orderId,
     paymentId:
       readFundingApiNumber(data, ['paymentId', 'payment_id']) ||
       readFundingApiNumber(nestedPayment, ['paymentId', 'payment_id']),
@@ -1684,7 +1702,7 @@ function normalizeFundingPaymentInfoResponse(response: unknown): FundingPaymentI
   const data = getFundingApiObject(response);
   return {
     paymentId: readFundingApiNumber(data, ['paymentId', 'payment_id']),
-    orderId: readFundingApiNumber(data, ['orderId', 'order_id']),
+    orderId: readFundingApiString(data, ['orderId', 'order_id']),
     paymentMethod: readFundingApiString(data, ['paymentMethod', 'payment_method']),
     paymentProvider: readFundingApiString(data, ['paymentProvider', 'payment_provider']),
     paymentStatus: readFundingApiString(data, ['paymentStatus', 'payment_status']),
@@ -1697,7 +1715,7 @@ function normalizeFundingPaymentInfoResponse(response: unknown): FundingPaymentI
 function normalizeCompleteFundingPaymentResponse(response: unknown): CompleteFundingPaymentResponse {
   const data = getFundingApiObject(response);
   return {
-    orderId: readFundingApiNumber(data, ['orderId', 'order_id']),
+    orderId: readFundingApiString(data, ['orderId', 'order_id']),
     paymentId: readFundingApiNumber(data, ['paymentId', 'payment_id']),
     paymentStatus: readFundingApiString(data, ['paymentStatus', 'payment_status']),
     paidAmount: readFundingApiNumber(data, ['paidAmount', 'paid_amount', 'amount']),
@@ -1803,7 +1821,7 @@ function normalizeMyLikedFundingItem(source: Record<string, unknown>): MyLikedFu
 function normalizeFundingOrderDetailResponse(response: unknown): FundingOrderDetailResponse {
   const data = getFundingApiObject(response);
   return {
-    orderId: readFundingApiNumber(data, ['orderId', 'order_id']),
+    orderId: readFundingApiString(data, ['orderId', 'order_id']),
     fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
     fundingTitle: readFundingApiString(data, ['fundingTitle', 'funding_title']),
     optionName: readFundingApiString(data, ['optionName', 'option_name']),
@@ -2447,7 +2465,7 @@ export async function createFundingOrder(fundingId: number, payload: CreateFundi
   return normalizeFundingOrderResponse(result);
 }
 
-export async function requestFundingPayment(orderId: number, payload: RequestPaymentPayload) {
+export async function requestFundingPayment(orderId: number | string, payload: RequestPaymentPayload) {
   const result = await requestFundingJson<unknown>(`/api/orders/${orderId}/payment`, {
     method: 'POST',
     auth: true,
@@ -2469,14 +2487,18 @@ export async function confirmTossPayment(payload: ConfirmTossPaymentPayload) {
   return normalizeConfirmTossPaymentResponse(result);
 }
 
-export async function getFundingPaymentInfo(orderId: number) {
+export async function getFundingPaymentInfo(orderId: number | string) {
   const result = await requestFundingJson<unknown>(`/api/orders/${orderId}/payment`, {
     auth: true,
   });
   return normalizeFundingPaymentInfoResponse(result);
 }
 
-export async function completeFundingPayment(orderId: number) {
+export async function getOrderPayment(orderId: number | string) {
+  return getFundingPaymentInfo(orderId);
+}
+
+export async function completeFundingPayment(orderId: number | string) {
   const result = await requestFundingJson<unknown>(`/api/orders/${orderId}/payment/complete`, {
     method: 'PATCH',
     auth: true,
@@ -2772,7 +2794,7 @@ export async function getFundingSupportOptions(fundingId: number) {
   };
 }
 
-export async function getFundingOrderDetail(orderId: number) {
+export async function getFundingOrderDetail(orderId: number | string) {
   const result = await requestFundingJson<unknown>(`/api/orders/${orderId}`, {
     auth: true,
   });

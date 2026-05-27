@@ -10,10 +10,12 @@ function getParam(value: string | string[] | undefined) {
 
 export default function TossPaymentFailScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ code?: string; message?: string; orderId?: string }>();
+  const params = useLocalSearchParams<{ code?: string; message?: string; orderId?: string; fundingId?: string; orderName?: string }>();
   const message = getParam(params.message) || '토스 결제가 완료되지 않았습니다.';
   const code = getParam(params.code);
   const orderId = getParam(params.orderId);
+  const fundingId = getParam(params.fundingId);
+  const orderName = getParam(params.orderName);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}>
@@ -22,18 +24,31 @@ export default function TossPaymentFailScreen() {
       </View>
       <Text style={styles.title}>결제가 취소되었습니다</Text>
       <Text style={styles.body}>{message}</Text>
-      {(code || orderId) && (
+      {(orderName || orderId || code) && (
         <View style={styles.infoBox}>
+          {orderName ? <Text style={styles.infoText}>{orderName}</Text> : null}
           {orderId ? <Text style={styles.infoText}>주문번호 {orderId}</Text> : null}
           {code ? <Text style={styles.infoText}>오류코드 {code}</Text> : null}
         </View>
       )}
       <View style={styles.buttonGroup}>
-        <TouchableOpacity style={styles.primaryButton} onPress={() => router.back()}>
-          <Text style={styles.primaryButtonText}>다시 시도하기</Text>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => {
+            if (fundingId) {
+              router.replace(`/funding/support?id=${fundingId}` as any);
+              return;
+            }
+            router.back();
+          }}
+        >
+          <Text style={styles.primaryButtonText}>다시 결제하기</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => router.replace('/funding' as any)}>
-          <Text style={styles.secondaryButtonText}>펀딩으로 이동</Text>
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => router.replace(fundingId ? `/funding/${fundingId}` as any : '/funding' as any)}
+        >
+          <Text style={styles.secondaryButtonText}>펀딩 상세로 돌아가기</Text>
         </TouchableOpacity>
       </View>
     </View>

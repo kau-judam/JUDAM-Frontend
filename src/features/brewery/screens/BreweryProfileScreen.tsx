@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Building2, Mail, Phone } from 'lucide-react-native';
+import { ArrowLeft, Building2, Camera, Mail, Phone } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,6 +10,7 @@ import { useFunding } from '@/contexts/FundingContext';
 import { updateMyBreweryApplication } from '@/features/auth/api';
 
 type BreweryProfileForm = {
+  profileImage?: string;
   breweryName: string;
   brandStory: string;
   description: string;
@@ -64,6 +66,7 @@ export default function BreweryProfileScreen() {
   );
   const profileValues = useMemo<BreweryProfileForm>(() => ({
     ...DEFAULT_PROFILE,
+    profileImage: isOwnProfile ? user?.breweryProfileImage || '' : project?.breweryProfileImage || '',
     breweryName: isOwnProfile ? user?.breweryName || '' : project?.brewery || '',
     brandStory: isOwnProfile ? user?.breweryBrandStory || '' : '',
     description: isOwnProfile ? user?.breweryDescription || '' : project?.breweryBio || '',
@@ -114,6 +117,29 @@ export default function BreweryProfileScreen() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const pickProfileImage = async () => {
+    if (!canEditInline || isSaving) return;
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('권한 필요', '대표 이미지를 변경하려면 갤러리 접근 권한이 필요합니다.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+
+    if (result.canceled) return;
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return;
+
+    updateField('profileImage', asset.uri);
+  };
+
   const openVerificationEdit = () => {
     router.push('/brewery/verification' as any);
   };
@@ -140,6 +166,7 @@ export default function BreweryProfileScreen() {
         breweryBrandStoryLong: form.brandStoryLong.trim(),
         breweryHistory: form.history.trim(),
         breweryEstablished: form.established.trim(),
+        breweryProfileImage: form.profileImage?.trim() || undefined,
         name: form.representative.trim() || user?.name,
         email: form.email.trim() || user?.email,
       });
@@ -214,8 +241,23 @@ export default function BreweryProfileScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.hero}>
-          <Building2 size={88} color="rgba(255,255,255,0.2)" />
+          {form.profileImage ? (
+            <Image source={{ uri: form.profileImage }} style={styles.heroImage} />
+          ) : (
+            <Building2 size={88} color="rgba(255,255,255,0.2)" />
+          )}
           <View style={styles.heroOverlay}>
+            {canEditInline && (
+              <TouchableOpacity
+                style={styles.heroImageButton}
+                activeOpacity={0.85}
+                onPress={pickProfileImage}
+                disabled={isSaving}
+              >
+                <Camera size={16} color="#FFF" />
+                <Text style={styles.heroImageButtonText}>대표 이미지 수정</Text>
+              </TouchableOpacity>
+            )}
             <EditableText
               value={form.breweryName}
               placeholder={PROFILE_PLACEHOLDERS.breweryName}
@@ -437,6 +479,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
+  heroImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
@@ -445,6 +492,21 @@ const styles = StyleSheet.create({
     paddingTop: 70,
     backgroundColor: 'rgba(0,0,0,0.38)',
   },
+  heroImageButton: {
+    position: 'absolute',
+    top: 22,
+    right: 20,
+    minHeight: 38,
+    paddingHorizontal: 13,
+    borderRadius: 10,
+    backgroundColor: 'rgba(17,24,39,0.78)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  heroImageButtonText: { fontSize: 12, fontWeight: '900', color: '#FFF' },
   heroTitle: { fontSize: 34, lineHeight: 40, fontWeight: '900', color: '#FFF', textAlign: 'center', marginBottom: 12 },
   storyBadge: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.12)', marginBottom: 14 },
   storyBadgeText: { fontSize: 13, fontWeight: '800', color: 'rgba(255,255,255,0.9)' },

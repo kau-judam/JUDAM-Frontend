@@ -39,6 +39,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   getFundingProjectImageSource,
   getFundingStatusLabel,
+  fundingProjects,
   isCompletedFundingStatus,
   isSupportableFundingStatus,
   type ProjectStatus,
@@ -109,7 +110,9 @@ export default function BreweryDashboardScreen() {
 
   const currentUserId = user?.id;
   const currentUserType = user?.type;
-  const ownProjects = projects.filter((project) => isFundingProjectOwnedByBrewery(user, project));
+  const contextOwnProjects = projects.filter((project) => isFundingProjectOwnedByBrewery(user, project));
+  const demoOwnProjects = fundingProjects.filter((project) => isFundingProjectOwnedByBrewery(user, project));
+  const ownProjects = contextOwnProjects.length > 0 ? contextOwnProjects : demoOwnProjects;
   const dashboardProjects = ownProjects;
   const filteredFundings = fundingFilter === "active"
     ? dashboardProjects.filter((project) => isSupportableFundingStatus(project.status) || project.status === "심사 중" || project.status === "펀딩 예정")
@@ -342,6 +345,7 @@ export default function BreweryDashboardScreen() {
           <View style={styles.fundingList}>
             {visibleFundings.map((funding) => {
               const progress = Math.min((funding.currentAmount / funding.goalAmount) * 100, 100);
+              const progressLabel = Math.round(progress);
               const status = getFundingStatusLabel(funding.status);
 
               return (
@@ -362,8 +366,8 @@ export default function BreweryDashboardScreen() {
                          <Text style={styles.fundingTitle} numberOfLines={1}>{funding.title}</Text>
                          <View style={styles.rowBetweenBottom}>
                             <View style={styles.rowAlign}>
-                               <Text style={styles.progressPct}>{progress}%</Text>
-                               <Text style={styles.progressAmt}>{funding.currentAmount.toLocaleString()}원</Text>
+                               <Text style={styles.progressPct}>{progressLabel}%</Text>
+                               <Text style={styles.progressAmt} numberOfLines={1}>{funding.currentAmount.toLocaleString()}원</Text>
                             </View>
                             <Text style={styles.dday}>{isCompletedFundingStatus(funding.status) ? '종료' : `D-${funding.daysLeft}`}</Text>
                          </View>
@@ -643,10 +647,10 @@ const styles = StyleSheet.create({
   statusBadgeTxt: { fontSize: 10, fontWeight: '800', color: '#059669' },
   fundingTitle: { fontSize: 15, fontWeight: '700', color: '#111', marginVertical: 6 },
   rowBetweenBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6 },
-  rowAlign: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  progressPct: { fontSize: 18, fontWeight: '800', color: '#111' },
-  progressAmt: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
-  dday: { fontSize: 11, fontWeight: '700', color: '#111' },
+  rowAlign: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  progressPct: { fontSize: 18, fontWeight: '800', color: '#111', flexShrink: 0 },
+  progressAmt: { flex: 1, minWidth: 0, fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
+  dday: { marginLeft: 8, fontSize: 11, fontWeight: '700', color: '#111', flexShrink: 0 },
   progressBar: { height: 4 },
   stageUpdateBtnMini: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, backgroundColor: '#111' },
   stageUpdateBtnMiniText: { fontSize: 11, fontWeight: '800', color: '#FFF' },

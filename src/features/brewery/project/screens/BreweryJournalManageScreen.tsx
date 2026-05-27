@@ -16,7 +16,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { AlertCircle, ChevronLeft, Image as ImageIcon, Plus, Trash2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BREWING_STAGES, BrewingStage, JournalEntry, getFundingProjectImageSource } from '@/constants/data';
+import { BREWING_STAGES, BrewingStage, JournalEntry, fundingProjects, getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import {
@@ -101,7 +101,10 @@ export default function BreweryJournalManageScreen() {
   const { user } = useAuth();
   const { projects, updateProjectJournals } = useFunding();
   const projectId = Number(Array.isArray(id) ? id[0] : id);
-  const project = useMemo(() => projects.find((item) => item.id === projectId) || null, [projectId, projects]);
+  const project = useMemo(
+    () => projects.find((item) => item.id === projectId) || fundingProjects.find((item) => item.id === projectId) || null,
+    [projectId, projects],
+  );
   const [selectedStage, setSelectedStage] = useState<BrewingStage | null>(null);
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
   const [title, setTitle] = useState('');
@@ -298,10 +301,12 @@ export default function BreweryJournalManageScreen() {
                     <Text style={styles.stageTitle}>{stage.name}</Text>
                     <Text style={styles.stageSub}>{stageJournals.length > 0 ? `${stageJournals.length}개 일지` : '작성된 일지 없음'}</Text>
                   </View>
-                  <TouchableOpacity style={styles.stageWriteButton} onPress={() => openEditor(stage.id)}>
-                    <Plus size={16} color="#FFF" />
-                    <Text style={styles.stageWriteText}>작성</Text>
-                  </TouchableOpacity>
+                  {stageJournals.length === 0 && (
+                    <TouchableOpacity style={styles.stageWriteButton} onPress={() => openEditor(stage.id)}>
+                      <Plus size={16} color="#FFF" />
+                      <Text style={styles.stageWriteText}>작성</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {stageJournals.map((entry, index) => (

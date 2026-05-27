@@ -73,19 +73,6 @@ type FundingDraftResponse = {
   message: string;
 };
 
-type FundingDraftUpdatePayload = {
-  title?: string;
-  shortTitle?: string;
-  category?: string;
-  mainIngredient?: string;
-  subIngredients?: string[];
-  summary?: string;
-  alcoholPercentage?: number;
-  thumbnailUrl?: string;
-  imageUrls?: string[];
-  tags?: string[];
-};
-
 type FundingSectionResponse = {
   draftId: number;
   section?: string;
@@ -188,11 +175,12 @@ export type FundingDraftPreviewResponse = {
     profileImageUrl?: string;
     creatorIntroduction?: string;
     representativeName?: string;
-    businessRegistrationNumber?: string;
-    businessAddress?: string;
-    contactEmail?: string;
-    contactPhone?: string;
-    bankName?: string;
+  businessRegistrationNumber?: string;
+  businessAddress?: string;
+  businessAddressDetail?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  bankName?: string;
     accountNumber?: string;
     accountHolder?: string;
     businessType?: string;
@@ -201,9 +189,12 @@ export type FundingDraftPreviewResponse = {
     businessItem?: string;
     taxEmail?: string;
     phoneVerified?: boolean;
-    accountVerified?: boolean;
-    identityDocumentUrl?: string;
-    businessRegistrationFileUrl?: string;
+  accountVerified?: boolean;
+  identityDocumentUrl?: string;
+  businessRegistrationFileUrl?: string;
+  businessLicense?: string;
+  businessLicenseUrl?: string;
+  missingFields?: string[];
   };
   notices?: {
     policy?: string;
@@ -281,6 +272,7 @@ type FundingBreweryInfoPayload = {
   representativeName: string;
   businessRegistrationNumber: string;
   businessAddress: string;
+  businessAddressDetail?: string;
   contactEmail: string;
   contactPhone: string;
   bankName: string;
@@ -301,6 +293,35 @@ type FundingNoticesPayload = {
   exchangePolicy: string;
   adultVerificationNotice: string;
   riskNotice: string;
+};
+
+type FundingDraftUpdatePayload = FundingBasicInfoPayload & {
+  basicInfo?: FundingBasicInfoPayload;
+  schedule?: Partial<FundingSchedulePayload> & {
+    targetAmount?: number;
+    goalAmount?: number;
+    shippingFee?: number;
+  };
+  legalInfo?: Partial<FundingLegalInfoPayload> & {
+    businessRegistrationNumber?: string;
+    businessAddress?: string;
+    businessAddressDetail?: string;
+  };
+  tasteProfile?: Partial<FundingTasteProfilePayload> & {
+    flavor?: string[];
+    flavorNotes?: string[];
+    flavorTags?: string[];
+  };
+  plan?: Partial<FundingPlanPayload> & {
+    projectPolicy?: string;
+  };
+  breweryInfo?: Partial<FundingBreweryInfoPayload> & {
+    creatorName?: string;
+    businessAddressDetail?: string;
+    businessRegistrationFileUrl?: string;
+    businessLicenseUrl?: string;
+  };
+  notices?: FundingNoticesPayload;
 };
 
 type UpdateFundingProjectPayload = {
@@ -1305,6 +1326,7 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       representativeName: readFundingApiString(breweryInfo, ['representativeName', 'representative_name']),
       businessRegistrationNumber: readFundingApiString(breweryInfo, ['businessRegistrationNumber', 'business_registration_number']),
       businessAddress: readFundingApiString(breweryInfo, ['businessAddress', 'business_address']),
+      businessAddressDetail: readFundingApiString(breweryInfo, ['businessAddressDetail', 'business_address_detail']),
       contactEmail: readFundingApiString(breweryInfo, ['contactEmail', 'contact_email']),
       contactPhone: readFundingApiString(breweryInfo, ['contactPhone', 'contact_phone']),
       bankName: readFundingApiString(breweryInfo, ['bankName', 'bank_name']),
@@ -1318,7 +1340,10 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       phoneVerified: readFundingApiBoolean(breweryInfo, ['phoneVerified', 'phone_verified']),
       accountVerified: readFundingApiBoolean(breweryInfo, ['accountVerified', 'account_verified']),
       identityDocumentUrl: readFundingApiString(breweryInfo, ['identityDocumentUrl', 'identity_document_url', 'idCardUrl', 'id_card_url']),
-      businessRegistrationFileUrl: readFundingApiString(breweryInfo, ['businessRegistrationFileUrl', 'business_registration_file_url', 'businessLicenseUrl', 'business_license_url']),
+      businessRegistrationFileUrl: readFundingApiString(breweryInfo, ['businessRegistrationFileUrl', 'business_registration_file_url', 'businessLicenseUrl', 'business_license_url', 'businessLicense', 'business_license', 'documentUrl', 'document_url']),
+      businessLicense: readFundingApiString(breweryInfo, ['businessLicense', 'business_license', 'businessLicenseUrl', 'business_license_url']),
+      businessLicenseUrl: readFundingApiString(breweryInfo, ['businessLicenseUrl', 'business_license_url']),
+      missingFields: readFundingApiArray<string>(breweryInfo, ['missingFields', 'missing_fields']),
     },
     notices: {
       policy: readFundingApiString(notices, ['policy', 'projectPolicy', 'project_policy']),
@@ -2089,6 +2114,7 @@ export async function saveFundingBreweryInfo(draftId: number, payload: FundingBr
       representative_name: payload.representativeName,
       business_registration_number: payload.businessRegistrationNumber,
       business_address: payload.businessAddress,
+      business_address_detail: payload.businessAddressDetail,
       contact_email: payload.contactEmail,
       contact_phone: payload.contactPhone,
       bank_name: payload.bankName,
@@ -2110,6 +2136,7 @@ export async function saveFundingBreweryInfo(draftId: number, payload: FundingBr
       businessRegistrationNumber: payload.businessRegistrationNumber,
       businessNumber: payload.businessRegistrationNumber,
       businessAddress: payload.businessAddress,
+      businessAddressDetail: payload.businessAddressDetail,
       address: payload.businessAddress,
       contactEmail: payload.contactEmail,
       email: payload.contactEmail,
@@ -2154,9 +2181,11 @@ export async function loadFundingBreweryInfo(draftId: number) {
   const breweryInfo = getFundingApiNestedObject(data, ['breweryInfo', 'brewery_info', 'data']);
   return {
     breweryName: readFundingApiString(breweryInfo, ['breweryName', 'brewery_name']),
+    creatorName: readFundingApiString(breweryInfo, ['creatorName', 'creator_name']),
     representativeName: readFundingApiString(breweryInfo, ['representativeName', 'representative_name']),
     businessRegistrationNumber: readFundingApiString(breweryInfo, ['businessRegistrationNumber', 'business_registration_number']),
     businessAddress: readFundingApiString(breweryInfo, ['businessAddress', 'business_address']),
+    businessAddressDetail: readFundingApiString(breweryInfo, ['businessAddressDetail', 'business_address_detail']),
     contactEmail: readFundingApiString(breweryInfo, ['contactEmail', 'contact_email']),
     contactPhone: readFundingApiString(breweryInfo, ['contactPhone', 'contact_phone']),
     bankName: readFundingApiString(breweryInfo, ['bankName', 'bank_name']),
@@ -2169,7 +2198,12 @@ export async function loadFundingBreweryInfo(draftId: number) {
     creatorIntroduction: readFundingApiString(breweryInfo, ['creatorIntroduction', 'creator_introduction', 'creatorBio', 'creator_bio', 'breweryBio', 'brewery_bio', 'introduction', 'bio', 'description']),
     phoneVerified: readFundingApiBoolean(breweryInfo, ['phoneVerified', 'phone_verified']),
     accountVerified: readFundingApiBoolean(breweryInfo, ['accountVerified', 'account_verified']),
-  } satisfies Partial<FundingBreweryInfoPayload>;
+    businessRegistrationFileUrl: readFundingApiString(breweryInfo, ['businessRegistrationFileUrl', 'business_registration_file_url', 'businessLicenseUrl', 'business_license_url', 'businessLicense', 'business_license', 'documentUrl', 'document_url']),
+    businessLicense: readFundingApiString(breweryInfo, ['businessLicense', 'business_license', 'businessLicenseUrl', 'business_license_url']),
+    missingFields: readFundingApiArray<string>(data, ['missingFields', 'missing_fields']).length
+      ? readFundingApiArray<string>(data, ['missingFields', 'missing_fields'])
+      : readFundingApiArray<string>(breweryInfo, ['missingFields', 'missing_fields']),
+  };
 }
 
 export async function saveFundingNotices(draftId: number, payload: FundingNoticesPayload) {

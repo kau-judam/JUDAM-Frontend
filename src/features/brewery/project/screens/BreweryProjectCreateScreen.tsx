@@ -65,6 +65,7 @@ import {
   type FundingDocumentType,
   type FundingDraftPreviewResponse,
   loadFundingBreweryInfo,
+  updateFundingDraft,
   updateFundingProjectApi,
 } from '@/features/funding/api';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
@@ -75,6 +76,7 @@ import SafeStorage from '@/utils/storage';
 type TabId = 'basic' | 'funding' | 'rewards' | 'taste' | 'plan' | 'creator' | 'trust' | 'verification';
 type FileKey = 'profileImage' | 'idCard' | 'businessLicense' | 'salesPermit' | 'alcoholPermit' | 'manufacturingLicense';
 type DocumentFileKey = Exclude<FileKey, 'profileImage'>;
+type LoadedBreweryInfo = Partial<FundingDraftPreviewResponse['breweryInfo']> & Awaited<ReturnType<typeof loadFundingBreweryInfo>>;
 type UploadedFileValue = string | {
   name: string;
   uri?: string;
@@ -416,7 +418,7 @@ function getUploadedFilesFromPreview(preview: FundingDraftPreviewResponse) {
     ...documentFiles,
     profileImage: breweryInfo.profileImageUrl || '',
     idCard: documentFiles.idCard || breweryInfo.identityDocumentUrl || '',
-    businessLicense: documentFiles.businessLicense || breweryInfo.businessRegistrationFileUrl || '',
+    businessLicense: documentFiles.businessLicense || breweryInfo.businessRegistrationFileUrl || breweryInfo.businessLicenseUrl || breweryInfo.businessLicense || '',
   });
 }
 
@@ -442,6 +444,9 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
   );
   const alcoholContent = String(legalInfo.alcoholPercentage || basicInfo.alcoholPercentage || '');
   const breweryName = breweryInfo.breweryName || breweryInfo.creatorName || user?.breweryName || '';
+  const businessAddress = breweryInfo.businessAddressDetail && breweryInfo.businessAddress && !breweryInfo.businessAddress.includes(breweryInfo.businessAddressDetail)
+    ? `${breweryInfo.businessAddress} ${breweryInfo.businessAddressDetail}`
+    : breweryInfo.businessAddress || breweryInfo.businessAddressDetail || '';
 
   return {
     timestamp: preview.documents?.[0]?.createdAt || new Date().toISOString(),
@@ -502,7 +507,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       businessName: breweryInfo.businessName || breweryName,
       businessNumber: breweryInfo.businessRegistrationNumber || '',
       ceoName: breweryInfo.representativeName || breweryInfo.accountHolder || '',
-      address: breweryInfo.businessAddress || '',
+      address: businessAddress,
       businessCategory: breweryInfo.businessCategory || '',
       businessItem: breweryInfo.businessItem || '',
       email: breweryInfo.taxEmail || breweryInfo.contactEmail || user?.email || '',
@@ -882,6 +887,19 @@ export default function BreweryProjectCreateScreen() {
 
   const getReadyTags = () => normalizeProjectTags([...basicInfo.tags, tagDraft]);
 
+  const getOptionalNumberForApi = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const numberValue = Number(trimmed);
+    return Number.isFinite(numberValue) ? numberValue : undefined;
+  };
+
+  const getOptionalHttpUrl = (value: UploadedFileValue) => {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return /^https?:\/\//i.test(trimmed) ? trimmed : undefined;
+  };
+
   const createDraftPayload = () => ({
     timestamp: new Date().toISOString(),
     basicInfo: {
@@ -988,6 +1006,86 @@ export default function BreweryProjectCreateScreen() {
       finish: aroma,
       aftertaste: aroma,
       alcohol: aroma,
+    };
+  };
+
+  const getDraftUpdatePayloadForApi = () => {
+    const serverImageUrls = getServerProjectImageUrls();
+    const flavorNotes = getReadyTags();
+    const businessRegistrationNumber = formatBusinessRegistrationNumber(taxInfo.businessNumber);
+    const contactPhone = creatorInfo.phone.trim();
+
+    return {
+      basicInfo: {
+        title: basicInfo.title.trim() || undefined,
+        shortTitle: basicInfo.shortTitle.trim() || undefined,
+        category: basicInfo.category.trim() || '막걸리',
+        mainIngredient: basicInfo.mainIngredient.trim() || undefined,
+        subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
+        alcoholPercentage: getOptionalNumberForApi(basicInfo.alcoholContent),
+        summary: basicInfo.summary.trim() || undefined,
+        thumbnailUrl: serverImageUrls[0] || undefined,
+        imageUrls: serverImageUrls,
+        tags: flavorNotes,
+      },
+      schedule: {
+        pricePerBottle: getOptionalNumberForApi(fundingInfo.pricePerBottle),
+        totalQuantity: getOptionalNumberForApi(fundingInfo.bottleQuantity),
+        targetAmount: getOptionalNumberForApi(fundingInfo.goalAmount),
+        fundingStartDate: fundingInfo.startDate || undefined,
+        fundingPeriodDays: getOptionalNumberForApi(fundingInfo.duration),
+        expectedDeliveryDate: fundingInfo.expectedDeliveryDate || undefined,
+        shippingFee: FIXED_PROJECT_SHIPPING_FEE,
+      },
+      legalInfo: {
+        productType: 'MAKGEOLLI',
+        volume: getOptionalNumberForApi(productInfo.volume),
+        alcoholPercentage: getOptionalNumberForApi(productInfo.alcoholContent || basicInfo.alcoholContent),
+        rawMaterials: getRawMaterialsForApi(),
+        businessRegistrationNumber: businessRegistrationNumber || undefined,
+        businessAddress: taxInfo.address.trim() || undefined,
+      },
+      tasteProfile: {
+        ...getTasteProfileForApi(),
+        flavor: flavorNotes,
+        flavorNotes,
+        flavorTags: flavorNotes,
+      },
+      plan: {
+        introduction: projectPlan.introduction.trim() || undefined,
+        videoUrl: projectPlan.videoUrl.trim() || undefined,
+        budgetPlan: projectPlan.budget.trim() || getBudgetPlanForApi(),
+        schedulePlan: projectPlan.schedule.trim() || getSchedulePlanForApi(),
+        policy: trustInfo.projectPolicy.trim() || undefined,
+        projectPolicy: trustInfo.projectPolicy.trim() || undefined,
+      },
+      breweryInfo: {
+        breweryName: creatorInfo.name.trim() || taxInfo.businessName.trim() || user?.breweryName || undefined,
+        creatorName: creatorInfo.name.trim() || user?.name || undefined,
+        representativeName: taxInfo.ceoName.trim() || undefined,
+        businessRegistrationNumber: businessRegistrationNumber || undefined,
+        businessAddress: taxInfo.address.trim() || undefined,
+        contactEmail: taxInfo.email.trim() || user?.email || undefined,
+        contactPhone: contactPhone || undefined,
+        bankName: creatorInfo.accountBank.trim() || undefined,
+        accountNumber: creatorInfo.accountNumber.trim() || undefined,
+        accountHolder: taxInfo.ceoName.trim() || creatorInfo.name.trim() || undefined,
+        businessType: taxInfo.businessType || undefined,
+        businessName: taxInfo.businessName.trim() || undefined,
+        businessCategory: taxInfo.businessCategory.trim() || undefined,
+        businessItem: taxInfo.businessItem.trim() || undefined,
+        creatorIntroduction: creatorInfo.bio.trim() || undefined,
+        phoneVerified,
+        accountVerified,
+        businessRegistrationFileUrl: getOptionalHttpUrl(uploadedFiles.businessLicense),
+      },
+      notices: {
+        policy: trustInfo.projectPolicy.trim() || undefined,
+        refundPolicy: trustInfo.projectPolicy.trim() || '',
+        exchangePolicy: trustInfo.projectPolicy.trim() || '',
+        adultVerificationNotice: '본 프로젝트는 성인인증을 완료한 회원만 참여할 수 있습니다.',
+        riskNotice: trustInfo.expectedDifficulties.trim() || '',
+      },
     };
   };
 
@@ -1155,6 +1253,8 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const saveProjectSectionsToApi = async (draftId: number) => {
+    await updateFundingDraft(draftId, getDraftUpdatePayloadForApi());
+
     const serverImageUrls = getServerProjectImageUrls();
     await saveFundingBasicInfo(draftId, {
       title: basicInfo.title.trim(),
@@ -1248,6 +1348,7 @@ export default function BreweryProjectCreateScreen() {
     setIsSaving(true);
     try {
       const draftId = await ensureServerDraft();
+      await updateFundingDraft(draftId, getDraftUpdatePayloadForApi());
       await syncReadyProjectSectionsToApi(draftId);
       const savedDraft = await getSavedDraft();
       const nextTimestamp = savedDraft?.timestamp || new Date().toISOString();
@@ -1411,8 +1512,27 @@ export default function BreweryProjectCreateScreen() {
     navigateToExitRoute();
   };
 
-  const applyLoadedBreweryInfo = (info: Partial<ReturnType<typeof getBreweryInfoForApi>>) => {
-    const loadedBreweryName = info.breweryName || user?.breweryName || '';
+  const getLoadedBreweryMissingFields = (info: Partial<LoadedBreweryInfo>) =>
+    Array.isArray(info.missingFields) ? info.missingFields.map((field) => field.trim()).filter(Boolean) : [];
+
+  const showLoadedBreweryInfoResult = (info: Partial<LoadedBreweryInfo>) => {
+    const missingFields = getLoadedBreweryMissingFields(info);
+    if (missingFields.length > 0) {
+      showAlert(`불러온 양조장 정보 중 ${missingFields.join(', ')} 정보가 비어 있습니다.`);
+      return;
+    }
+    showAlert('서버에 저장된 양조장 정보를 불러왔습니다.');
+  };
+
+  const applyLoadedBreweryInfo = (info: Partial<LoadedBreweryInfo>) => {
+    const loadedBreweryName = info.breweryName || info.creatorName || user?.breweryName || '';
+    const businessAddress = info.businessAddress || '';
+    const businessAddressDetail = info.businessAddressDetail || '';
+    const loadedAddress = businessAddressDetail && businessAddress && !businessAddress.includes(businessAddressDetail)
+      ? `${businessAddress} ${businessAddressDetail}`
+      : businessAddress || businessAddressDetail;
+    const businessLicenseFile = info.businessRegistrationFileUrl || info.businessLicenseUrl || info.businessLicense || '';
+
     setCreatorInfo((prev) => ({
       ...prev,
       name: loadedBreweryName,
@@ -1427,11 +1547,14 @@ export default function BreweryProjectCreateScreen() {
       businessName: info.businessName || loadedBreweryName || prev.businessName,
       businessNumber: info.businessRegistrationNumber || prev.businessNumber,
       ceoName: info.representativeName || prev.ceoName,
-      address: info.businessAddress || prev.address,
+      address: loadedAddress || prev.address,
       businessCategory: info.businessCategory || prev.businessCategory,
       businessItem: info.businessItem || prev.businessItem,
       email: info.contactEmail || prev.email || user?.email || '',
     }));
+    if (businessLicenseFile) {
+      setUploadedFiles((prev) => normalizeUploadedFiles({ ...prev, businessLicense: businessLicenseFile }));
+    }
     setPhoneVerified(Boolean(info.phoneVerified || info.contactPhone));
     setAccountVerified(Boolean(info.accountVerified || (info.bankName && info.accountNumber)));
   };
@@ -1441,8 +1564,11 @@ export default function BreweryProjectCreateScreen() {
     if (isEditMode && editProjectId) {
       try {
         const preview = await getFundingDraftByFundingId(editProjectId);
-        applyLoadedBreweryInfo(preview.breweryInfo || {});
+        const serverInfo = await loadFundingBreweryInfo(preview.draftId);
+        const loadedInfo = { ...(preview.breweryInfo || {}), ...serverInfo };
+        applyLoadedBreweryInfo(loadedInfo);
         setUploadedFiles((prev) => normalizeUploadedFiles({ ...prev, ...getUploadedFilesFromPreview(preview) }));
+        void Promise.resolve().then(() => showLoadedBreweryInfoResult(loadedInfo));
         showAlert('서버에 저장된 양조장 정보를 불러왔습니다.');
       } catch (error) {
         showAlert(getFundingApiErrorMessage(error, '서버 양조장 정보를 불러오지 못했습니다.'));
@@ -1454,6 +1580,7 @@ export default function BreweryProjectCreateScreen() {
         const draftId = await ensureServerDraft();
         const serverInfo = await loadFundingBreweryInfo(draftId);
         applyLoadedBreweryInfo(serverInfo);
+        void Promise.resolve().then(() => showLoadedBreweryInfoResult(serverInfo));
         showAlert('서버에 저장된 양조장 정보를 불러왔습니다.');
         return;
       } catch (error) {

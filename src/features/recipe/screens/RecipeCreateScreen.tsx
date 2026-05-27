@@ -125,8 +125,11 @@ export default function RecipeCreateScreen() {
   };
 
   const handleSelectSubIngredientRegion = (suggestion: SubIngredientRegionSuggestion) => {
+    const isSameRegion = selectedSubIngredientRegion?.region === suggestion.region;
     setSelectedSubIngredientRegion(suggestion);
-    setSelectedSubIngredients([]);
+    if (!isSameRegion) {
+      setSelectedSubIngredients([]);
+    }
     setGeneratedSubIngredients(suggestion.subIngredients);
   };
 
@@ -429,6 +432,9 @@ export default function RecipeCreateScreen() {
                 ))}
               </ScrollView>
             ) : null}
+            {subIngredientRegions.length > 0 ? (
+              <Text style={styles.regionHelpText}>서브재료는 한 지역에서만 선택 가능합니다.</Text>
+            ) : null}
             {generatedSubIngredients.length > 0 ? (
               <View style={styles.chipWrap}>
                 {generatedSubIngredients.map((ingredient) => (
@@ -687,6 +693,7 @@ const styles = StyleSheet.create({
   helpText: { fontSize: 12, fontWeight: '600', color: '#9CA3AF', lineHeight: 18 },
   regionScroll: { marginBottom: 12 },
   regionScrollContent: { gap: 8, paddingRight: 8 },
+  regionHelpText: { marginTop: -4, marginBottom: 12, fontSize: 12, fontWeight: '700', color: '#6B7280', lineHeight: 18 },
   regionChip: {
     minHeight: 36,
     paddingHorizontal: 14,

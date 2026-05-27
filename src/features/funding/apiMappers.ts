@@ -50,11 +50,15 @@ function getFundingMatchScore(item: {
   matchScore?: number | null;
   tasteMatchScore?: number | null;
   matchRate?: number | null;
+  matchPercent?: number | null;
+  recommendationScore?: number | null;
 }) {
   return normalizeMatchScore(item.sulbtiMatchScore)
     ?? normalizeMatchScore(item.matchScore)
     ?? normalizeMatchScore(item.tasteMatchScore)
-    ?? normalizeMatchScore(item.matchRate);
+    ?? normalizeMatchScore(item.matchRate)
+    ?? normalizeMatchScore(item.matchPercent)
+    ?? normalizeMatchScore(item.recommendationScore);
 }
 
 function getVolumeFromDescription(description?: string) {
@@ -123,7 +127,10 @@ function isSameFundingText(current?: string, incoming?: string) {
 
 export function mergeFundingListItem(existing: FundingProject | undefined, item: FundingListItem): FundingProject {
   const status = mapFundingStatus(item.status, item.currentAmount, item.targetAmount);
-  const thumbnailUrl = normalizeFundingImageUrl(item.thumbnailUrl);
+  const listImages = normalizeFundingImageUrls(
+    item.allImageUrls?.length ? item.allImageUrls : item.imageUrls?.length ? item.imageUrls : item.images
+  ).slice(0, 5);
+  const thumbnailUrl = normalizeFundingImageUrl(item.thumbnailUrl) || listImages[0] || '';
   const matchScore = getFundingMatchScore(item);
   return {
     id: item.fundingId,
@@ -135,7 +142,7 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     shortTitle: existing?.shortTitle || item.title,
     shortDescription: item.description || existing?.shortDescription || existing?.projectSummary || item.title,
     image: thumbnailUrl || existing?.image || '',
-    images: existing?.images,
+    images: listImages.length ? listImages : existing?.images,
     localImage: existing?.localImage,
     popularRank: existing?.popularRank,
     isMine: getFundingIsMine(item) ?? existing?.isMine,

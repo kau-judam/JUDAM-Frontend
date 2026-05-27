@@ -375,7 +375,12 @@ type FundingDocumentUploadFile = {
 
 export type FundingUploadFile = FundingDocumentUploadFile;
 
-export type FundingDraftFileType = 'PROFILE_IMAGE' | 'IDENTITY_DOCUMENT' | 'BUSINESS_REGISTRATION';
+export type FundingDraftFileType =
+  | 'PROJECT_IMAGE'
+  | 'FUNDING_IMAGE'
+  | 'PROFILE_IMAGE'
+  | 'IDENTITY_DOCUMENT'
+  | 'BUSINESS_REGISTRATION';
 
 type FundingDocumentUploadResponse = {
   draftId: number;
@@ -691,7 +696,7 @@ type MyLikedFundingsResponse = {
 };
 
 export type FundingListStatus = 'UPCOMING' | 'ONGOING' | 'ENDED';
-export type FundingListSort = 'POPULAR' | 'LATEST' | 'DEADLINE' | 'RECOMMENDED';
+export type FundingListSort = 'popular' | 'latest' | 'endingSoon' | 'recommended';
 
 export type FundingListItem = {
   fundingId: number;
@@ -699,6 +704,9 @@ export type FundingListItem = {
   description?: string;
   recipeTitle?: string;
   thumbnailUrl: string | null;
+  imageUrls?: string[];
+  allImageUrls?: string[];
+  images?: unknown;
   breweryName: string;
   isMine?: boolean;
   is_mine?: boolean;
@@ -718,6 +726,8 @@ export type FundingListItem = {
   matchScore?: number | null;
   tasteMatchScore?: number | null;
   matchRate?: number | null;
+  matchPercent?: number | null;
+  recommendationScore?: number | null;
 };
 
 export type FundingListResponse = {
@@ -2439,9 +2449,10 @@ export async function getFundingList(params: {
   query.set('page', String(params.page ?? 0));
   query.set('size', String(params.size ?? 10));
   const suffix = query.toString();
+  const shouldIncludeAuth = Boolean(params.mine || params.sort === 'recommended');
   const result = await requestFundingJson<FundingListApiResponse>(`/api/fundings${suffix ? `?${suffix}` : ''}`, {
     auth: params.mine,
-    skipAuth: !params.mine,
+    skipAuth: !shouldIncludeAuth,
   });
   const data = Array.isArray(result.data) ? result.data : result.content ?? [];
   return {

@@ -141,6 +141,7 @@ export interface FundingProject {
 }
 
 export const fundingProjects: FundingProject[] = [];
+const DEFAULT_FUNDING_IMAGE = require('../../newpicutre/funding3.jpg');
 
 export interface Recipe {
   id: number;
@@ -215,7 +216,7 @@ export function getImageSource(image?: string | ImageSourcePropType) {
 }
 
 export function getFundingProjectImageSource(project: FundingProject) {
-  return project.localImage || getImageSource(project.image);
+  return project.localImage || getImageSource(project.image) || DEFAULT_FUNDING_IMAGE;
 }
 
 export const activeFundingStatuses: ProjectStatus[] = ["펀딩 예정", "진행 중", "목표 달성"];

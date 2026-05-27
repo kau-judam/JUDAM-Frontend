@@ -13,6 +13,10 @@ function coerceFundingImageUrls(imageUrls: unknown): string[] {
   if (Array.isArray(imageUrls)) {
     return imageUrls.flatMap(coerceFundingImageUrls);
   }
+  if (typeof imageUrls === 'object') {
+    const image = imageUrls as { imageUrl?: unknown; image_url?: unknown; url?: unknown };
+    return coerceFundingImageUrls(image.imageUrl ?? image.image_url ?? image.url);
+  }
   if (typeof imageUrls !== 'string') return [];
 
   const trimmed = imageUrls.trim();

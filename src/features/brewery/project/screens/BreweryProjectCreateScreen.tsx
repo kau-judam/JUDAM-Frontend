@@ -277,11 +277,30 @@ function getMimeTypeFromFileName(fileName: string) {
   if (extension === 'pdf') return 'application/pdf';
   if (extension === 'png') return 'image/png';
   if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'webp') return 'image/webp';
   return 'application/octet-stream';
 }
 
 function isSupportedDocumentFile(fileName: string, mimeType?: string) {
   return SUPPORTED_DOCUMENT_EXTENSIONS.includes(getDocumentFileExtension(fileName)) || Boolean(mimeType && SUPPORTED_DOCUMENT_MIME_TYPES.includes(mimeType));
+}
+
+function isLocalProjectImageUri(imageUrl: string) {
+  return /^(file|content):\/\//i.test(imageUrl.trim());
+}
+
+function getProjectImageUploadFile(imageUrl: string, index: number) {
+  const cleanPath = imageUrl.split('?')[0] || '';
+  const rawName = cleanPath.split('/').pop() || '';
+  const hasImageExtension = /\.(jpe?g|png|webp)$/i.test(rawName);
+  const name = hasImageExtension ? rawName : `project-image-${index + 1}.jpg`;
+  const mimeType = getMimeTypeFromFileName(name);
+
+  return {
+    uri: imageUrl,
+    name,
+    mimeType: mimeType === 'application/octet-stream' ? 'image/jpeg' : mimeType,
+  };
 }
 
 function normalizeProjectDate(value?: string) {
@@ -1009,8 +1028,8 @@ export default function BreweryProjectCreateScreen() {
     };
   };
 
-  const getDraftUpdatePayloadForApi = () => {
-    const serverImageUrls = getServerProjectImageUrls();
+  const getDraftUpdatePayloadForApi = (preparedImageUrls?: string[]) => {
+    const serverImageUrls = preparedImageUrls ?? getServerProjectImageUrls();
     const flavorNotes = getReadyTags();
     const businessRegistrationNumber = formatBusinessRegistrationNumber(taxInfo.businessNumber);
     const contactPhone = creatorInfo.phone.trim();
@@ -1189,9 +1208,34 @@ export default function BreweryProjectCreateScreen() {
     }
   };
 
-  const syncReadyProjectSectionsToApi = async (draftId: number) => {
+  const uploadProjectImagesToApi = async (draftId: number) => {
+    const projectImages = normalizeProjectImageUrls(basicInfo.images);
+    const nextImages: string[] = [];
+
+    for (const [index, image] of projectImages.entries()) {
+      if (!isLocalProjectImageUri(image)) {
+        nextImages.push(image);
+        continue;
+      }
+
+      const uploaded = await uploadFundingDraftFile(draftId, 'PROJECT_IMAGE', getProjectImageUploadFile(image, index));
+      if (!uploaded.fileUrl) {
+        throw new Error('대표 이미지 업로드 결과 URL을 확인할 수 없습니다.');
+      }
+      nextImages.push(uploaded.fileUrl);
+    }
+
+    const serverImageUrls = normalizeServerProjectImageUrls(nextImages);
+    if (serverImageUrls.join('|') !== normalizeServerProjectImageUrls(basicInfo.images).join('|')) {
+      setBasicInfo((prev) => ({ ...prev, images: serverImageUrls }));
+    }
+
+    return serverImageUrls;
+  };
+
+  const syncReadyProjectSectionsToApi = async (draftId: number, preparedImageUrls?: string[]) => {
     const alcoholPercentage = Number(basicInfo.alcoholContent);
-    const serverImageUrls = getServerProjectImageUrls();
+    const serverImageUrls = preparedImageUrls ?? await uploadProjectImagesToApi(draftId);
     await saveFundingBasicInfo(draftId, {
       title: basicInfo.title.trim() || undefined,
       shortTitle: basicInfo.shortTitle.trim() || undefined,
@@ -1253,9 +1297,9 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const saveProjectSectionsToApi = async (draftId: number) => {
-    await updateFundingDraft(draftId, getDraftUpdatePayloadForApi());
+    const serverImageUrls = await uploadProjectImagesToApi(draftId);
+    await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(serverImageUrls));
 
-    const serverImageUrls = getServerProjectImageUrls();
     await saveFundingBasicInfo(draftId, {
       title: basicInfo.title.trim(),
       shortTitle: basicInfo.shortTitle.trim() || undefined,
@@ -1292,6 +1336,7 @@ export default function BreweryProjectCreateScreen() {
       adultVerificationNotice: '본 프로젝트는 성인인증을 완료한 후원자만 참여할 수 있습니다.',
       riskNotice: trustInfo.expectedDifficulties.trim(),
     });
+    return serverImageUrls;
   };
 
   const uploadProjectDocumentsToApi = async (draftId: number) => {
@@ -1348,8 +1393,9 @@ export default function BreweryProjectCreateScreen() {
     setIsSaving(true);
     try {
       const draftId = await ensureServerDraft();
-      await updateFundingDraft(draftId, getDraftUpdatePayloadForApi());
-      await syncReadyProjectSectionsToApi(draftId);
+      const serverImageUrls = await uploadProjectImagesToApi(draftId);
+      await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(serverImageUrls));
+      await syncReadyProjectSectionsToApi(draftId, serverImageUrls);
       const savedDraft = await getSavedDraft();
       const nextTimestamp = savedDraft?.timestamp || new Date().toISOString();
       setHasTempSave(true);
@@ -1886,10 +1932,11 @@ export default function BreweryProjectCreateScreen() {
     }
   };
 
-  const buildProjectPayload = (mode: 'create' | 'edit'): Omit<FundingProject, 'id'> => {
+  const buildProjectPayload = (mode: 'create' | 'edit', imageUrlsOverride?: string[]): Omit<FundingProject, 'id'> => {
     const budgetItems = parseBudgetItems(projectPlan.budget);
     const scheduleItems = parseScheduleItems(projectPlan.schedule);
-    const image = basicInfo.images[0] || editProject?.image || '';
+    const projectImages = imageUrlsOverride?.length ? imageUrlsOverride : basicInfo.images;
+    const image = projectImages[0] || editProject?.image || '';
     const quantity = Number(fundingInfo.bottleQuantity) || editProject?.targetQuantity || editProject?.totalQuantity || 0;
     const goalAmount = Number(fundingInfo.goalAmount) || editProject?.goalAmount || 0;
     const projectCategory = '막걸리';
@@ -1907,7 +1954,7 @@ export default function BreweryProjectCreateScreen() {
       favoriteCount: editProject?.favoriteCount || 0,
       shortDescription: basicInfo.summary,
       image,
-      images: basicInfo.images,
+      images: projectImages,
       localImage: mode === 'edit' ? undefined : editProject?.localImage,
       popularRank: editProject?.popularRank,
       goalAmount,
@@ -1975,10 +2022,11 @@ export default function BreweryProjectCreateScreen() {
     try {
       let convertedFunding: Awaited<ReturnType<typeof createRecipeFunding>>['funding'] | null = null;
       let submittedFundingId: number | null = null;
+      let submittedImageUrls: string[] = [];
       if (!isEditMode) {
         try {
           const draftId = await ensureServerDraft();
-          await saveProjectSectionsToApi(draftId);
+          submittedImageUrls = await saveProjectSectionsToApi(draftId);
           await uploadProjectDocumentsToApi(draftId);
           const submittedDraft = await submitFundingDraft(draftId);
           submittedFundingId = submittedDraft.fundingId || null;
@@ -2001,12 +2049,13 @@ export default function BreweryProjectCreateScreen() {
       }
       if (isEditMode && editProjectId) {
         const draftId = await ensureServerDraft();
-        await saveProjectSectionsToApi(draftId);
+        const serverImageUrls = await saveProjectSectionsToApi(draftId);
+        submittedImageUrls = serverImageUrls;
         await uploadProjectDocumentsToApi(draftId);
         await updateFundingProjectApi(editProjectId, {
           title: basicInfo.title.trim(),
           description: projectPlan.introduction.trim() || basicInfo.summary.trim(),
-          thumbnailUrl: getServerProjectImageUrls()[0] || undefined,
+          thumbnailUrl: serverImageUrls[0] || undefined,
           goalAmount: Number(fundingInfo.goalAmount),
           startDate: fundingInfo.startDate,
           endDate: endDateText,
@@ -2015,7 +2064,7 @@ export default function BreweryProjectCreateScreen() {
         });
         await saveFundingLegalInfo(draftId, getLegalInfoForApi());
       }
-      const payload = buildProjectPayload(isEditMode ? 'edit' : 'create');
+      const payload = buildProjectPayload(isEditMode ? 'edit' : 'create', submittedImageUrls);
       if (!isEditMode && convertedFunding) {
         const convertedProject: FundingProject = {
           ...payload,

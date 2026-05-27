@@ -118,6 +118,10 @@ export interface FundingProject {
   estimatedDelivery?: string;
   rewardItems?: string[];
   shippingFee?: number;
+  businessAddress?: string;
+  breweryAddress?: string;
+  mainIngredientLabel?: string;
+  primaryIngredientLabel?: string;
   mainIngredients?: string;
   subIngredients?: string;
   tags?: string[];
@@ -125,8 +129,12 @@ export interface FundingProject {
   introduction?: string;
   story?: string;
   projectPolicy?: string;
+  refundPolicy?: string;
+  exchangePolicy?: string;
   expectedDifficulties?: string;
   rewardDetails?: string;
+  budgetPlanText?: string;
+  schedulePlanText?: string;
   budget?: BudgetItem[];
   schedule?: ScheduleItem[];
   tasteProfile?: TasteProfile;

@@ -1,4 +1,4 @@
-import type { BrewingStage, FundingProject, JournalEntry, ProjectStatus } from '@/constants/data';
+import type { BrewingStage, BudgetItem, FundingProject, JournalEntry, ProjectStatus, ScheduleItem } from '@/constants/data';
 import type {
   FundingBreweryLogItem,
   FundingDetailResponse,
@@ -59,6 +59,51 @@ function getFundingMatchScore(item: {
     ?? normalizeMatchScore(item.matchRate)
     ?? normalizeMatchScore(item.matchPercent)
     ?? normalizeMatchScore(item.recommendationScore);
+}
+
+function getPlanText(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeBudgetPlanItems(value: unknown): BudgetItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const source = item as Partial<{ category: unknown; item: unknown; amount: unknown }>;
+      const label = typeof source.category === 'string'
+        ? source.category
+        : typeof source.item === 'string'
+          ? source.item
+          : '';
+      const amount = Number(source.amount);
+      if (!label.trim() || !Number.isFinite(amount)) return null;
+      return { item: label.trim(), amount };
+    })
+    .filter((item): item is BudgetItem => Boolean(item));
+}
+
+function normalizeSchedulePlanItems(value: unknown): ScheduleItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const source = item as Partial<{ date: unknown; description: unknown; step: unknown }>;
+      const description = typeof source.description === 'string'
+        ? source.description
+        : typeof source.step === 'string'
+          ? source.step
+          : '';
+      const date = typeof source.date === 'string' ? source.date : '';
+      if (!description.trim()) return null;
+      return { date: date.trim(), description: description.trim() };
+    })
+    .filter((item): item is ScheduleItem => Boolean(item));
+}
+
+function joinTextList(value?: string[] | string | null) {
+  if (Array.isArray(value)) return value.map((item) => item.trim()).filter(Boolean).join(', ');
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 function getVolumeFromDescription(description?: string) {
@@ -132,6 +177,8 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
   ).slice(0, 5);
   const thumbnailUrl = normalizeFundingImageUrl(item.thumbnailUrl) || listImages[0] || '';
   const matchScore = getFundingMatchScore(item);
+  const mainIngredient = item.mainIngredient || item.primaryIngredient;
+  const subIngredients = joinTextList(item.subIngredients) || item.subIngredient;
   return {
     id: item.fundingId,
     title: item.title || existing?.title || '',
@@ -172,8 +219,10 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     estimatedDelivery: existing?.estimatedDelivery,
     rewardItems: existing?.rewardItems,
     shippingFee: existing?.shippingFee,
-    mainIngredients: existing?.mainIngredients,
-    subIngredients: existing?.subIngredients,
+    mainIngredientLabel: item.mainIngredientLabel || item.primaryIngredientLabel || existing?.mainIngredientLabel,
+    primaryIngredientLabel: item.primaryIngredientLabel || item.mainIngredientLabel || existing?.primaryIngredientLabel,
+    mainIngredients: mainIngredient || existing?.mainIngredients,
+    subIngredients: subIngredients || existing?.subIngredients,
     tags: existing?.tags,
     projectSummary: existing?.projectSummary,
     introduction: existing?.introduction,
@@ -206,16 +255,38 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     formatAlcoholSpec(detail.alcoholPercentage) ||
     getAlcoholFromDescription(supportOption?.description);
   const thumbnailUrl = normalizeFundingImageUrl(detail.thumbnailUrl);
-  const detailImages = normalizeFundingImageUrls(detail.allImageUrls?.length ? detail.allImageUrls : detail.imageUrls);
+  const detailImages = normalizeFundingImageUrls(
+    detail.allImageUrls?.length ? detail.allImageUrls : detail.imageUrls?.length ? detail.imageUrls : detail.images
+  );
   const sameProject =
     detail.fundingId === existing.id ||
     isSameFundingText(existing.title, detail.title) ||
     isSameFundingText(existing.shortTitle, detail.title);
   const matchScore = getFundingMatchScore(detail);
+  const businessAddress = detail.businessAddress || detail.breweryAddress || detail.breweryLocation || detail.breweryInfo?.businessAddress || detail.breweryInfo?.breweryAddress;
+  const mainIngredient =
+    detail.mainIngredient ||
+    detail.primaryIngredient ||
+    detail.legalInfo?.mainIngredient ||
+    detail.legalInfo?.primaryIngredient ||
+    detail.legalInfo?.rawMaterials?.[0]?.name;
+  const subIngredients =
+    joinTextList(detail.subIngredients) ||
+    detail.subIngredient ||
+    joinTextList(detail.legalInfo?.subIngredients) ||
+    detail.legalInfo?.subIngredient;
+  const budgetPlanText = getPlanText(detail.plan?.budgetPlan);
+  const schedulePlanText = getPlanText(detail.plan?.schedulePlan);
+  const budgetItems = normalizeBudgetPlanItems(detail.plan?.budgetPlan);
+  const scheduleItems = normalizeSchedulePlanItems(detail.plan?.schedulePlan);
+  const projectPolicy = detail.plan?.policy || detail.notices?.policy || detail.notices?.refundPolicy;
   return {
     ...existing,
     title: sameProject ? detail.title || existing.title : existing.title,
     brewery: sameProject ? detail.breweryName || existing.brewery : existing.brewery,
+    location: sameProject ? businessAddress || existing.location : existing.location,
+    category: sameProject ? detail.category || existing.category : existing.category,
+    shortTitle: sameProject ? detail.shortTitle || existing.shortTitle : existing.shortTitle,
     shortDescription: sameProject ? detail.description || detail.summary || existing.shortDescription : existing.shortDescription,
     currentAmount: sameProject ? detail.currentAmount ?? existing.currentAmount : existing.currentAmount,
     goalAmount: sameProject ? detail.targetAmount || existing.goalAmount : existing.goalAmount,
@@ -228,7 +299,10 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     projectSummary: sameProject ? detail.summary || detail.description || existing.projectSummary : existing.projectSummary,
     image: sameProject ? thumbnailUrl || existing.image || '' : existing.image,
     images: sameProject ? (detailImages.length ? detailImages : existing.images) : existing.images,
-    pricePerBottle: sameProject ? supportOption?.price ?? existing.pricePerBottle : existing.pricePerBottle,
+    pricePerBottle: sameProject ? detail.pricePerBottle ?? supportOption?.price ?? existing.pricePerBottle : existing.pricePerBottle,
+    totalQuantity: sameProject ? detail.totalQuantity ?? existing.totalQuantity : existing.totalQuantity,
+    targetQuantity: sameProject ? detail.totalQuantity ?? existing.targetQuantity : existing.targetQuantity,
+    shippingFee: sameProject ? detail.shippingFee ?? existing.shippingFee : existing.shippingFee,
     rewardItems: sameProject && supportOption ? [supportOption.name] : existing.rewardItems,
     bottleSize: sameProject ? bottleSize || existing.bottleSize : existing.bottleSize,
     volume: sameProject ? bottleSize || existing.volume : existing.volume,
@@ -259,8 +333,22 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     introduction: sameProject ? detail.plan?.introduction || existing.introduction : existing.introduction,
     story: sameProject ? detail.plan?.introduction || existing.story : existing.story,
     videoUrl: sameProject ? detail.plan?.videoUrl || existing.videoUrl : existing.videoUrl,
-    projectPolicy: sameProject ? detail.plan?.policy || detail.notices?.policy || detail.notices?.refundPolicy || existing.projectPolicy : existing.projectPolicy,
+    businessAddress: sameProject ? detail.businessAddress || detail.breweryInfo?.businessAddress || existing.businessAddress : existing.businessAddress,
+    breweryAddress: sameProject ? detail.breweryAddress || detail.breweryInfo?.breweryAddress || businessAddress || existing.breweryAddress : existing.breweryAddress,
+    mainIngredientLabel: sameProject ? detail.mainIngredientLabel || detail.primaryIngredientLabel || existing.mainIngredientLabel : existing.mainIngredientLabel,
+    primaryIngredientLabel: sameProject ? detail.primaryIngredientLabel || detail.mainIngredientLabel || existing.primaryIngredientLabel : existing.primaryIngredientLabel,
+    mainIngredients: sameProject ? mainIngredient || existing.mainIngredients : existing.mainIngredients,
+    subIngredients: sameProject ? subIngredients || existing.subIngredients : existing.subIngredients,
+    projectPolicy: sameProject ? projectPolicy || existing.projectPolicy : existing.projectPolicy,
+    refundPolicy: sameProject ? detail.notices?.refundPolicy || existing.refundPolicy : existing.refundPolicy,
+    exchangePolicy: sameProject ? detail.notices?.exchangePolicy || existing.exchangePolicy : existing.exchangePolicy,
     expectedDifficulties: sameProject ? detail.notices?.riskNotice || existing.expectedDifficulties : existing.expectedDifficulties,
+    budgetPlanText: sameProject ? budgetPlanText || existing.budgetPlanText : existing.budgetPlanText,
+    schedulePlanText: sameProject ? schedulePlanText || existing.schedulePlanText : existing.schedulePlanText,
+    budget: sameProject ? (budgetItems.length ? budgetItems : existing.budget) : existing.budget,
+    schedule: sameProject ? (scheduleItems.length ? scheduleItems : existing.schedule) : existing.schedule,
+    breweryBio: sameProject ? detail.breweryInfo?.creatorIntroduction || existing.breweryBio : existing.breweryBio,
+    breweryProfileImage: sameProject ? normalizeFundingImageUrl(detail.breweryInfo?.profileImageUrl) || existing.breweryProfileImage : existing.breweryProfileImage,
     ingredients: sameProject && detail.legalInfo?.rawMaterials?.length
       ? detail.legalInfo.rawMaterials.map((item, index) => ({ id: index + 1, ingredient: item.name, origin: item.origin }))
       : existing.ingredients,
@@ -271,12 +359,27 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
 export function mergeFundingIntro(existing: FundingProject, intro: FundingIntroResponse): FundingProject {
   const sameProject = isSameFundingText(existing.title, intro.title) || isSameFundingText(existing.shortTitle, intro.title);
   if (!sameProject) return existing;
-  const introImages = normalizeFundingImageUrls(intro.images);
+  const introImages = normalizeFundingImageUrls(
+    intro.allImageUrls?.length ? intro.allImageUrls : intro.imageUrls?.length ? intro.imageUrls : intro.images
+  );
+  const mainIngredient = intro.mainIngredient || intro.primaryIngredient;
+  const subIngredients = joinTextList(intro.subIngredients) || intro.subIngredient;
+  const budgetPlanText = intro.budgetPlan || intro.projectBudget || '';
+  const schedulePlanText = intro.schedulePlan || intro.projectSchedule || '';
+  const projectPolicy = intro.policy || intro.projectPolicy || '';
   return {
     ...existing,
     projectSummary: existing.projectSummary || intro.introduction,
     introduction: intro.introduction || existing.introduction,
     story: intro.story || existing.story,
+    videoUrl: intro.videoUrl || existing.videoUrl,
+    mainIngredientLabel: intro.mainIngredientLabel || intro.primaryIngredientLabel || existing.mainIngredientLabel,
+    primaryIngredientLabel: intro.primaryIngredientLabel || intro.mainIngredientLabel || existing.primaryIngredientLabel,
+    mainIngredients: mainIngredient || existing.mainIngredients,
+    subIngredients: subIngredients || existing.subIngredients,
+    budgetPlanText: budgetPlanText || existing.budgetPlanText,
+    schedulePlanText: schedulePlanText || existing.schedulePlanText,
+    projectPolicy: projectPolicy || existing.projectPolicy,
     images: introImages.length ? introImages : existing.images,
     updatedAt: new Date().toISOString(),
   };

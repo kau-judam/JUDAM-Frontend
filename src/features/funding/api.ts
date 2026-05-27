@@ -11,6 +11,29 @@ type FundingApiEnvelope<T> = FundingApiErrorBody & {
   data?: T;
 };
 
+type FundingRawMaterialResponse = {
+  name?: string;
+  ingredient?: string;
+  mainIngredient?: string;
+  main_ingredient?: string;
+  rawMaterial?: string;
+  raw_material?: string;
+  materialName?: string;
+  material_name?: string;
+  origin?: string;
+  originName?: string;
+  origin_name?: string;
+  countryOfOrigin?: string;
+  country_of_origin?: string;
+  productionArea?: string;
+  production_area?: string;
+};
+
+type FundingRawMaterialPayload = FundingRawMaterialResponse & {
+  name: string;
+  origin: string;
+};
+
 type FundingAgreementPayload = {
   breweryId: number;
   isAdultConfirmed: boolean;
@@ -230,7 +253,7 @@ type FundingLegalInfoPayload = {
   productType: string;
   volume: number;
   alcoholPercentage: number;
-  rawMaterials: { name: string; origin: string }[];
+  rawMaterials: FundingRawMaterialPayload[];
 };
 
 type FundingTasteProfilePayload = {
@@ -243,8 +266,6 @@ type FundingTasteProfilePayload = {
   finish?: number;
   aftertaste?: number;
   alcohol?: number;
-  flavor?: string[];
-  flavorNotes?: string[];
 };
 
 type FundingPlanPayload = {
@@ -1056,6 +1077,11 @@ function readFundingApiNumber(source: Record<string, unknown>, keys: string[], f
   return fallback;
 }
 
+function readFundingApiOptionalNumber(source: Record<string, unknown>, keys: string[]) {
+  const value = readFundingApiNumber(source, keys, Number.NaN);
+  return Number.isFinite(value) ? value : undefined;
+}
+
 function readFundingApiString(source: Record<string, unknown>, keys: string[], fallback = '') {
   for (const key of keys) {
     const value = source[key];
@@ -1063,6 +1089,38 @@ function readFundingApiString(source: Record<string, unknown>, keys: string[], f
     if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   }
   return fallback;
+}
+
+function readFundingOptionalString(source: Record<string, unknown>, keys: string[]) {
+  const value = readFundingApiString(source, keys);
+  return value.trim();
+}
+
+function normalizeFundingRawMaterials(items: FundingRawMaterialResponse[]) {
+  return items
+    .filter((item) => item && typeof item === 'object' && !Array.isArray(item))
+    .map((item) => ({
+      name: readFundingOptionalString(item as Record<string, unknown>, [
+        'name',
+        'ingredient',
+        'mainIngredient',
+        'main_ingredient',
+        'rawMaterial',
+        'raw_material',
+        'materialName',
+        'material_name',
+      ]),
+      origin: readFundingOptionalString(item as Record<string, unknown>, [
+        'origin',
+        'originName',
+        'origin_name',
+        'countryOfOrigin',
+        'country_of_origin',
+        'productionArea',
+        'production_area',
+      ]),
+    }))
+    .filter((item) => item.name || item.origin);
 }
 
 function readFundingApiBoolean(source: Record<string, unknown>, keys: string[], fallback = false) {
@@ -1215,18 +1273,18 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       productType: readFundingApiString(legalInfo, ['productType', 'product_type']),
       volume: readFundingApiNumber(legalInfo, ['volume']) || undefined,
       alcoholPercentage: readFundingApiNumber(legalInfo, ['alcoholPercentage', 'alcohol_percentage']) || undefined,
-      rawMaterials: readFundingApiArray<{ name: string; origin: string }>(legalInfo, ['rawMaterials', 'raw_materials']),
+      rawMaterials: normalizeFundingRawMaterials(readFundingApiArray<FundingRawMaterialResponse>(legalInfo, ['rawMaterials', 'raw_materials'])),
     },
     tasteProfile: {
-      sweetness: readFundingApiNumber(tasteProfile, ['sweetness']) || undefined,
-      acidity: readFundingApiNumber(tasteProfile, ['acidity']) || undefined,
-      body: readFundingApiNumber(tasteProfile, ['body']) || undefined,
-      carbonation: readFundingApiNumber(tasteProfile, ['carbonation']) || undefined,
-      alcohol: readFundingApiNumber(tasteProfile, ['alcohol']) || undefined,
-      alcoholIntensity: readFundingApiNumber(tasteProfile, ['alcoholIntensity', 'alcohol_intensity']) || undefined,
-      aromaIntensity: readFundingApiNumber(tasteProfile, ['aromaIntensity', 'aroma_intensity']) || undefined,
-      finish: readFundingApiNumber(tasteProfile, ['finish']) || undefined,
-      aftertaste: readFundingApiNumber(tasteProfile, ['aftertaste', 'after_taste']) || undefined,
+      sweetness: readFundingApiOptionalNumber(tasteProfile, ['sweetness']),
+      acidity: readFundingApiOptionalNumber(tasteProfile, ['acidity']),
+      body: readFundingApiOptionalNumber(tasteProfile, ['body']),
+      carbonation: readFundingApiOptionalNumber(tasteProfile, ['carbonation']),
+      alcohol: readFundingApiOptionalNumber(tasteProfile, ['alcohol']),
+      alcoholIntensity: readFundingApiOptionalNumber(tasteProfile, ['alcoholIntensity', 'alcohol_intensity']),
+      aromaIntensity: readFundingApiOptionalNumber(tasteProfile, ['aromaIntensity', 'aroma_intensity']),
+      finish: readFundingApiOptionalNumber(tasteProfile, ['finish']),
+      aftertaste: readFundingApiOptionalNumber(tasteProfile, ['aftertaste', 'after_taste']),
       flavor: readFundingApiStringArray(tasteProfile, ['flavor'], ['flavor']),
       flavorNotes: readFundingApiStringArray(tasteProfile, ['flavorNotes', 'flavor_notes'], ['flavor']),
     },

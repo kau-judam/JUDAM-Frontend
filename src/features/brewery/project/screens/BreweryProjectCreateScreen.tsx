@@ -325,6 +325,48 @@ function getTasteAromaValue(tasteProfile?: FundingDraftPreviewResponse['tastePro
   return tasteProfile?.finish ?? tasteProfile?.aftertaste ?? tasteProfile?.aromaIntensity ?? tasteProfile?.alcoholIntensity ?? tasteProfile?.alcohol;
 }
 
+function readPreviewString(source: unknown, keys: string[]) {
+  if (!source || typeof source !== 'object') return '';
+  const record = source as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return '';
+}
+
+function getLegalInfoRawMaterials(
+  legalInfo: FundingDraftPreviewResponse['legalInfo'] = {},
+  basicInfo: FundingDraftPreviewResponse['basicInfo'] = {}
+) {
+  const rawMaterials = (legalInfo.rawMaterials || []).filter((item) => item.name || item.origin);
+  if (rawMaterials.length > 0) return rawMaterials;
+
+  const fallbackName =
+    readPreviewString(legalInfo, [
+      'name',
+      'ingredient',
+      'mainIngredient',
+      'main_ingredient',
+      'rawMaterial',
+      'raw_material',
+      'materialName',
+      'material_name',
+    ]) || basicInfo.mainIngredient || '';
+  const fallbackOrigin = readPreviewString(legalInfo, [
+    'origin',
+    'originName',
+    'origin_name',
+    'countryOfOrigin',
+    'country_of_origin',
+    'productionArea',
+    'production_area',
+  ]);
+
+  return [{ name: fallbackName, origin: fallbackOrigin }];
+}
+
 function normalizeProjectPlanDraft(plan?: ProjectPlanDraft) {
   return {
     introduction: plan?.introduction || '',
@@ -337,9 +379,16 @@ function normalizeProjectPlanDraft(plan?: ProjectPlanDraft) {
 }
 
 function tasteScaleToPercent(value?: number) {
-  if (typeof value !== 'number') return 50;
-  if (value <= 5) return Math.max(0, Math.min(100, value * 20));
-  return Math.max(0, Math.min(100, value));
+  const numberValue = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numberValue)) return 50;
+  if (numberValue <= 5) return Math.max(0, Math.min(100, numberValue * 20));
+  return Math.max(0, Math.min(100, numberValue));
+}
+
+function normalizeTastePercentForApi(value: number) {
+  const numberValue = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numberValue)) return 50;
+  return Math.max(0, Math.min(100, Math.round(numberValue)));
 }
 
 function getUploadedFilesFromPreviewDocuments(documents?: FundingDraftPreviewResponse['documents']) {
@@ -379,9 +428,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
   const plan = preview.plan || {};
   const breweryInfo = preview.breweryInfo || {};
   const notices = preview.notices || {};
-  const rawMaterials = legalInfo.rawMaterials?.length
-    ? legalInfo.rawMaterials
-    : [{ name: basicInfo.mainIngredient || '', origin: '' }];
+  const rawMaterials = getLegalInfoRawMaterials(legalInfo, basicInfo);
   const subIngredients = basicInfo.subIngredients || [];
   const thumbnailUrl = basicInfo.thumbnailUrl || '';
   const imageUrls = normalizeProjectImageUrls(
@@ -896,20 +943,51 @@ export default function BreweryProjectCreateScreen() {
 
   const getServerProjectImageUrls = () => normalizeServerProjectImageUrls(basicInfo.images);
 
+  const getRawMaterialsForApi = () =>
+    productInfo.ingredients
+      .filter((item) => item.ingredient.trim() || item.origin.trim())
+      .map((item) => {
+        const name = item.ingredient.trim();
+        const origin = item.origin.trim();
+        return {
+          name,
+          ingredient: name,
+          mainIngredient: name,
+          main_ingredient: name,
+          rawMaterial: name,
+          raw_material: name,
+          origin,
+          originName: origin,
+          origin_name: origin,
+          countryOfOrigin: origin,
+          country_of_origin: origin,
+        };
+      });
+
+  const getLegalInfoForApi = () => ({
+    productType: 'MAKGEOLLI',
+    volume: Number(productInfo.volume),
+    alcoholPercentage: Number(productInfo.alcoholContent || basicInfo.alcoholContent),
+    rawMaterials: getRawMaterialsForApi(),
+  });
+
   const getTasteProfileForApi = () => {
-    const flavor = getReadyTags();
+    const sweetness = normalizeTastePercentForApi(tasteProfile.sweetness);
+    const acidity = normalizeTastePercentForApi(tasteProfile.acidity);
+    const body = normalizeTastePercentForApi(tasteProfile.body);
+    const carbonation = normalizeTastePercentForApi(tasteProfile.carbonation);
+    const aroma = normalizeTastePercentForApi(tasteProfile.aroma);
+
     return {
-      sweetness: tasteProfile.sweetness,
-      acidity: tasteProfile.acidity,
-      body: tasteProfile.body,
-      carbonation: tasteProfile.carbonation,
-      alcoholIntensity: tasteProfile.aroma,
-      aromaIntensity: tasteProfile.aroma,
-      finish: tasteProfile.aroma,
-      aftertaste: tasteProfile.aroma,
-      alcohol: tasteProfile.aroma,
-      flavor,
-      flavorNotes: flavor,
+      sweetness,
+      acidity,
+      body,
+      carbonation,
+      alcoholIntensity: aroma,
+      aromaIntensity: aroma,
+      finish: aroma,
+      aftertaste: aroma,
+      alcohol: aroma,
     };
   };
 
@@ -980,8 +1058,8 @@ export default function BreweryProjectCreateScreen() {
 
   const ensureServerDraft = async () => {
     const savedDraft = await getSavedDraft();
-    let draftId = getDraftId(savedDraft) || (initialDraftId && Number.isFinite(initialDraftId) && initialDraftId > 0 ? initialDraftId : null);
-    if (!draftId && isEditMode && editProjectId) {
+    let draftId = isEditMode ? null : getDraftId(savedDraft) || (initialDraftId && Number.isFinite(initialDraftId) && initialDraftId > 0 ? initialDraftId : null);
+    if (isEditMode && editProjectId) {
       const preview = await getFundingDraftByFundingId(editProjectId);
       draftId = preview.draftId;
     }
@@ -1039,20 +1117,10 @@ export default function BreweryProjectCreateScreen() {
       });
     }
 
-    const readyRawMaterials = productInfo.ingredients
-      .filter((item) => item.ingredient.trim() || item.origin.trim())
-      .map((item) => ({
-        name: item.ingredient.trim(),
-        origin: item.origin.trim(),
-      }));
+    const readyRawMaterials = getRawMaterialsForApi();
     const hasCompleteRawMaterials = readyRawMaterials.length > 0 && readyRawMaterials.every((item) => item.name && item.origin);
     if (productInfo.volume && productInfo.alcoholContent && hasCompleteRawMaterials) {
-      await saveFundingLegalInfo(draftId, {
-        productType: 'MAKGEOLLI',
-        volume: Number(productInfo.volume),
-        alcoholPercentage: Number(productInfo.alcoholContent || basicInfo.alcoholContent),
-        rawMaterials: readyRawMaterials,
-      });
+      await saveFundingLegalInfo(draftId, getLegalInfoForApi());
     }
 
     await saveFundingTasteProfile(draftId, getTasteProfileForApi());
@@ -1107,17 +1175,7 @@ export default function BreweryProjectCreateScreen() {
       fundingPeriodDays: Number(fundingInfo.duration),
       expectedDeliveryDate: fundingInfo.expectedDeliveryDate,
     });
-    await saveFundingLegalInfo(draftId, {
-      productType: 'MAKGEOLLI',
-      volume: Number(productInfo.volume),
-      alcoholPercentage: Number(productInfo.alcoholContent || basicInfo.alcoholContent),
-      rawMaterials: productInfo.ingredients
-        .filter((item) => item.ingredient.trim() || item.origin.trim())
-        .map((item) => ({
-          name: item.ingredient.trim(),
-          origin: item.origin.trim(),
-        })),
-    });
+    await saveFundingLegalInfo(draftId, getLegalInfoForApi());
     await saveFundingTasteProfile(draftId, getTasteProfileForApi());
     await saveFundingPlan(draftId, {
       introduction: projectPlan.introduction.trim(),
@@ -1212,6 +1270,23 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const loadSavedDraft = async () => {
+    if (isEditMode && editProjectId) {
+      try {
+        const preview = await getFundingDraftByFundingId(editProjectId);
+        const serverDraft = createProjectDraftFromServerPreview(preview, user);
+        await SafeStorage.setItem(tempSaveKey, JSON.stringify(serverDraft));
+        applyDraftPayload(serverDraft);
+        setTempSaveTimestamp(serverDraft.timestamp || '');
+        setHasTempSave(true);
+        setShowTempSaveModal(false);
+        showAlert('임시저장 내용을 불러왔습니다.');
+      } catch (error) {
+        setShowTempSaveModal(false);
+        showAlert(getFundingApiErrorMessage(error, '서버 관리하기 내용을 불러오지 못했습니다.'));
+      }
+      return;
+    }
+
     let draft = await getSavedDraft();
     if (!draft && isEditMode && editProjectId) {
       try {
@@ -1309,6 +1384,11 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleSave = async () => {
+    if (isEditMode) {
+      await saveDraft({ showSavedModal: true });
+      return;
+    }
+
     const savedDraft = await getSavedDraft();
     if (savedDraft || hasTempSave) {
       setTempSaveTimestamp(savedDraft?.timestamp || tempSaveTimestamp);
@@ -1806,6 +1886,7 @@ export default function BreweryProjectCreateScreen() {
           pricePerBottle: Number(fundingInfo.pricePerBottle),
           shippingFee: FIXED_PROJECT_SHIPPING_FEE,
         });
+        await saveFundingLegalInfo(draftId, getLegalInfoForApi());
       }
       const payload = buildProjectPayload(isEditMode ? 'edit' : 'create');
       if (!isEditMode && convertedFunding) {

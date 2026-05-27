@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
-import { FundingProject, JournalEntry, ProjectStatus } from "@/constants/data";
+import { FundingProject, JournalEntry, ProjectStatus, fundingProjects } from "@/constants/data";
 import type { FundingReview } from "@/features/funding/reviews";
 import type { MyFundingOrderItem } from "@/features/funding/api";
 
@@ -33,7 +33,7 @@ interface FundingContextType {
 const FundingContext = createContext<FundingContextType | undefined>(undefined);
 
 export function FundingProvider({ children }: { children: ReactNode }) {
-  const [projects, setProjects] = useState<FundingProject[]>([]);
+  const [projects, setProjects] = useState<FundingProject[]>(fundingProjects);
   const [participatedFundings, setParticipatedFundings] = useState<ParticipatedFunding[]>([]);
   const [fundingReviews, setFundingReviews] = useState<FundingReview[]>([]);
 

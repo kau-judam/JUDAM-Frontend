@@ -87,6 +87,35 @@ function getPostalCodeFromAddress(address: string) {
   return address.match(/^\[([^\]]+)\]/)?.[1]?.trim();
 }
 
+const TOSS_ORDER_ID_PATTERN = /^[A-Za-z0-9_-]{6,64}$/;
+
+function normalizeTossOrderId(value: string) {
+  return value.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
+}
+
+function getOrderLookupId(orderId: string | number, numericOrderId?: number) {
+  if (typeof numericOrderId === 'number' && Number.isFinite(numericOrderId) && numericOrderId > 0) {
+    return String(Math.trunc(numericOrderId));
+  }
+  const rawOrderId = String(orderId || '').trim();
+  const numericOnly = rawOrderId.match(/^\d+$/)?.[0];
+  if (numericOnly) return numericOnly;
+  return rawOrderId.match(/^order[_-]?(\d+)$/i)?.[1] || '';
+}
+
+function getTossPaymentOrderId(orderId: string | number, numericOrderId?: number) {
+  const rawOrderId = String(orderId || '').trim();
+  const lookupId = getOrderLookupId(orderId, numericOrderId);
+  const baseOrderId = lookupId || rawOrderId;
+  const prefixedOrderId = normalizeTossOrderId(`order_${baseOrderId}`);
+  if (TOSS_ORDER_ID_PATTERN.test(prefixedOrderId)) return prefixedOrderId;
+
+  const normalizedRawOrderId = normalizeTossOrderId(rawOrderId);
+  if (TOSS_ORDER_ID_PATTERN.test(normalizedRawOrderId)) return normalizedRawOrderId;
+
+  return normalizeTossOrderId(`order_${Date.now()}`);
+}
+
 export default function FundingSupportScreen() {
   const insets = useSafeAreaInsets();
   const { id, quantity: quantityParam, optionId: optionIdParam } = useLocalSearchParams();
@@ -335,7 +364,8 @@ export default function FundingSupportScreen() {
         refundPolicyAgreed: agreeRefund,
       });
       const paymentAmount = Number(order.amount ?? order.totalAmount);
-      const tossOrderId = String(order.orderId || '').trim();
+      const numericOrderId = getOrderLookupId(order.orderId, order.numericOrderId);
+      const tossOrderId = getTossPaymentOrderId(order.orderId, order.numericOrderId);
       if (!tossOrderId || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
         throw new Error('주문 금액을 확인하지 못했습니다. 다시 시도해주세요.');
       }
@@ -345,7 +375,7 @@ export default function FundingSupportScreen() {
         params: {
           fundingId: String(project.id),
           orderId: tossOrderId,
-          numericOrderId: order.numericOrderId ? String(order.numericOrderId) : '',
+          numericOrderId,
           amount: String(paymentAmount),
           orderName: order.orderName || `${project.title} ${primaryRewardItem}`.trim(),
           customerName: order.customerName || shippingInfo.recipientName.trim() || user.name,

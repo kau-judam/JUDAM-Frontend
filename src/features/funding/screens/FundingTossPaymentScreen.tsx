@@ -42,11 +42,75 @@ function isTossReturnUrl(url: string) {
   return url.startsWith(`${TOSS_RETURN_ORIGIN}/funding/payment/success`) || url.startsWith(`${TOSS_RETURN_ORIGIN}/funding/payment/fail`);
 }
 
+type ConvertedIntentUrl = {
+  appLink?: string;
+  fallbackUrl?: string;
+  marketUrl?: string;
+  packageName?: string;
+};
+
+function safeDecodeUriComponent(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function getIntentPart(fragment: string, key: string) {
+  const value = fragment.match(new RegExp(`(?:^|;)${key}=([^;]+)`))?.[1];
+  return value ? safeDecodeUriComponent(value) : undefined;
+}
+
+function convertIntentUrl(url: string): ConvertedIntentUrl | null {
+  if (!url.startsWith('intent:')) return null;
+  const [intentBase, intentFragment = ''] = url.split('#Intent;');
+  const body = intentBase.replace(/^intent:/, '');
+  const scheme = getIntentPart(intentFragment, 'scheme');
+  const packageName = getIntentPart(intentFragment, 'package');
+  const fallbackUrl = getIntentPart(intentFragment, 'S\\.browser_fallback_url');
+
+  let appLink: string | undefined;
+  if (scheme) {
+    if (body.startsWith('//')) {
+      appLink = `${scheme}:${body}`;
+    } else if (body.includes('://')) {
+      appLink = body;
+    } else {
+      appLink = `${scheme}://${body.replace(/^\/+/, '')}`;
+    }
+  } else if (body.includes('://')) {
+    appLink = body;
+  }
+
+  return {
+    appLink,
+    fallbackUrl,
+    packageName,
+    marketUrl: packageName ? `market://details?id=${packageName}` : undefined,
+  };
+}
+
 function shouldOpenOutsideWebView(url: string) {
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('about:blank') || url.startsWith('data:')) {
     return false;
   }
   return true;
+}
+
+async function openFirstAvailableUrl(urls: (string | undefined)[]) {
+  let lastError: unknown;
+  for (const url of urls) {
+    if (!url) continue;
+    try {
+      await Linking.openURL(url);
+      return true;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError) throw lastError;
+  return false;
 }
 
 function makeCustomerKey(orderId: string) {
@@ -161,6 +225,7 @@ export default function FundingTossPaymentScreen() {
     projectTitle?: string;
   }>();
   const handledReturnRef = useRef(false);
+  const lastExternalUrlRef = useRef('');
   const [webViewReady, setWebViewReady] = useState(false);
   const [webError, setWebError] = useState('');
 
@@ -240,8 +305,13 @@ export default function FundingTossPaymentScreen() {
 
   const handleExternalUrl = useCallback((url: string) => {
     if (!shouldOpenOutsideWebView(url)) return false;
-    Linking.openURL(url).catch(() => {
-      Alert.alert('결제 앱을 열 수 없습니다', '카드사 앱 또는 브라우저 결제가 필요하면 결제창에서 다른 수단을 선택해주세요.');
+    if (lastExternalUrlRef.current === url) return true;
+    lastExternalUrlRef.current = url;
+    const convertedIntentUrl = convertIntentUrl(url);
+    void openFirstAvailableUrl(convertedIntentUrl ? [convertedIntentUrl.appLink, convertedIntentUrl.fallbackUrl, convertedIntentUrl.marketUrl] : [url]).catch(() => {
+      const message = '외부 결제 앱을 열 수 없습니다. 시연 중에는 토스뱅크/앱카드 대신 카드번호 입력처럼 WebView 안에서 완료 가능한 테스트 결제수단을 선택해주세요.';
+      setWebError(message);
+      Alert.alert('결제 앱을 열 수 없습니다', message);
     });
     return true;
   }, []);
@@ -308,7 +378,8 @@ export default function FundingTossPaymentScreen() {
           return true;
         }}
         onNavigationStateChange={(state) => {
-          handleReturnUrl(state.url);
+          if (handleReturnUrl(state.url)) return;
+          handleExternalUrl(state.url);
         }}
       />
     </View>

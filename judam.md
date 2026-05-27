@@ -122,8 +122,11 @@ API 구분 규칙:
 
 토스 펀딩 결제 플로우:
 - 후원하기 화면은 `POST /api/fundings/:fundingId/orders`로 주문을 먼저 생성하고, 응답의 `orderId`, `numericOrderId`, `amount`, `orderName`, `customerName`, `customerEmail`, `customerMobilePhone`을 결제창에 그대로 넘긴다.
+- 토스 결제창 `orderId`는 Toss 규칙에 맞게 영문/숫자/`-`/`_`만 쓰고 6~64자로 보정한다. 백엔드가 `74`처럼 짧은 숫자를 주면 결제창에는 `order_74`처럼 넘기고, confirm에는 토스 성공 콜백의 `orderId`를 그대로 보낸다.
 - 결제 금액은 반드시 주문 생성 응답의 `amount`를 사용한다. 프론트 계산값으로 confirm 금액을 다시 만들지 않는다.
 - 토스 결제창은 Expo Go 호환을 위해 `react-native-webview`와 Toss Payments JS SDK(`https://js.tosspayments.com/v2/standard`)로 띄운다.
+- WebView에서 `intent://`, `supertoss://`, `ispmobile://` 등 외부 앱 scheme을 만나면 WebView 안에서 열지 않고 `Linking.openURL`로 앱/브라우저를 열어야 한다. Android `intent:` URL은 앱스킴 URL, fallback URL, market URL 순서로 시도한다.
+- Expo Go 시연에서는 토스뱅크/앱카드처럼 외부 앱 호출이 필요한 수단보다 카드번호 입력 등 WebView 안에서 완료 가능한 테스트 결제수단을 우선 안내한다.
 - 결제 성공 URL에서 받은 `paymentKey`, `orderId`, `amount`를 확인한 뒤 `POST /api/payments/toss/confirm`을 호출한다.
 - `PATCH /api/orders/:orderId/payment/complete`는 legacy/mock 플로우이므로 새 펀딩 결제에서 사용하지 않는다.
 - `GET /api/orders/:orderId/payment`은 결제 조회용 `getOrderPayment`/`getFundingPaymentInfo`로만 사용한다.

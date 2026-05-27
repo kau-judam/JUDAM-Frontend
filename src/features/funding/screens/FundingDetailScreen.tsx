@@ -646,7 +646,11 @@ export default function FundingDetailScreen() {
   const userTasteProfile = useMemo(() => getTasteProfileFromSulbti(user?.sulbti), [user?.sulbti]);
   const projectBudget = useMemo(() => project?.budget || DEFAULT_PROJECT_BUDGET, [project?.budget]);
   const projectSchedule = useMemo(() => project?.schedule || DEFAULT_PROJECT_SCHEDULE, [project?.schedule]);
+  const budgetPlanText = project?.budgetPlanText || '';
+  const schedulePlanText = project?.schedulePlanText || '';
   const projectPolicyText = project?.projectPolicy || DEFAULT_PROJECT_POLICY_TEXT;
+  const refundPolicyText = project?.refundPolicy || '';
+  const exchangePolicyText = project?.exchangePolicy || '';
   const expectedDifficultiesText = project?.expectedDifficulties || DEFAULT_EXPECTED_DIFFICULTIES_TEXT;
   const tasteProfile = useMemo(() => project?.tasteProfile || null, [project?.tasteProfile]);
   const tasteItems = useMemo(() => {
@@ -724,6 +728,7 @@ export default function FundingDetailScreen() {
   const selectedSupportOptionLimit = getSupportOptionLimit(selectedSupportOption);
   const optionTotalAmount = selectedSupportOptionPrice * selectedQuantity + shippingFee;
   const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
+  const mainIngredientLabel = project.mainIngredientLabel || project.primaryIngredientLabel || '메인 재료';
   const supportButtonLabel =
     isOwnBreweryProject
       ? user?.isBreweryVerified
@@ -1671,7 +1676,7 @@ export default function FundingDetailScreen() {
                       <View style={styles.ingCard}>
                          <View style={styles.ingRow}>
                             <View style={{ flex: 1 }}>
-                               <Text style={styles.ingLab}>메인재료</Text>
+                               <Text style={styles.ingLab}>{mainIngredientLabel}</Text>
                                <Text style={styles.ingVal}>{project.mainIngredients || "재료 안내 예정"}</Text>
                             </View>
                             <View style={{ flex: 1 }}>
@@ -1759,6 +1764,8 @@ export default function FundingDetailScreen() {
                        </View>
                        <Text style={styles.budgetGuide}>목표 금액을 초과 달성하는 경우, 추가 금액은 리워드 품질 향상과 더 많은 후원자 분들께 제품을 전달하는 데 사용됩니다.</Text>
                      </>
+                   ) : budgetPlanText ? (
+                     <Text style={styles.guideBoxTxt}>{budgetPlanText}</Text>
                    ) : (
                      <Text style={styles.emptySectionText}>등록된 예산 정보가 없습니다.</Text>
                    )}
@@ -1781,6 +1788,8 @@ export default function FundingDetailScreen() {
                           <Text style={styles.schAlertTxt}>💡 발효는 자연 과정이므로 기후 조건에 따라 일정이 1-2주 지연될 수 있습니다. 지연 시 양조 일지와 커뮤니티를 통해 실시간으로 소통하겠습니다.</Text>
                        </View>
                      </>
+                   ) : schedulePlanText ? (
+                     <Text style={styles.guideBoxTxt}>{schedulePlanText}</Text>
                    ) : (
                      <Text style={styles.emptySectionText}>등록된 일정 정보가 없습니다.</Text>
                    )}
@@ -1895,6 +1904,18 @@ export default function FundingDetailScreen() {
                           {projectPolicyText || '등록된 프로젝트 정책이 없습니다.'}
                         </Text>
                      </View>
+                     {refundPolicyText ? (
+                       <View style={[styles.guideBoxPlain, { marginTop: 12 }]}>
+                         <Text style={styles.guideBoxTitle}>환불 정책</Text>
+                         <Text style={styles.guideBoxTxt}>{refundPolicyText}</Text>
+                       </View>
+                     ) : null}
+                     {exchangePolicyText ? (
+                       <View style={[styles.guideBoxPlain, { marginTop: 12 }]}>
+                         <Text style={styles.guideBoxTitle}>교환 정책</Text>
+                         <Text style={styles.guideBoxTxt}>{exchangePolicyText}</Text>
+                       </View>
+                     ) : null}
                    </View>
 
                    <View style={{ paddingTop: 24, borderTopWidth: 1, borderTopColor: '#E5E7EB' }}>

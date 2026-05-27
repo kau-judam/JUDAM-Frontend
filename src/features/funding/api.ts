@@ -145,6 +145,10 @@ export type FundingDraftPreviewResponse = {
     productType?: string;
     volume?: number;
     alcoholPercentage?: number;
+    mainIngredient?: string;
+    primaryIngredient?: string;
+    subIngredient?: string;
+    subIngredients?: string[];
     rawMaterials?: { name: string; origin: string }[];
   };
   tasteProfile?: {
@@ -177,6 +181,8 @@ export type FundingDraftPreviewResponse = {
     representativeName?: string;
   businessRegistrationNumber?: string;
   businessAddress?: string;
+  breweryAddress?: string;
+  breweryLocation?: string;
   businessAddressDetail?: string;
   contactEmail?: string;
   contactPhone?: string;
@@ -707,6 +713,12 @@ export type FundingListItem = {
   imageUrls?: string[];
   allImageUrls?: string[];
   images?: unknown;
+  mainIngredient?: string;
+  primaryIngredient?: string;
+  mainIngredientLabel?: string;
+  primaryIngredientLabel?: string;
+  subIngredient?: string;
+  subIngredients?: string[];
   breweryName: string;
   isMine?: boolean;
   is_mine?: boolean;
@@ -754,7 +766,19 @@ export type FundingDetailResponse = {
   thumbnailUrl: string | null;
   imageUrls?: string[];
   allImageUrls?: string[];
+  images?: unknown;
   breweryName: string;
+  category?: string;
+  shortTitle?: string;
+  mainIngredient?: string;
+  primaryIngredient?: string;
+  mainIngredientLabel?: string;
+  primaryIngredientLabel?: string;
+  subIngredient?: string;
+  subIngredients?: string[];
+  businessAddress?: string;
+  breweryAddress?: string;
+  breweryLocation?: string;
   isMine?: boolean;
   is_mine?: boolean;
   breweryUserId?: number | string;
@@ -770,6 +794,9 @@ export type FundingDetailResponse = {
   startDate: string;
   endDate: string;
   expectedDeliveryDate?: string;
+  pricePerBottle?: number;
+  totalQuantity?: number;
+  shippingFee?: number;
   bottleSize?: string;
   volume?: number | string;
   alcoholContent?: string;
@@ -806,7 +833,23 @@ export type FundingIntroResponse = {
   title: string;
   introduction: string;
   story: string;
-  images: string[];
+  mainIngredient?: string;
+  primaryIngredient?: string;
+  mainIngredientLabel?: string;
+  primaryIngredientLabel?: string;
+  subIngredient?: string;
+  subIngredients?: string[];
+  budgetPlan?: string;
+  projectBudget?: string;
+  schedulePlan?: string;
+  projectSchedule?: string;
+  policy?: string;
+  projectPolicy?: string;
+  videoUrl?: string | null;
+  thumbnailUrl?: string | null;
+  imageUrls?: string[];
+  allImageUrls?: string[];
+  images?: unknown;
 };
 
 export type FundingBreweryLogItem = {
@@ -1304,6 +1347,10 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       productType: readFundingApiString(legalInfo, ['productType', 'product_type']),
       volume: readFundingApiNumber(legalInfo, ['volume']) || undefined,
       alcoholPercentage: readFundingApiNumber(legalInfo, ['alcoholPercentage', 'alcohol_percentage']) || undefined,
+      mainIngredient: readFundingApiString(legalInfo, ['mainIngredient', 'main_ingredient']),
+      primaryIngredient: readFundingApiString(legalInfo, ['primaryIngredient', 'primary_ingredient']),
+      subIngredient: readFundingApiString(legalInfo, ['subIngredient', 'sub_ingredient']),
+      subIngredients: readFundingApiStringArray(legalInfo, ['subIngredients', 'sub_ingredients'], ['subIngredient', 'sub_ingredient']),
       rawMaterials: normalizeFundingRawMaterials(readFundingApiArray<FundingRawMaterialResponse>(legalInfo, ['rawMaterials', 'raw_materials'])),
     },
     tasteProfile: {
@@ -1336,6 +1383,8 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       representativeName: readFundingApiString(breweryInfo, ['representativeName', 'representative_name']),
       businessRegistrationNumber: readFundingApiString(breweryInfo, ['businessRegistrationNumber', 'business_registration_number']),
       businessAddress: readFundingApiString(breweryInfo, ['businessAddress', 'business_address']),
+      breweryAddress: readFundingApiString(breweryInfo, ['breweryAddress', 'brewery_address']),
+      breweryLocation: readFundingApiString(breweryInfo, ['breweryLocation', 'brewery_location']),
       businessAddressDetail: readFundingApiString(breweryInfo, ['businessAddressDetail', 'business_address_detail']),
       contactEmail: readFundingApiString(breweryInfo, ['contactEmail', 'contact_email']),
       contactPhone: readFundingApiString(breweryInfo, ['contactPhone', 'contact_phone']),
@@ -2477,7 +2526,8 @@ export async function getFundingDetail(fundingId: number) {
 }
 
 export async function getFundingIntro(fundingId: number) {
-  return requestFundingJson<FundingIntroResponse>(`/api/fundings/${fundingId}/intro`);
+  const result = await requestFundingJson<FundingIntroResponse | FundingApiEnvelope<FundingIntroResponse>>(`/api/fundings/${fundingId}/intro`);
+  return getFundingResponseData<FundingIntroResponse>(result);
 }
 
 export async function getFundingBreweryLogs(fundingId: number) {

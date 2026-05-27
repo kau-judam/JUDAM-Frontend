@@ -11,9 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import * as ExpoLinking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import {
   Check,
   ChevronDown,
@@ -35,16 +33,10 @@ import { useFunding } from '@/contexts/FundingContext';
 import DaumAddressSearchModal from '@/features/funding/components/DaumAddressSearchModal';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import {
-  completeFundingPayment,
-  confirmTossPayment,
   createFundingOrder,
   getFundingApiErrorMessage,
-  getFundingOrderDetail,
-  getFundingPaymentInfo,
   getRecentShippingAddress,
   getFundingSupportOptions,
-  isFundingApiMissingEndpointError,
-  requestFundingPayment,
   type FundingSupportOption,
 } from '@/features/funding/api';
 import { mergeSupportOption, normalizeSupportOptionId } from '@/features/funding/apiMappers';
@@ -91,35 +83,15 @@ function getSupportOptionStockLabel(option: FundingSupportOption | null | undefi
   return '';
 }
 
-function getTossQueryParam(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function getTossReturnUrls(orderId: number, amount: number) {
-  const queryParams = {
-    orderId: String(orderId),
-    amount: String(amount),
-  };
-  return {
-    successUrl: ExpoLinking.createURL('/funding/payment/success', { queryParams }),
-    failUrl: ExpoLinking.createURL('/funding/payment/fail', { queryParams }),
-    returnUrl: ExpoLinking.createURL('/funding/payment'),
-  };
-}
-
-function getTossSuccessParams(url: string) {
-  const parsed = ExpoLinking.parse(url);
-  const paymentKey = getTossQueryParam(parsed.queryParams?.paymentKey);
-  const orderId = getTossQueryParam(parsed.queryParams?.orderId);
-  const amount = Number(getTossQueryParam(parsed.queryParams?.amount));
-  return { paymentKey, orderId, amount };
+function getPostalCodeFromAddress(address: string) {
+  return address.match(/^\[([^\]]+)\]/)?.[1]?.trim();
 }
 
 export default function FundingSupportScreen() {
   const insets = useSafeAreaInsets();
   const { id, quantity: quantityParam, optionId: optionIdParam } = useLocalSearchParams();
   const { user } = useAuth();
-  const { projects, addParticipation, updateProjectFunding, mergeProject } = useFunding();
+  const { projects, mergeProject } = useFunding();
   const fundingId = getFundingId(id);
   const project = useMemo(
     () => projects.find((item) => item.id === fundingId) || null,
@@ -139,7 +111,6 @@ export default function FundingSupportScreen() {
   const [agreeRefund, setAgreeRefund] = useState(false);
   const [showRefundPolicy, setShowRefundPolicy] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [infoModal, setInfoModal] = useState<InfoModalType>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -271,7 +242,6 @@ export default function FundingSupportScreen() {
   const estimatedDelivery = project ? getProjectEstimatedDelivery(project) : '';
   const rewardAmount = unitPrice * quantity;
   const extraAmount = Number(additionalSupport) || 0;
-  const fundingAmount = rewardAmount + extraAmount;
   const totalAmount = rewardAmount + shippingFee + extraAmount;
   const progressPercentage = project && project.goalAmount > 0 ? Math.min((project.currentAmount / project.goalAmount) * 100, 100) : 0;
   const canSubmit = Boolean(selectedPaymentMethod && agreeTerms && agreeRefund && !isProcessing);
@@ -340,6 +310,9 @@ export default function FundingSupportScreen() {
     setIsProcessing(true);
     setShowConfirmModal(false);
     try {
+      if (selectedPaymentMethod !== 'toss') {
+        throw new Error('현재 실제 결제는 토스 테스트 결제만 연결되어 있습니다. 결제수단을 토스페이로 선택해주세요.');
+      }
       const order = await createFundingOrder(project.id, {
         optionId: selectedSupportOptionId,
         quantity,
@@ -349,8 +322,10 @@ export default function FundingSupportScreen() {
         recipientPhone: shippingInfo.phone.trim(),
         shippingAddress: shippingInfo.address.trim(),
         shippingDetailAddress: shippingInfo.detailAddress.trim(),
+        postalCode: getPostalCodeFromAddress(shippingInfo.address),
         additionalSupportAmount: extraAmount,
         message: supportMessage.trim() || undefined,
+        supportMessage: supportMessage.trim() || undefined,
         adultVerified: agreeTerms,
         privacyAgreed: agreeTerms,
         privacyThirdPartyAgreed: agreeTerms,
@@ -359,64 +334,27 @@ export default function FundingSupportScreen() {
         noticeAgreed: agreeRefund,
         refundPolicyAgreed: agreeRefund,
       });
-      const paymentAmount = Number(order.totalAmount);
-      if (!order.orderId || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+      const paymentAmount = Number(order.amount ?? order.totalAmount);
+      const tossOrderId = String(order.orderId || '').trim();
+      if (!tossOrderId || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
         throw new Error('주문 금액을 확인하지 못했습니다. 다시 시도해주세요.');
       }
-      let paidAmount = fundingAmount;
-      if (selectedPaymentMethod === 'toss') {
-        const tossUrls = getTossReturnUrls(order.orderId, paymentAmount);
-        const payment = await requestFundingPayment(order.orderId, {
-          paymentMethod: 'EASY_PAY',
-          paymentProvider: 'TOSS',
-          amount: paymentAmount,
-          orderName: `${project.title} ${primaryRewardItem}`.trim(),
-          customerName: shippingInfo.recipientName.trim() || user.name,
-          successUrl: tossUrls.successUrl,
-          failUrl: tossUrls.failUrl,
-        });
-        if (!payment.paymentUrl) {
-          throw new Error('토스 결제창 주소를 확인하지 못했습니다. 백엔드 결제 요청 API를 확인해주세요.');
-        }
-        const browserResult = await WebBrowser.openAuthSessionAsync(payment.paymentUrl, tossUrls.returnUrl);
-        if (browserResult.type !== 'success' || !browserResult.url) {
-          throw new Error('토스 결제가 완료되지 않았습니다.');
-        }
-        const tossParams = getTossSuccessParams(browserResult.url);
-        if (!tossParams.paymentKey || !tossParams.orderId || !Number.isFinite(tossParams.amount)) {
-          throw new Error('토스 결제 승인 정보를 확인하지 못했습니다.');
-        }
-        const confirmedPayment = await confirmTossPayment({
-          paymentKey: tossParams.paymentKey,
-          orderId: tossParams.orderId,
-          amount: tossParams.amount,
-        });
-        paidAmount = confirmedPayment.paidAmount || tossParams.amount || paymentAmount;
-      } else {
-        await requestFundingPayment(order.orderId, {
-          paymentMethod: 'BANK_TRANSFER',
-          paymentProvider: 'BANK',
-          amount: paymentAmount,
-        });
-        try {
-          await getFundingPaymentInfo(order.orderId);
-        } catch (paymentInfoError) {
-          if (!isFundingApiMissingEndpointError(paymentInfoError)) {
-            console.warn(getFundingApiErrorMessage(paymentInfoError, '결제 정보를 불러오지 못했습니다.'));
-          }
-        }
-        const completedPayment = await completeFundingPayment(order.orderId);
-        paidAmount = completedPayment.paidAmount || fundingAmount;
-      }
-      try {
-        await getFundingOrderDetail(order.orderId);
-      } catch (detailError) {
-        console.warn(getFundingApiErrorMessage(detailError, '주문 상세를 불러오지 못했습니다.'));
-      }
       setRecentShippingInfo(shippingInfo);
-      addParticipation(project.id, paidAmount);
-      updateProjectFunding(project.id, paidAmount);
-      setShowSuccessModal(true);
+      router.push({
+        pathname: '/funding/payment/toss',
+        params: {
+          fundingId: String(project.id),
+          orderId: tossOrderId,
+          numericOrderId: order.numericOrderId ? String(order.numericOrderId) : '',
+          amount: String(paymentAmount),
+          orderName: order.orderName || `${project.title} ${primaryRewardItem}`.trim(),
+          customerName: order.customerName || shippingInfo.recipientName.trim() || user.name,
+          customerEmail: order.customerEmail || supporterInfo.email.trim(),
+          customerMobilePhone: digitsOnly(order.customerMobilePhone || supporterInfo.phone || shippingInfo.phone),
+          projectTitle: project.title,
+        },
+      } as any);
+      return;
     } catch (error) {
       setAlertModal({
         title: '후원 진행 안내',
@@ -917,20 +855,6 @@ export default function FundingSupportScreen() {
         onConfirm={handleConfirmPayment}
       />
 
-      <SuccessModal
-        visible={showSuccessModal}
-        project={project}
-        totalAmount={totalAmount}
-        onProjectPress={() => {
-          setShowSuccessModal(false);
-          router.replace(`/funding/${project.id}?fromSupport=1` as any);
-        }}
-        onListPress={() => {
-          setShowSuccessModal(false);
-          router.replace('/funding' as any);
-        }}
-      />
-
       <InfoModal
         type={infoModal}
         onClose={() => setInfoModal(null)}
@@ -1153,44 +1077,6 @@ function ConfirmationModal({
               <Text style={styles.confirmPayText}>{isProcessing ? '처리 중...' : '후원 확정'}</Text>
             </TouchableOpacity>
           </View>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function SuccessModal({
-  visible,
-  project,
-  totalAmount,
-  onProjectPress,
-  onListPress,
-}: {
-  visible: boolean;
-  project: FundingProject;
-  totalAmount: number;
-  onProjectPress: () => void;
-  onListPress: () => void;
-}) {
-  return (
-    <Modal visible={visible} animationType="fade" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.successCard}>
-          <View style={styles.successIcon}>
-            <Check size={32} color="#FFF" />
-          </View>
-          <Text style={styles.successTitle}>후원 성공했어요!</Text>
-          <Text style={styles.successBody}>{project.brewery}의 프로젝트를 후원해주셔서 감사합니다.</Text>
-          <View style={styles.successAmountBox}>
-            <Text style={styles.successAmountLabel}>후원 금액</Text>
-            <Text style={styles.successAmountValue}>{totalAmount.toLocaleString()}원</Text>
-          </View>
-          <TouchableOpacity style={styles.successBtn} onPress={onProjectPress}>
-            <Text style={styles.successBtnText}>프로젝트로 돌아가기</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.successSecondaryBtn} onPress={onListPress}>
-            <Text style={styles.successSecondaryText}>펀딩 목록 보기</Text>
-          </TouchableOpacity>
         </View>
       </View>
     </Modal>

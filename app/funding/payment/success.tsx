@@ -1,30 +1,59 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { CheckCircle2 } from 'lucide-react-native';
+import { CheckCircle2, XCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useFunding } from '@/contexts/FundingContext';
-import { confirmTossPayment, getFundingApiErrorMessage, getFundingOrderDetail } from '@/features/funding/api';
+import { confirmTossPayment, getFundingApiErrorMessage, getFundingDetail, getFundingOrderDetail } from '@/features/funding/api';
+import { mergeFundingDetail } from '@/features/funding/apiMappers';
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function getFiniteAmount(value: string | undefined) {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount > 0 ? amount : undefined;
+}
+
 export default function TossPaymentSuccessScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ paymentKey?: string; orderId?: string; amount?: string }>();
-  const { participatedFundings, addParticipation, updateProjectFunding } = useFunding();
+  const params = useLocalSearchParams<{
+    paymentKey?: string;
+    orderId?: string;
+    numericOrderId?: string;
+    amount?: string;
+    expectedAmount?: string;
+    fundingId?: string;
+    orderName?: string;
+  }>();
+  const { projects, participatedFundings, addParticipation, updateProjectFunding, mergeProject } = useFunding();
   const hasConfirmedRef = useRef(false);
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('토스 결제를 승인하고 있습니다.');
+  const [paidAmount, setPaidAmount] = useState<number | null>(null);
+  const [confirmedFundingId, setConfirmedFundingId] = useState<number | null>(null);
 
   const paymentInfo = useMemo(() => {
     const paymentKey = getParam(params.paymentKey);
     const orderId = getParam(params.orderId);
-    const amount = Number(getParam(params.amount));
-    return { paymentKey, orderId, amount };
-  }, [params.amount, params.orderId, params.paymentKey]);
+    const numericOrderId = getParam(params.numericOrderId);
+    const returnedAmount = getFiniteAmount(getParam(params.amount));
+    const expectedAmount = getFiniteAmount(getParam(params.expectedAmount));
+    const amount = expectedAmount ?? returnedAmount;
+    const fundingId = Number(getParam(params.fundingId));
+    const orderName = getParam(params.orderName) || '주담 펀딩 후원';
+    return {
+      paymentKey,
+      orderId,
+      numericOrderId,
+      returnedAmount,
+      amount,
+      fundingId: Number.isFinite(fundingId) ? fundingId : undefined,
+      orderName,
+    };
+  }, [params]);
 
   useEffect(() => {
     let mounted = true;
@@ -32,9 +61,16 @@ export default function TossPaymentSuccessScreen() {
     const confirmPayment = async () => {
       if (hasConfirmedRef.current) return;
       hasConfirmedRef.current = true;
-      if (!paymentInfo.paymentKey || !paymentInfo.orderId || !Number.isFinite(paymentInfo.amount)) {
+
+      if (!paymentInfo.paymentKey || !paymentInfo.orderId || !paymentInfo.amount) {
         setStatus('error');
         setMessage('토스 결제 승인 정보가 올바르지 않습니다.');
+        return;
+      }
+
+      if (paymentInfo.returnedAmount && paymentInfo.returnedAmount !== paymentInfo.amount) {
+        setStatus('error');
+        setMessage('결제 금액이 주문 금액과 다릅니다. 결제를 다시 시도해주세요.');
         return;
       }
 
@@ -44,19 +80,45 @@ export default function TossPaymentSuccessScreen() {
           orderId: paymentInfo.orderId,
           amount: paymentInfo.amount,
         });
-        const detail = await getFundingOrderDetail(Number(paymentInfo.orderId));
-        const paidAmount = confirmed.paidAmount || detail.totalAmount || paymentInfo.amount;
-        if (!participatedFundings.some((item) => item.fundingId === detail.fundingId)) {
-          addParticipation(detail.fundingId, paidAmount);
-          updateProjectFunding(detail.fundingId, paidAmount);
+        const orderLookupId = paymentInfo.numericOrderId || paymentInfo.orderId;
+        let detail: Awaited<ReturnType<typeof getFundingOrderDetail>> | null = null;
+        if (orderLookupId) {
+          try {
+            detail = await getFundingOrderDetail(orderLookupId);
+          } catch (detailError) {
+            console.warn(getFundingApiErrorMessage(detailError, '주문 상세를 불러오지 못했습니다.'));
+          }
         }
+        const fundingId = detail?.fundingId || paymentInfo.fundingId;
+        const nextPaidAmount = confirmed.paidAmount || detail?.totalAmount || paymentInfo.amount;
+
+        if (fundingId) {
+          if (!participatedFundings.some((item) => item.fundingId === fundingId)) {
+            addParticipation(fundingId, nextPaidAmount);
+            updateProjectFunding(fundingId, nextPaidAmount);
+          }
+          const currentProject = projects.find((item) => item.id === fundingId);
+          if (currentProject) {
+            try {
+              const latestDetail = await getFundingDetail(fundingId);
+              mergeProject(fundingId, mergeFundingDetail(currentProject, latestDetail));
+            } catch (detailError) {
+              console.warn(getFundingApiErrorMessage(detailError, '펀딩 상세를 다시 불러오지 못했습니다.'));
+            }
+          }
+        }
+
         if (!mounted) return;
+        setConfirmedFundingId(fundingId || null);
+        setPaidAmount(nextPaidAmount);
         setStatus('success');
-        setMessage('결제 승인 및 후원 처리가 완료되었습니다.');
+        setMessage('결제 승인과 후원 처리가 완료되었습니다.');
       } catch (error) {
         const errorMessage = getFundingApiErrorMessage(error, '토스 결제 승인 중 문제가 발생했습니다.');
-        if (errorMessage.includes('이미 결제 완료')) {
+        if (/이미|already|PAID/i.test(errorMessage)) {
           if (mounted) {
+            setConfirmedFundingId(paymentInfo.fundingId || null);
+            setPaidAmount(paymentInfo.amount);
             setStatus('success');
             setMessage('이미 결제가 완료된 후원입니다.');
           }
@@ -73,32 +135,58 @@ export default function TossPaymentSuccessScreen() {
     return () => {
       mounted = false;
     };
-  }, [addParticipation, participatedFundings, paymentInfo, updateProjectFunding]);
+  }, [addParticipation, mergeProject, participatedFundings, paymentInfo, projects, updateProjectFunding]);
 
   const isLoading = status === 'loading';
   const isSuccess = status === 'success';
+  const detailFundingId = confirmedFundingId || paymentInfo.fundingId;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}>
-      <View style={[styles.iconBox, isSuccess && styles.iconBoxSuccess]}>
-        {isLoading ? <ActivityIndicator color="#111827" /> : <CheckCircle2 size={36} color={isSuccess ? '#FFFFFF' : '#991B1B'} />}
+      <View style={[styles.iconBox, isSuccess && styles.iconBoxSuccess, status === 'error' && styles.iconBoxError]}>
+        {isLoading ? (
+          <ActivityIndicator color="#111827" />
+        ) : isSuccess ? (
+          <CheckCircle2 size={38} color="#FFFFFF" />
+        ) : (
+          <XCircle size={38} color="#991B1B" />
+        )}
       </View>
       <Text style={styles.title}>{isLoading ? '결제 승인 중' : isSuccess ? '후원이 완료되었습니다' : '결제 승인 실패'}</Text>
       <Text style={styles.body}>{message}</Text>
+      {(paidAmount || paymentInfo.orderName) && (
+        <View style={styles.infoBox}>
+          <Text style={styles.infoLabel}>프로젝트</Text>
+          <Text style={styles.infoValue}>{paymentInfo.orderName}</Text>
+          {paidAmount ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.infoLabel}>결제 금액</Text>
+              <Text style={styles.amountValue}>{paidAmount.toLocaleString()}원</Text>
+            </>
+          ) : null}
+        </View>
+      )}
       <View style={styles.buttonGroup}>
         <TouchableOpacity
-          style={styles.primaryButton}
+          style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
+          onPress={() => {
+            if (detailFundingId) {
+              router.replace(`/funding/${detailFundingId}?fromPayment=1` as any);
+              return;
+            }
+            router.replace('/funding' as any);
+          }}
+          disabled={isLoading}
+        >
+          <Text style={styles.primaryButtonText}>펀딩 상세로 돌아가기</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.secondaryButton, isLoading && styles.buttonDisabled]}
           onPress={() => router.replace(isSuccess ? '/mypage/funded' as any : '/funding' as any)}
           disabled={isLoading}
         >
-          <Text style={styles.primaryButtonText}>{isSuccess ? '후원 내역 보기' : '펀딩으로 이동'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.secondaryButton}
-          onPress={() => (isSuccess ? router.replace('/funding' as any) : router.back())}
-          disabled={isLoading}
-        >
-          <Text style={styles.secondaryButtonText}>{isSuccess ? '펀딩으로 이동' : '이전 화면으로'}</Text>
+          <Text style={styles.secondaryButtonText}>{isSuccess ? '내 후원 내역 보기' : '펀딩 목록으로 이동'}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -109,11 +197,18 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#FFFFFF', paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center' },
   iconBox: { width: 74, height: 74, borderRadius: 37, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
   iconBoxSuccess: { backgroundColor: '#111827' },
+  iconBoxError: { backgroundColor: '#FEF2F2' },
   title: { fontSize: 24, fontWeight: '900', color: '#111827', textAlign: 'center', marginBottom: 10 },
-  body: { fontSize: 14, lineHeight: 22, fontWeight: '700', color: '#6B7280', textAlign: 'center', marginBottom: 28 },
+  body: { fontSize: 14, lineHeight: 22, fontWeight: '700', color: '#6B7280', textAlign: 'center', marginBottom: 22 },
+  infoBox: { width: '100%', borderRadius: 16, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', padding: 16, gap: 6, marginBottom: 22 },
+  infoLabel: { fontSize: 12, color: '#6B7280', fontWeight: '800' },
+  infoValue: { fontSize: 15, color: '#111827', fontWeight: '900', lineHeight: 21 },
+  amountValue: { fontSize: 22, color: '#111827', fontWeight: '900' },
+  divider: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 6 },
   buttonGroup: { width: '100%', gap: 10 },
   primaryButton: { height: 54, borderRadius: 14, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
   primaryButtonText: { fontSize: 15, fontWeight: '900', color: '#FFFFFF' },
   secondaryButton: { height: 54, borderRadius: 14, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   secondaryButtonText: { fontSize: 15, fontWeight: '900', color: '#374151' },
+  buttonDisabled: { opacity: 0.55 },
 });

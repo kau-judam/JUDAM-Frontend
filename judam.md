@@ -110,6 +110,25 @@ API 구분 규칙:
 - 변경 후 Android Studio 에뮬레이터와 Expo Go에서 화면을 확인한다.
 - PR 메시지에는 작업 내용, 변경사항, 검증 내용을 작성한다.
 
+토스 결제 환경변수:
+- 로컬 개발/Expo Go에서는 루트 `.env`에 `EXPO_PUBLIC_TOSS_CLIENT_KEY=test_ck_...`를 설정한다.
+- 팀 공유용 예시는 `.env.example`에 `EXPO_PUBLIC_TOSS_CLIENT_KEY=test_ck_your_toss_client_key` 형태로 둔다.
+- 실제 `.env`는 커밋하지 않는다.
+- 프론트에는 토스 테스트 클라이언트 키(`test_ck_...`)만 둔다.
+- 토스 시크릿 키 `TOSS_SECRET_KEY`는 절대 프론트 레포, Expo public env, EAS 프론트 환경변수에 넣지 않는다.
+- 코드에서는 `process.env.EXPO_PUBLIC_TOSS_CLIENT_KEY`로 읽는다.
+- `.env`를 추가하거나 수정한 뒤에는 Expo/Metro를 재시작한다. 필요하면 `npx expo start -c`를 사용한다.
+- EAS Build를 쓰게 되면 `EXPO_PUBLIC_TOSS_CLIENT_KEY`를 EAS 환경변수에도 등록하되, 시크릿 키는 백엔드에서만 관리한다.
+
+토스 펀딩 결제 플로우:
+- 후원하기 화면은 `POST /api/fundings/:fundingId/orders`로 주문을 먼저 생성하고, 응답의 `orderId`, `numericOrderId`, `amount`, `orderName`, `customerName`, `customerEmail`, `customerMobilePhone`을 결제창에 그대로 넘긴다.
+- 결제 금액은 반드시 주문 생성 응답의 `amount`를 사용한다. 프론트 계산값으로 confirm 금액을 다시 만들지 않는다.
+- 토스 결제창은 Expo Go 호환을 위해 `react-native-webview`와 Toss Payments JS SDK(`https://js.tosspayments.com/v2/standard`)로 띄운다.
+- 결제 성공 URL에서 받은 `paymentKey`, `orderId`, `amount`를 확인한 뒤 `POST /api/payments/toss/confirm`을 호출한다.
+- `PATCH /api/orders/:orderId/payment/complete`는 legacy/mock 플로우이므로 새 펀딩 결제에서 사용하지 않는다.
+- `GET /api/orders/:orderId/payment`은 결제 조회용 `getOrderPayment`/`getFundingPaymentInfo`로만 사용한다.
+- confirm 성공 후 결제 완료 화면에서 후원 금액을 표시하고, 펀딩 상세 재조회로 `currentAmount`/`achievementRate`를 갱신한다.
+
 [백엔드/AI 금지선]
 - 프론트엔드 작업 중 임의로 DB, 인증 서버, 결제 서버, AI 서버, OpenAI/Gemini 호출, API key, `.env` 기반 서버 설정을 만들지 않는다.
 - 서버 API 연결은 `api.md`에 명세가 있거나 사용자가 명확히 연결을 요청한 프론트 화면 범위에서만 진행한다. base URL, 인증 헤더, 응답 필드가 불명확하면 먼저 사용자에게 확인한다.

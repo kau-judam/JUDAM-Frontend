@@ -364,6 +364,20 @@ export default function FundingSupportScreen() {
         refundPolicyAgreed: agreeRefund,
       });
       const paymentAmount = Number(order.amount ?? order.totalAmount);
+      if (paymentAmount !== totalAmount) {
+        console.warn('Funding order amount mismatch', {
+          fundingId: project.id,
+          optionId: selectedSupportOptionId,
+          quantity,
+          expectedAmount: totalAmount,
+          orderAmount: paymentAmount,
+          orderId: order.orderId,
+          numericOrderId: order.numericOrderId,
+        });
+        throw new Error(
+          `주문 생성 금액(${paymentAmount.toLocaleString()}원)이 화면 금액(${totalAmount.toLocaleString()}원)과 다릅니다. 결제를 진행하지 않고 다시 확인해주세요.`
+        );
+      }
       const numericOrderId = getOrderLookupId(order.orderId, order.numericOrderId);
       const tossOrderId = getTossPaymentOrderId(order.orderId, order.numericOrderId);
       if (!tossOrderId || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {

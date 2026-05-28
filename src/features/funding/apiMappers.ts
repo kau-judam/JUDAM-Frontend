@@ -228,7 +228,7 @@ function getFundingOwnerUserId(item: {
 
 export function normalizeSupportOptionId(value: FundingSupportOption['optionId'] | null | undefined) {
   const optionId = Number(value);
-  return Number.isFinite(optionId) ? optionId : null;
+  return Number.isInteger(optionId) && optionId > 0 ? optionId : null;
 }
 
 function isSameFundingText(current?: string, incoming?: string) {

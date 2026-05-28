@@ -27,6 +27,12 @@ function withPaymentTimeout<T>(promise: Promise<T>, timeoutMs: number, message: 
   });
 }
 
+function isPaidConfirmResponse(response: Awaited<ReturnType<typeof confirmTossPayment>>) {
+  const paymentStatus = String(response.paymentStatus || '').trim().toUpperCase();
+  const message = String(response.message || '');
+  return paymentStatus === 'PAID' || (response.status === 200 && /완료|성공|승인/.test(message));
+}
+
 export default function TossPaymentSuccessScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
@@ -40,10 +46,20 @@ export default function TossPaymentSuccessScreen() {
   }>();
   const { projects, participatedFundings, addParticipation, updateProjectFunding, mergeProject } = useFunding();
   const hasConfirmedRef = useRef(false);
+  const projectsRef = useRef(projects);
+  const participatedFundingsRef = useRef(participatedFundings);
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('토스 결제를 승인하고 있습니다.');
   const [paidAmount, setPaidAmount] = useState<number | null>(null);
   const [confirmedFundingId, setConfirmedFundingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  useEffect(() => {
+    participatedFundingsRef.current = participatedFundings;
+  }, [participatedFundings]);
 
   const paymentInfo = useMemo(() => {
     const paymentKey = getParam(params.paymentKey);
@@ -102,6 +118,19 @@ export default function TossPaymentSuccessScreen() {
           '결제 승인 응답이 지연되고 있습니다. 잠시 후 다시 확인해주세요.'
         );
         console.log('[TossPaymentSuccess] confirm response', confirmed);
+        if (!isPaidConfirmResponse(confirmed)) {
+          throw new Error(confirmed.message || '토스 결제 승인 결과를 확인하지 못했습니다.');
+        }
+
+        const initialFundingId = paymentInfo.fundingId || null;
+        const initialPaidAmount = confirmed.paidAmount || paymentInfo.amount;
+        if (mounted) {
+          setConfirmedFundingId(initialFundingId);
+          setPaidAmount(initialPaidAmount);
+          setStatus('success');
+          setMessage('펀딩 참여가 완료되었습니다.');
+        }
+
         const orderLookupId = paymentInfo.numericOrderId || paymentInfo.orderId;
         let detail: Awaited<ReturnType<typeof getFundingOrderDetail>> | null = null;
         if (orderLookupId) {
@@ -119,11 +148,11 @@ export default function TossPaymentSuccessScreen() {
         const nextPaidAmount = confirmed.paidAmount || detail?.totalAmount || paymentInfo.amount;
 
         if (fundingId) {
-          if (!participatedFundings.some((item) => item.fundingId === fundingId)) {
+          if (!participatedFundingsRef.current.some((item) => item.fundingId === fundingId)) {
             addParticipation(fundingId, nextPaidAmount);
             updateProjectFunding(fundingId, nextPaidAmount);
           }
-          const currentProject = projects.find((item) => item.id === fundingId);
+          const currentProject = projectsRef.current.find((item) => item.id === fundingId);
           if (currentProject) {
             try {
               const latestDetail = await withPaymentTimeout(
@@ -142,7 +171,7 @@ export default function TossPaymentSuccessScreen() {
         setConfirmedFundingId(fundingId || null);
         setPaidAmount(nextPaidAmount);
         setStatus('success');
-        setMessage('결제 승인과 후원 처리가 완료되었습니다.');
+        setMessage('펀딩 참여가 완료되었습니다.');
       } catch (error) {
         const errorMessage = getFundingApiErrorMessage(error, '토스 결제 승인 중 문제가 발생했습니다.');
         console.warn('[TossPaymentSuccess] confirm failed', {
@@ -171,7 +200,17 @@ export default function TossPaymentSuccessScreen() {
     return () => {
       mounted = false;
     };
-  }, [addParticipation, mergeProject, participatedFundings, paymentInfo, projects, updateProjectFunding]);
+  }, [
+    addParticipation,
+    mergeProject,
+    paymentInfo.amount,
+    paymentInfo.fundingId,
+    paymentInfo.numericOrderId,
+    paymentInfo.orderId,
+    paymentInfo.paymentKey,
+    paymentInfo.returnedAmount,
+    updateProjectFunding,
+  ]);
 
   const isLoading = status === 'loading';
   const isSuccess = status === 'success';
@@ -188,7 +227,7 @@ export default function TossPaymentSuccessScreen() {
           <XCircle size={38} color="#991B1B" />
         )}
       </View>
-      <Text style={styles.title}>{isLoading ? '결제 승인 중' : isSuccess ? '후원이 완료되었습니다' : '결제 승인 실패'}</Text>
+      <Text style={styles.title}>{isLoading ? '결제 승인 중' : isSuccess ? '펀딩 참여가 완료되었습니다' : '결제 승인 실패'}</Text>
       <Text style={styles.body}>{message}</Text>
       {(paidAmount || paymentInfo.orderName) && (
         <View style={styles.infoBox}>

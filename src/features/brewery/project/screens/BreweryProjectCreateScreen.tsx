@@ -250,6 +250,16 @@ function getParamValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function isDraftOwnedByOwner(draft: any, owner: { id?: unknown; uid?: unknown; email?: unknown }) {
+  if (!draft || typeof draft !== 'object') return true;
+  const userId = owner.id === undefined || owner.id === null ? '' : String(owner.id);
+  const ownerUserId = draft.ownerUserId ?? draft.storageOwnerUserId ?? draft.serverDraft?.ownerUserId ?? draft.serverDraft?.breweryId;
+  if (ownerUserId !== undefined && ownerUserId !== null && userId && String(ownerUserId) !== userId) return false;
+  if (draft.ownerUid && owner.uid && String(draft.ownerUid) !== String(owner.uid)) return false;
+  if (draft.ownerEmail && owner.email && String(draft.ownerEmail).toLowerCase() !== String(owner.email).toLowerCase()) return false;
+  return true;
+}
+
 function normalizeUploadedFile(value: unknown): UploadedFileValue {
   if (!value) return '';
   if (typeof value === 'string') return value;
@@ -574,6 +584,9 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
     uploadedFiles: getUploadedFilesFromPreview(preview),
     phoneVerified: Boolean(breweryInfo.phoneVerified || breweryInfo.contactPhone),
     accountVerified: Boolean(breweryInfo.accountVerified),
+    ownerUserId: user?.id,
+    ownerUid: user?.uid,
+    ownerEmail: user?.email,
     serverDraft: {
       draftId: preview.draftId,
       fundingId: preview.fundingId,
@@ -599,7 +612,13 @@ export default function BreweryProjectCreateScreen() {
   );
   const isEditMode = Boolean(editProjectId);
   const canEditProject = editProject ? isFundingProjectOwnedByBrewery(user, editProject) : false;
-  const tempSaveKey = isEditMode && editProjectId ? `${TEMP_SAVE_KEY}:edit:${editProjectId}` : TEMP_SAVE_KEY;
+  const draftOwner = useMemo(() => ({
+    id: user?.id,
+    uid: user?.uid,
+    email: user?.email,
+  }), [user?.email, user?.id, user?.uid]);
+  const tempSaveOwnerKey = String(draftOwner.id ?? draftOwner.uid ?? draftOwner.email ?? 'anonymous');
+  const tempSaveKey = isEditMode && editProjectId ? `${TEMP_SAVE_KEY}:${tempSaveOwnerKey}:edit:${editProjectId}` : `${TEMP_SAVE_KEY}:${tempSaveOwnerKey}`;
   const appliedEditProjectKeyRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('basic');
   const [showPreview, setShowPreview] = useState(false);
@@ -756,6 +775,9 @@ export default function BreweryProjectCreateScreen() {
           const timestamp = preview.documents?.[0]?.createdAt || new Date().toISOString();
           await SafeStorage.setItem(tempSaveKey, JSON.stringify({
             timestamp,
+            ownerUserId: user?.id,
+            ownerUid: user?.uid,
+            ownerEmail: user?.email,
             serverDraft: {
               draftId: preview.draftId,
               fundingId: preview.fundingId,
@@ -781,6 +803,9 @@ export default function BreweryProjectCreateScreen() {
           const timestamp = draft.updatedAt || draft.createdAt || new Date().toISOString();
           await SafeStorage.setItem(tempSaveKey, JSON.stringify({
             timestamp,
+            ownerUserId: user?.id,
+            ownerUid: user?.uid,
+            ownerEmail: user?.email,
             serverDraft: {
               draftId: draft.draftId,
               breweryId: draft.breweryId,
@@ -799,6 +824,12 @@ export default function BreweryProjectCreateScreen() {
       if (!saved) return;
       try {
         const parsed = JSON.parse(saved);
+        if (!isDraftOwnedByOwner(parsed, draftOwner)) {
+          await SafeStorage.removeItem(tempSaveKey);
+          setTempSaveTimestamp('');
+          setHasTempSave(false);
+          return;
+        }
         setTempSaveTimestamp(parsed.timestamp || '');
         setHasTempSave(true);
       } catch {
@@ -806,7 +837,7 @@ export default function BreweryProjectCreateScreen() {
       }
     };
     void loadTempSaveMeta();
-  }, [editProjectId, isEditMode, tempSaveKey, user?.id]);
+  }, [draftOwner, editProjectId, isEditMode, tempSaveKey, user?.email, user?.id, user?.uid]);
 
   const today = useMemo(() => {
     const value = new Date();
@@ -972,6 +1003,9 @@ export default function BreweryProjectCreateScreen() {
 
   const createDraftPayload = () => ({
     timestamp: new Date().toISOString(),
+    ownerUserId: user?.id,
+    ownerUid: user?.uid,
+    ownerEmail: user?.email,
     basicInfo: {
       ...basicInfo,
       tags: getReadyTags(),
@@ -1230,15 +1264,36 @@ export default function BreweryProjectCreateScreen() {
     return Number.isFinite(value) && value > 0 ? value : null;
   };
 
+  const resetLocalDraftMeta = async () => {
+    await SafeStorage.removeItem(tempSaveKey);
+    setHasTempSave(false);
+    setTempSaveTimestamp('');
+  };
+
+  const isRecoverableDraftAccessError = (error: unknown) => {
+    const message = getFundingApiErrorMessage(error, '');
+    return /권한|403|찾을 수 없습니다|404|not found|forbidden/i.test(message);
+  };
+
   const syncServerDraft = async (existingDraftId: number | null) => {
     if (existingDraftId) {
-      return {
-        draftId: existingDraftId,
-        breweryId: getBreweryId(),
-        status: 'DRAFT',
-        progressRate: progress,
-        message: '',
-      };
+      try {
+        const preview = await getFundingDraftPreview(existingDraftId);
+        return {
+          draftId: preview.draftId || existingDraftId,
+          fundingId: preview.fundingId,
+          breweryId: getBreweryId(),
+          status: preview.status || 'DRAFT',
+          progressRate: preview.progressRate ?? progress,
+          message: preview.message || '',
+        };
+      } catch (error) {
+        if (!isEditMode && isRecoverableDraftAccessError(error)) {
+          await resetLocalDraftMeta();
+          return createFundingDraft(createDraftApiPayload());
+        }
+        throw error;
+      }
     }
     return createFundingDraft(createDraftApiPayload());
   };
@@ -1446,7 +1501,12 @@ export default function BreweryProjectCreateScreen() {
     const saved = await SafeStorage.getItem(tempSaveKey);
     if (!saved) return null;
     try {
-      return JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      if (!isDraftOwnedByOwner(parsed, draftOwner)) {
+        await resetLocalDraftMeta();
+        return null;
+      }
+      return parsed;
     } catch {
       await SafeStorage.removeItem(tempSaveKey);
       setHasTempSave(false);

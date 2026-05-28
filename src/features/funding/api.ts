@@ -523,24 +523,40 @@ type FundingReportsResponse = {
 
 type CreateFundingOrderPayload = {
   optionId?: number;
+  option_id?: number;
   quantity: number;
   supporterPhone?: string;
+  supporter_phone?: string;
   supporterEmail?: string;
+  supporter_email?: string;
   recipientName: string;
+  recipient_name?: string;
   recipientPhone: string;
+  recipient_phone?: string;
   shippingAddress: string;
+  shipping_address?: string;
   shippingDetailAddress?: string;
+  shipping_detail_address?: string;
   postalCode?: string;
+  postal_code?: string;
   additionalSupportAmount?: number;
+  additional_support_amount?: number;
   message?: string;
   supportMessage?: string;
+  support_message?: string;
   adultVerified: boolean;
+  adult_verified?: boolean;
   privacyAgreed?: boolean;
+  privacy_agreed?: boolean;
   privacyThirdPartyAgreed?: boolean;
+  privacy_third_party_agreed?: boolean;
   thirdPartyAgreed?: boolean;
   termsAgreed?: boolean;
+  terms_agreed?: boolean;
   noticeAgreed: boolean;
+  notice_agreed?: boolean;
   refundPolicyAgreed?: boolean;
+  refund_policy_agreed?: boolean;
 };
 
 type CreateFundingOrderResponse = {
@@ -584,6 +600,7 @@ type ConfirmTossPaymentPayload = {
 };
 
 type ConfirmTossPaymentResponse = {
+  status?: number;
   orderId: string | number;
   paymentId: number;
   paymentStatus: string;
@@ -1862,28 +1879,43 @@ function normalizeFundingPaymentResponse(response: unknown): RequestPaymentRespo
 }
 
 function normalizeConfirmTossPaymentResponse(response: unknown): ConfirmTossPaymentResponse {
+  const raw = getFundingApiRawObject(response);
   const data = getFundingApiObject(response);
   const payment = getFundingNestedObject(data, 'payment');
   const nestedPayment = getFundingNestedObject(payment, 'payment');
   const tossPayment = getFundingNestedObject(payment, 'tossPayment');
+  const rawPayment = getFundingNestedObject(raw, 'payment');
   const orderId =
     readFundingApiString(data, ['orderId', 'order_id']) ||
+    readFundingApiString(raw, ['orderId', 'order_id']) ||
     readFundingApiString(nestedPayment, ['orderId', 'order_id']) ||
-    readFundingApiString(tossPayment, ['orderId', 'order_id']);
+    readFundingApiString(tossPayment, ['orderId', 'order_id']) ||
+    readFundingApiString(rawPayment, ['orderId', 'order_id']);
   return {
+    status: readFundingApiOptionalNumber(raw, ['status']) ?? readFundingApiOptionalNumber(data, ['status']),
     orderId,
     paymentId:
       readFundingApiNumber(data, ['paymentId', 'payment_id']) ||
-      readFundingApiNumber(nestedPayment, ['paymentId', 'payment_id']),
+      readFundingApiNumber(raw, ['paymentId', 'payment_id']) ||
+      readFundingApiNumber(nestedPayment, ['paymentId', 'payment_id']) ||
+      readFundingApiNumber(rawPayment, ['paymentId', 'payment_id']),
     paymentStatus:
       readFundingApiString(data, ['paymentStatus', 'payment_status']) ||
+      readFundingApiString(raw, ['paymentStatus', 'payment_status']) ||
       readFundingApiString(nestedPayment, ['paymentStatus', 'payment_status']) ||
-      readFundingApiString(tossPayment, ['status']),
+      readFundingApiString(tossPayment, ['status']) ||
+      readFundingApiString(rawPayment, ['paymentStatus', 'payment_status', 'status']),
     paidAmount:
       readFundingApiNumber(data, ['paidAmount', 'paid_amount', 'amount']) ||
+      readFundingApiNumber(raw, ['paidAmount', 'paid_amount', 'amount']) ||
       readFundingApiNumber(nestedPayment, ['paidAmount', 'paid_amount', 'amount']) ||
-      readFundingApiNumber(tossPayment, ['totalAmount', 'total_amount', 'amount']),
-    message: readFundingApiString(data, ['message']) || readFundingApiString(payment, ['message']),
+      readFundingApiNumber(tossPayment, ['totalAmount', 'total_amount', 'amount']) ||
+      readFundingApiNumber(rawPayment, ['paidAmount', 'paid_amount', 'amount']),
+    message:
+      readFundingApiString(data, ['message']) ||
+      readFundingApiString(raw, ['message']) ||
+      readFundingApiString(payment, ['message']) ||
+      readFundingApiString(rawPayment, ['message']),
   };
 }
 

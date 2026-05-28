@@ -20,6 +20,7 @@ interface FundingContextType {
   addFundingReview: (review: FundingReviewInput) => FundingReview;
   updateFundingReview: (reviewId: number, review: Partial<FundingReviewInput>) => FundingReview | null;
   deleteFundingReview: (reviewId: number) => void;
+  replaceProjects: (incomingProjects: FundingProject[]) => void;
   mergeProjects: (incomingProjects: FundingProject[]) => void;
   mergeProject: (projectId: number, project: Partial<Omit<FundingProject, "id">>) => void;
   mergeFundingReviews: (projectId: number, reviews: FundingReview[]) => void;
@@ -97,6 +98,10 @@ export function FundingProvider({ children }: { children: ReactNode }) {
   const deleteFundingReview = (reviewId: number) => {
     setFundingReviews((prev) => prev.filter((item) => item.id !== reviewId));
   };
+
+  const replaceProjects = useCallback((incomingProjects: FundingProject[]) => {
+    setProjects(incomingProjects);
+  }, []);
 
   const mergeProjects = useCallback((incomingProjects: FundingProject[]) => {
     if (incomingProjects.length === 0) return;
@@ -201,6 +206,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
         addFundingReview,
         updateFundingReview,
         deleteFundingReview,
+        replaceProjects,
         mergeProjects,
         mergeProject,
         mergeFundingReviews,

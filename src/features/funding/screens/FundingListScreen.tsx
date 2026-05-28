@@ -72,7 +72,7 @@ export default function FundingListScreen() {
   const currentScrollYRef = useRef(0);
   const pendingPaginationScrollYRef = useRef<number | null>(null);
   const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
-  const { projects, mergeProjects } = useFunding();
+  const { projects, replaceProjects } = useFunding();
   const projectsRef = useRef(projects);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<FundingStatusFilter>("전체 프로젝트");
@@ -82,6 +82,7 @@ export default function FundingListScreen() {
   const [alertModal, setAlertModal] = useState<FundingListAlert | null>(null);
   const [serverFundingStats, setServerFundingStats] = useState<FundingStatsResponse | null>(null);
   const [serverFundingOrderIds, setServerFundingOrderIds] = useState<number[]>([]);
+  const [hasLoadedServerFundingList, setHasLoadedServerFundingList] = useState(false);
 
   const isBreweryAccount = user?.type === "brewery";
   const isVerifiedBrewery = isBreweryAccount && user?.isBreweryVerified;
@@ -118,24 +119,31 @@ export default function FundingListScreen() {
     const status = getFundingApiStatus(selectedStatus);
     const apiSort = getFundingApiSort(selectedSort);
     setServerFundingOrderIds([]);
+    setHasLoadedServerFundingList(false);
 
-    getFundingList({ status, sort: apiSort, page: 0, size: 10 })
+    getFundingList({ status, sort: apiSort, page: 0, size: 100 })
       .then((response) => {
         if (!mounted) return;
         const nextProjects = response.data.map((item) =>
           mergeFundingListItem(projectsRef.current.find((project) => project.id === item.fundingId), item)
         );
         setServerFundingOrderIds(nextProjects.map((project) => project.id));
-        mergeProjects(nextProjects);
+        replaceProjects(nextProjects);
+        setHasLoadedServerFundingList(true);
       })
       .catch((error) => {
+        if (mounted) {
+          setServerFundingOrderIds([]);
+          replaceProjects([]);
+          setHasLoadedServerFundingList(true);
+        }
         console.warn(getFundingApiErrorMessage(error, '펀딩 목록을 불러오지 못했습니다.'));
       });
 
     return () => {
       mounted = false;
     };
-  }, [mergeProjects, selectedSort, selectedStatus, user?.id]);
+  }, [replaceProjects, selectedSort, selectedStatus, user?.id]);
 
   useEffect(() => {
     let mounted = true;
@@ -174,20 +182,16 @@ export default function FundingListScreen() {
   }, []);
 
   const filteredProjects = useMemo(() => {
+    if (!hasLoadedServerFundingList || serverFundingOrderIds.length === 0) return [];
+    const serverFundingIds = new Set(serverFundingOrderIds);
     return projects.filter((project) => {
-      return matchesFundingSearch(project, searchTerm) && matchesFundingStatusFilter(project, selectedStatus);
+      return serverFundingIds.has(project.id) && matchesFundingSearch(project, searchTerm) && matchesFundingStatusFilter(project, selectedStatus);
     });
-  }, [projects, searchTerm, selectedStatus]);
+  }, [hasLoadedServerFundingList, projects, searchTerm, selectedStatus, serverFundingOrderIds]);
 
   const sortedProjects = useMemo(() => {
-    if (serverFundingOrderIds.length > 0) {
-      const orderMap = new Map(serverFundingOrderIds.map((id, index) => [id, index]));
-      const serverSortedProjects = filteredProjects
-        .filter((project) => orderMap.has(project.id))
-        .sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
-      return serverSortedProjects;
-    }
-    return [];
+    const orderMap = new Map(serverFundingOrderIds.map((id, index) => [id, index]));
+    return [...filteredProjects].sort((a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0));
   }, [filteredProjects, serverFundingOrderIds]);
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(sortedProjects.length / FUNDING_ITEMS_PER_PAGE)),

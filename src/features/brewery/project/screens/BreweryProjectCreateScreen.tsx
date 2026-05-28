@@ -61,6 +61,7 @@ import {
   submitFundingDraft,
   uploadFundingDocument,
   uploadFundingDraftFile,
+  verifyBreweryAccount,
   type FundingDocumentType,
   type FundingDraftPreviewResponse,
   loadFundingBreweryInfo,
@@ -92,6 +93,24 @@ type ProjectPlanDraft = {
   schedule?: string;
   budgetGuide?: string;
   scheduleGuide?: string;
+};
+type BreweryInfoForApiPayload = {
+  breweryName: string;
+  representativeName: string;
+  businessRegistrationNumber: string;
+  businessAddress: string;
+  businessAddressDetail?: string;
+  contactEmail: string;
+  contactPhone: string;
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  businessType?: string;
+  businessName?: string;
+  businessCategory?: string;
+  businessItem?: string;
+  phoneVerified?: boolean;
+  accountVerified?: boolean;
 };
 
 interface IngredientRow {
@@ -130,6 +149,13 @@ const DOCUMENT_TYPE_BY_FILE_KEY: Record<DocumentFileKey, FundingDocumentType> = 
   salesPermit: 'salesPermit',
   alcoholPermit: 'alcoholPermit',
   manufacturingLicense: 'manufacturingLicense',
+};
+const DOCUMENT_LABEL_BY_FILE_KEY: Record<DocumentFileKey, string> = {
+  idCard: '신분증/사업자등록증',
+  businessLicense: '사업자등록증',
+  salesPermit: '통신판매 신고증',
+  alcoholPermit: '주류 통신판매 승인서',
+  manufacturingLicense: '전통주 제조면허증',
 };
 const SUPPORTED_DOCUMENT_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
 const SUPPORTED_DOCUMENT_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
@@ -253,7 +279,9 @@ function normalizeUploadedFiles(files?: Partial<Record<FileKey, unknown>>) {
 
 function getUploadedFileName(file?: UploadedFileValue) {
   if (!file) return '';
-  return typeof file === 'string' ? file : file.name;
+  if (typeof file !== 'string') return file.name;
+  const cleanPath = file.split('?')[0] || file;
+  return decodeURIComponent(cleanPath.split('/').pop() || file);
 }
 
 function getLocalUploadFile(file: UploadedFileValue) {
@@ -263,6 +291,14 @@ function getLocalUploadFile(file: UploadedFileValue) {
     name: file.name,
     mimeType: file.mimeType,
   };
+}
+
+function isServerUploadedFile(value: UploadedFileValue) {
+  return typeof value === 'string' && /^https?:\/\//i.test(value.trim());
+}
+
+function isRequiredDocumentReady(value: UploadedFileValue) {
+  return isServerUploadedFile(value) || Boolean(getLocalUploadFile(value));
 }
 
 function getDocumentFileExtension(fileName: string) {
@@ -415,15 +451,16 @@ function getUploadedFilesFromPreviewDocuments(documents?: FundingDraftPreviewRes
   documents?.forEach((document) => {
     const fileName = document.fileName || '기존 제출 서류';
     const documentType = document.documentType;
-    if (documentType === 'businessLicense' || documentType === 'BUSINESS_LICENSE' || documentType === 'BUSINESS_REGISTRATION') files.businessLicense = fileName;
-    if (documentType === 'salesPermit' || documentType === 'SALES_PERMIT' || documentType === 'MAIL_ORDER_BUSINESS') files.salesPermit = fileName;
-    if (documentType === 'alcoholPermit' || documentType === 'ALCOHOL_PERMIT') files.alcoholPermit = fileName;
-    if (documentType === 'manufacturingLicense' || documentType === 'MANUFACTURING_LICENSE') files.manufacturingLicense = fileName;
+    const fileValue = document.fileUrl || fileName;
+    if (documentType === 'businessLicense' || documentType === 'BUSINESS_LICENSE' || documentType === 'BUSINESS_REGISTRATION') files.businessLicense = fileValue;
+    if (documentType === 'salesPermit' || documentType === 'SALES_PERMIT' || documentType === 'MAIL_ORDER_BUSINESS') files.salesPermit = fileValue;
+    if (documentType === 'alcoholPermit' || documentType === 'ALCOHOL_PERMIT') files.alcoholPermit = fileValue;
+    if (documentType === 'manufacturingLicense' || documentType === 'MANUFACTURING_LICENSE') files.manufacturingLicense = fileValue;
     if (document.documentType === 'LIQUOR_LICENSE') {
-      files.alcoholPermit = files.alcoholPermit || fileName;
-      files.manufacturingLicense = files.manufacturingLicense || fileName;
+      files.alcoholPermit = files.alcoholPermit || fileValue;
+      files.manufacturingLicense = files.manufacturingLicense || fileValue;
     }
-    if (documentType === 'idCard' || documentType === 'ID_CARD' || documentType === 'BANK_ACCOUNT_COPY' || documentType === 'ETC') files.idCard = files.idCard || fileName;
+    if (documentType === 'idCard' || documentType === 'ID_CARD' || documentType === 'BANK_ACCOUNT_COPY' || documentType === 'ETC') files.idCard = files.idCard || fileValue;
   });
   return files;
 }
@@ -536,7 +573,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
     },
     uploadedFiles: getUploadedFilesFromPreview(preview),
     phoneVerified: Boolean(breweryInfo.phoneVerified || breweryInfo.contactPhone),
-    accountVerified: Boolean(breweryInfo.accountVerified || (breweryInfo.bankName && breweryInfo.accountNumber)),
+    accountVerified: Boolean(breweryInfo.accountVerified),
     serverDraft: {
       draftId: preview.draftId,
       fundingId: preview.fundingId,
@@ -591,6 +628,7 @@ export default function BreweryProjectCreateScreen() {
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [phoneTimer, setPhoneTimer] = useState(0);
   const [accountVerified, setAccountVerified] = useState(false);
+  const [isAccountVerifying, setIsAccountVerifying] = useState(false);
   const [tagDraft, setTagDraft] = useState('');
   const [isImageReordering, setIsImageReordering] = useState(false);
   const [basicInfo, setBasicInfo] = useState({
@@ -684,7 +722,7 @@ export default function BreweryProjectCreateScreen() {
       setPhoneVerificationCode('');
       setPhoneVerificationGuideMessage('');
       setPhoneTimer(0);
-      setAccountVerified('accountVerified' in draft ? Boolean(draft.accountVerified) : true);
+      setAccountVerified('accountVerified' in draft ? Boolean(draft.accountVerified) : false);
     };
 
     getFundingDraftByFundingId(editProjectId)
@@ -837,11 +875,11 @@ export default function BreweryProjectCreateScreen() {
       taxInfo.email,
       trustInfo.projectPolicy,
       trustInfo.expectedDifficulties,
-      uploadedFiles.idCard,
-      uploadedFiles.businessLicense,
-      uploadedFiles.salesPermit,
-      uploadedFiles.alcoholPermit,
-      uploadedFiles.manufacturingLicense,
+      isRequiredDocumentReady(uploadedFiles.idCard),
+      isRequiredDocumentReady(uploadedFiles.businessLicense),
+      isRequiredDocumentReady(uploadedFiles.salesPermit),
+      isRequiredDocumentReady(uploadedFiles.alcoholPermit),
+      isRequiredDocumentReady(uploadedFiles.manufacturingLicense),
     ].forEach(add);
 
     return total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -863,6 +901,19 @@ export default function BreweryProjectCreateScreen() {
 
   const hasBlockingDateWarning = Boolean((!isEditMode && startDateWarning) || durationWarning || deliveryDateWarning);
   const canSubmit = progress >= 100 && !hasBlockingDateWarning;
+  const submitBlockMessage = useMemo(() => {
+    if (startDateWarning && !isEditMode) return startDateWarning;
+    if (durationWarning) return durationWarning;
+    if (deliveryDateWarning) return deliveryDateWarning;
+    const missingDocuments = DOCUMENT_FILE_KEYS
+      .filter((key) => !isRequiredDocumentReady(uploadedFiles[key]))
+      .map((key) => DOCUMENT_LABEL_BY_FILE_KEY[key]);
+    if (missingDocuments.length > 0) {
+      return `${missingDocuments.join(', ')} 파일을 다시 선택해주세요.`;
+    }
+    if (progress < 100) return '필수 정보를 모두 입력한 후 제출할 수 있습니다.';
+    return '';
+  }, [deliveryDateWarning, durationWarning, isEditMode, progress, startDateWarning, uploadedFiles]);
   const canSendPhoneVerification = isValidProjectPhone(creatorInfo.phone);
   const exitRoute = isEditMode && editProjectId ? `/funding/${editProjectId}` : '/funding';
 
@@ -1124,7 +1175,27 @@ export default function BreweryProjectCreateScreen() {
     };
   };
 
+  const createBreweryInfoForApi = (overrides: Partial<BreweryInfoForApiPayload> = {}): BreweryInfoForApiPayload => ({
+    breweryName: taxInfo.businessName.trim() || user?.breweryName || '',
+    representativeName: taxInfo.ceoName.trim(),
+    businessRegistrationNumber: formatBusinessRegistrationNumber(taxInfo.businessNumber),
+    businessAddress: taxInfo.address.trim(),
+    contactEmail: taxInfo.email.trim() || user?.email || '',
+    contactPhone: creatorInfo.phone.trim(),
+    bankName: creatorInfo.accountBank.trim(),
+    accountNumber: creatorInfo.accountNumber.trim(),
+    accountHolder: taxInfo.ceoName.trim() || user?.name || '',
+    businessType: taxInfo.businessType,
+    businessName: taxInfo.businessName.trim(),
+    businessCategory: taxInfo.businessCategory.trim(),
+    businessItem: taxInfo.businessItem.trim(),
+    phoneVerified,
+    accountVerified,
+    ...overrides,
+  });
+
   const getBreweryInfoForApi = () => {
+    const payload = createBreweryInfoForApi();
     const breweryName = taxInfo.businessName.trim() || user?.breweryName || '';
     const representativeName = taxInfo.ceoName.trim();
     const businessRegistrationNumber = formatBusinessRegistrationNumber(taxInfo.businessNumber);
@@ -1151,23 +1222,7 @@ export default function BreweryProjectCreateScreen() {
       throw new Error(`양조장 정보에서 ${missingFields.join(', ')}을(를) 확인해주세요.`);
     }
 
-    return {
-      breweryName,
-      representativeName,
-      businessRegistrationNumber,
-      businessAddress,
-      contactEmail,
-      contactPhone,
-      bankName,
-      accountNumber,
-      accountHolder,
-      businessType: taxInfo.businessType,
-      businessName: taxInfo.businessName.trim(),
-      businessCategory: taxInfo.businessCategory.trim(),
-      businessItem: taxInfo.businessItem.trim(),
-      phoneVerified,
-      accountVerified,
-    };
+    return payload;
   };
 
   const getDraftId = (draft: any) => {
@@ -1351,14 +1406,18 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const uploadProjectDocumentsToApi = async (draftId: number) => {
+    const nextUploadedFiles = { ...uploadedFiles };
     for (const key of DOCUMENT_FILE_KEYS) {
-      if (typeof uploadedFiles[key] === 'string' && uploadedFiles[key]) continue;
-      const file = getLocalUploadFile(uploadedFiles[key]);
+      const currentFile = uploadedFiles[key];
+      if (isServerUploadedFile(currentFile)) continue;
+      const file = getLocalUploadFile(currentFile);
       if (!file) {
         throw new Error('선택한 서류 파일 정보를 찾을 수 없습니다. 서류를 다시 선택해주세요.');
       }
-      await uploadFundingDocument(draftId, DOCUMENT_TYPE_BY_FILE_KEY[key], file);
+      const uploaded = await uploadFundingDocument(draftId, DOCUMENT_TYPE_BY_FILE_KEY[key], file);
+      nextUploadedFiles[key] = uploaded.fileUrl || currentFile;
     }
+    setUploadedFiles(normalizeUploadedFiles(nextUploadedFiles));
   };
 
   const applyDraftPayload = (draft: any) => {
@@ -1633,7 +1692,7 @@ export default function BreweryProjectCreateScreen() {
       setUploadedFiles((prev) => normalizeUploadedFiles({ ...prev, businessLicense: businessLicenseFile }));
     }
     setPhoneVerified(Boolean(info.phoneVerified || info.contactPhone));
-    setAccountVerified(Boolean(info.accountVerified || (info.bankName && info.accountNumber)));
+    setAccountVerified(Boolean(info.accountVerified));
   };
 
   const loadBreweryInfo = async () => {
@@ -1857,13 +1916,63 @@ export default function BreweryProjectCreateScreen() {
     }
   };
 
-  const handleVerifyAccount = () => {
-    if (!creatorInfo.accountBank || !creatorInfo.accountNumber) {
+  const handleVerifyAccount = async () => {
+    const bankName = creatorInfo.accountBank.trim();
+    const accountNumber = creatorInfo.accountNumber.trim();
+    const accountHolder = taxInfo.ceoName.trim() || user?.name || '';
+    if (!bankName || !accountNumber) {
       showAlert('은행과 계좌번호를 입력해주세요.');
       return;
     }
-    setAccountVerified(true);
-    showAlert('인증완료!');
+    if (!accountHolder) {
+      showAlert('계좌 인증을 위해 대표자명 또는 예금주 이름을 입력해주세요.');
+      return;
+    }
+    setIsAccountVerifying(true);
+    try {
+      const result = await verifyBreweryAccount({ bankName, accountNumber, accountHolder });
+      if (!result.verified) {
+        throw new Error(result.message || '계좌 인증에 실패했습니다.');
+      }
+      const verifiedBankName = result.bankName || bankName;
+      const verifiedAccountNumber = result.accountNumber || accountNumber;
+      const verifiedAccountHolder = result.accountHolder || accountHolder;
+      const draftId = await ensureServerDraft();
+      const savedDraft = await getSavedDraft();
+      const verifiedCreatorInfo = {
+        ...creatorInfo,
+        accountBank: verifiedBankName,
+        accountNumber: verifiedAccountNumber,
+      };
+
+      await updateFundingDraft(draftId, {
+        breweryInfo: {
+          bankName: verifiedBankName,
+          accountNumber: verifiedAccountNumber,
+          accountHolder: verifiedAccountHolder,
+          accountVerified: true,
+        },
+      });
+      await SafeStorage.setItem(tempSaveKey, JSON.stringify({
+        ...createDraftPayload(),
+        creatorInfo: verifiedCreatorInfo,
+        accountVerified: true,
+        serverDraft: savedDraft?.serverDraft,
+      }));
+
+      setCreatorInfo((prev) => ({
+        ...prev,
+        accountBank: verifiedBankName,
+        accountNumber: verifiedAccountNumber,
+      }));
+      setAccountVerified(true);
+      showAlert(result.message || '인증완료!');
+    } catch (error) {
+      setAccountVerified(false);
+      showAlert(getFundingApiErrorMessage(error, '계좌 인증에 실패했습니다.'));
+    } finally {
+      setIsAccountVerifying(false);
+    }
   };
 
   const handleDocumentUpload = async (key: FileKey) => {
@@ -1983,7 +2092,10 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleSubmit = () => {
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      showAlert(submitBlockMessage || '필수 정보를 모두 입력한 후 제출할 수 있습니다.');
+      return;
+    }
     setShowSubmitConfirm(true);
   };
 
@@ -2649,11 +2761,11 @@ export default function BreweryProjectCreateScreen() {
               <RequiredLabel label="입금 계좌" required />
               {!accountVerified ? (
                 <TouchableOpacity
-                  style={[styles.loadButton, (!creatorInfo.accountBank || !creatorInfo.accountNumber) && styles.disabledButton]}
+                  style={[styles.loadButton, (!creatorInfo.accountBank || !creatorInfo.accountNumber || isAccountVerifying) && styles.disabledButton]}
                   onPress={handleVerifyAccount}
-                  disabled={!creatorInfo.accountBank || !creatorInfo.accountNumber}
+                  disabled={!creatorInfo.accountBank || !creatorInfo.accountNumber || isAccountVerifying}
                 >
-                  <Text style={styles.loadButtonText}>인증하기</Text>
+                  <Text style={styles.loadButtonText}>{isAccountVerifying ? '인증 중...' : '인증하기'}</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={styles.smallDoneBadge}>
@@ -2844,7 +2956,7 @@ export default function BreweryProjectCreateScreen() {
           <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={isSaving}>
             <Text style={styles.saveButtonText}>{isSaving ? '저장 중...' : '임시저장'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.submitButton, !canSubmit && styles.disabledButton]} onPress={handleSubmit} disabled={!canSubmit || isSubmitting}>
+          <TouchableOpacity style={[styles.submitButton, !canSubmit && styles.disabledButton]} onPress={handleSubmit} disabled={isSubmitting}>
             <Text style={styles.submitButtonText}>{isSubmitting ? (isEditMode ? '수정 중...' : '제출 중...') : (isEditMode ? '수정 제출' : '제출')}</Text>
           </TouchableOpacity>
         </View>

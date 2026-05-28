@@ -114,6 +114,11 @@ function normalizeIngredientName(value: unknown) {
     typeof source.ingredient === 'string' ? source.ingredient :
     typeof source.name === 'string' ? source.name :
     typeof source.mainIngredient === 'string' ? source.mainIngredient :
+    typeof source.main_ingredient === 'string' ? source.main_ingredient :
+    typeof source.rawMaterial === 'string' ? source.rawMaterial :
+    typeof source.raw_material === 'string' ? source.raw_material :
+    typeof source.materialName === 'string' ? source.materialName :
+    typeof source.material_name === 'string' ? source.material_name :
     ''
   ).trim();
 }
@@ -123,13 +128,17 @@ function normalizeIngredientOrigin(value: unknown) {
   const source = value as Record<string, unknown>;
   return (
     typeof source.origin === 'string' ? source.origin :
+    typeof source.originName === 'string' ? source.originName :
+    typeof source.origin_name === 'string' ? source.origin_name :
     typeof source.countryOfOrigin === 'string' ? source.countryOfOrigin :
+    typeof source.country_of_origin === 'string' ? source.country_of_origin :
     typeof source.productionArea === 'string' ? source.productionArea :
+    typeof source.production_area === 'string' ? source.production_area :
     ''
   ).trim();
 }
 
-function normalizeSupportOptionIngredients(value?: unknown[]) {
+function normalizeProjectIngredients(value?: unknown[]) {
   if (!Array.isArray(value)) return [];
   return value
     .map((item, index) => {
@@ -144,11 +153,25 @@ function normalizeSupportOptionIngredients(value?: unknown[]) {
     .filter((item): item is { id: number; ingredient: string; origin: string } => Boolean(item));
 }
 
+function normalizeSupportOptionIngredients(value?: unknown[]) {
+  return normalizeProjectIngredients(value);
+}
+
 function formatProjectIngredients(value: { ingredient: string; origin: string }[]) {
   return value
     .map((item) => [item.ingredient, item.origin].filter(Boolean).join(' '))
     .filter(Boolean)
     .join(', ');
+}
+
+function getFundingDetailIngredients(detail: FundingDetailResponse) {
+  const rawMaterials = normalizeProjectIngredients(detail.legalInfo?.rawMaterials);
+  if (rawMaterials.length > 0) return rawMaterials;
+
+  const legalIngredients = normalizeProjectIngredients(detail.legalInfo?.ingredients);
+  if (legalIngredients.length > 0) return legalIngredients;
+
+  return normalizeProjectIngredients(detail.ingredients);
 }
 
 function getVolumeFromDescription(description?: string) {
@@ -309,17 +332,19 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     isSameFundingText(existing.shortTitle, detail.title);
   const matchScore = getFundingMatchScore(detail);
   const businessAddress = detail.businessAddress || detail.breweryAddress || detail.breweryLocation || detail.breweryInfo?.businessAddress || detail.breweryInfo?.breweryAddress;
+  const detailIngredients = getFundingDetailIngredients(detail);
   const mainIngredient =
     detail.mainIngredient ||
     detail.primaryIngredient ||
     detail.legalInfo?.mainIngredient ||
     detail.legalInfo?.primaryIngredient ||
-    detail.legalInfo?.rawMaterials?.[0]?.name;
+    detailIngredients[0]?.ingredient;
   const subIngredients =
     joinTextList(detail.subIngredients) ||
     detail.subIngredient ||
     joinTextList(detail.legalInfo?.subIngredients) ||
-    detail.legalInfo?.subIngredient;
+    detail.legalInfo?.subIngredient ||
+    formatProjectIngredients(detailIngredients.slice(1));
   const budgetPlanText = getPlanText(detail.plan?.budgetPlan);
   const schedulePlanText = getPlanText(detail.plan?.schedulePlan);
   const budgetItems = normalizeBudgetPlanItems(detail.plan?.budgetPlan);
@@ -394,8 +419,8 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     schedule: sameProject ? (scheduleItems.length ? scheduleItems : existing.schedule) : existing.schedule,
     breweryBio: existing.breweryBio || '',
     breweryProfileImage: existing.breweryProfileImage || '',
-    ingredients: sameProject && detail.legalInfo?.rawMaterials?.length
-      ? detail.legalInfo.rawMaterials.map((item, index) => ({ id: index + 1, ingredient: item.name, origin: item.origin }))
+    ingredients: sameProject && detailIngredients.length
+      ? detailIngredients
       : existing.ingredients,
     updatedAt: new Date().toISOString(),
   };

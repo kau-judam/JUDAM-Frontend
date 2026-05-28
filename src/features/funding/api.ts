@@ -2963,9 +2963,25 @@ export async function unlikeFundingReviewComment(fundingId: number, reviewId: nu
 }
 
 export async function createFundingReview(fundingId: number, payload: CreateFundingReviewPayload) {
+  const shouldUseFormData = Boolean(payload.images?.length || payload.imageUrls?.length);
+  const detailReview = payload.detailReview || payload.content || '';
+
+  if (!shouldUseFormData) {
+    const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews`, {
+      method: 'POST',
+      auth: true,
+      body: JSON.stringify({
+        ...payload,
+        content: detailReview,
+        detailReview,
+        showRecord: payload.recordVisibility,
+      }),
+    });
+    return normalizeCreateFundingReviewResponse(result);
+  }
+
   const formData = new FormData();
   formData.append('rating', String(payload.rating));
-  const detailReview = payload.detailReview || payload.content || '';
   formData.append('content', detailReview);
   formData.append('detailReview', detailReview);
   if (payload.mood) formData.append('mood', payload.mood);

@@ -411,7 +411,7 @@ export default function FundingDetailScreen() {
   const [showFundingOptionModal, setShowFundingOptionModal] = useState(false);
   const [supportOptions, setSupportOptions] = useState<FundingSupportOption[]>([]);
   const [selectedQuantity, setSelectedQuantity] = useState(1);
-  const [supportOptionId, setSupportOptionId] = useState(1);
+  const [supportOptionId, setSupportOptionId] = useState<number | null>(null);
   const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [reviewPermission, setReviewPermission] = useState<{ canWriteReview: boolean; canReview: boolean } | null>(null);
@@ -840,7 +840,8 @@ export default function FundingDetailScreen() {
 
   const handleConfirmFundingOption = () => {
     setShowFundingOptionModal(false);
-    router.push(`/funding/support?id=${project.id}&quantity=${selectedQuantity}&optionId=${supportOptionId}` as any);
+    const optionParam = selectedSupportOption ? `&optionId=${supportOptionId}` : '';
+    router.push(`/funding/support?id=${project.id}&quantity=${selectedQuantity}${optionParam}` as any);
   };
 
   const handleSelectSupportOption = (option: FundingSupportOption) => {

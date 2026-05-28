@@ -1535,6 +1535,25 @@ function normalizeBreweryLogsResponse(response: unknown): FundingBreweryLogsResp
   };
 }
 
+function normalizeFundingShareLinkResponse(response: unknown): FundingShareLinkResponse {
+  const responseData = response && typeof response === 'object' ? response as Record<string, unknown> : {};
+  const data = getFundingApiObject(response);
+  return {
+    fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id'])
+      || readFundingApiNumber(responseData, ['fundingId', 'funding_id']),
+    shareUrl: readFundingApiString(data, ['shareUrl', 'share_url'])
+      || readFundingApiString(responseData, ['shareUrl', 'share_url']),
+    title: readFundingApiString(data, ['title']) || readFundingApiString(responseData, ['title']) || undefined,
+    summary: readFundingApiString(data, ['summary', 'description']) || readFundingApiString(responseData, ['summary', 'description']) || undefined,
+    thumbnailImageUrl: readFundingApiString(data, ['thumbnailImageUrl', 'thumbnail_image_url', 'thumbnailUrl', 'thumbnail_url'])
+      || readFundingApiString(responseData, ['thumbnailImageUrl', 'thumbnail_image_url', 'thumbnailUrl', 'thumbnail_url'])
+      || undefined,
+    shareCount: readFundingApiOptionalNumber(data, ['shareCount', 'share_count'])
+      ?? readFundingApiOptionalNumber(responseData, ['shareCount', 'share_count']),
+    message: readFundingApiString(data, ['message']) || readFundingApiString(responseData, ['message']),
+  };
+}
+
 function normalizeBreweryLogCommentItem(source: Record<string, unknown>): FundingBreweryLogCommentItem {
   return {
     commentId: readFundingApiNumber(source, ['commentId', 'comment_id', 'id']),
@@ -2640,7 +2659,8 @@ export async function getFundingBreweryLogs(fundingId: number) {
 }
 
 export async function getFundingShareLink(fundingId: number) {
-  return requestFundingJson<FundingShareLinkResponse>(`/api/fundings/${fundingId}/share-link`);
+  const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/share-link`);
+  return normalizeFundingShareLinkResponse(result);
 }
 
 export async function createFundingReport(fundingId: number, payload: CreateFundingReportPayload) {

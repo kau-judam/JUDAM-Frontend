@@ -34,6 +34,7 @@ import {
   Share2,
   AlertTriangle,
   X,
+  Image as ImageIcon,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeInUp, SlideInDown } from 'react-native-reanimated';
@@ -109,7 +110,7 @@ import {
 import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/funding/reviews';
 import { normalizeFundingImageUrl } from '@/features/funding/imageUrls';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
-import { canAccessFundingReviews, canBypassFundingReviewParticipation } from '@/features/funding/permissions';
+import { canAccessFundingReviews } from '@/features/funding/permissions';
 
 const HERO_IMAGE_HEIGHT = 256;
 type FundingQuestionComment = {
@@ -312,6 +313,21 @@ function getQnaReplyRenderKey(comment: FundingQuestionComment, replyId: number, 
   return `${comment.id}-${replyId}-${index}`;
 }
 
+function getQnaCommentInputKey(comment: FundingQuestionComment) {
+  return `${comment.serverQuestionId || 'local'}:${comment.id}`;
+}
+
+function getDisplayFavoriteCount(project: FundingProject, favorite: boolean) {
+  const baseCount = Math.max(0, project.favoriteCount || 0);
+  if (typeof project.liked !== 'boolean' || project.liked === favorite) return baseCount;
+  return Math.max(0, baseCount + (favorite ? 1 : -1));
+}
+
+function formatFavoriteCount(count: number) {
+  if (count > 999) return '999+';
+  return String(count);
+}
+
 function getInitialTab(tab?: string | string[]) {
   const targetTab = Array.isArray(tab) ? tab[0] : tab;
   if (targetTab === "journal") return "양조일지";
@@ -410,9 +426,10 @@ export default function FundingDetailScreen() {
   const [comments, setComments] = useState<FundingQuestionComment[]>([]);
   const [newComment, setNewComment] = useState("");
   const qnaCommentInputRef = useRef<TextInput | null>(null);
-  const qnaReplyInputRefs = useRef<Record<number, TextInput | null>>({});
-  const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [replyDrafts, setReplyDrafts] = useState<Record<number, string>>({});
+  const qnaReplyInputRefs = useRef<Record<string, TextInput | null>>({});
+  const journalReplyInputRefs = useRef<Record<string, TextInput | null>>({});
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [likedComments, setLikedComments] = useState<Set<number>>(new Set());
   const [likedReplies, setLikedReplies] = useState<Set<number>>(new Set());
   const [expandedComments, setExpandedComments] = useState<Set<number>>(new Set([1]));
@@ -561,9 +578,7 @@ export default function FundingDetailScreen() {
             });
           });
         });
-        const apiJournalKeys = new Set(apiJournals.map(getJournalMergeKey));
-        const localOnlyJournals = (currentProject.journals || []).filter((journal) => !apiJournalKeys.has(getJournalMergeKey(journal)));
-        updateProjectJournals(projectId, [...mergedJournals, ...localOnlyJournals]);
+        updateProjectJournals(projectId, mergedJournals);
         setLikedJournals(nextLikedJournals);
         setLikedJournalComments(nextLikedJournalComments);
         setLikedJournalReplies(nextLikedJournalReplies);
@@ -703,9 +718,9 @@ export default function FundingDetailScreen() {
   const budgetPlanText = project?.budgetPlanText || '';
   const schedulePlanText = project?.schedulePlanText || '';
   const projectPolicyText = project?.projectPolicy || DEFAULT_PROJECT_POLICY_TEXT;
-  const refundPolicyText = project?.refundPolicy || '';
-  const exchangePolicyText = project?.exchangePolicy || '';
   const expectedDifficultiesText = project?.expectedDifficulties || DEFAULT_EXPECTED_DIFFICULTIES_TEXT;
+  const isProjectFavorite = project ? isFavoriteFunding(project.id) : false;
+  const favoriteCountLabel = project ? formatFavoriteCount(getDisplayFavoriteCount(project, isProjectFavorite)) : '0';
   const tasteProfile = useMemo(() => project?.tasteProfile || null, [project?.tasteProfile]);
   const tasteItems = useMemo(() => {
     if (!tasteProfile) return [];
@@ -740,6 +755,10 @@ export default function FundingDetailScreen() {
   );
   const heroImageSources = useMemo(
     () => (project ? getFundingProjectImageSources(project) : []),
+    [project]
+  );
+  const projectImageSource = useMemo(
+    () => (project ? getFundingProjectImageSource(project) : undefined),
     [project]
   );
   const handleHeroImageScroll = useCallback(
@@ -879,14 +898,14 @@ export default function FundingDetailScreen() {
     }
   };
 
-  const handleAddReply = async (commentId: number) => {
-    const content = replyDrafts[commentId]?.trim();
+  const handleAddReply = async (targetComment: FundingQuestionComment, commentInputKey: string) => {
+    const content = replyDrafts[commentInputKey]?.trim();
     if (!content) return;
     if (!user) {
       showLoginRequired('펀딩 Q&A 답글은 로그인 후 이용할 수 있어요.');
       return;
     }
-    const targetComment = comments.find((comment) => comment.id === commentId);
+    const commentId = targetComment.id;
     const serverQuestionId = targetComment?.serverQuestionId || targetComment?.id || commentId;
     try {
       const response = await createFundingReply(project.id, serverQuestionId, { content });
@@ -909,8 +928,8 @@ export default function FundingDetailScreen() {
         next.delete(replyLikeKey);
         return next;
       });
-      setReplyDrafts((prev) => ({ ...prev, [commentId]: "" }));
-      setReplyingTo(commentId);
+      setReplyDrafts((prev) => ({ ...prev, [commentInputKey]: "" }));
+      setReplyingTo(commentInputKey);
       setExpandedComments((prev) => new Set([...prev, commentId]));
     } catch (error) {
       setFeedbackModal({
@@ -1044,17 +1063,18 @@ export default function FundingDetailScreen() {
     toggleFavoriteFunding(targetProjectId);
   };
 
-  const handleReplyOpen = (commentId: number) => {
+  const handleReplyOpen = (comment: FundingQuestionComment, commentInputKey: string) => {
     if (!user) {
       showLoginRequired('펀딩 Q&A 답글은 로그인 후 이용할 수 있어요.');
       return;
     }
+    const commentId = comment.id;
     qnaCommentInputRef.current?.blur();
     setExpandedComments((prev) => new Set([...prev, commentId]));
-    setReplyingTo(commentId);
-    requestAnimationFrame(() => {
-      qnaReplyInputRefs.current[commentId]?.focus();
-    });
+    setReplyingTo(commentInputKey);
+    setTimeout(() => {
+      qnaReplyInputRefs.current[commentInputKey]?.focus();
+    }, 80);
   };
 
   const toggleJournalStage = (stageId: BrewingStage) => {
@@ -1280,6 +1300,9 @@ export default function FundingDetailScreen() {
     const replyKey = `${journalKey}:${commentId}`;
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
     setReplyingToJournalComment(replyKey);
+    setTimeout(() => {
+      journalReplyInputRefs.current[replyKey]?.focus();
+    }, 80);
   };
 
   const handleAddJournalReply = async (journalKey: string, commentId: number) => {
@@ -1471,7 +1494,7 @@ export default function FundingDetailScreen() {
       return;
     }
     const hasParticipated = participatedFundings.some((item) => item.fundingId === project.id);
-    if (!hasParticipated && !canBypassFundingReviewParticipation(project)) {
+    if (!hasParticipated) {
       setFeedbackModal({
         title: '후기 작성 불가',
         body: '해당 펀딩에 참여하지 않았습니다.',
@@ -1490,7 +1513,6 @@ export default function FundingDetailScreen() {
   };
 
   const handleShareProject = async () => {
-    const fallbackShareUrl = `https://judam.app/funding/${project.id}`;
     const shareProject = async (shareUrl: string, title = project.title, summary = project.shortDescription || project.projectSummary || '') => {
       await NativeShare.share({
         title,
@@ -1502,19 +1524,9 @@ export default function FundingDetailScreen() {
 
     try {
       const share = await getFundingShareLink(project.id);
-      await shareProject(share.shareUrl || fallbackShareUrl, share.title || project.title, share.summary || project.shortDescription || project.projectSummary || '');
-    } catch (error) {
-      if (isFundingApiMissingEndpointError(error)) {
-        try {
-          await shareProject(fallbackShareUrl);
-        } catch {
-          setFeedbackModal({
-            title: '공유하기',
-            body: '공유를 완료하지 못했습니다. 다시 시도해주세요.',
-          });
-        }
-        return;
-      }
+      if (!share.shareUrl) throw new Error('공유 링크가 비어 있습니다.');
+      await shareProject(share.shareUrl, share.title || project.title, share.summary || project.shortDescription || project.projectSummary || '');
+    } catch {
       setFeedbackModal({
         title: '공유하기',
         body: '공유를 완료하지 못했습니다. 다시 시도해주세요.',
@@ -1640,7 +1652,10 @@ export default function FundingDetailScreen() {
               )}
             </>
           ) : (
-            <Image source={getFundingProjectImageSource(project)} style={styles.mainImg} />
+            <View style={[styles.mainImg, styles.emptyMainImage]}>
+              <ImageIcon size={40} color="#9CA3AF" />
+              <Text style={styles.emptyMainImageText}>등록된 대표 이미지가 없습니다</Text>
+            </View>
           )}
         </View>
 
@@ -1731,11 +1746,11 @@ export default function FundingDetailScreen() {
                          <View style={styles.ingRow}>
                             <View style={{ flex: 1 }}>
                                <Text style={styles.ingLab}>{mainIngredientLabel}</Text>
-                               <Text style={styles.ingVal}>{project.mainIngredients || "재료 안내 예정"}</Text>
+                               <Text style={styles.ingVal}>{project.mainIngredients || '-'}</Text>
                             </View>
                             <View style={{ flex: 1 }}>
                                <Text style={styles.ingLab}>서브재료</Text>
-                               <Text style={styles.ingVal}>{project.subIngredients || "식용 벚꽃잎"}</Text>
+                               <Text style={styles.ingVal}>{project.subIngredients || '-'}</Text>
                             </View>
                          </View>
                       </View>
@@ -1755,12 +1770,10 @@ export default function FundingDetailScreen() {
 
                    <View style={styles.summaryBox}>
                       <Text style={styles.summaryTitle}>📝 프로젝트 요약</Text>
-                      <Text style={styles.summaryTxt}>{project.projectSummary || project.shortDescription}</Text>
+                      <Text style={styles.summaryTxt}>{project.projectSummary || project.shortDescription || '등록된 프로젝트 요약이 없습니다.'}</Text>
                    </View>
 
-                   <Text style={styles.bodyTxt}>
-                     {project.story || `${project.title}는 전통 방식을 고수하면서도 현대적인 감각을 더한 특별한 프로젝트입니다.`}
-                   </Text>
+                   {project.story ? <Text style={styles.bodyTxt}>{project.story}</Text> : null}
                    {project.videoUrl ? (
                      <View style={styles.journalUrlBox}>
                        <Text style={styles.journalUrlLabel}>프로젝트 영상 URL</Text>
@@ -1789,7 +1802,7 @@ export default function FundingDetailScreen() {
                       <View style={styles.priceContent}>
                          <View>
                             <Text style={styles.priceLab}>총 판매 수량</Text>
-                            <Text style={styles.priceVal}>{project.totalQuantity ? project.totalQuantity.toLocaleString() : '안내 예정'}<Text style={{ fontSize: 20, fontWeight: 'normal' }}>{project.totalQuantity ? '병' : ''}</Text></Text>
+                            <Text style={styles.priceVal}>{project.totalQuantity ? project.totalQuantity.toLocaleString() : '-'}<Text style={{ fontSize: 20, fontWeight: 'normal' }}>{project.totalQuantity ? '병' : ''}</Text></Text>
                          </View>
                          <Text style={styles.priceSub}>목표 수량</Text>
                       </View>
@@ -1958,18 +1971,6 @@ export default function FundingDetailScreen() {
                           {projectPolicyText || '등록된 프로젝트 정책이 없습니다.'}
                         </Text>
                      </View>
-                     {refundPolicyText ? (
-                       <View style={[styles.guideBoxPlain, { marginTop: 12 }]}>
-                         <Text style={styles.guideBoxTitle}>환불 정책</Text>
-                         <Text style={styles.guideBoxTxt}>{refundPolicyText}</Text>
-                       </View>
-                     ) : null}
-                     {exchangePolicyText ? (
-                       <View style={[styles.guideBoxPlain, { marginTop: 12 }]}>
-                         <Text style={styles.guideBoxTitle}>교환 정책</Text>
-                         <Text style={styles.guideBoxTxt}>{exchangePolicyText}</Text>
-                       </View>
-                     ) : null}
                    </View>
 
                    <View style={{ paddingTop: 24, borderTopWidth: 1, borderTopColor: '#E5E7EB' }}>
@@ -2052,6 +2053,7 @@ export default function FundingDetailScreen() {
                                               {user ? (
                                                 <View style={styles.journalCommentInputRow}>
                                                   <TextInput
+                                                    key={`journal-comment-input-${journalKey}`}
                                                     style={styles.journalCommentInput}
                                                     value={journalCommentDrafts[journalKey] || ""}
                                                     onChangeText={(text) => setJournalCommentDrafts((prev) => ({ ...prev, [journalKey]: text }))}
@@ -2140,6 +2142,10 @@ export default function FundingDetailScreen() {
                                                         {replyingToJournalComment === replyKey && (
                                                           <View style={styles.journalReplyInputRow}>
                                                             <TextInput
+                                                              key={`journal-reply-input-${replyKey}`}
+                                                              ref={(input) => {
+                                                                journalReplyInputRefs.current[replyKey] = input;
+                                                              }}
                                                               style={styles.journalReplyInput}
                                                               value={journalReplyDrafts[replyKey] || ""}
                                                               onChangeText={(text) => setJournalReplyDrafts((prev) => ({ ...prev, [replyKey]: text }))}
@@ -2217,7 +2223,9 @@ export default function FundingDetailScreen() {
                    )}
 
                    <View style={styles.commentList}>
-                      {comments.map((c, index) => (
+                      {comments.map((c, index) => {
+                        const commentInputKey = getQnaCommentInputKey(c);
+                        return (
                         <View key={getQnaCommentRenderKey(c, index)} style={[styles.commentCard, index === comments.length - 1 && { borderBottomWidth: 0 }]}>
                            <View style={styles.commentTop}>
                               <LinearGradient colors={['#E5E7EB', '#D1D5DB']} style={styles.commentAvatar}>
@@ -2238,7 +2246,7 @@ export default function FundingDetailScreen() {
                                  <ThumbsUp size={16} color={likedComments.has(c.id) && (c.likes || 0) > 0 ? "#111" : "#9CA3AF"} fill={likedComments.has(c.id) && (c.likes || 0) > 0 ? "#111" : "transparent"} />
                                  <Text style={[styles.actionTxt, likedComments.has(c.id) && (c.likes || 0) > 0 && { color: "#111" }]}>{c.likes || 0}</Text>
                               </TouchableOpacity>
-                              <TouchableOpacity style={styles.commentAction} onPress={() => handleReplyOpen(c.id)}>
+                              <TouchableOpacity style={styles.commentAction} onPress={() => handleReplyOpen(c, commentInputKey)}>
                                  <MessageCircle size={16} color="#9CA3AF" />
                                  <Text style={styles.actionTxt}>답글</Text>
                               </TouchableOpacity>
@@ -2274,29 +2282,31 @@ export default function FundingDetailScreen() {
                              </View>
                            )}
 
-                           {replyingTo === c.id && (
+                           {replyingTo === commentInputKey && (
                              <View style={styles.replyInputRow}>
 	                                <TextInput
+                                    key={`qna-reply-input-${commentInputKey}`}
 	                                  ref={(input) => {
-	                                    qnaReplyInputRefs.current[c.id] = input;
+	                                    qnaReplyInputRefs.current[commentInputKey] = input;
 	                                  }}
 	                                  style={styles.replyInput}
                                   placeholder="답글을 입력하세요..."
                                   placeholderTextColor="#9CA3AF"
-                                  value={replyDrafts[c.id] || ""}
-                                  onChangeText={(text) => setReplyDrafts((prev) => ({ ...prev, [c.id]: text }))}
+                                  value={replyDrafts[commentInputKey] || ""}
+                                  onChangeText={(text) => setReplyDrafts((prev) => ({ ...prev, [commentInputKey]: text }))}
                                   returnKeyType="send"
                                   blurOnSubmit={false}
-                                  onSubmitEditing={() => handleAddReply(c.id)}
+                                  onSubmitEditing={() => handleAddReply(c, commentInputKey)}
                                   autoFocus
                                 />
-                                <TouchableOpacity style={styles.replySend} onPress={() => handleAddReply(c.id)}>
+                                <TouchableOpacity style={styles.replySend} onPress={() => handleAddReply(c, commentInputKey)}>
                                    <Send size={16} color="#FFF" />
                                 </TouchableOpacity>
                              </View>
                            )}
                         </View>
-                      ))}
+                      );
+                      })}
 
                       {comments.length === 0 && (
                         <View style={styles.emptyComments}>
@@ -2409,7 +2419,8 @@ export default function FundingDetailScreen() {
       {/* ── Fixed Bottom Actions ── */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12 }]}>
          <TouchableOpacity style={styles.heartBtn} onPress={() => handleFavoritePress(project.id)}>
-            <Heart size={24} color={isFavoriteFunding(project.id) ? "#EF4444" : "#111"} fill={isFavoriteFunding(project.id) ? "#EF4444" : "transparent"} />
+            <Heart size={34} color={isProjectFavorite ? "#EF4444" : "#111"} fill={isProjectFavorite ? "#EF4444" : "transparent"} />
+            <Text style={[styles.heartCountText, isProjectFavorite && styles.heartCountTextActive]}>{favoriteCountLabel}</Text>
          </TouchableOpacity>
          <TouchableOpacity 
            style={[styles.mainSupportBtn, !isOwnBreweryProject && !isSupportableFundingStatus(project.status) && { backgroundColor: '#374151' }]}
@@ -2433,7 +2444,13 @@ export default function FundingDetailScreen() {
 
             <ScrollView style={styles.optionBodyScroll} contentContainerStyle={styles.optionBody} showsVerticalScrollIndicator={false}>
               <View style={styles.optionProjectBox}>
-                <Image source={getFundingProjectImageSource(project)} style={styles.optionProjectImg} />
+                {projectImageSource ? (
+                  <Image source={projectImageSource} style={styles.optionProjectImg} />
+                ) : (
+                  <View style={[styles.optionProjectImg, styles.emptyOptionImage]}>
+                    <ImageIcon size={22} color="#9CA3AF" />
+                  </View>
+                )}
                 <View style={{ flex: 1 }}>
                   <Text style={styles.optionBrewery}>{project.brewery}</Text>
                   <Text style={styles.optionProjectTitle} numberOfLines={2}>{project.title}</Text>
@@ -2755,6 +2772,8 @@ const styles = StyleSheet.create({
   visualContainer: { width: '100%', height: HERO_IMAGE_HEIGHT, backgroundColor: '#E5E7EB', zIndex: 1 },
   heroCarousel: { width: '100%', height: HERO_IMAGE_HEIGHT },
   mainImg: { width: '100%', height: HERO_IMAGE_HEIGHT, resizeMode: 'cover' },
+  emptyMainImage: { alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: '#F3F4F6' },
+  emptyMainImageText: { fontSize: 13, fontWeight: '900', color: '#9CA3AF' },
   heroImageCounter: { position: 'absolute', top: 14, right: 14, minWidth: 44, height: 26, borderRadius: 13, backgroundColor: 'rgba(17,17,17,0.72)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
   heroImageCounterText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
   heroImageDots: { position: 'absolute', left: 0, right: 0, bottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
@@ -2952,6 +2971,8 @@ const styles = StyleSheet.create({
   recGrid: { gap: 16 },
   bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, gap: 12, zIndex: 40 },
   heartBtn: { width: 56, height: 56, borderRadius: 16, borderWidth: 2, borderColor: '#E5E7EB', backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center' },
+  heartCountText: { position: 'absolute', top: 23, left: 0, right: 0, textAlign: 'center', fontSize: 9, lineHeight: 10, fontWeight: '900', color: '#111', includeFontPadding: false },
+  heartCountTextActive: { color: '#FFF' },
   mainSupportBtn: { flex: 1, height: 56, backgroundColor: '#111', borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   mainSupportTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   optionOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 16 },
@@ -2966,6 +2987,7 @@ const styles = StyleSheet.create({
   optionFooter: { padding: 20, paddingTop: 12, paddingBottom: 30, borderTopWidth: 1, borderTopColor: '#F3F4F6', backgroundColor: '#FFF' },
   optionProjectBox: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   optionProjectImg: { width: 64, height: 64, borderRadius: 12, backgroundColor: '#E5E7EB' },
+  emptyOptionImage: { alignItems: 'center', justifyContent: 'center' },
   optionBrewery: { fontSize: 12, color: '#6B7280', fontWeight: '700', marginBottom: 4 },
   optionProjectTitle: { fontSize: 14, color: '#111', fontWeight: '900', lineHeight: 20 },
   supportOptionList: { gap: 8 },

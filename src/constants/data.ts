@@ -148,99 +148,7 @@ export interface FundingProject {
   updatedAt?: string;
 }
 
-export const fundingProjects: FundingProject[] = [
-  {
-    id: 9001,
-    title: '코코 시그니처 막걸리',
-    brewery: '코코양조장',
-    breweryLogo: 'ㅋ',
-    location: '[10357] 경기 고양시 일산동구 산두로229번길 18-10',
-    category: '막걸리',
-    shortTitle: '코코 시그니처',
-    shortDescription: '쌀의 고소함과 산뜻한 산미를 살린 양조장 대표 프로젝트입니다.',
-    image: '',
-    localImage: require('../../newpicutre/funding1.jpg'),
-    isMine: true,
-    goalAmount: 3000000,
-    currentAmount: 1680000,
-    backers: 42,
-    daysLeft: 12,
-    status: '진행 중',
-    startDate: '2026. 05. 20',
-    endDate: '2026. 06. 08',
-    pricePerBottle: 12000,
-    bottleSize: '500ml',
-    alcoholContent: '6%',
-    rewardItems: ['코코 시그니처 막걸리 2병 세트'],
-    breweryBio: '지역 쌀과 계절 재료로 작은 배치의 전통주를 빚는 양조장입니다.',
-    journals: [
-      {
-        id: 9101,
-        stage: 1,
-        date: '2026. 05. 21',
-        title: '원료 입고 및 세척 완료',
-        content: '고양 지역 쌀 120kg을 입고하고 선별 세척을 마쳤습니다. 수분 상태가 좋아 예정대로 침지 공정을 시작했습니다.',
-        likes: 12,
-        comments: [],
-      },
-      {
-        id: 9102,
-        stage: 2,
-        date: '2026. 05. 23',
-        title: '고두밥 찌기와 밑술 준비',
-        content: '쌀을 고르게 증자한 뒤 냉각하여 누룩과 섞었습니다. 발효실 온도는 24도로 맞춰 초반 발효를 안정적으로 유도하고 있습니다.',
-        likes: 18,
-        comments: [],
-      },
-    ],
-  },
-  {
-    id: 9002,
-    title: '고양 배꽃 약주',
-    brewery: '코코양조장',
-    breweryLogo: 'ㅋ',
-    location: '[10357] 경기 고양시 일산동구 산두로229번길 18-10',
-    category: '약주',
-    shortTitle: '고양 배꽃 약주',
-    shortDescription: '은은한 배 향과 맑은 목넘김을 담은 종료 프로젝트입니다.',
-    image: '',
-    localImage: require('../../newpicutre/funding2.jpg'),
-    isMine: true,
-    goalAmount: 4500000,
-    currentAmount: 5120000,
-    backers: 128,
-    daysLeft: 0,
-    status: '펀딩 성공',
-    startDate: '2026. 04. 01',
-    endDate: '2026. 04. 30',
-    pricePerBottle: 18000,
-    bottleSize: '375ml',
-    alcoholContent: '13%',
-    rewardItems: ['고양 배꽃 약주 1병'],
-    breweryBio: '지역 쌀과 계절 재료로 작은 배치의 전통주를 빚는 양조장입니다.',
-    journals: [
-      {
-        id: 9201,
-        stage: 1,
-        date: '2026. 04. 03',
-        title: '배 원료 검수 완료',
-        content: '향이 좋은 배 원료를 선별하고 당도와 산도를 확인했습니다. 약주 베이스와 어울리도록 착즙량을 조정했습니다.',
-        likes: 24,
-        comments: [],
-      },
-      {
-        id: 9202,
-        stage: 5,
-        date: '2026. 04. 28',
-        title: '병입 및 라벨 부착 완료',
-        content: '숙성 후 여과를 마친 약주를 병입하고 라벨 부착을 완료했습니다. 리워드 출고 전 최종 품질 검사를 진행했습니다.',
-        likes: 31,
-        comments: [],
-      },
-    ],
-  },
-];
-const DEFAULT_FUNDING_IMAGE = require('../../newpicutre/funding3.jpg');
+export const fundingProjects: FundingProject[] = [];
 
 export interface Recipe {
   id: number;
@@ -315,7 +223,7 @@ export function getImageSource(image?: string | ImageSourcePropType) {
 }
 
 export function getFundingProjectImageSource(project: FundingProject) {
-  return project.localImage || getImageSource(project.image) || DEFAULT_FUNDING_IMAGE;
+  return project.localImage || getImageSource(project.image);
 }
 
 export const activeFundingStatuses: ProjectStatus[] = ["펀딩 예정", "진행 중", "목표 달성"];

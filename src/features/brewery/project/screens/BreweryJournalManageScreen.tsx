@@ -301,12 +301,10 @@ export default function BreweryJournalManageScreen() {
                     <Text style={styles.stageTitle}>{stage.name}</Text>
                     <Text style={styles.stageSub}>{stageJournals.length > 0 ? `${stageJournals.length}개 일지` : '작성된 일지 없음'}</Text>
                   </View>
-                  {stageJournals.length === 0 && (
-                    <TouchableOpacity style={styles.stageWriteButton} onPress={() => openEditor(stage.id)}>
-                      <Plus size={16} color="#FFF" />
-                      <Text style={styles.stageWriteText}>작성</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity style={styles.stageWriteButton} onPress={() => openEditor(stage.id)}>
+                    <Plus size={16} color="#FFF" />
+                    <Text style={styles.stageWriteText}>{stageJournals.length > 0 ? '추가' : '작성'}</Text>
+                  </TouchableOpacity>
                 </View>
 
                 {stageJournals.map((entry, index) => (

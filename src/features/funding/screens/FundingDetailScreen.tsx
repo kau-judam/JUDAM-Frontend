@@ -2422,7 +2422,7 @@ export default function FundingDetailScreen() {
 
       <Modal visible={showFundingOptionModal} animationType="fade" transparent>
         <View style={styles.optionOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowFundingOptionModal(false)} />
+          <TouchableOpacity style={[StyleSheet.absoluteFill, styles.modalBackdrop]} onPress={() => setShowFundingOptionModal(false)} activeOpacity={1} />
           <Animated.View entering={SlideInDown} style={styles.optionModal}>
             <View style={styles.optionHeader}>
               <Text style={styles.optionTitle}>후원 옵션 선택</Text>
@@ -2955,7 +2955,8 @@ const styles = StyleSheet.create({
   mainSupportBtn: { flex: 1, height: 56, backgroundColor: '#111', borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   mainSupportTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   optionOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 16 },
-  optionModal: { backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden', height: '80%', maxHeight: '88%' },
+  modalBackdrop: { zIndex: 0 },
+  optionModal: { backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden', height: '80%', maxHeight: '88%', zIndex: 1, elevation: 24 },
   optionHeader: { paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   optionTitle: { fontSize: 18, fontWeight: '900', color: '#111' },
   optionClose: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center' },

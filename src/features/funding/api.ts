@@ -1389,12 +1389,21 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
     ['allImageUrls', 'all_image_urls', 'imageUrls', 'image_urls', 'images'],
     ['thumbnailUrl', 'thumbnail_url']
   );
+  const draftId = readFundingApiNumber(data, ['draftId', 'draft_id'])
+    || readFundingApiNumber(responseData, ['draftId', 'draft_id']);
+  const fundingId = readFundingApiNumber(data, ['fundingId', 'funding_id'])
+    || readFundingApiNumber(responseData, ['fundingId', 'funding_id']);
+  const status = readFundingApiString(data, ['status'])
+    || readFundingApiString(responseData, ['draftStatus', 'draft_status', 'status']);
+  const progressRate = readFundingApiNumber(data, ['progressRate', 'progress_rate'])
+    || readFundingApiNumber(responseData, ['progressRate', 'progress_rate']);
+  const message = readFundingApiString(data, ['message']) || readFundingApiString(responseData, ['message']);
 
   return {
-    draftId: readFundingApiNumber(data, ['draftId', 'draft_id']),
-    fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']) || undefined,
-    status: readFundingApiString(data, ['status']),
-    progressRate: readFundingApiNumber(data, ['progressRate', 'progress_rate']),
+    draftId,
+    fundingId: fundingId || undefined,
+    status,
+    progressRate,
     basicInfo: {
       title: readFundingApiString(basicInfo, ['title']),
       shortTitle: readFundingApiString(basicInfo, ['shortTitle', 'short_title']),
@@ -1499,7 +1508,7 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       createdAt: readFundingApiString(document, ['createdAt', 'created_at']),
     })),
     images: previewImages,
-    message: readFundingApiString(data, ['message']),
+    message,
   };
 }
 

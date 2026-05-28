@@ -311,6 +311,10 @@ function isRequiredDocumentReady(value: UploadedFileValue) {
   return isServerUploadedFile(value) || Boolean(getLocalUploadFile(value));
 }
 
+function isNetworkRequestFailure(error: unknown) {
+  return error instanceof Error && /network request failed|failed to fetch|load failed/i.test(error.message);
+}
+
 function getDocumentFileExtension(fileName: string) {
   const extension = fileName.split('.').pop()?.toLowerCase() || '';
   return extension;
@@ -593,6 +597,53 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       status: preview.status,
       progressRate: preview.progressRate,
       message: preview.message,
+    },
+  };
+}
+
+function getProjectDraftImages(draft: any) {
+  return normalizeProjectImageUrls(draft?.basicInfo?.images);
+}
+
+function mergeProjectDraftFileFallback(serverDraft: any, fallbackDraft: any) {
+  const serverImages = getProjectDraftImages(serverDraft);
+  const fallbackImages = getProjectDraftImages(fallbackDraft);
+  const shouldUseFallbackImages = serverImages.length === 0 && fallbackImages.length > 0;
+  const serverFiles = normalizeUploadedFiles(serverDraft?.uploadedFiles);
+  const fallbackFiles = normalizeUploadedFiles(fallbackDraft?.uploadedFiles);
+  const uploadedFiles = { ...serverFiles };
+  let shouldUseFallbackFiles = false;
+
+  DOCUMENT_FILE_KEYS.forEach((key) => {
+    if (!isRequiredDocumentReady(uploadedFiles[key]) && isRequiredDocumentReady(fallbackFiles[key])) {
+      uploadedFiles[key] = fallbackFiles[key];
+      shouldUseFallbackFiles = true;
+    }
+  });
+
+  if (!shouldUseFallbackImages && !shouldUseFallbackFiles) return serverDraft;
+
+  return {
+    ...serverDraft,
+    basicInfo: shouldUseFallbackImages
+      ? {
+          ...serverDraft.basicInfo,
+          images: fallbackImages,
+        }
+      : serverDraft.basicInfo,
+    uploadedFiles: shouldUseFallbackFiles ? uploadedFiles : serverDraft.uploadedFiles,
+  };
+}
+
+function replaceProjectDraftImages(draft: any, imageUrls: string[]) {
+  const serverImages = normalizeProjectImageUrls(imageUrls);
+  if (serverImages.length === 0) return draft;
+
+  return {
+    ...draft,
+    basicInfo: {
+      ...draft.basicInfo,
+      images: serverImages,
     },
   };
 }
@@ -1321,12 +1372,27 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const uploadReadyProjectFilesToApi = async (draftId: number) => {
+    const nextUploadedFiles = { ...uploadedFiles };
+    let hasUploadedFile = false;
+
     for (const key of DOCUMENT_FILE_KEYS) {
       const file = getLocalUploadFile(uploadedFiles[key]);
       if (file) {
-        await uploadFundingDocument(draftId, DOCUMENT_TYPE_BY_FILE_KEY[key], file);
+        const uploaded = await uploadFundingDocument(draftId, DOCUMENT_TYPE_BY_FILE_KEY[key], file);
+        if (uploaded.fileUrl) {
+          nextUploadedFiles[key] = uploaded.fileUrl;
+          hasUploadedFile = true;
+        }
       }
     }
+
+    if (hasUploadedFile) {
+      const normalizedFiles = normalizeUploadedFiles(nextUploadedFiles);
+      setUploadedFiles(normalizedFiles);
+      return normalizedFiles;
+    }
+
+    return uploadedFiles;
   };
 
   const uploadProjectImagesToApi = async (draftId: number) => {
@@ -1414,7 +1480,7 @@ export default function BreweryProjectCreateScreen() {
       });
     }
 
-    await uploadReadyProjectFilesToApi(draftId);
+    return uploadReadyProjectFilesToApi(draftId);
   };
 
   const saveProjectSectionsToApi = async (draftId: number) => {
@@ -1518,14 +1584,43 @@ export default function BreweryProjectCreateScreen() {
   const saveDraft = async ({ showSavedModal = true, exitAfter = false }: { showSavedModal?: boolean; exitAfter?: boolean } = {}) => {
     setIsSaving(true);
     try {
-      const draftId = await ensureServerDraft();
-      const serverImageUrls = await uploadProjectImagesToApi(draftId);
-      await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(serverImageUrls));
-      await syncReadyProjectSectionsToApi(draftId, serverImageUrls);
-      const savedDraft = await getSavedDraft();
-      const nextTimestamp = savedDraft?.timestamp || new Date().toISOString();
+      const previousDraft = await getSavedDraft();
+      const localTimestamp = previousDraft?.timestamp || new Date().toISOString();
+      await SafeStorage.setItem(tempSaveKey, JSON.stringify({
+        ...createDraftPayload(),
+        timestamp: localTimestamp,
+        serverDraft: previousDraft?.serverDraft,
+      }));
       setHasTempSave(true);
-      setTempSaveTimestamp(nextTimestamp);
+      setTempSaveTimestamp(localTimestamp);
+
+      try {
+        const draftId = await ensureServerDraft();
+        const serverImageUrls = await uploadProjectImagesToApi(draftId);
+        await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(serverImageUrls));
+        const syncedUploadedFiles = await syncReadyProjectSectionsToApi(draftId, serverImageUrls);
+        const savedDraft = await getSavedDraft();
+        const nextTimestamp = savedDraft?.timestamp || localTimestamp;
+        const syncedDraft = replaceProjectDraftImages(createDraftPayload(), serverImageUrls);
+        await SafeStorage.setItem(tempSaveKey, JSON.stringify({
+          ...syncedDraft,
+          uploadedFiles: syncedUploadedFiles || syncedDraft.uploadedFiles,
+          timestamp: nextTimestamp,
+          serverDraft: savedDraft?.serverDraft || {
+            draftId,
+            breweryId: getBreweryId(),
+            status: 'DRAFT',
+            progressRate: progress,
+            message: '',
+          },
+        }));
+        setTempSaveTimestamp(nextTimestamp);
+      } catch (syncError) {
+        if (!isNetworkRequestFailure(syncError)) {
+          throw syncError;
+        }
+        console.warn('[BreweryProjectCreate] temp save server sync failed', getFundingApiErrorMessage(syncError, 'Network request failed'));
+      }
 
       if (exitAfter) {
         navigateToExitRoute();
@@ -1545,8 +1640,9 @@ export default function BreweryProjectCreateScreen() {
   const loadSavedDraft = async () => {
     if (isEditMode && editProjectId) {
       try {
+        const localDraft = await getSavedDraft();
         const preview = await getFundingDraftByFundingId(editProjectId);
-        const serverDraft = createProjectDraftFromServerPreview(preview, user);
+        const serverDraft = mergeProjectDraftFileFallback(createProjectDraftFromServerPreview(preview, user), localDraft);
         await SafeStorage.setItem(tempSaveKey, JSON.stringify(serverDraft));
         applyDraftPayload(serverDraft);
         setTempSaveTimestamp(serverDraft.timestamp || '');
@@ -1589,7 +1685,7 @@ export default function BreweryProjectCreateScreen() {
     }
     try {
       const preview = await getFundingDraftPreview(draftId);
-      const serverDraft = createProjectDraftFromServerPreview(preview, user);
+      const serverDraft = mergeProjectDraftFileFallback(createProjectDraftFromServerPreview(preview, user), draft);
       await SafeStorage.setItem(tempSaveKey, JSON.stringify(serverDraft));
       applyDraftPayload(serverDraft);
       setTempSaveTimestamp(serverDraft.timestamp || '');

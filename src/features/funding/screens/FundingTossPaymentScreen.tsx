@@ -1,9 +1,10 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
+import FundingAlertModal from '@/features/funding/components/FundingAlertModal';
 
 const TOSS_CLIENT_KEY = process.env.EXPO_PUBLIC_TOSS_CLIENT_KEY;
 const TOSS_RETURN_ORIGIN = 'https://judam.app';
@@ -228,6 +229,7 @@ export default function FundingTossPaymentScreen() {
   const lastExternalUrlRef = useRef('');
   const [webViewReady, setWebViewReady] = useState(false);
   const [webError, setWebError] = useState('');
+  const [externalAppError, setExternalAppError] = useState('');
 
   const paymentInfo = useMemo(() => {
     const fundingId = getParam(params.fundingId) || '';
@@ -320,9 +322,9 @@ export default function FundingTossPaymentScreen() {
     lastExternalUrlRef.current = url;
     const convertedIntentUrl = convertIntentUrl(url);
     void openFirstAvailableUrl(convertedIntentUrl ? [convertedIntentUrl.appLink, convertedIntentUrl.fallbackUrl, convertedIntentUrl.marketUrl] : [url]).catch(() => {
-      const message = '외부 결제 앱을 열 수 없습니다. 시연 중에는 토스뱅크/앱카드 대신 카드번호 입력처럼 WebView 안에서 완료 가능한 테스트 결제수단을 선택해주세요.';
+      const message = '외부 결제 앱을 열 수 없습니다. WebView 안에서 완료 가능한 결제수단을 선택하거나 잠시 후 다시 시도해주세요.';
       setWebError(message);
-      Alert.alert('결제 앱을 열 수 없습니다', message);
+      setExternalAppError(message);
     });
     return true;
   }, []);
@@ -356,7 +358,7 @@ export default function FundingTossPaymentScreen() {
         <TouchableOpacity style={styles.iconButton} onPress={goBackToFunding}>
           <X size={24} color="#111827" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>토스 테스트 결제</Text>
+        <Text style={styles.headerTitle}>토스 결제</Text>
         <View style={styles.headerSpacer} />
       </View>
       {!webViewReady && (
@@ -393,6 +395,13 @@ export default function FundingTossPaymentScreen() {
           if (handleReturnUrl(state.url)) return;
           handleExternalUrl(state.url);
         }}
+      />
+      <FundingAlertModal
+        visible={Boolean(externalAppError)}
+        title="결제 앱을 열 수 없습니다"
+        body={externalAppError}
+        tone="warning"
+        onClose={() => setExternalAppError('')}
       />
     </View>
   );

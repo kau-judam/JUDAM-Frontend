@@ -17,6 +17,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
+  Image as ImageIcon,
   MessageCircle,
   Package,
   ShieldCheck,
@@ -133,6 +134,10 @@ export default function FundingSupportScreen() {
   const project = useMemo(
     () => projects.find((item) => item.id === fundingId) || null,
     [fundingId, projects]
+  );
+  const projectImageSource = useMemo(
+    () => (project ? getFundingProjectImageSource(project) : undefined),
+    [project]
   );
   const projectRef = useRef<FundingProject | null>(project);
   const rawOptionId = Array.isArray(optionIdParam) ? optionIdParam[0] : optionIdParam;
@@ -352,7 +357,7 @@ export default function FundingSupportScreen() {
     setShowConfirmModal(false);
     try {
       if (selectedPaymentMethod !== 'toss') {
-        throw new Error('현재 실제 결제는 토스 테스트 결제만 연결되어 있습니다. 결제수단을 토스페이로 선택해주세요.');
+        throw new Error('현재 결제는 토스페이로만 진행할 수 있습니다. 결제수단을 토스페이로 선택해주세요.');
       }
       const order = await createFundingOrder(project.id, {
         optionId: selectedSupportOptionId,
@@ -504,7 +509,13 @@ export default function FundingSupportScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 148 }]}
       >
         <View style={styles.projectSection}>
-          <Image source={getFundingProjectImageSource(project)} style={styles.projectImage} />
+          {projectImageSource ? (
+            <Image source={projectImageSource} style={styles.projectImage} />
+          ) : (
+            <View style={[styles.projectImage, styles.emptyProjectImage]}>
+              <ImageIcon size={24} color="#9CA3AF" />
+            </View>
+          )}
           <View style={styles.projectInfo}>
             <View style={styles.metaRow}>
               <Text style={styles.breweryText}>{project.brewery}</Text>
@@ -1179,6 +1190,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 12 },
   projectSection: { backgroundColor: '#FFF', borderRadius: 18, padding: 14, flexDirection: 'row', gap: 14, borderWidth: 1, borderColor: '#E5E7EB' },
   projectImage: { width: 96, height: 96, borderRadius: 14, backgroundColor: '#E5E7EB' },
+  emptyProjectImage: { alignItems: 'center', justifyContent: 'center' },
   projectInfo: { flex: 1, justifyContent: 'center' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   breweryText: { fontSize: 12, color: '#6B7280', fontWeight: '800' },

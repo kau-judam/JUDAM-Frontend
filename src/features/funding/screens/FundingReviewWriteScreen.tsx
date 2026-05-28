@@ -13,14 +13,14 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { AlertCircle, BookOpen, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Plus, Star, X } from 'lucide-react-native';
+import { AlertCircle, BookOpen, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Image as ImageIcon, Plus, Star, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
-import { canAccessFundingReviews, canBypassFundingReviewParticipation } from '@/features/funding/permissions';
+import { canAccessFundingReviews } from '@/features/funding/permissions';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { createFundingReview, getFundingApiErrorMessage, updateFundingReviewApi, type FundingUploadFile } from '@/features/funding/api';
 import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
@@ -87,8 +87,8 @@ export default function FundingReviewWriteScreen() {
   const targetReviewId = Number(Array.isArray(reviewId) ? reviewId[0] : reviewId);
   const hasReviewIdParam = Number.isFinite(targetReviewId) && targetReviewId > 0;
   const project = useMemo(() => projects.find((item) => item.id === projectId) || null, [projectId, projects]);
+  const projectImageSource = useMemo(() => (project ? getFundingProjectImageSource(project) : undefined), [project]);
   const hasParticipated = Boolean(user) && participatedFundings.some((item) => item.fundingId === projectId);
-  const canBypassParticipation = canBypassFundingReviewParticipation(project);
   const canWriteForProjectStatus = canAccessFundingReviews(project);
   const requestedReview = useMemo(
     () => (hasReviewIdParam ? fundingReviews.find((item) => item.projectId === projectId && item.id === targetReviewId) || null : null),
@@ -101,7 +101,7 @@ export default function FundingReviewWriteScreen() {
   const editableReview = hasReviewIdParam ? requestedReview : ownExistingReview;
   const isEditMode = Boolean(editableReview && isFundingReviewOwnedByUser(editableReview, user));
   const reviewParamBlocked = hasReviewIdParam && (!requestedReview || !isFundingReviewOwnedByUser(requestedReview, user));
-  const canUseReviewForm = Boolean(user) && (isArchiveMode || ((hasParticipated || canBypassParticipation) && canWriteForProjectStatus)) && !reviewParamBlocked;
+  const canUseReviewForm = Boolean(user) && (isArchiveMode || (hasParticipated && canWriteForProjectStatus)) && !reviewParamBlocked;
   const headerTitle = isArchiveMode
     ? isEditMode
       ? '나의 술 기록 수정'
@@ -384,7 +384,13 @@ export default function FundingReviewWriteScreen() {
                 <BookOpen size={26} color="#FFF" />
               </View>
             ) : (
-              <Image source={getFundingProjectImageSource(project)} style={styles.projectImage} />
+              projectImageSource ? (
+                <Image source={projectImageSource} style={styles.projectImage} />
+              ) : (
+                <View style={[styles.projectImage, styles.emptyProjectImage]}>
+                  <ImageIcon size={20} color="#9CA3AF" />
+                </View>
+              )
             )}
             <View style={styles.projectInfo}>
               <View style={[styles.projectMetaRow, isFundingArchiveMode && styles.projectMetaRowWithButton]}>
@@ -578,6 +584,7 @@ const styles = StyleSheet.create({
   projectCard: { position: 'relative', backgroundColor: '#FFF', borderRadius: 20, padding: 14, borderWidth: 1, borderColor: '#F3F4F6', gap: 12 },
   projectSummaryRow: { flexDirection: 'row', gap: 12 },
   projectImage: { width: 66, height: 66, borderRadius: 14, backgroundColor: '#E5E7EB' },
+  emptyProjectImage: { alignItems: 'center', justifyContent: 'center' },
   normalRecordIconBox: { width: 66, height: 66, borderRadius: 33, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
   projectInfo: { flex: 1, minWidth: 0, justifyContent: 'center' },
   projectMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },

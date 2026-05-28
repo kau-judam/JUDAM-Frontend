@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { Image, GestureResponderEvent, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Heart } from 'lucide-react-native';
+import { Heart, Image as ImageIcon } from 'lucide-react-native';
 
 import { Progress } from '@/components/ui/progress';
 import {
@@ -35,6 +35,9 @@ function FundingProjectCard({
   const completed = isCompletedFundingStatus(project.status);
   const tasteMatchScore = getTasteMatchScore(project, tasteProfile);
   const showMatch = showTasteMatch && tasteMatchScore !== null;
+  const favoriteCount = getDisplayFavoriteCount(project, favorite);
+  const favoriteCountLabel = formatFavoriteCount(favoriteCount);
+  const imageSource = getFundingProjectImageSource(project);
 
   const handleFavoritePress = (event: GestureResponderEvent) => {
     event.stopPropagation();
@@ -45,9 +48,17 @@ function FundingProjectCard({
     <TouchableOpacity style={styles.card} activeOpacity={0.9} onPress={onPress}>
       <View style={styles.cardInner}>
         <View style={styles.thumbBox}>
-          <Image source={getFundingProjectImageSource(project)} style={styles.thumb} />
+          {imageSource ? (
+            <Image source={imageSource} style={styles.thumb} />
+          ) : (
+            <View style={styles.emptyThumb}>
+              <ImageIcon size={20} color="#9CA3AF" />
+              <Text style={styles.emptyThumbText}>이미지 없음</Text>
+            </View>
+          )}
           <TouchableOpacity style={styles.heartBtn} onPress={handleFavoritePress}>
-            <Heart size={14} color={favorite ? '#EF4444' : '#FFF'} fill={favorite ? '#EF4444' : 'transparent'} />
+            <Heart size={25} color={favorite ? '#EF4444' : '#FFF'} fill={favorite ? '#EF4444' : 'rgba(17,17,17,0.35)'} />
+            <Text style={[styles.heartCount, favorite && styles.heartCountActive]}>{favoriteCountLabel}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.infoBox}>
@@ -87,12 +98,27 @@ function FundingProjectCard({
 
 export default memo(FundingProjectCard);
 
+function getDisplayFavoriteCount(project: FundingProject, favorite: boolean) {
+  const baseCount = Math.max(0, project.favoriteCount || 0);
+  if (typeof project.liked !== 'boolean' || project.liked === favorite) return baseCount;
+  return Math.max(0, baseCount + (favorite ? 1 : -1));
+}
+
+function formatFavoriteCount(count: number) {
+  if (count > 999) return '999+';
+  return String(count);
+}
+
 const styles = StyleSheet.create({
   card: { backgroundColor: '#FFF', borderRadius: 28, padding: 16, borderWidth: 1, borderColor: '#F3F4F6', elevation: 3, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10 },
   cardInner: { flexDirection: 'row', gap: 16 },
   thumbBox: { width: 100, height: 100, borderRadius: 20, overflow: 'hidden', backgroundColor: '#F3F4F6' },
   thumb: { width: '100%', height: '100%', resizeMode: 'cover' },
-  heartBtn: { position: 'absolute', bottom: 8, left: 8, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  emptyThumb: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  emptyThumbText: { fontSize: 10, fontWeight: '900', color: '#9CA3AF' },
+  heartBtn: { position: 'absolute', bottom: 8, left: 8, width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(0,0,0,0.42)', justifyContent: 'center', alignItems: 'center' },
+  heartCount: { position: 'absolute', top: 13, left: 0, right: 0, textAlign: 'center', fontSize: 7, lineHeight: 8, fontWeight: '900', color: '#FFF', includeFontPadding: false },
+  heartCountActive: { color: '#FFF' },
   infoBox: { flex: 1, justifyContent: 'space-between', minWidth: 0 },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   breweryName: { fontSize: 11, fontWeight: '800', color: '#6B7280' },

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
-import { FundingProject, JournalEntry, ProjectStatus, fundingProjects } from "@/constants/data";
+import type { FundingProject, JournalEntry, ProjectStatus } from "@/constants/data";
 import type { FundingReview } from "@/features/funding/reviews";
 import type { MyFundingOrderItem } from "@/features/funding/api";
 
@@ -17,8 +17,6 @@ interface FundingContextType {
   fundingReviews: FundingReview[];
   addParticipation: (fundingId: number, amount: number) => void;
   mergeParticipationsFromOrders: (orders: MyFundingOrderItem[]) => void;
-  addProject: (project: Omit<FundingProject, "id">) => FundingProject;
-  updateProject: (projectId: number, project: Partial<Omit<FundingProject, "id">>) => FundingProject | null;
   addFundingReview: (review: FundingReviewInput) => FundingReview;
   updateFundingReview: (reviewId: number, review: Partial<FundingReviewInput>) => FundingReview | null;
   deleteFundingReview: (reviewId: number) => void;
@@ -33,7 +31,7 @@ interface FundingContextType {
 const FundingContext = createContext<FundingContextType | undefined>(undefined);
 
 export function FundingProvider({ children }: { children: ReactNode }) {
-  const [projects, setProjects] = useState<FundingProject[]>(fundingProjects);
+  const [projects, setProjects] = useState<FundingProject[]>([]);
   const [participatedFundings, setParticipatedFundings] = useState<ParticipatedFunding[]>([]);
   const [fundingReviews, setFundingReviews] = useState<FundingReview[]>([]);
 
@@ -46,43 +44,6 @@ export function FundingProvider({ children }: { children: ReactNode }) {
       if (prev.some((p) => p.fundingId === fundingId)) return prev;
       return [{ fundingId, amount, date }, ...prev];
     });
-  };
-
-  const addProject = (project: Omit<FundingProject, "id">) => {
-    const nextProject: FundingProject = {
-      ...project,
-      id: Math.max(0, ...projects.map((p) => p.id)) + 1,
-      createdAt: project.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setProjects((prev) => [nextProject, ...prev]);
-    return nextProject;
-  };
-
-  const updateProject = (projectId: number, project: Partial<Omit<FundingProject, "id">>) => {
-    const currentProject = projects.find((item) => item.id === projectId);
-    if (!currentProject) return null;
-    const updatedProject: FundingProject = {
-      ...currentProject,
-      ...project,
-      id: projectId,
-      createdAt: currentProject.createdAt,
-      updatedAt: new Date().toISOString(),
-    };
-    setProjects((prev) =>
-      prev.map((item) =>
-        item.id === projectId
-          ? {
-              ...item,
-              ...project,
-              id: projectId,
-              createdAt: item.createdAt,
-              updatedAt: updatedProject.updatedAt,
-            }
-          : item
-      )
-    );
-    return updatedProject;
   };
 
   const addFundingReview = (review: FundingReviewInput) => {
@@ -237,8 +198,6 @@ export function FundingProvider({ children }: { children: ReactNode }) {
         fundingReviews,
         addParticipation,
         mergeParticipationsFromOrders,
-        addProject,
-        updateProject,
         addFundingReview,
         updateFundingReview,
         deleteFundingReview,

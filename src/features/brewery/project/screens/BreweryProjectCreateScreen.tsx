@@ -69,7 +69,6 @@ import {
 } from '@/features/funding/api';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { FIXED_PROJECT_SHIPPING_FEE } from '@/features/funding/supportConfig';
-import { createRecipeFunding } from '@/features/recipe/api';
 import SafeStorage from '@/utils/storage';
 
 type TabId = 'basic' | 'funding' | 'rewards' | 'taste' | 'plan' | 'creator' | 'trust' | 'verification';
@@ -455,9 +454,11 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       ? basicInfo.allImageUrls
       : basicInfo.imageUrls?.length
         ? basicInfo.imageUrls
-        : thumbnailUrl
-          ? [thumbnailUrl]
-          : []
+        : preview.images?.length
+          ? preview.images
+          : thumbnailUrl
+            ? [thumbnailUrl]
+            : []
   );
   const alcoholContent = String(legalInfo.alcoholPercentage || basicInfo.alcoholPercentage || '');
   const breweryName = breweryInfo.breweryName || user?.breweryName || '';
@@ -553,8 +554,6 @@ export default function BreweryProjectCreateScreen() {
   const { projects, mergeProjects } = useFunding();
   const editProjectIdParam = getParamValue(params.projectId) || getParamValue(params.editId);
   const initialDraftIdParam = getParamValue(params.draftId);
-  const sourceRecipeIdParam = getParamValue(params.recipeId);
-  const sourceRecipeId = sourceRecipeIdParam ? Number(sourceRecipeIdParam) : null;
   const editProjectId = editProjectIdParam ? Number(editProjectIdParam) : null;
   const initialDraftId = initialDraftIdParam ? Number(initialDraftIdParam) : null;
   const editProject = useMemo(
@@ -567,6 +566,7 @@ export default function BreweryProjectCreateScreen() {
   const appliedEditProjectKeyRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('basic');
   const [showPreview, setShowPreview] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -1988,14 +1988,25 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleOpenPreview = () => {
-    setShowPreview(true);
-    if (isEditMode) return;
+    if (isPreviewLoading) return;
     void (async () => {
+      setIsPreviewLoading(true);
       try {
         const draftId = await ensureServerDraft();
-        await getFundingDraftPreview(draftId);
+        const serverImageUrls = await uploadProjectImagesToApi(draftId);
+        await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(serverImageUrls));
+        await syncReadyProjectSectionsToApi(draftId, serverImageUrls);
+        const preview = await getFundingDraftPreview(draftId);
+        const serverDraft = createProjectDraftFromServerPreview(preview, user);
+        applyDraftPayload(serverDraft);
+        setTempSaveTimestamp(serverDraft.timestamp || '');
+        setHasTempSave(true);
+        setShowPreview(true);
       } catch (error) {
+        showAlert(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버에서 불러오지 못했습니다.'));
         console.warn(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버와 동기화하지 못했습니다.'));
+      } finally {
+        setIsPreviewLoading(false);
       }
     })();
   };
@@ -2005,7 +2016,6 @@ export default function BreweryProjectCreateScreen() {
     setIsSubmitting(true);
     setSubmitSyncWarning('');
     try {
-      let convertedFunding: Awaited<ReturnType<typeof createRecipeFunding>>['funding'] | null = null;
       let submittedFundingId: number | null = null;
       let submittedImageUrls: string[] = [];
       if (!isEditMode) {
@@ -2015,16 +2025,6 @@ export default function BreweryProjectCreateScreen() {
           await uploadProjectDocumentsToApi(draftId);
           const submittedDraft = await submitFundingDraft(draftId);
           submittedFundingId = submittedDraft.fundingId || null;
-          if (sourceRecipeId && Number.isFinite(sourceRecipeId)) {
-            const response = await createRecipeFunding(sourceRecipeId, {
-              title: basicInfo.title,
-              description: projectPlan.introduction || basicInfo.summary,
-              goal_amount: Number(fundingInfo.goalAmount),
-              start_date: fundingInfo.startDate,
-              end_date: endDateText,
-            });
-            convertedFunding = response.funding;
-          }
         } catch (error) {
           const serverSyncError = getFundingApiErrorMessage(error, '서버 동기화 중 문제가 발생했습니다.')
             .replace(/펀딩 프로젝트 임시저장/g, '펀딩 프로젝트 제출 준비')
@@ -2057,25 +2057,6 @@ export default function BreweryProjectCreateScreen() {
         };
         mergeProjects([submittedProject]);
         setCreatedProjectId(submittedProject.id);
-        void SafeStorage.removeItem(tempSaveKey);
-        setHasTempSave(false);
-        setTempSaveTimestamp('');
-        setSubmitSyncWarning('');
-        setShowSubmitSuccess(true);
-        return;
-      }
-      if (!isEditMode && convertedFunding) {
-        const convertedProject: FundingProject = {
-          ...payload,
-          id: convertedFunding.funding_id,
-          goalAmount: convertedFunding.goal_amount,
-          currentAmount: convertedFunding.current_amount,
-          status: TEMP_CREATED_PROJECT_STATUS,
-          startDate: convertedFunding.start_date,
-          endDate: convertedFunding.end_date,
-        };
-        mergeProjects([convertedProject]);
-        setCreatedProjectId(convertedProject.id);
         void SafeStorage.removeItem(tempSaveKey);
         setHasTempSave(false);
         setTempSaveTimestamp('');
@@ -2827,8 +2808,8 @@ export default function BreweryProjectCreateScreen() {
               <X size={24} color="#111" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{isEditMode ? '펀딩 프로젝트 수정' : '펀딩 프로젝트 만들기'}</Text>
-            <TouchableOpacity style={styles.headerIcon} onPress={handleOpenPreview}>
-              <Eye size={20} color="#111" />
+            <TouchableOpacity style={styles.headerIcon} onPress={handleOpenPreview} disabled={isPreviewLoading}>
+              <Eye size={20} color={isPreviewLoading ? '#9CA3AF' : '#111'} />
             </TouchableOpacity>
           </View>
           <View style={styles.progressStrip}>

@@ -5,8 +5,9 @@ import { CheckCircle2, XCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useFunding } from '@/contexts/FundingContext';
-import { confirmTossPayment, getFundingApiErrorMessage, getFundingDetail, getFundingOrderDetail } from '@/features/funding/api';
-import { mergeFundingDetail } from '@/features/funding/apiMappers';
+import type { FundingProject } from '@/constants/data';
+import { confirmTossPayment, getFundingApiErrorMessage, getFundingDetail, getFundingOrderDetail, type FundingDetailResponse } from '@/features/funding/api';
+import { mapFundingStatus, mergeFundingDetail } from '@/features/funding/apiMappers';
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -33,6 +34,27 @@ function isPaidConfirmResponse(response: Awaited<ReturnType<typeof confirmTossPa
   return paymentStatus === 'PAID' || (response.status === 200 && /완료|성공|승인/.test(message));
 }
 
+function createFundingProjectFromPaymentDetail(detail: FundingDetailResponse): FundingProject {
+  return mergeFundingDetail(
+    {
+      id: detail.fundingId,
+      title: detail.title || '',
+      brewery: detail.breweryName || '',
+      location: '',
+      category: detail.category || '',
+      image: '',
+      goalAmount: detail.targetAmount || 1,
+      currentAmount: detail.currentAmount || 0,
+      backers: detail.supporterCount || 0,
+      daysLeft: 0,
+      status: mapFundingStatus(detail.status, detail.currentAmount, detail.targetAmount),
+      endDate: detail.endDate,
+      journals: [],
+    },
+    detail
+  );
+}
+
 export default function TossPaymentSuccessScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
@@ -44,7 +66,7 @@ export default function TossPaymentSuccessScreen() {
     fundingId?: string;
     orderName?: string;
   }>();
-  const { projects, participatedFundings, addParticipation, updateProjectFunding, mergeProject } = useFunding();
+  const { projects, participatedFundings, addParticipation, mergeProject, mergeProjects } = useFunding();
   const hasConfirmedRef = useRef(false);
   const projectsRef = useRef(projects);
   const participatedFundingsRef = useRef(participatedFundings);
@@ -150,21 +172,22 @@ export default function TossPaymentSuccessScreen() {
         if (fundingId) {
           if (!participatedFundingsRef.current.some((item) => item.fundingId === fundingId)) {
             addParticipation(fundingId, nextPaidAmount);
-            updateProjectFunding(fundingId, nextPaidAmount);
           }
           const currentProject = projectsRef.current.find((item) => item.id === fundingId);
-          if (currentProject) {
-            try {
+          try {
               const latestDetail = await withPaymentTimeout(
                 getFundingDetail(fundingId),
                 8000,
                 '펀딩 상세 재조회가 지연되고 있습니다.'
               );
-              mergeProject(fundingId, mergeFundingDetail(currentProject, latestDetail));
+              if (currentProject) {
+                mergeProject(fundingId, mergeFundingDetail(currentProject, latestDetail));
+              } else {
+                mergeProjects([createFundingProjectFromPaymentDetail(latestDetail)]);
+              }
             } catch (detailError) {
               console.warn(getFundingApiErrorMessage(detailError, '펀딩 상세를 다시 불러오지 못했습니다.'));
             }
-          }
         }
 
         if (!mounted) return;
@@ -203,13 +226,13 @@ export default function TossPaymentSuccessScreen() {
   }, [
     addParticipation,
     mergeProject,
+    mergeProjects,
     paymentInfo.amount,
     paymentInfo.fundingId,
     paymentInfo.numericOrderId,
     paymentInfo.orderId,
     paymentInfo.paymentKey,
     paymentInfo.returnedAmount,
-    updateProjectFunding,
   ]);
 
   const isLoading = status === 'loading';

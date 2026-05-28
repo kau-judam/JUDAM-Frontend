@@ -17,6 +17,7 @@ import {
   TouchableOpacity,
   View,
   type GestureResponderEvent,
+  type TextInputProps,
   type KeyboardTypeOptions,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -896,14 +897,15 @@ export default function BreweryProjectCreateScreen() {
     return value;
   }, []);
   const startDate = parseDate(fundingInfo.startDate);
-  const durationInput = Number(fundingInfo.duration);
+  const durationText = digitsOnly(fundingInfo.duration);
+  const durationInput = Number(durationText);
   const duration = Math.max(1, Number.isFinite(durationInput) ? durationInput : 1);
   const endDate = startDate ? addDays(startDate, duration) : null;
   const endDateText = endDate ? formatDate(endDate) : '';
   const deliveryDate = parseDate(fundingInfo.expectedDeliveryDate);
   const startDateWarning = startDate && startDate < today ? '펀딩 시작일은 오늘 이후 날짜로 입력해주세요.' : '';
   const durationWarning =
-    fundingInfo.duration && (!Number.isInteger(durationInput) || durationInput < 1 || durationInput > 365)
+    durationText && (!Number.isInteger(durationInput) || durationInput < 1 || durationInput > 365)
       ? '프로젝트 기간은 1일부터 365일까지 입력해주세요.'
       : '';
   const deliveryDateWarning =
@@ -2620,13 +2622,15 @@ export default function BreweryProjectCreateScreen() {
           />
           <Field
             label="프로젝트 기간"
-            value={fundingInfo.duration}
+            value={durationText}
             onChangeText={(value) => setFundingInfo((prev) => ({ ...prev, duration: digitsOnly(value) }))}
             placeholder="펀딩 기간을 입력하세요"
-            keyboardType="number-pad"
+            keyboardType={Platform.OS === 'android' ? 'default' : 'number-pad'}
+            inputMode="numeric"
             suffix="일"
             helper={durationWarning || '1일부터 365일까지 입력 가능합니다.'}
             warning={Boolean(durationWarning)}
+            maxLength={3}
           />
           <View style={styles.formGroup}>
             <Text style={styles.label}>펀딩 종료일</Text>
@@ -3270,6 +3274,7 @@ function Field({
   placeholder,
   required,
   keyboardType,
+  inputMode,
   suffix,
   helper,
   warning,
@@ -3284,6 +3289,7 @@ function Field({
   placeholder: string;
   required?: boolean;
   keyboardType?: KeyboardTypeOptions;
+  inputMode?: TextInputProps['inputMode'];
   suffix?: string;
   helper?: string;
   warning?: boolean;
@@ -3304,8 +3310,12 @@ function Field({
           placeholder={placeholder}
           placeholderTextColor="#9CA3AF"
           keyboardType={keyboardType}
+          inputMode={inputMode}
           maxLength={maxLength}
           editable={editable}
+          secureTextEntry={false}
+          textContentType="none"
+          importantForAutofill="no"
         />
         {suffix && <Text style={styles.suffix}>{suffix}</Text>}
       </View>

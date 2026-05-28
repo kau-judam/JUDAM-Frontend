@@ -703,7 +703,6 @@ export default function FundingDetailScreen() {
         const option = options.find((item) => normalizeSupportOptionId(item.optionId) === supportOptionId) || options[0];
         if (!mounted || !currentProject || !option) return;
         const optionId = normalizeSupportOptionId(option.optionId);
-        if (optionId === null) return;
         setSupportOptions(options);
         setSupportOptionId(optionId);
         const quantityLimit = getSupportOptionLimit(option);
@@ -840,13 +839,12 @@ export default function FundingDetailScreen() {
 
   const handleConfirmFundingOption = () => {
     setShowFundingOptionModal(false);
-    const optionParam = selectedSupportOption ? `&optionId=${supportOptionId}` : '';
+    const optionParam = selectedSupportOption && supportOptionId !== null ? `&optionId=${supportOptionId}` : '';
     router.push(`/funding/support?id=${project.id}&quantity=${selectedQuantity}${optionParam}` as any);
   };
 
   const handleSelectSupportOption = (option: FundingSupportOption) => {
     const optionId = normalizeSupportOptionId(option.optionId);
-    if (optionId === null) return;
     setSupportOptionId(optionId);
     const quantityLimit = getSupportOptionLimit(option);
     if (quantityLimit !== null) {

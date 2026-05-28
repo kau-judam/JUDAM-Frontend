@@ -271,7 +271,6 @@ export default function FundingSupportScreen() {
         const option = options.find((item) => normalizeSupportOptionId(item.optionId) === selectedSupportOptionId) || options[0];
         if (!option) return;
         const optionId = normalizeSupportOptionId(option.optionId);
-        if (optionId === null) return;
         setSupportOptions(options);
         setSelectedSupportOptionId(optionId);
         const quantityLimit = getSupportOptionLimit(option);

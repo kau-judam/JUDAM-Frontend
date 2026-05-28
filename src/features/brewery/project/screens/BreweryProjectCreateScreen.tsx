@@ -43,8 +43,7 @@ import type { FundingProject, ProjectStatus } from '@/constants/data';
 import { useAuth, type User as AuthUser } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import DaumAddressSearchModal from '@/features/funding/components/DaumAddressSearchModal';
-import FundingAlertModal from '@/features/funding/components/FundingAlertModal';
-import { confirmPhoneVerification, requestPhoneVerification } from '@/features/auth/api';
+import { confirmPhoneVerification, getMyBreweryApplication, requestPhoneVerification } from '@/features/auth/api';
 import {
   createFundingDraft,
   deleteFundingDraft,
@@ -435,7 +434,6 @@ function getUploadedFilesFromPreview(preview: FundingDraftPreviewResponse) {
   const documentFiles = getUploadedFilesFromPreviewDocuments(preview.documents);
   return normalizeUploadedFiles({
     ...documentFiles,
-    profileImage: breweryInfo.profileImageUrl || '',
     idCard: documentFiles.idCard || breweryInfo.identityDocumentUrl || '',
     businessLicense: documentFiles.businessLicense || breweryInfo.businessRegistrationFileUrl || breweryInfo.businessLicenseUrl || breweryInfo.businessLicense || '',
   });
@@ -462,7 +460,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
           : []
   );
   const alcoholContent = String(legalInfo.alcoholPercentage || basicInfo.alcoholPercentage || '');
-  const breweryName = breweryInfo.breweryName || breweryInfo.creatorName || user?.breweryName || '';
+  const breweryName = breweryInfo.breweryName || user?.breweryName || '';
   const businessAddress = breweryInfo.businessAddressDetail && breweryInfo.businessAddress && !breweryInfo.businessAddress.includes(breweryInfo.businessAddressDetail)
     ? `${breweryInfo.businessAddress} ${breweryInfo.businessAddressDetail}`
     : breweryInfo.businessAddress || breweryInfo.businessAddressDetail || '';
@@ -514,9 +512,9 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       scheduleGuide: plan.schedulePlanGuide || '',
     },
     creatorInfo: {
-      name: breweryName,
-      profileImage: breweryInfo.profileImageUrl || '',
-      bio: breweryInfo.creatorIntroduction || '',
+      name: '',
+      profileImage: '',
+      bio: '',
       phone: breweryInfo.contactPhone || user?.phone || '',
       accountBank: breweryInfo.bankName || '',
       accountNumber: breweryInfo.accountNumber || '',
@@ -552,7 +550,7 @@ export default function BreweryProjectCreateScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   const { user } = useAuth();
-  const { projects, addProject, updateProject, mergeProjects } = useFunding();
+  const { projects, mergeProjects } = useFunding();
   const editProjectIdParam = getParamValue(params.projectId) || getParamValue(params.editId);
   const initialDraftIdParam = getParamValue(params.draftId);
   const sourceRecipeIdParam = getParamValue(params.recipeId);
@@ -574,6 +572,7 @@ export default function BreweryProjectCreateScreen() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [showSubmitSuccess, setShowSubmitSuccess] = useState(false);
+  const [showBreweryProfileConfirm, setShowBreweryProfileConfirm] = useState(false);
   const [submitSyncWarning, setSubmitSyncWarning] = useState('');
   const [showTempSaveModal, setShowTempSaveModal] = useState(false);
   const [tempSaveMode, setTempSaveMode] = useState<TempSaveMode>('saved');
@@ -581,7 +580,6 @@ export default function BreweryProjectCreateScreen() {
   const [hasTempSave, setHasTempSave] = useState(false);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
-  const [showProfileImagePickerModal, setShowProfileImagePickerModal] = useState(false);
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [showBankModal, setShowBankModal] = useState(false);
@@ -658,6 +656,11 @@ export default function BreweryProjectCreateScreen() {
     expectedDifficulties: DEFAULT_EXPECTED_DIFFICULTIES,
   });
   const [uploadedFiles, setUploadedFiles] = useState<Record<FileKey, UploadedFileValue>>(EMPTY_UPLOADED_FILES);
+  const dashboardBreweryProfile = useMemo(() => ({
+    name: user?.breweryName || '',
+    profileImage: user?.breweryProfileImage || '',
+    bio: user?.breweryDescription || user?.breweryBrandStory || user?.breweryBrandStoryLong || '',
+  }), [user?.breweryBrandStory, user?.breweryBrandStoryLong, user?.breweryDescription, user?.breweryName, user?.breweryProfileImage]);
 
   useEffect(() => {
     if (!editProject || !editProjectId || !canEditProject) return;
@@ -818,7 +821,7 @@ export default function BreweryProjectCreateScreen() {
     ].forEach(add);
     [
       projectPlan.introduction,
-      creatorInfo.name,
+      taxInfo.businessName || user?.breweryName,
       creatorInfo.phone,
       creatorInfo.accountBank,
       creatorInfo.accountNumber,
@@ -845,7 +848,6 @@ export default function BreweryProjectCreateScreen() {
   }, [
     accountVerified,
     basicInfo,
-    creatorInfo.name,
     creatorInfo.phone,
     creatorInfo.accountBank,
     creatorInfo.accountNumber,
@@ -854,6 +856,7 @@ export default function BreweryProjectCreateScreen() {
     productInfo,
     projectPlan.introduction,
     taxInfo,
+    user?.breweryName,
     trustInfo,
     uploadedFiles,
   ]);
@@ -888,14 +891,11 @@ export default function BreweryProjectCreateScreen() {
         projectPlan.videoUrl ||
         projectPlan.budget ||
         projectPlan.schedule ||
-        creatorInfo.name ||
-        creatorInfo.profileImage ||
         creatorInfo.phone ||
         creatorInfo.accountBank ||
         creatorInfo.accountNumber ||
         taxInfo.businessName ||
         taxInfo.address ||
-        uploadedFiles.profileImage ||
         uploadedFiles.idCard ||
         uploadedFiles.businessLicense ||
         uploadedFiles.salesPermit ||
@@ -936,6 +936,24 @@ export default function BreweryProjectCreateScreen() {
     phoneVerified,
     accountVerified,
   });
+
+  const openBreweryProfileConfirm = () => {
+    setShowBreweryProfileConfirm(true);
+  };
+
+  const openBreweryProfileEditor = async () => {
+    setShowBreweryProfileConfirm(false);
+    try {
+      const savedDraft = await getSavedDraft();
+      await SafeStorage.setItem(tempSaveKey, JSON.stringify({
+        ...createDraftPayload(),
+        serverDraft: savedDraft?.serverDraft,
+      }));
+    } catch {
+      // 현재 화면은 스택에 남아 있으므로 임시 스냅샷 실패가 이동을 막지는 않습니다.
+    }
+    router.push('/brewery/profile?edit=1' as any);
+  };
 
   const getBreweryId = () => {
     const breweryId = Number(user?.id);
@@ -1079,8 +1097,7 @@ export default function BreweryProjectCreateScreen() {
         projectPolicy: trustInfo.projectPolicy.trim() || undefined,
       },
       breweryInfo: {
-        breweryName: creatorInfo.name.trim() || taxInfo.businessName.trim() || user?.breweryName || undefined,
-        creatorName: creatorInfo.name.trim() || user?.name || undefined,
+        breweryName: taxInfo.businessName.trim() || user?.breweryName || undefined,
         representativeName: taxInfo.ceoName.trim() || undefined,
         businessRegistrationNumber: businessRegistrationNumber || undefined,
         businessAddress: taxInfo.address.trim() || undefined,
@@ -1088,12 +1105,11 @@ export default function BreweryProjectCreateScreen() {
         contactPhone: contactPhone || undefined,
         bankName: creatorInfo.accountBank.trim() || undefined,
         accountNumber: creatorInfo.accountNumber.trim() || undefined,
-        accountHolder: taxInfo.ceoName.trim() || creatorInfo.name.trim() || undefined,
+        accountHolder: taxInfo.ceoName.trim() || user?.name || undefined,
         businessType: taxInfo.businessType || undefined,
         businessName: taxInfo.businessName.trim() || undefined,
         businessCategory: taxInfo.businessCategory.trim() || undefined,
         businessItem: taxInfo.businessItem.trim() || undefined,
-        creatorIntroduction: creatorInfo.bio.trim() || undefined,
         phoneVerified,
         accountVerified,
         businessRegistrationFileUrl: getOptionalHttpUrl(uploadedFiles.businessLicense),
@@ -1109,7 +1125,7 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const getBreweryInfoForApi = () => {
-    const breweryName = creatorInfo.name.trim() || taxInfo.businessName.trim() || user?.breweryName || '';
+    const breweryName = taxInfo.businessName.trim() || user?.breweryName || '';
     const representativeName = taxInfo.ceoName.trim();
     const businessRegistrationNumber = formatBusinessRegistrationNumber(taxInfo.businessNumber);
     const businessNumberDigits = digitsOnly(businessRegistrationNumber);
@@ -1118,10 +1134,10 @@ export default function BreweryProjectCreateScreen() {
     const contactPhone = creatorInfo.phone.trim();
     const bankName = creatorInfo.accountBank.trim();
     const accountNumber = creatorInfo.accountNumber.trim();
-    const accountHolder = representativeName || breweryName;
+    const accountHolder = representativeName || user?.name || '';
     const missingFields: string[] = [];
 
-    if (!breweryName) missingFields.push('창작자/양조장 이름');
+    if (!breweryName) missingFields.push('양조장명/상호명');
     if (!representativeName) missingFields.push('대표자 성명');
     if (businessNumberDigits.length !== 10) missingFields.push('사업자 등록번호 10자리');
     if (!businessAddress) missingFields.push('사업장 소재지');
@@ -1149,7 +1165,6 @@ export default function BreweryProjectCreateScreen() {
       businessName: taxInfo.businessName.trim(),
       businessCategory: taxInfo.businessCategory.trim(),
       businessItem: taxInfo.businessItem.trim(),
-      creatorIntroduction: creatorInfo.bio.trim(),
       phoneVerified,
       accountVerified,
     };
@@ -1196,10 +1211,6 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const uploadReadyProjectFilesToApi = async (draftId: number) => {
-    const profileImageFile = getLocalUploadFile(uploadedFiles.profileImage);
-    if (profileImageFile) {
-      await uploadFundingDraftFile(draftId, 'PROFILE_IMAGE', profileImageFile);
-    }
     for (const key of DOCUMENT_FILE_KEYS) {
       const file = getLocalUploadFile(uploadedFiles[key]);
       if (file) {
@@ -1340,10 +1351,6 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const uploadProjectDocumentsToApi = async (draftId: number) => {
-    const profileImageFile = getLocalUploadFile(uploadedFiles.profileImage);
-    if (profileImageFile) {
-      await uploadFundingDraftFile(draftId, 'PROFILE_IMAGE', profileImageFile);
-    }
     for (const key of DOCUMENT_FILE_KEYS) {
       if (typeof uploadedFiles[key] === 'string' && uploadedFiles[key]) continue;
       const file = getLocalUploadFile(uploadedFiles[key]);
@@ -1453,29 +1460,24 @@ export default function BreweryProjectCreateScreen() {
       return;
     }
     const draftId = getDraftId(draft);
+    if (!draftId) {
+      await SafeStorage.removeItem(tempSaveKey);
+      setHasTempSave(false);
+      setTempSaveTimestamp('');
+      setShowTempSaveModal(false);
+      showAlert('서버 임시저장 ID를 확인하지 못했습니다. 서버에 저장된 임시저장만 불러올 수 있습니다.');
+      return;
+    }
     try {
-      if (draftId) {
-        const preview = await getFundingDraftPreview(draftId);
-        const serverDraft = createProjectDraftFromServerPreview(preview, user);
-        await SafeStorage.setItem(tempSaveKey, JSON.stringify(serverDraft));
-        applyDraftPayload(serverDraft);
-        setTempSaveTimestamp(serverDraft.timestamp || '');
-      } else {
-        applyDraftPayload(draft);
-        setTempSaveTimestamp(draft.timestamp || '');
-      }
+      const preview = await getFundingDraftPreview(draftId);
+      const serverDraft = createProjectDraftFromServerPreview(preview, user);
+      await SafeStorage.setItem(tempSaveKey, JSON.stringify(serverDraft));
+      applyDraftPayload(serverDraft);
+      setTempSaveTimestamp(serverDraft.timestamp || '');
       setHasTempSave(true);
       setShowTempSaveModal(false);
       showAlert('임시저장 내용을 불러왔습니다.');
     } catch (error) {
-      if (draft.basicInfo) {
-        applyDraftPayload(draft);
-        setTempSaveTimestamp(draft.timestamp || '');
-        setHasTempSave(true);
-        setShowTempSaveModal(false);
-        showAlert('기기에 저장된 임시저장 내용을 불러왔습니다. 서버 임시저장은 불러오지 못했어요.');
-        return;
-      }
       showAlert(getFundingApiErrorMessage(error, '임시저장 내용을 불러오지 못했습니다.'));
     }
   };
@@ -1498,7 +1500,7 @@ export default function BreweryProjectCreateScreen() {
     setHasTempSave(false);
     setTempSaveTimestamp('');
     setShowTempSaveModal(false);
-    showAlert(isEditMode ? '기기에 저장된 수정 임시저장 내용이 삭제되었습니다.' : '임시저장 내용이 삭제되었습니다.');
+    showAlert(isEditMode ? '수정 임시저장 내용이 삭제되었습니다.' : '임시저장 내용이 삭제되었습니다.');
   };
 
   const overwriteSavedDraft = async () => {
@@ -1570,8 +1572,39 @@ export default function BreweryProjectCreateScreen() {
     showAlert('서버에 저장된 양조장 정보를 불러왔습니다.');
   };
 
+  const hasLoadedBreweryInfoValue = (info: Partial<LoadedBreweryInfo>) =>
+    Object.entries(info).some(([key, value]) => {
+      if (key === 'missingFields') return false;
+      if (typeof value === 'string') return value.trim().length > 0;
+      if (Array.isArray(value)) return value.length > 0;
+      return Boolean(value);
+    });
+
+  const loadApprovedBreweryApplicationInfo = async (): Promise<Partial<LoadedBreweryInfo>> => {
+    const response = await getMyBreweryApplication();
+    const application = {
+      ...response,
+      ...(response.application || {}),
+    };
+
+    return {
+      breweryName: application.breweryName || user?.breweryName || '',
+      representativeName: user?.name || '',
+      businessRegistrationNumber: application.businessNumber || application.licenseNumber || '',
+      businessAddress: application.businessAddress || application.location || user?.breweryLocation || '',
+      businessAddressDetail: application.businessAddressDetail || user?.breweryLocationDetail || '',
+      contactEmail: user?.email || '',
+      contactPhone: application.phoneNumber || user?.phone || '',
+      businessRegistrationFileUrl: application.documentUrl || '',
+      businessLicenseUrl: application.documentUrl || '',
+      businessLicense: application.documentUrl || '',
+      phoneVerified: Boolean(application.phoneNumber || user?.phone),
+      missingFields: ['정산 은행', '계좌번호', '예금주'],
+    };
+  };
+
   const applyLoadedBreweryInfo = (info: Partial<LoadedBreweryInfo>) => {
-    const loadedBreweryName = info.breweryName || info.creatorName || user?.breweryName || '';
+    const loadedBreweryName = info.breweryName || user?.breweryName || '';
     const businessAddress = info.businessAddress || '';
     const businessAddressDetail = info.businessAddressDetail || '';
     const loadedAddress = businessAddressDetail && businessAddress && !businessAddress.includes(businessAddressDetail)
@@ -1581,8 +1614,6 @@ export default function BreweryProjectCreateScreen() {
 
     setCreatorInfo((prev) => ({
       ...prev,
-      name: loadedBreweryName,
-      bio: info.creatorIntroduction || prev.bio,
       phone: info.contactPhone || prev.phone,
       accountBank: info.bankName || prev.accountBank,
       accountNumber: info.accountNumber || prev.accountNumber,
@@ -1610,14 +1641,24 @@ export default function BreweryProjectCreateScreen() {
     if (isEditMode && editProjectId) {
       try {
         const preview = await getFundingDraftByFundingId(editProjectId);
-        const serverInfo = await loadFundingBreweryInfo(preview.draftId);
-        const loadedInfo = { ...(preview.breweryInfo || {}), ...serverInfo };
+        let loadedInfo: Partial<LoadedBreweryInfo> = { ...(preview.breweryInfo || {}) };
+        try {
+          const serverInfo = await loadFundingBreweryInfo(preview.draftId);
+          loadedInfo = { ...loadedInfo, ...serverInfo };
+        } catch (error) {
+          if (!hasLoadedBreweryInfoValue(loadedInfo)) throw error;
+        }
         applyLoadedBreweryInfo(loadedInfo);
         setUploadedFiles((prev) => normalizeUploadedFiles({ ...prev, ...getUploadedFilesFromPreview(preview) }));
         void Promise.resolve().then(() => showLoadedBreweryInfoResult(loadedInfo));
-        showAlert('서버에 저장된 양조장 정보를 불러왔습니다.');
       } catch (error) {
-        showAlert(getFundingApiErrorMessage(error, '서버 양조장 정보를 불러오지 못했습니다.'));
+        try {
+          const applicationInfo = await loadApprovedBreweryApplicationInfo();
+          applyLoadedBreweryInfo(applicationInfo);
+          showLoadedBreweryInfoResult(applicationInfo);
+        } catch {
+          showAlert(getFundingApiErrorMessage(error, '서버 양조장 정보를 불러오지 못했습니다.'));
+        }
       }
       return;
     }
@@ -1627,10 +1668,15 @@ export default function BreweryProjectCreateScreen() {
         const serverInfo = await loadFundingBreweryInfo(draftId);
         applyLoadedBreweryInfo(serverInfo);
         void Promise.resolve().then(() => showLoadedBreweryInfoResult(serverInfo));
-        showAlert('서버에 저장된 양조장 정보를 불러왔습니다.');
         return;
       } catch (error) {
-        showAlert(getFundingApiErrorMessage(error, '서버 양조장 정보를 불러오지 못했습니다.'));
+        try {
+          const applicationInfo = await loadApprovedBreweryApplicationInfo();
+          applyLoadedBreweryInfo(applicationInfo);
+          showLoadedBreweryInfoResult(applicationInfo);
+        } catch {
+          showAlert(getFundingApiErrorMessage(error, '서버 양조장 정보를 불러오지 못했습니다.'));
+        }
         return;
       }
     }
@@ -1640,9 +1686,6 @@ export default function BreweryProjectCreateScreen() {
 
     setCreatorInfo((prev) => ({
       ...prev,
-      name: loadedBreweryName,
-      profileImage: '',
-      bio: '',
       phone: '',
       accountBank: '',
       accountNumber: '',
@@ -1660,7 +1703,6 @@ export default function BreweryProjectCreateScreen() {
     }));
     setUploadedFiles((prev) => ({
       ...prev,
-      profileImage: '',
       idCard: '',
     }));
     setPhoneVerified(false);
@@ -1824,63 +1866,6 @@ export default function BreweryProjectCreateScreen() {
     showAlert('인증완료!');
   };
 
-  const handlePickProfileFromLibrary = async () => {
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        showAlert('프로필 이미지를 선택하려면 갤러리 접근 권한이 필요합니다.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.9,
-      });
-
-      if (result.canceled || !result.assets?.length) return;
-
-      const asset = result.assets[0];
-      const fileName = asset.fileName || `brewery_profile_${Date.now()}.jpg`;
-      setCreatorInfo((prev) => ({ ...prev, profileImage: asset.uri }));
-      setUploadedFiles((prev) => ({ ...prev, profileImage: { name: fileName, uri: asset.uri, mimeType: asset.mimeType || getMimeTypeFromFileName(fileName) } }));
-      showAlert('프로필 이미지가 선택되었습니다.');
-    } catch {
-      showAlert('이미지를 불러오지 못했습니다. 다시 시도해주세요.');
-    }
-  };
-
-  const handleTakeProfilePhoto = async () => {
-    try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        showAlert('프로필 사진을 촬영하려면 카메라 접근 권한이 필요합니다.');
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.9,
-      });
-
-      if (result.canceled || !result.assets?.length) return;
-
-      const asset = result.assets[0];
-      const fileName = asset.fileName || `brewery_profile_camera_${Date.now()}.jpg`;
-      setCreatorInfo((prev) => ({ ...prev, profileImage: asset.uri }));
-      setUploadedFiles((prev) => ({ ...prev, profileImage: { name: fileName, uri: asset.uri, mimeType: asset.mimeType || getMimeTypeFromFileName(fileName) } }));
-      showAlert('프로필 사진이 등록되었습니다.');
-    } catch {
-      showAlert('카메라를 실행하지 못했습니다. 다시 시도해주세요.');
-    }
-  };
-
-  const handleProfileImageUpload = () => {
-    setShowProfileImagePickerModal(true);
-  };
-
   const handleDocumentUpload = async (key: FileKey) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -1945,7 +1930,7 @@ export default function BreweryProjectCreateScreen() {
     return {
       title: basicInfo.title,
       shortTitle: basicInfo.shortTitle,
-      brewery: creatorInfo.name || user?.breweryName || editProject?.brewery || '',
+      brewery: dashboardBreweryProfile.name,
       breweryLogo: editProject?.breweryLogo || '🍶',
       location: taxInfo.address || editProject?.location || user?.breweryLocation || '',
       category: projectCategory,
@@ -1955,7 +1940,7 @@ export default function BreweryProjectCreateScreen() {
       shortDescription: basicInfo.summary,
       image,
       images: projectImages,
-      localImage: mode === 'edit' ? undefined : editProject?.localImage,
+      localImage: undefined,
       popularRank: editProject?.popularRank,
       goalAmount,
       currentAmount: mode === 'edit' ? editProject?.currentAmount || 0 : 0,
@@ -1987,8 +1972,8 @@ export default function BreweryProjectCreateScreen() {
       schedule: scheduleItems,
       tasteProfile,
       team: editProject?.team,
-      breweryBio: creatorInfo.bio,
-      breweryProfileImage: creatorInfo.profileImage,
+      breweryBio: dashboardBreweryProfile.bio,
+      breweryProfileImage: dashboardBreweryProfile.profileImage,
       productType: projectProductType,
       ingredients: productInfo.ingredients,
       journals: mode === 'edit' ? editProject?.journals || [] : [],
@@ -2065,6 +2050,20 @@ export default function BreweryProjectCreateScreen() {
         await saveFundingLegalInfo(draftId, getLegalInfoForApi());
       }
       const payload = buildProjectPayload(isEditMode ? 'edit' : 'create', submittedImageUrls);
+      if (isEditMode && editProjectId) {
+        const submittedProject: FundingProject = {
+          ...payload,
+          id: editProjectId,
+        };
+        mergeProjects([submittedProject]);
+        setCreatedProjectId(submittedProject.id);
+        void SafeStorage.removeItem(tempSaveKey);
+        setHasTempSave(false);
+        setTempSaveTimestamp('');
+        setSubmitSyncWarning('');
+        setShowSubmitSuccess(true);
+        return;
+      }
       if (!isEditMode && convertedFunding) {
         const convertedProject: FundingProject = {
           ...payload,
@@ -2098,17 +2097,7 @@ export default function BreweryProjectCreateScreen() {
         setShowSubmitSuccess(true);
         return;
       }
-      const submittedProject = isEditMode && editProjectId ? updateProject(editProjectId, payload) : addProject(payload);
-      if (!submittedProject) {
-        showAlert('수정할 펀딩 게시글을 찾을 수 없습니다.');
-        return;
-      }
-      setCreatedProjectId(submittedProject.id);
-      void SafeStorage.removeItem(tempSaveKey);
-      setHasTempSave(false);
-      setTempSaveTimestamp('');
-      setSubmitSyncWarning('');
-      setShowSubmitSuccess(true);
+      throw new Error('서버에서 제출된 펀딩 ID를 확인하지 못했습니다.');
     } catch (error) {
       const message = getFundingApiErrorMessage(error, '펀딩 프로젝트 제출 중 문제가 발생했습니다.')
         .replace(/펀딩 프로젝트 임시저장/g, '펀딩 프로젝트 제출 준비')
@@ -2187,7 +2176,6 @@ export default function BreweryProjectCreateScreen() {
               '전통주 제조 면허증 및 통신판매 신고증이 있어야 합니다',
               '프로젝트 내용과 리워드가 명확하게 작성되어야 합니다',
               '발송 일정 및 환불 정책이 구체적으로 명시되어야 합니다',
-              '현재 테스트 기간에는 제출 즉시 후원 가능한 상태로 표시됩니다',
             ]}
           />
           <InfoBox tone="red" title="전통주 프로젝트 필수 설정" body="19세 이상 성인만 후원 가능합니다." compact />
@@ -2594,42 +2582,26 @@ export default function BreweryProjectCreateScreen() {
         <View style={styles.tabContent}>
           <View style={styles.formGroup}>
             <View style={styles.rowBetween}>
-              <RequiredLabel label="창작자 이름" required />
+              <Text style={styles.label}>양조장 프로필</Text>
               <TouchableOpacity style={styles.loadButton} onPress={loadBreweryInfo}>
                 <Text style={styles.loadButtonText}>불러오기</Text>
               </TouchableOpacity>
             </View>
-            <TextInput
-              style={styles.input}
-              value={creatorInfo.name}
-              onChangeText={(value) => setCreatorInfo((prev) => ({ ...prev, name: value }))}
-              placeholder="꽃샘양조장"
-              placeholderTextColor="#9CA3AF"
-            />
-          </View>
-          <View style={styles.formGroup}>
-            <Text style={styles.label}>프로필 이미지 <Text style={styles.optionalText}>(선택)</Text></Text>
-            <View style={styles.profileUploadRow}>
-              <View style={styles.profileImageBox}>
-                {creatorInfo.profileImage ? (
-                  <Image source={{ uri: creatorInfo.profileImage }} style={styles.profileImage} />
+            <Text style={styles.helper}>창작자 이름, 프로필 이미지, 창작자 소개는 양조장 대시보드 프로필을 사용합니다.</Text>
+            <TouchableOpacity style={styles.creatorProfileNotice} activeOpacity={0.86} onPress={openBreweryProfileConfirm}>
+              <View style={styles.creatorPreviewImage}>
+                {dashboardBreweryProfile.profileImage ? (
+                  <Image source={{ uri: dashboardBreweryProfile.profileImage }} style={styles.creatorPreviewImageFill} />
                 ) : (
-                  <User size={32} color="#9CA3AF" />
+                  <User size={24} color="#9CA3AF" />
                 )}
               </View>
-              <TouchableOpacity style={styles.blackSmallButton} onPress={handleProfileImageUpload}>
-                <Text style={styles.blackSmallButtonText}>이미지 업로드</Text>
-              </TouchableOpacity>
-            </View>
-            {Boolean(uploadedFiles.profileImage) && <Text style={styles.helper}>선택됨: {getUploadedFileName(uploadedFiles.profileImage)}</Text>}
+              <View style={styles.creatorPreviewText}>
+                <Text style={styles.creatorPreviewName}>{dashboardBreweryProfile.name || '양조장 프로필 이름 없음'}</Text>
+                <Text style={styles.creatorPreviewCategory} numberOfLines={2}>{dashboardBreweryProfile.bio || '양조장 소개가 아직 없습니다.'}</Text>
+              </View>
+            </TouchableOpacity>
           </View>
-          <TextArea
-            label="창작자 소개 (선택)"
-            value={creatorInfo.bio}
-            onChangeText={(value) => setCreatorInfo((prev) => ({ ...prev, bio: value }))}
-            placeholder="양조장을 소개해주세요..."
-            minHeight={110}
-          />
           <View style={styles.formGroup}>
             <RequiredLabel label="본인 인증" required />
             <Text style={styles.smallSubLabel}>휴대폰 번호</Text>
@@ -2803,15 +2775,15 @@ export default function BreweryProjectCreateScreen() {
           <TextArea
             label="프로젝트 정책"
             required
-            helper="주류 특성과 후원자 보호를 위한 정책을 작성해주세요."
+            helper="프로젝트 정책 안에 환불 정책과 교환 정책까지 함께 포함해 작성해주세요."
             guideLines={[
-              '주류 배송 특성: 파손 위험이 높은 유리병 제품의 안전 배송 약속 및 파손 시 교환 절차를 작성해주세요.',
-              '성인 인증 안내: 전통주 온라인 판매 규정에 따른 성인 인증 및 수령 절차를 명시해주세요.',
-              '환불 정책: 재료 수급 및 양조 시작 후의 환불 불가 조건과, 양조장 과실로 인한 생산 무산 시 환불 이행 약속을 적어주세요.',
+              '환불 정책 예시: 재료 수급 및 양조가 시작된 이후에는 단순 변심 환불이 어렵습니다.',
+              '교환 정책 예시: 배송 중 파손 또는 오배송이 확인되면 수령 후 7일 이내 사진 확인 후 교환을 진행합니다.',
+              '성인 인증 안내 예시: 전통주 특성상 성인 인증을 완료한 후원자에게만 발송됩니다.',
             ]}
             value={trustInfo.projectPolicy}
             onChangeText={(value) => setTrustInfo((prev) => ({ ...prev, projectPolicy: value }))}
-            placeholder=""
+            placeholder={'예시 형식\n- 환불 정책: 재료 수급 및 양조가 시작된 이후에는 단순 변심 환불이 어렵습니다.\n- 교환 정책: 배송 중 파손 또는 오배송 시 수령 후 7일 이내 사진 확인 후 교환을 진행합니다.\n- 성인 인증: 전통주 특성상 성인 인증을 완료한 후원자에게만 발송됩니다.'}
             minHeight={260}
           />
           <TextArea
@@ -2897,17 +2869,12 @@ export default function BreweryProjectCreateScreen() {
         </View>
       </KeyboardAvoidingView>
       <SimpleModal visible={showAlertModal} icon="alert" title="알림" body={alertMessage} primaryLabel="확인" onPrimary={() => setShowAlertModal(false)} />
-      <FundingAlertModal
-        visible={showProfileImagePickerModal}
-        title="프로필 이미지 업로드"
-        body="이미지를 등록할 방식을 선택해주세요."
-        tone="info"
-        buttons={[
-          { label: '갤러리에서 선택', onPress: () => { void handlePickProfileFromLibrary(); } },
-          { label: '카메라로 촬영', variant: 'secondary', onPress: () => { void handleTakeProfilePhoto(); } },
-          { label: '취소', variant: 'secondary' },
-        ]}
-        onClose={() => setShowProfileImagePickerModal(false)}
+      <ConfirmModal
+        visible={showBreweryProfileConfirm}
+        title="양조장 대시보드를 수정하시겠습니까?"
+        body="현재 작성 중인 프로젝트 내용은 유지한 채 양조장 프로필 수정 화면으로 이동합니다."
+        onCancel={() => setShowBreweryProfileConfirm(false)}
+        onConfirm={openBreweryProfileEditor}
       />
       <ConfirmModal visible={showSubmitConfirm} title={isEditMode ? '수정 내용을 반영하시겠습니까?' : '제출 하시겠습니까?'} body={isEditMode ? '수정한 내용이 기존 펀딩 게시글에 바로 반영됩니다.' : '제출하면 펀딩 프로젝트 심사 요청이 접수됩니다.'} onCancel={() => setShowSubmitConfirm(false)} onConfirm={confirmSubmit} />
       <SimpleModal visible={showSubmitSuccess} icon="success" title={isEditMode ? '수정이 완료되었습니다' : '성공적으로 제출되었습니다'} body={submitSyncWarning || (isEditMode ? '수정한 내용이 펀딩 게시글에 반영되었습니다.' : '펀딩 프로젝트 심사 요청이 접수되었습니다.')} primaryLabel="게시글 확인" onPrimary={handleSubmitSuccessClose} />
@@ -2955,7 +2922,7 @@ export default function BreweryProjectCreateScreen() {
         fundingInfo={fundingInfo}
         productInfo={productInfo}
         projectPlan={projectPlan}
-        creatorInfo={creatorInfo}
+        breweryProfile={dashboardBreweryProfile}
         taxInfo={taxInfo}
         trustInfo={trustInfo}
         tasteProfile={tasteProfile}
@@ -3682,7 +3649,7 @@ function PreviewModal({
   fundingInfo,
   productInfo,
   projectPlan,
-  creatorInfo,
+  breweryProfile,
   taxInfo,
   trustInfo,
   tasteProfile,
@@ -3696,7 +3663,7 @@ function PreviewModal({
   fundingInfo: { duration: string; startDate: string; pricePerBottle: string; bottleQuantity: string; goalAmount: string };
   productInfo: { volume: string; alcoholContent: string };
   projectPlan: { introduction: string; videoUrl: string; budget: string; schedule: string };
-  creatorInfo: { name: string; profileImage: string };
+  breweryProfile: { name: string; profileImage: string; bio: string };
   taxInfo: { address: string };
   trustInfo: { projectPolicy: string; expectedDifficulties: string };
   tasteProfile: { sweetness: number; aroma: number; acidity: number; body: number; carbonation: number };
@@ -3744,10 +3711,10 @@ function PreviewModal({
             </View>
             <View style={styles.creatorPreviewCard}>
               <View style={styles.creatorPreviewImage}>
-                {creatorInfo.profileImage ? <Image source={{ uri: creatorInfo.profileImage }} style={styles.creatorPreviewImageFill} /> : <User size={24} color="#9CA3AF" />}
+                {breweryProfile.profileImage ? <Image source={{ uri: breweryProfile.profileImage }} style={styles.creatorPreviewImageFill} /> : <User size={24} color="#9CA3AF" />}
               </View>
               <View style={styles.creatorPreviewText}>
-                <Text style={styles.creatorPreviewName}>{creatorInfo.name || '양조장 이름'}</Text>
+                <Text style={styles.creatorPreviewName}>{breweryProfile.name || '양조장 이름'}</Text>
                 <Text style={styles.creatorPreviewCategory}>{taxInfo.address || '위치 미정'}</Text>
               </View>
               <View style={styles.creatorBadge}>
@@ -3984,6 +3951,7 @@ const styles = StyleSheet.create({
   profileUploadRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   profileImageBox: { width: 64, height: 64, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   profileImage: { width: '100%', height: '100%' },
+  creatorProfileNotice: { marginTop: 12, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   blackSmallButton: { backgroundColor: '#111', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 10 },
   blackSmallButtonText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
   inlineRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },

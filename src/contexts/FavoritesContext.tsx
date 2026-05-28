@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
-import SafeStorage from "@/utils/storage";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   getFundingApiErrorMessage,
   getMyLikedFundings,
@@ -18,53 +18,46 @@ const FavoritesContext = createContext<FavoritesContextType | undefined>(
 );
 
 export function FavoritesProvider({ children }: { children: React.ReactNode }) {
+  const { user, isAuthReady } = useAuth();
   const [favoriteFundings, setFavoriteFundings] = useState<number[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const pendingFavoriteIdsRef = useRef(new Set<number>());
 
-  // Load initial value from SafeStorage
+  // Keep funding likes aligned to the server DB only. No persisted local cache is used here.
   useEffect(() => {
+    if (!isAuthReady) return;
+
+    if (!user?.id) {
+      setFavoriteFundings([]);
+      return;
+    }
+
+    let mounted = true;
     const loadFavorites = async () => {
+      setFavoriteFundings([]);
       try {
-        const saved = await SafeStorage.getItem("favoriteFundings");
-        if (saved) {
-          setFavoriteFundings(JSON.parse(saved));
-        }
-        try {
-          const response = await getMyLikedFundings();
+        const response = await getMyLikedFundings();
+        if (mounted) {
           setFavoriteFundings(response.content.map((funding) => funding.fundingId));
-        } catch (apiError) {
-          const message = getFundingApiErrorMessage(apiError, "");
-          if (message && message !== "로그인 정보가 필요합니다. 다시 로그인해주세요.") {
-            console.warn(message);
-          }
         }
-      } catch (e) {
-        console.error("Failed to load favorites from SafeStorage", e);
-      } finally {
-        setIsLoaded(true);
+      } catch (apiError) {
+        const message = getFundingApiErrorMessage(apiError, "");
+        if (message && message !== "로그인 정보가 필요합니다. 다시 로그인해주세요.") {
+          console.warn(message);
+        }
+        if (mounted) setFavoriteFundings([]);
       }
     };
     loadFavorites();
-  }, []);
 
-  // Save to SafeStorage whenever favoriteFundings changes, but only after initial load
-  useEffect(() => {
-    const saveFavorites = async () => {
-      try {
-        await SafeStorage.setItem("favoriteFundings", JSON.stringify(favoriteFundings));
-      } catch (e) {
-        console.error("Failed to save favorites to SafeStorage", e);
-      }
+    return () => {
+      mounted = false;
     };
-    
-    if (isLoaded) {
-      saveFavorites();
-    }
-  }, [favoriteFundings, isLoaded]);
+  }, [isAuthReady, user?.id]);
 
   const toggleFavoriteFunding = async (fundingId: number) => {
+    if (pendingFavoriteIdsRef.current.has(fundingId)) return;
     const wasFavorite = favoriteFundings.includes(fundingId);
-    setFavoriteFundings((prev) => (wasFavorite ? prev.filter((id) => id !== fundingId) : [...prev, fundingId]));
+    pendingFavoriteIdsRef.current.add(fundingId);
 
     try {
       let response;
@@ -94,8 +87,9 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
         setFavoriteFundings((prev) => prev.filter((id) => id !== fundingId));
         return;
       }
-      setFavoriteFundings((prev) => (wasFavorite ? Array.from(new Set([...prev, fundingId])) : prev.filter((id) => id !== fundingId)));
       console.warn(message);
+    } finally {
+      pendingFavoriteIdsRef.current.delete(fundingId);
     }
   };
 

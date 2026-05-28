@@ -34,7 +34,6 @@ import { getFundingList, getFundingStats, getFundingApiErrorMessage, type Fundin
 import { mergeFundingListItem } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import {
-  getFundingListStats,
   getTasteProfileFromSulbti,
   matchesFundingSearch,
   matchesFundingStatusFilter,
@@ -202,12 +201,14 @@ export default function FundingListScreen() {
     () => sortedProjects.slice((currentPage - 1) * FUNDING_ITEMS_PER_PAGE, currentPage * FUNDING_ITEMS_PER_PAGE),
     [currentPage, sortedProjects]
   );
-  const localFundingStats = useMemo(() => getFundingListStats(projects), [projects]);
   const fundingStats = useMemo(() => {
     if (!serverFundingStats) {
       return {
-        ...localFundingStats,
-        totalRaisedTenMillion: localFundingStats.totalRaised / 10000000,
+        supportableCount: 0,
+        totalBackers: 0,
+        completedCount: 0,
+        totalRaised: 0,
+        totalRaisedTenMillion: 0,
         totalRaisedTenMillionUnit: '천만원',
       };
     }
@@ -219,7 +220,7 @@ export default function FundingListScreen() {
       totalRaisedTenMillion: serverFundingStats.totalRaisedTenMillion,
       totalRaisedTenMillionUnit: serverFundingStats.totalRaisedTenMillionUnit || '천만원',
     };
-  }, [localFundingStats, serverFundingStats]);
+  }, [serverFundingStats]);
   const totalRaisedMilestoneText = useMemo(() => {
     const amount = Number(fundingStats.totalRaisedTenMillion || 0);
     return `${amount.toLocaleString(undefined, { maximumFractionDigits: 1 })}${fundingStats.totalRaisedTenMillionUnit || '천만원'}`;

@@ -54,10 +54,11 @@ const PROFILE_PLACEHOLDERS: BreweryProfileForm = {
 
 export default function BreweryProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams();
+  const { id, edit } = useLocalSearchParams();
   const { user, updateUser } = useAuth();
   const { projects } = useFunding();
   const breweryId = Array.isArray(id) ? id[0] : id;
+  const editParam = Array.isArray(edit) ? edit[0] : edit;
   const isOwnProfile = breweryId === 'profile';
   const projectId = Number(breweryId);
   const project = useMemo(
@@ -78,8 +79,8 @@ export default function BreweryProfileScreen() {
     phone: user?.phone || '',
     email: user?.email || '',
     established: isOwnProfile ? user?.breweryEstablished || '' : '',
-  }), [isOwnProfile, project?.brewery, project?.breweryBio, project?.location, user]);
-  const [isEditing, setIsEditing] = useState(false);
+  }), [isOwnProfile, project?.brewery, project?.breweryBio, project?.breweryProfileImage, project?.location, user]);
+  const [isEditing, setIsEditing] = useState(isOwnProfile && editParam === '1');
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<BreweryProfileForm>(profileValues);
 

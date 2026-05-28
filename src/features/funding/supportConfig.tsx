@@ -69,15 +69,15 @@ export function getProjectShippingFee(_project: FundingProject) {
 }
 
 export function getProjectBottleSize(project: FundingProject) {
-  return project.bottleSize || project.volume || '용량 안내 예정';
+  return project.bottleSize || project.volume || '-';
 }
 
 export function getProjectAlcoholContent(project: FundingProject) {
-  return project.alcoholContent || '별도 안내';
+  return project.alcoholContent || '-';
 }
 
 export function getProjectEstimatedDelivery(project: FundingProject) {
-  return project.estimatedDelivery || '펀딩 종료 후 순차 안내';
+  return project.estimatedDelivery || '-';
 }
 
 export function getPrimaryRewardItem(project: FundingProject) {

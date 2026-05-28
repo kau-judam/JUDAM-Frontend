@@ -685,6 +685,11 @@ type DeleteFundingReviewResponse = {
   message: string;
 };
 
+type FundingReviewPermission = {
+  canWriteReview: boolean;
+  canReview: boolean;
+};
+
 export type FundingStatsResponse = {
   participationAvailableFunding: number;
   totalSupporterCount: number;
@@ -987,6 +992,8 @@ export type FundingReviewItem = {
   showRecord?: boolean;
   likeCount?: number;
   liked?: boolean;
+  canWriteReview?: boolean;
+  canReview?: boolean;
 };
 
 export type FundingReviewCommentItem = {
@@ -1011,6 +1018,9 @@ export type FundingReviewsResponse = {
   size: number;
   totalElements: number;
   totalPages: number;
+  canWriteReview: boolean;
+  canReview: boolean;
+  message?: string;
 };
 
 export type FundingReviewCommentsResponse = {
@@ -1026,6 +1036,14 @@ export type FundingSupportOption = {
   volume?: string | number;
   alcohol?: string | number;
   alcoholPercentage?: string | number;
+  expectedDeliveryDate?: string | null;
+  mainIngredient?: string;
+  primaryIngredient?: string;
+  mainIngredientLabel?: string;
+  primaryIngredientLabel?: string;
+  subIngredient?: string;
+  subIngredients?: string[];
+  ingredients?: unknown[];
   stock?: number;
   remainingStock?: number;
   maxPerUser?: number;
@@ -1033,6 +1051,16 @@ export type FundingSupportOption = {
 
 export type FundingSupportOptionsResponse = {
   fundingId: number;
+  expectedDeliveryDate?: string | null;
+  volume?: string | number | null;
+  alcoholPercentage?: string | number | null;
+  mainIngredient?: string;
+  primaryIngredient?: string;
+  mainIngredientLabel?: string;
+  primaryIngredientLabel?: string;
+  subIngredient?: string;
+  subIngredients?: string[];
+  ingredients?: unknown[];
   supportOptions: FundingSupportOption[];
 };
 
@@ -1131,6 +1159,12 @@ function getFundingApiObject(response: unknown) {
   return data && typeof data === 'object' ? data as Record<string, unknown> : {};
 }
 
+function getFundingApiRawObject(response: unknown) {
+  return response && typeof response === 'object' && !Array.isArray(response)
+    ? response as Record<string, unknown>
+    : {};
+}
+
 function getFundingApiArray<T>(response: unknown, keys: string[], fallback: T[] = []) {
   const data = getFundingResponseData<unknown>(response);
   if (Array.isArray(data)) return data as T[];
@@ -1220,6 +1254,16 @@ function readFundingApiBoolean(source: Record<string, unknown>, keys: string[], 
     }
   }
   return fallback;
+}
+
+function readFundingReviewPermission(...sources: Record<string, unknown>[]): FundingReviewPermission {
+  const source = Object.assign({}, ...sources);
+  const canWriteReview = readFundingApiBoolean(source, ['canWriteReview', 'can_write_review']);
+  const canReview = readFundingApiBoolean(source, ['canReview', 'can_review'], canWriteReview);
+  return {
+    canWriteReview,
+    canReview,
+  };
 }
 
 function readFundingApiArray<T>(source: Record<string, unknown>, keys: string[], fallback: T[] = []) {
@@ -1621,18 +1665,25 @@ function normalizeFundingReviewItem(source: Record<string, unknown>): FundingRev
     showRecord: readFundingApiBoolean(source, ['showRecord', 'show_record', 'recordVisibility', 'record_visibility']),
     likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
     liked: readFundingApiBoolean(source, ['liked', 'isLiked', 'is_liked']),
+    canWriteReview: readFundingApiBoolean(source, ['canWriteReview', 'can_write_review']),
+    canReview: readFundingApiBoolean(source, ['canReview', 'can_review']),
   };
 }
 
 function normalizeFundingReviewsResponse(response: unknown): FundingReviewsResponse {
+  const raw = getFundingApiRawObject(response);
   const data = getFundingApiObject(response);
   const content = getFundingApiArray<Record<string, unknown>>(response, ['content', 'reviews', 'data']);
+  const permission = readFundingReviewPermission(raw, data);
   return {
     content: content.map(normalizeFundingReviewItem),
     page: readFundingApiNumber(data, ['page']),
     size: readFundingApiNumber(data, ['size'], content.length),
     totalElements: readFundingApiNumber(data, ['totalElements', 'total_elements'], content.length),
     totalPages: readFundingApiNumber(data, ['totalPages', 'total_pages'], content.length > 0 ? 1 : 0),
+    canWriteReview: permission.canWriteReview,
+    canReview: permission.canReview,
+    message: readFundingApiString(data, ['message']) || readFundingApiString(raw, ['message']) || undefined,
   };
 }
 
@@ -2764,8 +2815,15 @@ export async function getFundingReviews(fundingId: number, params: {
 
 export async function getFundingReviewDetail(fundingId: number, reviewId: number) {
   const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}`);
+  const raw = getFundingApiRawObject(result);
   const data = getFundingApiObject(result);
-  return normalizeFundingReviewItem(getFundingApiNestedObject(data, ['review', 'fundingReview', 'funding_review', 'data']));
+  const reviewData = getFundingApiNestedObject(data, ['review', 'fundingReview', 'funding_review', 'data']);
+  const permission = readFundingReviewPermission(raw, data, reviewData);
+  return {
+    ...normalizeFundingReviewItem(reviewData),
+    canWriteReview: permission.canWriteReview,
+    canReview: permission.canReview,
+  };
 }
 
 export async function getFundingReviewComments(fundingId: number, reviewId: number) {
@@ -2890,9 +2948,32 @@ export async function deleteFundingReviewApi(fundingId: number, reviewId: number
 export async function getFundingSupportOptions(fundingId: number) {
   const result = await requestFundingJson<FundingSupportOptionsApiResponse>(`/api/fundings/${fundingId}/support-options`);
   const response = getFundingResponseData<FundingSupportOptionsResponse>(result);
+  const supportOptions = (response.supportOptions ?? []).map((option) => ({
+    ...option,
+    volume: option.volume ?? response.volume ?? undefined,
+    alcoholPercentage: option.alcoholPercentage ?? response.alcoholPercentage ?? undefined,
+    expectedDeliveryDate: option.expectedDeliveryDate ?? response.expectedDeliveryDate ?? undefined,
+    mainIngredient: option.mainIngredient || option.primaryIngredient || response.mainIngredient || response.primaryIngredient,
+    primaryIngredient: option.primaryIngredient || option.mainIngredient || response.primaryIngredient || response.mainIngredient,
+    mainIngredientLabel: option.mainIngredientLabel || option.primaryIngredientLabel || response.mainIngredientLabel || response.primaryIngredientLabel,
+    primaryIngredientLabel: option.primaryIngredientLabel || option.mainIngredientLabel || response.primaryIngredientLabel || response.mainIngredientLabel,
+    subIngredient: option.subIngredient || response.subIngredient,
+    subIngredients: option.subIngredients?.length ? option.subIngredients : response.subIngredients,
+    ingredients: option.ingredients?.length ? option.ingredients : response.ingredients,
+  }));
   return {
     fundingId: response.fundingId ?? fundingId,
-    supportOptions: response.supportOptions ?? [],
+    expectedDeliveryDate: response.expectedDeliveryDate,
+    volume: response.volume,
+    alcoholPercentage: response.alcoholPercentage,
+    mainIngredient: response.mainIngredient || response.primaryIngredient,
+    primaryIngredient: response.primaryIngredient || response.mainIngredient,
+    mainIngredientLabel: response.mainIngredientLabel || response.primaryIngredientLabel,
+    primaryIngredientLabel: response.primaryIngredientLabel || response.mainIngredientLabel,
+    subIngredient: response.subIngredient,
+    subIngredients: response.subIngredients,
+    ingredients: response.ingredients,
+    supportOptions,
   };
 }
 

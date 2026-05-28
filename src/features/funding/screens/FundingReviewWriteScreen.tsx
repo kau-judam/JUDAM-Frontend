@@ -20,9 +20,8 @@ import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
-import { canAccessFundingReviews } from '@/features/funding/permissions';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
-import { createFundingReview, getFundingApiErrorMessage, updateFundingReviewApi, type FundingUploadFile } from '@/features/funding/api';
+import { createFundingReview, getFundingApiErrorMessage, getFundingReviews, updateFundingReviewApi, type FundingUploadFile } from '@/features/funding/api';
 import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
 
@@ -78,7 +77,7 @@ export default function FundingReviewWriteScreen() {
   const insets = useSafeAreaInsets();
   const { fundingId, reviewId, archiveMode } = useLocalSearchParams<{ fundingId?: string; reviewId?: string; archiveMode?: string }>();
   const { user } = useAuth();
-  const { projects, participatedFundings, fundingReviews, addFundingReview, updateFundingReview } = useFunding();
+  const { projects, fundingReviews, addFundingReview, updateFundingReview } = useFunding();
   const projectId = Number(Array.isArray(fundingId) ? fundingId[0] : fundingId);
   const rawArchiveMode = Array.isArray(archiveMode) ? archiveMode[0] : archiveMode;
   const isArchiveMode = rawArchiveMode === 'funding' || rawArchiveMode === 'normal' || rawArchiveMode === '1' || rawArchiveMode === 'true';
@@ -88,8 +87,8 @@ export default function FundingReviewWriteScreen() {
   const hasReviewIdParam = Number.isFinite(targetReviewId) && targetReviewId > 0;
   const project = useMemo(() => projects.find((item) => item.id === projectId) || null, [projectId, projects]);
   const projectImageSource = useMemo(() => (project ? getFundingProjectImageSource(project) : undefined), [project]);
-  const hasParticipated = Boolean(user) && participatedFundings.some((item) => item.fundingId === projectId);
-  const canWriteForProjectStatus = canAccessFundingReviews(project);
+  const [reviewPermission, setReviewPermission] = useState<{ canWriteReview: boolean; canReview: boolean } | null>(null);
+  const [isReviewPermissionLoading, setIsReviewPermissionLoading] = useState(Boolean(user && !isArchiveMode));
   const requestedReview = useMemo(
     () => (hasReviewIdParam ? fundingReviews.find((item) => item.projectId === projectId && item.id === targetReviewId) || null : null),
     [fundingReviews, hasReviewIdParam, projectId, targetReviewId]
@@ -101,7 +100,8 @@ export default function FundingReviewWriteScreen() {
   const editableReview = hasReviewIdParam ? requestedReview : ownExistingReview;
   const isEditMode = Boolean(editableReview && isFundingReviewOwnedByUser(editableReview, user));
   const reviewParamBlocked = hasReviewIdParam && (!requestedReview || !isFundingReviewOwnedByUser(requestedReview, user));
-  const canUseReviewForm = Boolean(user) && (isArchiveMode || (hasParticipated && canWriteForProjectStatus)) && !reviewParamBlocked;
+  const canCreateReviewFromServer = Boolean(reviewPermission && (reviewPermission.canWriteReview || reviewPermission.canReview));
+  const canUseReviewForm = Boolean(user) && (isArchiveMode || isEditMode || canCreateReviewFromServer) && !reviewParamBlocked;
   const headerTitle = isArchiveMode
     ? isEditMode
       ? '나의 술 기록 수정'
@@ -141,6 +141,43 @@ export default function FundingReviewWriteScreen() {
       { label: '닫기', variant: 'secondary' },
     ]);
   };
+
+  useEffect(() => {
+    if (isArchiveMode) {
+      setReviewPermission({ canWriteReview: true, canReview: true });
+      setIsReviewPermissionLoading(false);
+      return;
+    }
+    if (!user || !Number.isFinite(projectId) || projectId <= 0) {
+      setReviewPermission({ canWriteReview: false, canReview: false });
+      setIsReviewPermissionLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setIsReviewPermissionLoading(true);
+    setReviewPermission(null);
+    getFundingReviews(projectId, { page: 0, size: 1, sort: 'LATEST' })
+      .then((response) => {
+        if (!mounted) return;
+        setReviewPermission({
+          canWriteReview: response.canWriteReview,
+          canReview: response.canReview,
+        });
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setReviewPermission({ canWriteReview: false, canReview: false });
+        console.warn(getFundingApiErrorMessage(error, '후기 작성 권한을 확인하지 못했습니다.'));
+      })
+      .finally(() => {
+        if (mounted) setIsReviewPermissionLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isArchiveMode, projectId, user]);
 
   useEffect(() => {
     if (!editableReview || !isEditMode) return;
@@ -242,8 +279,8 @@ export default function FundingReviewWriteScreen() {
       showLoginPrompt('후기 작성은 로그인 후 이용할 수 있어요.');
       return;
     }
-    if (!isArchiveMode && !canWriteForProjectStatus) {
-      showReviewAlert('후기 작성 불가', '후기는 성사된 펀딩에서만 작성할 수 있습니다.', 'warning');
+    if (!isArchiveMode && !isEditMode && !canCreateReviewFromServer) {
+      showReviewAlert('후기 작성 불가', '후원 완료 후 후기를 작성할 수 있습니다.', 'warning');
       return;
     }
     if (rating === 0) {
@@ -345,6 +382,16 @@ export default function FundingReviewWriteScreen() {
     );
   }
 
+  if (!isArchiveMode && user && isReviewPermissionLoading && !isEditMode) {
+    return (
+      <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
+        <ActivityIndicator color="#111" />
+        <Text style={styles.noticeTitle}>후기 작성 권한 확인 중</Text>
+        <Text style={styles.noticeBody}>서버에서 후원 완료 여부를 확인하고 있습니다.</Text>
+      </View>
+    );
+  }
+
   if (!canUseReviewForm) {
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
@@ -353,8 +400,8 @@ export default function FundingReviewWriteScreen() {
         <Text style={styles.noticeBody}>
           {reviewParamBlocked
             ? '본인이 작성한 후기만 수정할 수 있습니다.'
-            : user && !canWriteForProjectStatus
-              ? '후기는 성사된 펀딩에서만 작성할 수 있습니다.'
+            : user && !canCreateReviewFromServer
+              ? '후원 완료 후 후기를 작성할 수 있습니다.'
             : user
               ? '이 펀딩 프로젝트에 참여한 사용자만 리뷰를 작성할 수 있습니다.'
               : '후기 작성은 로그인 후 이용할 수 있습니다.'}

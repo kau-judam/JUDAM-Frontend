@@ -106,6 +106,51 @@ function joinTextList(value?: string[] | string | null) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function normalizeIngredientName(value: unknown) {
+  if (typeof value === 'string') return value.trim();
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const source = value as Record<string, unknown>;
+  return (
+    typeof source.ingredient === 'string' ? source.ingredient :
+    typeof source.name === 'string' ? source.name :
+    typeof source.mainIngredient === 'string' ? source.mainIngredient :
+    ''
+  ).trim();
+}
+
+function normalizeIngredientOrigin(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const source = value as Record<string, unknown>;
+  return (
+    typeof source.origin === 'string' ? source.origin :
+    typeof source.countryOfOrigin === 'string' ? source.countryOfOrigin :
+    typeof source.productionArea === 'string' ? source.productionArea :
+    ''
+  ).trim();
+}
+
+function normalizeSupportOptionIngredients(value?: unknown[]) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      const ingredient = normalizeIngredientName(item);
+      if (!ingredient) return null;
+      return {
+        id: index + 1,
+        ingredient,
+        origin: normalizeIngredientOrigin(item),
+      };
+    })
+    .filter((item): item is { id: number; ingredient: string; origin: string } => Boolean(item));
+}
+
+function formatProjectIngredients(value: { ingredient: string; origin: string }[]) {
+  return value
+    .map((item) => [item.ingredient, item.origin].filter(Boolean).join(' '))
+    .filter(Boolean)
+    .join(', ');
+}
+
 function getVolumeFromDescription(description?: string) {
   return description?.match(/\d+\s?ml/i)?.[0].replace(/\s/g, '') || undefined;
 }
@@ -440,6 +485,10 @@ export function mapFundingReview(projectId: number, item: FundingReviewItem): Fu
 export function mergeSupportOption(existing: FundingProject, option: FundingSupportOption): FundingProject {
   const bottleSize = formatVolumeSpec(option.volume) || getVolumeFromDescription(option.description);
   const alcoholContent = formatAlcoholSpec(option.alcohol) || formatAlcoholSpec(option.alcoholPercentage) || getAlcoholFromDescription(option.description);
+  const optionIngredients = normalizeSupportOptionIngredients(option.ingredients);
+  const optionIngredientText = formatProjectIngredients(optionIngredients);
+  const mainIngredient = option.mainIngredient || option.primaryIngredient || optionIngredientText;
+  const subIngredients = joinTextList(option.subIngredients) || option.subIngredient;
   return {
     ...existing,
     pricePerBottle: option.price,
@@ -447,6 +496,12 @@ export function mergeSupportOption(existing: FundingProject, option: FundingSupp
     bottleSize: bottleSize || existing.bottleSize,
     volume: bottleSize || existing.volume,
     alcoholContent: alcoholContent || existing.alcoholContent,
+    estimatedDelivery: option.expectedDeliveryDate ? formatDate(option.expectedDeliveryDate) : existing.estimatedDelivery,
+    mainIngredientLabel: option.mainIngredientLabel || option.primaryIngredientLabel || existing.mainIngredientLabel,
+    primaryIngredientLabel: option.primaryIngredientLabel || option.mainIngredientLabel || existing.primaryIngredientLabel,
+    mainIngredients: mainIngredient || existing.mainIngredients,
+    subIngredients: subIngredients || existing.subIngredients,
+    ingredients: optionIngredients.length ? optionIngredients : existing.ingredients,
     updatedAt: new Date().toISOString(),
   };
 }

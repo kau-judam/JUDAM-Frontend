@@ -384,7 +384,7 @@ export default function FundingDetailScreen() {
   const { width: viewportWidth } = useWindowDimensions();
   const { user } = useAuth();
   const { favoriteFundings, isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
-  const { projects, participatedFundings, updateProjectJournals, fundingReviews, mergeProject, mergeProjects, mergeFundingReviews } = useFunding();
+  const { projects, updateProjectJournals, fundingReviews, mergeProject, mergeProjects, mergeFundingReviews } = useFunding();
   const projectRef = useRef<(typeof projects)[number] | null>(null);
   const rawProjectId = Array.isArray(id) ? id[0] : id;
   const projectId = Number(rawProjectId);
@@ -414,6 +414,7 @@ export default function FundingDetailScreen() {
   const [supportOptionId, setSupportOptionId] = useState(1);
   const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [reviewPermission, setReviewPermission] = useState<{ canWriteReview: boolean; canReview: boolean } | null>(null);
 
   const showLoginRequired = (message: string) => {
     setFeedbackModal({
@@ -483,6 +484,7 @@ export default function FundingDetailScreen() {
     setSupportOptions([]);
     setSelectedQuantity(1);
     setSupportOptionId(1);
+    setReviewPermission(null);
   }, [projectId]);
 
   useEffect(() => {
@@ -669,12 +671,19 @@ export default function FundingDetailScreen() {
     let mounted = true;
     if (!Number.isFinite(projectId) || activeTab !== "후기") return;
 
+    setReviewPermission(null);
     getFundingReviews(projectId, { page: 0, size: 20, sort: 'LATEST' })
       .then((response) => {
         if (!mounted) return;
+        setReviewPermission({
+          canWriteReview: response.canWriteReview,
+          canReview: response.canReview,
+        });
         mergeFundingReviews(projectId, response.content.map((review) => mapFundingReview(projectId, review)));
       })
       .catch((error) => {
+        if (!mounted) return;
+        setReviewPermission({ canWriteReview: false, canReview: false });
         console.warn(getFundingApiErrorMessage(error, '펀딩 후기를 불러오지 못했습니다.'));
       });
 
@@ -750,9 +759,10 @@ export default function FundingDetailScreen() {
     [projectReviews, user]
   );
   const canShowAndWriteReviews = useMemo(
-    () => (project ? canAccessFundingReviews(project) : false),
-    [project]
+    () => Boolean(project && (canAccessFundingReviews(project) || projectReviews.length > 0 || reviewPermission !== null)),
+    [project, projectReviews.length, reviewPermission]
   );
+  const canWriteFundingReview = Boolean(user && (reviewPermission?.canWriteReview || reviewPermission?.canReview));
   const heroImageSources = useMemo(
     () => (project ? getFundingProjectImageSources(project) : []),
     [project]
@@ -1493,8 +1503,8 @@ export default function FundingDetailScreen() {
       });
       return;
     }
-    const hasParticipated = participatedFundings.some((item) => item.fundingId === project.id);
-    if (!hasParticipated) {
+    const canStartReview = canWriteFundingReview || Boolean(myReview);
+    if (!canStartReview) {
       setFeedbackModal({
         title: '후기 작성 불가',
         body: '해당 펀딩에 참여하지 않았습니다.',
@@ -2342,10 +2352,12 @@ export default function FundingDetailScreen() {
                         </View>
                         <Text style={styles.emptyTitle}>아직 후기가 없어요</Text>
                         <Text style={styles.emptySubMulti}>이 술을 마셔본 첫 번째 후기를{'\n'}남겨주세요! 다른 분들에게 큰 도움이 돼요 🍶</Text>
-                        <TouchableOpacity style={styles.writeReviewBtn} onPress={handleReviewWrite}>
+                         {canWriteFundingReview && (
+                         <TouchableOpacity style={styles.writeReviewBtn} onPress={handleReviewWrite}>
                            <Star size={16} color="#FFF" />
                            <Text style={styles.writeReviewTxt}>첫 번째 후기 작성하기</Text>
-                        </TouchableOpacity>
+                         </TouchableOpacity>
+                         )}
                      </View>
                    ) : (
                      <View style={styles.reviewList}>
@@ -2373,9 +2385,11 @@ export default function FundingDetailScreen() {
                              )}
                           </TouchableOpacity>
                         ))}
-                        <TouchableOpacity style={styles.writeReviewOutline} onPress={handleReviewWrite}>
+                         {canWriteFundingReview && (
+                         <TouchableOpacity style={styles.writeReviewOutline} onPress={handleReviewWrite}>
                            <Text style={styles.writeReviewOutlineTxt}>✏️ 나도 후기 작성하기</Text>
-                        </TouchableOpacity>
+                         </TouchableOpacity>
+                         )}
                      </View>
                    )}
                 </View>

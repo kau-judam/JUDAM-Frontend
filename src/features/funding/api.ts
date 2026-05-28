@@ -522,7 +522,7 @@ type FundingReportsResponse = {
 };
 
 type CreateFundingOrderPayload = {
-  optionId: number;
+  optionId?: number;
   quantity: number;
   supporterPhone?: string;
   supporterEmail?: string;

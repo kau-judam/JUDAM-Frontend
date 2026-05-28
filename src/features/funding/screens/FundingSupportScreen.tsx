@@ -100,6 +100,12 @@ function getPostalCodeFromAddress(address: string) {
   return address.match(/^\[([^\]]+)\]/)?.[1]?.trim();
 }
 
+function getInitialSupportOptionId(value: unknown) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const optionId = Number(rawValue);
+  return Number.isInteger(optionId) && optionId > 0 ? optionId : null;
+}
+
 const TOSS_ORDER_ID_PATTERN = /^[A-Za-z0-9_-]{6,64}$/;
 
 function normalizeTossOrderId(value: string) {
@@ -152,9 +158,8 @@ export default function FundingSupportScreen() {
     [project]
   );
   const projectRef = useRef<FundingProject | null>(project);
-  const rawOptionId = Array.isArray(optionIdParam) ? optionIdParam[0] : optionIdParam;
   const [quantity, setQuantity] = useState(getInitialQuantity(quantityParam));
-  const [selectedSupportOptionId, setSelectedSupportOptionId] = useState(Math.max(1, Number(rawOptionId) || 1));
+  const [selectedSupportOptionId, setSelectedSupportOptionId] = useState<number | null>(() => getInitialSupportOptionId(optionIdParam));
   const [supportOptions, setSupportOptions] = useState<FundingSupportOption[]>([]);
   const [additionalSupport, setAdditionalSupport] = useState('0');
   const [supportMessage, setSupportMessage] = useState('');
@@ -238,7 +243,7 @@ export default function FundingSupportScreen() {
 
   useEffect(() => {
     setQuantity(getInitialQuantity(quantityParam));
-    setSelectedSupportOptionId(Math.max(1, Number(rawOptionId) || 1));
+    setSelectedSupportOptionId(getInitialSupportOptionId(optionIdParam));
     setSupportOptions([]);
     setAdditionalSupport('0');
     setSupportMessage('');
@@ -252,7 +257,7 @@ export default function FundingSupportScreen() {
     setShowRefundPolicy(false);
     setValidationErrors({});
     setShowConfirmModal(false);
-  }, [project?.id, quantityParam, rawOptionId, user?.name]);
+  }, [project?.id, quantityParam, optionIdParam, user?.name]);
 
   useEffect(() => {
     let mounted = true;
@@ -374,8 +379,11 @@ export default function FundingSupportScreen() {
       if (selectedPaymentMethod !== 'toss') {
         throw new Error('현재 결제는 토스페이로만 진행할 수 있습니다. 결제수단을 토스페이로 선택해주세요.');
       }
+      const normalizedOptionId = selectedSupportOption
+        ? normalizeSupportOptionId(selectedSupportOption.optionId)
+        : null;
       const order = await createFundingOrder(project.id, {
-        optionId: selectedSupportOptionId,
+        ...(normalizedOptionId !== null ? { optionId: normalizedOptionId } : {}),
         quantity,
         supporterPhone: supporterInfo.phone.trim(),
         supporterEmail: supporterInfo.email.trim(),
@@ -399,7 +407,7 @@ export default function FundingSupportScreen() {
       if (paymentAmount !== totalAmount) {
         console.warn('Funding order amount mismatch', {
           fundingId: project.id,
-          optionId: selectedSupportOptionId,
+          optionId: normalizedOptionId,
           quantity,
           expectedAmount: totalAmount,
           orderAmount: paymentAmount,

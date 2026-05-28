@@ -373,6 +373,15 @@ export default function FundingSupportScreen() {
 
   const handleConfirmPayment = async () => {
     if (!project || !user || !selectedPaymentMethod || isProcessing) return;
+    if (!validateForm()) {
+      setShowConfirmModal(false);
+      setAlertModal({
+        title: '입력 정보를 확인해주세요',
+        body: '표시된 항목을 확인한 뒤 다시 진행해주세요.',
+        tone: 'warning',
+      });
+      return;
+    }
     setIsProcessing(true);
     setShowConfirmModal(false);
     try {
@@ -382,27 +391,62 @@ export default function FundingSupportScreen() {
       const normalizedOptionId = selectedSupportOption
         ? normalizeSupportOptionId(selectedSupportOption.optionId)
         : null;
-      const order = await createFundingOrder(project.id, {
-        ...(normalizedOptionId !== null ? { optionId: normalizedOptionId } : {}),
+      const trimmedSupporterPhone = supporterInfo.phone.trim();
+      const trimmedSupporterEmail = supporterInfo.email.trim();
+      const trimmedRecipientName = shippingInfo.recipientName.trim();
+      const trimmedRecipientPhone = shippingInfo.phone.trim();
+      const trimmedShippingAddress = shippingInfo.address.trim();
+      const trimmedShippingDetailAddress = shippingInfo.detailAddress.trim();
+      const postalCode = getPostalCodeFromAddress(trimmedShippingAddress);
+      const orderPayload = {
+        ...(normalizedOptionId !== null ? { optionId: normalizedOptionId, option_id: normalizedOptionId } : {}),
         quantity,
-        supporterPhone: supporterInfo.phone.trim(),
-        supporterEmail: supporterInfo.email.trim(),
-        recipientName: shippingInfo.recipientName.trim(),
-        recipientPhone: shippingInfo.phone.trim(),
-        shippingAddress: shippingInfo.address.trim(),
-        shippingDetailAddress: shippingInfo.detailAddress.trim(),
-        postalCode: getPostalCodeFromAddress(shippingInfo.address),
+        supporterPhone: trimmedSupporterPhone,
+        supporter_phone: trimmedSupporterPhone,
+        supporterEmail: trimmedSupporterEmail,
+        supporter_email: trimmedSupporterEmail,
+        recipientName: trimmedRecipientName,
+        recipient_name: trimmedRecipientName,
+        recipientPhone: trimmedRecipientPhone,
+        recipient_phone: trimmedRecipientPhone,
+        shippingAddress: trimmedShippingAddress,
+        shipping_address: trimmedShippingAddress,
+        shippingDetailAddress: trimmedShippingDetailAddress,
+        shipping_detail_address: trimmedShippingDetailAddress,
+        postalCode,
+        postal_code: postalCode,
         additionalSupportAmount: extraAmount,
+        additional_support_amount: extraAmount,
         message: supportMessage.trim() || undefined,
         supportMessage: supportMessage.trim() || undefined,
+        support_message: supportMessage.trim() || undefined,
         adultVerified: agreeTerms,
+        adult_verified: agreeTerms,
         privacyAgreed: agreeTerms,
+        privacy_agreed: agreeTerms,
         privacyThirdPartyAgreed: agreeTerms,
+        privacy_third_party_agreed: agreeTerms,
         thirdPartyAgreed: agreeTerms,
         termsAgreed: agreeTerms,
+        terms_agreed: agreeTerms,
         noticeAgreed: agreeRefund,
+        notice_agreed: agreeRefund,
         refundPolicyAgreed: agreeRefund,
+        refund_policy_agreed: agreeRefund,
+      };
+      console.log('[FundingSupport] create order request', {
+        fundingId: project.id,
+        optionId: normalizedOptionId,
+        hasSupportOptions: supportOptions.length > 0,
+        quantity,
+        amount: totalAmount,
+        hasRecipientName: Boolean(trimmedRecipientName),
+        hasRecipientPhone: Boolean(trimmedRecipientPhone),
+        hasShippingAddress: Boolean(trimmedShippingAddress),
+        hasShippingDetailAddress: Boolean(trimmedShippingDetailAddress),
+        hasPostalCode: Boolean(postalCode),
       });
+      const order = await createFundingOrder(project.id, orderPayload);
       const paymentAmount = Number(order.amount ?? order.totalAmount);
       if (paymentAmount !== totalAmount) {
         console.warn('Funding order amount mismatch', {
@@ -440,6 +484,16 @@ export default function FundingSupportScreen() {
       } as any);
       return;
     } catch (error) {
+      console.warn('[FundingSupport] create order failed', {
+        fundingId: project.id,
+        hasSupportOptions: supportOptions.length > 0,
+        selectedSupportOptionId: selectedSupportOption ? normalizeSupportOptionId(selectedSupportOption.optionId) : null,
+        quantity,
+        hasRecipientName: Boolean(shippingInfo.recipientName.trim()),
+        hasRecipientPhone: Boolean(shippingInfo.phone.trim()),
+        hasShippingAddress: Boolean(shippingInfo.address.trim()),
+        message: getFundingApiErrorMessage(error, ''),
+      });
       setAlertModal({
         title: '후원 진행 안내',
         body: getFundingApiErrorMessage(error, '후원 처리 중 문제가 발생했습니다. 다시 시도해주세요.'),

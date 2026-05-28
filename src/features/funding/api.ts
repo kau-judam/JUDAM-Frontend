@@ -130,6 +130,7 @@ export type FundingDraftPreviewResponse = {
     thumbnailUrl?: string;
     imageUrls?: string[];
     allImageUrls?: string[];
+    images?: string[];
     tags?: string[];
   };
   schedule?: {
@@ -211,11 +212,13 @@ export type FundingDraftPreviewResponse = {
   };
   documents?: {
     documentId: number;
+    draftId: number;
     documentType: string;
     fileName: string;
     fileUrl: string;
     createdAt: string;
   }[];
+  images?: string[];
   message: string;
 };
 
@@ -1242,6 +1245,39 @@ function readFundingApiStringArray(source: Record<string, unknown>, arrayKeys: s
   return singleValue ? [singleValue] : [];
 }
 
+function readFundingApiUrlArray(source: Record<string, unknown>, arrayKeys: string[], stringKeys: string[] = []) {
+  const urls: string[] = [];
+  const collect = (value: unknown) => {
+    if (Array.isArray(value)) {
+      value.forEach(collect);
+      return;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      if ((trimmed.startsWith('[') && trimmed.endsWith(']')) || (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+        try {
+          collect(JSON.parse(trimmed));
+          return;
+        } catch {
+          // Fall through and treat it as a plain URL-ish string.
+        }
+      }
+      urls.push(trimmed);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      const objectValue = value as Record<string, unknown>;
+      const url = readFundingApiString(objectValue, ['url', 'imageUrl', 'image_url', 'fileUrl', 'file_url', 'thumbnailUrl', 'thumbnail_url']);
+      if (url) urls.push(url);
+    }
+  };
+
+  arrayKeys.forEach((key) => collect(source[key]));
+  stringKeys.forEach((key) => collect(source[key]));
+  return Array.from(new Set(urls.map((url) => url.trim()).filter(Boolean)));
+}
+
 function readFundingApiArrayOrString<T>(source: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     const value = source[key];
@@ -1269,6 +1305,18 @@ function readFundingApiNullableString(source: Record<string, unknown>, keys: str
 function getFundingNestedObject(source: Record<string, unknown>, key: string) {
   const value = source[key];
   return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function getFundingPreviewNestedObject(primary: Record<string, unknown>, fallback: Record<string, unknown>, keys: string[]) {
+  for (const source of [primary, fallback]) {
+    for (const key of keys) {
+      const value = source[key];
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+      }
+    }
+  }
+  return {};
 }
 
 function normalizeFundingDraftListItem(source: Record<string, unknown>): FundingDraftListItem {
@@ -1315,14 +1363,32 @@ function normalizeFundingDraftListResponse(response: unknown): FundingDraftListR
 }
 
 function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPreviewResponse {
+  const responseData = response && typeof response === 'object' ? response as Record<string, unknown> : {};
   const data = getFundingApiObject(response);
-  const basicInfo = getFundingNestedObject(data, 'basicInfo');
-  const schedule = getFundingNestedObject(data, 'schedule');
-  const legalInfo = getFundingNestedObject(data, 'legalInfo');
-  const tasteProfile = getFundingNestedObject(data, 'tasteProfile');
-  const plan = getFundingNestedObject(data, 'plan');
-  const breweryInfo = getFundingNestedObject(data, 'breweryInfo');
-  const notices = getFundingNestedObject(data, 'notices');
+  const basicInfo = getFundingPreviewNestedObject(data, responseData, ['basicInfo', 'basic_info']);
+  const schedule = getFundingPreviewNestedObject(data, responseData, ['schedule']);
+  const legalInfo = getFundingPreviewNestedObject(data, responseData, ['legalInfo', 'legal_info']);
+  const tasteProfile = getFundingPreviewNestedObject(data, responseData, ['tasteProfile', 'taste_profile']);
+  const plan = getFundingPreviewNestedObject(data, responseData, ['plan']);
+  const breweryInfo = getFundingPreviewNestedObject(data, responseData, ['breweryInfo', 'brewery_info']);
+  const notices = getFundingPreviewNestedObject(data, responseData, ['notices']);
+  const dataPreviewImages = readFundingApiUrlArray(
+    data,
+    ['images', 'imageUrls', 'image_urls', 'allImageUrls', 'all_image_urls'],
+    ['thumbnailUrl', 'thumbnail_url']
+  );
+  const topLevelPreviewImages = readFundingApiUrlArray(
+    responseData,
+    ['images', 'imageUrls', 'image_urls', 'allImageUrls', 'all_image_urls'],
+    ['thumbnailUrl', 'thumbnail_url']
+  );
+  const previewImages = dataPreviewImages.length ? dataPreviewImages : topLevelPreviewImages;
+  const basicImageUrls = readFundingApiUrlArray(basicInfo, ['imageUrls', 'image_urls', 'images'], ['thumbnailUrl', 'thumbnail_url']);
+  const allBasicImageUrls = readFundingApiUrlArray(
+    basicInfo,
+    ['allImageUrls', 'all_image_urls', 'imageUrls', 'image_urls', 'images'],
+    ['thumbnailUrl', 'thumbnail_url']
+  );
 
   return {
     draftId: readFundingApiNumber(data, ['draftId', 'draft_id']),
@@ -1338,8 +1404,9 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       alcoholPercentage: readFundingApiNumber(basicInfo, ['alcoholPercentage', 'alcohol_percentage']) || undefined,
       summary: readFundingApiString(basicInfo, ['summary']),
       thumbnailUrl: readFundingApiString(basicInfo, ['thumbnailUrl', 'thumbnail_url']),
-      imageUrls: readFundingApiStringArray(basicInfo, ['imageUrls', 'image_urls'], ['thumbnailUrl', 'thumbnail_url']),
-      allImageUrls: readFundingApiStringArray(basicInfo, ['allImageUrls', 'all_image_urls', 'imageUrls', 'image_urls'], ['thumbnailUrl', 'thumbnail_url']),
+      imageUrls: basicImageUrls.length ? basicImageUrls : previewImages,
+      allImageUrls: allBasicImageUrls.length ? allBasicImageUrls : previewImages,
+      images: previewImages,
       tags: readFundingApiArray<string>(basicInfo, ['tags']),
     },
     schedule: {
@@ -1419,13 +1486,19 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       adultVerificationNotice: readFundingApiString(notices, ['adultVerificationNotice', 'adult_verification_notice']),
       riskNotice: readFundingApiString(notices, ['riskNotice', 'risk_notice']),
     },
-    documents: readFundingApiArray<Record<string, unknown>>(data, ['documents']).map((document) => ({
+    documents: (
+      readFundingApiArray<Record<string, unknown>>(data, ['documents']).length
+        ? readFundingApiArray<Record<string, unknown>>(data, ['documents'])
+        : readFundingApiArray<Record<string, unknown>>(responseData, ['documents'])
+    ).map((document) => ({
       documentId: readFundingApiNumber(document, ['documentId', 'document_id']),
+      draftId: readFundingApiNumber(document, ['draftId', 'draft_id']),
       documentType: readFundingApiString(document, ['documentType', 'document_type']),
-      fileName: readFundingApiString(document, ['fileName', 'file_name']),
-      fileUrl: readFundingApiString(document, ['fileUrl', 'file_url']),
+      fileName: readFundingApiString(document, ['fileName', 'file_name', 'originalName', 'original_name']),
+      fileUrl: readFundingApiString(document, ['fileUrl', 'file_url', 'url']),
       createdAt: readFundingApiString(document, ['createdAt', 'created_at']),
     })),
+    images: previewImages,
     message: readFundingApiString(data, ['message']),
   };
 }

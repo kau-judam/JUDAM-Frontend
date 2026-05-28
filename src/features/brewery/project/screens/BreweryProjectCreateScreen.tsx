@@ -454,9 +454,11 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       ? basicInfo.allImageUrls
       : basicInfo.imageUrls?.length
         ? basicInfo.imageUrls
-        : thumbnailUrl
-          ? [thumbnailUrl]
-          : []
+        : preview.images?.length
+          ? preview.images
+          : thumbnailUrl
+            ? [thumbnailUrl]
+            : []
   );
   const alcoholContent = String(legalInfo.alcoholPercentage || basicInfo.alcoholPercentage || '');
   const breweryName = breweryInfo.breweryName || user?.breweryName || '';
@@ -564,6 +566,7 @@ export default function BreweryProjectCreateScreen() {
   const appliedEditProjectKeyRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('basic');
   const [showPreview, setShowPreview] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -1985,14 +1988,25 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleOpenPreview = () => {
-    setShowPreview(true);
-    if (isEditMode) return;
+    if (isPreviewLoading) return;
     void (async () => {
+      setIsPreviewLoading(true);
       try {
         const draftId = await ensureServerDraft();
-        await getFundingDraftPreview(draftId);
+        const serverImageUrls = await uploadProjectImagesToApi(draftId);
+        await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(serverImageUrls));
+        await syncReadyProjectSectionsToApi(draftId, serverImageUrls);
+        const preview = await getFundingDraftPreview(draftId);
+        const serverDraft = createProjectDraftFromServerPreview(preview, user);
+        applyDraftPayload(serverDraft);
+        setTempSaveTimestamp(serverDraft.timestamp || '');
+        setHasTempSave(true);
+        setShowPreview(true);
       } catch (error) {
+        showAlert(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버에서 불러오지 못했습니다.'));
         console.warn(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버와 동기화하지 못했습니다.'));
+      } finally {
+        setIsPreviewLoading(false);
       }
     })();
   };
@@ -2794,8 +2808,8 @@ export default function BreweryProjectCreateScreen() {
               <X size={24} color="#111" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{isEditMode ? '펀딩 프로젝트 수정' : '펀딩 프로젝트 만들기'}</Text>
-            <TouchableOpacity style={styles.headerIcon} onPress={handleOpenPreview}>
-              <Eye size={20} color="#111" />
+            <TouchableOpacity style={styles.headerIcon} onPress={handleOpenPreview} disabled={isPreviewLoading}>
+              <Eye size={20} color={isPreviewLoading ? '#9CA3AF' : '#111'} />
             </TouchableOpacity>
           </View>
           <View style={styles.progressStrip}>

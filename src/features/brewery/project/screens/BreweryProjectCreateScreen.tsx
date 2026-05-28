@@ -69,7 +69,6 @@ import {
 } from '@/features/funding/api';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { FIXED_PROJECT_SHIPPING_FEE } from '@/features/funding/supportConfig';
-import { createRecipeFunding } from '@/features/recipe/api';
 import SafeStorage from '@/utils/storage';
 
 type TabId = 'basic' | 'funding' | 'rewards' | 'taste' | 'plan' | 'creator' | 'trust' | 'verification';
@@ -553,8 +552,6 @@ export default function BreweryProjectCreateScreen() {
   const { projects, mergeProjects } = useFunding();
   const editProjectIdParam = getParamValue(params.projectId) || getParamValue(params.editId);
   const initialDraftIdParam = getParamValue(params.draftId);
-  const sourceRecipeIdParam = getParamValue(params.recipeId);
-  const sourceRecipeId = sourceRecipeIdParam ? Number(sourceRecipeIdParam) : null;
   const editProjectId = editProjectIdParam ? Number(editProjectIdParam) : null;
   const initialDraftId = initialDraftIdParam ? Number(initialDraftIdParam) : null;
   const editProject = useMemo(
@@ -2005,7 +2002,6 @@ export default function BreweryProjectCreateScreen() {
     setIsSubmitting(true);
     setSubmitSyncWarning('');
     try {
-      let convertedFunding: Awaited<ReturnType<typeof createRecipeFunding>>['funding'] | null = null;
       let submittedFundingId: number | null = null;
       let submittedImageUrls: string[] = [];
       if (!isEditMode) {
@@ -2015,16 +2011,6 @@ export default function BreweryProjectCreateScreen() {
           await uploadProjectDocumentsToApi(draftId);
           const submittedDraft = await submitFundingDraft(draftId);
           submittedFundingId = submittedDraft.fundingId || null;
-          if (sourceRecipeId && Number.isFinite(sourceRecipeId)) {
-            const response = await createRecipeFunding(sourceRecipeId, {
-              title: basicInfo.title,
-              description: projectPlan.introduction || basicInfo.summary,
-              goal_amount: Number(fundingInfo.goalAmount),
-              start_date: fundingInfo.startDate,
-              end_date: endDateText,
-            });
-            convertedFunding = response.funding;
-          }
         } catch (error) {
           const serverSyncError = getFundingApiErrorMessage(error, '서버 동기화 중 문제가 발생했습니다.')
             .replace(/펀딩 프로젝트 임시저장/g, '펀딩 프로젝트 제출 준비')
@@ -2057,25 +2043,6 @@ export default function BreweryProjectCreateScreen() {
         };
         mergeProjects([submittedProject]);
         setCreatedProjectId(submittedProject.id);
-        void SafeStorage.removeItem(tempSaveKey);
-        setHasTempSave(false);
-        setTempSaveTimestamp('');
-        setSubmitSyncWarning('');
-        setShowSubmitSuccess(true);
-        return;
-      }
-      if (!isEditMode && convertedFunding) {
-        const convertedProject: FundingProject = {
-          ...payload,
-          id: convertedFunding.funding_id,
-          goalAmount: convertedFunding.goal_amount,
-          currentAmount: convertedFunding.current_amount,
-          status: TEMP_CREATED_PROJECT_STATUS,
-          startDate: convertedFunding.start_date,
-          endDate: convertedFunding.end_date,
-        };
-        mergeProjects([convertedProject]);
-        setCreatedProjectId(convertedProject.id);
         void SafeStorage.removeItem(tempSaveKey);
         setHasTempSave(false);
         setTempSaveTimestamp('');

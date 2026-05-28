@@ -84,6 +84,18 @@ function getSupportOptionStockLabel(option: FundingSupportOption | null | undefi
   return '';
 }
 
+function getProjectMainIngredient(project: FundingProject) {
+  return project.mainIngredients || project.ingredients?.[0]?.ingredient || '-';
+}
+
+function getProjectIngredientSummary(project: FundingProject) {
+  const ingredientText = project.ingredients
+    ?.map((item) => [item.ingredient, item.origin].filter(Boolean).join(' '))
+    .filter(Boolean)
+    .join(', ');
+  return project.subIngredients || ingredientText || project.mainIngredients || '-';
+}
+
 function getPostalCodeFromAddress(address: string) {
   return address.match(/^\[([^\]]+)\]/)?.[1]?.trim();
 }
@@ -282,6 +294,9 @@ export default function FundingSupportScreen() {
   const bottleSize = project ? getProjectBottleSize(project) : '';
   const alcoholContent = project ? getProjectAlcoholContent(project) : '';
   const estimatedDelivery = project ? getProjectEstimatedDelivery(project) : '';
+  const mainIngredientLabel = project ? getFundingMainIngredientLabel(project) : '메인 재료';
+  const mainIngredient = project ? getProjectMainIngredient(project) : '-';
+  const ingredientSummary = project ? getProjectIngredientSummary(project) : '-';
   const rewardAmount = unitPrice * quantity;
   const extraAmount = Number(additionalSupport) || 0;
   const totalAmount = rewardAmount + shippingFee + extraAmount;
@@ -566,6 +581,16 @@ export default function FundingSupportScreen() {
               <View style={styles.rewardSpecBox}>
                 <Text style={styles.rewardSpecLabel}>1병 가격</Text>
                 <Text style={styles.rewardSpecValue}>{unitPrice.toLocaleString()}원</Text>
+              </View>
+            </View>
+            <View style={styles.ingredientInfoBox}>
+              <View style={styles.ingredientInfoRow}>
+                <Text style={styles.ingredientInfoLabel}>{mainIngredientLabel}</Text>
+                <Text style={styles.ingredientInfoValue}>{mainIngredient}</Text>
+              </View>
+              <View style={styles.ingredientInfoRow}>
+                <Text style={styles.ingredientInfoLabel}>재료</Text>
+                <Text style={styles.ingredientInfoValue}>{ingredientSummary}</Text>
               </View>
             </View>
           </View>
@@ -1220,6 +1245,10 @@ const styles = StyleSheet.create({
   rewardSpecBox: { flex: 1, minHeight: 58, borderRadius: 14, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', paddingHorizontal: 10, paddingVertical: 9, justifyContent: 'center' },
   rewardSpecLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '800', marginBottom: 4 },
   rewardSpecValue: { fontSize: 12, color: '#111', fontWeight: '900' },
+  ingredientInfoBox: { borderRadius: 14, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', padding: 12, gap: 8 },
+  ingredientInfoRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  ingredientInfoLabel: { width: 72, fontSize: 12, color: '#6B7280', fontWeight: '800' },
+  ingredientInfoValue: { flex: 1, fontSize: 13, color: '#111', fontWeight: '800', lineHeight: 18, textAlign: 'right' },
   deliveryRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   deliveryText: { fontSize: 13, color: '#6B7280', fontWeight: '700' },
   deliveryDate: { color: '#EF4444', fontWeight: '900' },

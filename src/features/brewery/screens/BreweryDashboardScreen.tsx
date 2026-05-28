@@ -39,7 +39,6 @@ import { Progress } from '@/components/ui/progress';
 import {
   getFundingProjectImageSource,
   getFundingStatusLabel,
-  fundingProjects,
   isCompletedFundingStatus,
   isSupportableFundingStatus,
   type ProjectStatus,
@@ -111,8 +110,7 @@ export default function BreweryDashboardScreen() {
   const currentUserId = user?.id;
   const currentUserType = user?.type;
   const contextOwnProjects = projects.filter((project) => isFundingProjectOwnedByBrewery(user, project));
-  const demoOwnProjects = fundingProjects.filter((project) => isFundingProjectOwnedByBrewery(user, project));
-  const ownProjects = contextOwnProjects.length > 0 ? contextOwnProjects : demoOwnProjects;
+  const ownProjects = contextOwnProjects;
   const dashboardProjects = ownProjects;
   const filteredFundings = fundingFilter === "active"
     ? dashboardProjects.filter((project) => isSupportableFundingStatus(project.status) || project.status === "심사 중" || project.status === "펀딩 예정")

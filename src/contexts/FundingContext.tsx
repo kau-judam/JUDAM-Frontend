@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
-import { FundingProject, JournalEntry, ProjectStatus, fundingProjects } from "@/constants/data";
+import { FundingProject, JournalEntry, ProjectStatus } from "@/constants/data";
 import type { FundingReview } from "@/features/funding/reviews";
 import type { MyFundingOrderItem } from "@/features/funding/api";
 
@@ -22,6 +22,7 @@ interface FundingContextType {
   addFundingReview: (review: FundingReviewInput) => FundingReview;
   updateFundingReview: (reviewId: number, review: Partial<FundingReviewInput>) => FundingReview | null;
   deleteFundingReview: (reviewId: number) => void;
+  replaceProjects: (incomingProjects: FundingProject[]) => void;
   mergeProjects: (incomingProjects: FundingProject[]) => void;
   mergeProject: (projectId: number, project: Partial<Omit<FundingProject, "id">>) => void;
   mergeFundingReviews: (projectId: number, reviews: FundingReview[]) => void;
@@ -33,7 +34,7 @@ interface FundingContextType {
 const FundingContext = createContext<FundingContextType | undefined>(undefined);
 
 export function FundingProvider({ children }: { children: ReactNode }) {
-  const [projects, setProjects] = useState<FundingProject[]>(fundingProjects);
+  const [projects, setProjects] = useState<FundingProject[]>([]);
   const [participatedFundings, setParticipatedFundings] = useState<ParticipatedFunding[]>([]);
   const [fundingReviews, setFundingReviews] = useState<FundingReview[]>([]);
 
@@ -136,6 +137,10 @@ export function FundingProvider({ children }: { children: ReactNode }) {
   const deleteFundingReview = (reviewId: number) => {
     setFundingReviews((prev) => prev.filter((item) => item.id !== reviewId));
   };
+
+  const replaceProjects = useCallback((incomingProjects: FundingProject[]) => {
+    setProjects(incomingProjects);
+  }, []);
 
   const mergeProjects = useCallback((incomingProjects: FundingProject[]) => {
     if (incomingProjects.length === 0) return;
@@ -242,6 +247,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
         addFundingReview,
         updateFundingReview,
         deleteFundingReview,
+        replaceProjects,
         mergeProjects,
         mergeProject,
         mergeFundingReviews,

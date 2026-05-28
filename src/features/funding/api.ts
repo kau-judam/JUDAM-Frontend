@@ -150,6 +150,7 @@ export type FundingDraftPreviewResponse = {
     primaryIngredient?: string;
     subIngredient?: string;
     subIngredients?: string[];
+    ingredients?: unknown[];
     rawMaterials?: { name: string; origin: string }[];
   };
   tasteProfile?: {
@@ -294,6 +295,20 @@ type FundingBreweryInfoPayload = {
   creatorIntroduction?: string;
   phoneVerified?: boolean;
   accountVerified?: boolean;
+};
+
+type VerifyBreweryAccountPayload = {
+  bankName: string;
+  accountNumber: string;
+  accountHolder?: string;
+};
+
+type VerifyBreweryAccountResponse = {
+  verified: boolean;
+  bankName?: string;
+  accountNumber: string;
+  accountHolder?: string;
+  message?: string;
 };
 
 type FundingNoticesPayload = {
@@ -828,6 +843,7 @@ export type FundingDetailResponse = {
   breweryInfo?: FundingDraftPreviewResponse['breweryInfo'];
   notices?: FundingDraftPreviewResponse['notices'];
   documents?: FundingDraftPreviewResponse['documents'];
+  ingredients?: unknown[];
   tasteProfile?: {
     sweetness: number;
     acidity: number;
@@ -1776,6 +1792,27 @@ function normalizeFundingSectionResponse(response: unknown): FundingSectionRespo
   };
 }
 
+function normalizeVerifyBreweryAccountResponse(response: unknown, fallbackAccountNumber: string): VerifyBreweryAccountResponse {
+  const raw = getFundingApiRawObject(response);
+  const data = getFundingApiObject(response);
+  const account = getFundingApiNestedObject(data, ['account', 'bankAccount', 'bank_account']);
+  const source = { ...raw, ...data, ...account };
+  return {
+    verified: readFundingApiBoolean(source, ['verified', 'isVerified', 'is_verified']),
+    bankName: readFundingApiString(source, ['bankName', 'bank_name', 'bank']) || undefined,
+    accountNumber: readFundingApiString(source, [
+      'accountNumber',
+      'account_number',
+      'numericAccountNumber',
+      'numeric_account_number',
+      'verifiedAccountNumber',
+      'verified_account_number',
+    ]) || fallbackAccountNumber,
+    accountHolder: readFundingApiString(source, ['accountHolder', 'account_holder', 'holderName', 'holder_name']) || undefined,
+    message: readFundingApiString(source, ['message']) || readFundingApiString(raw, ['message']) || undefined,
+  };
+}
+
 function normalizeFundingDraftSubmitResponse(response: unknown): FundingDraftSubmitResponse {
   const data = getFundingApiObject(response);
   return {
@@ -2326,6 +2363,24 @@ export async function saveFundingPlan(draftId: number, payload: FundingPlanPaylo
     body: JSON.stringify(payload),
   });
   return normalizeFundingSectionResponse(result);
+}
+
+export async function verifyBreweryAccount(payload: VerifyBreweryAccountPayload) {
+  const accountNumber = payload.accountNumber.replace(/\D/g, '') || payload.accountNumber;
+  const result = await requestFundingJson<unknown>('/api/breweries/accounts/verify', {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({
+      bankName: payload.bankName,
+      bank_name: payload.bankName,
+      bank: payload.bankName,
+      accountNumber,
+      account_number: accountNumber,
+      accountHolder: payload.accountHolder,
+      account_holder: payload.accountHolder,
+    }),
+  });
+  return normalizeVerifyBreweryAccountResponse(result, accountNumber);
 }
 
 export async function saveFundingBreweryInfo(draftId: number, payload: FundingBreweryInfoPayload) {

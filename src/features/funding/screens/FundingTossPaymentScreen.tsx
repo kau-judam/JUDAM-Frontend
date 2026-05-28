@@ -295,6 +295,17 @@ export default function FundingTossPaymentScreen() {
       code: urlParams.code,
       message: urlParams.message,
     };
+    console.log('[TossPayment] return url received', {
+      type: url.startsWith(`${TOSS_RETURN_ORIGIN}/funding/payment/success`) ? 'success' : 'fail',
+      hasPaymentKey: Boolean(routeParams.paymentKey),
+      orderId: routeParams.orderId,
+      amount: routeParams.amount,
+      expectedAmount: returnParams.expectedAmount,
+      fundingId: returnParams.fundingId,
+      numericOrderId: returnParams.numericOrderId,
+      code: routeParams.code,
+      message: routeParams.message,
+    });
     if (url.startsWith(`${TOSS_RETURN_ORIGIN}/funding/payment/success`)) {
       router.replace({ pathname: '/funding/payment/success', params: routeParams } as any);
       return true;
@@ -317,25 +328,6 @@ export default function FundingTossPaymentScreen() {
   }, []);
 
   const canOpenPayment = Boolean(TOSS_CLIENT_KEY && html);
-  const canUseDemoConfirm = Boolean(TOSS_CLIENT_KEY?.startsWith('test_'));
-
-  const handleDemoConfirm = useCallback(() => {
-    if (!paymentInfo.orderId || !Number.isFinite(paymentInfo.amount) || paymentInfo.amount <= 0) {
-      Alert.alert('시연용 결제를 진행할 수 없습니다', '주문 정보나 결제 금액을 다시 확인해주세요.');
-      return;
-    }
-    handledReturnRef.current = true;
-    const demoPaymentKey = `test_${paymentInfo.orderId}_${Date.now()}`.replace(/[^A-Za-z0-9_-]/g, '_');
-    router.replace({
-      pathname: '/funding/payment/success',
-      params: {
-        ...returnParams,
-        paymentKey: demoPaymentKey,
-        orderId: paymentInfo.orderId,
-        amount: String(paymentInfo.amount),
-      },
-    } as any);
-  }, [paymentInfo.amount, paymentInfo.orderId, returnParams]);
 
   if (!canOpenPayment) {
     return (
@@ -366,11 +358,6 @@ export default function FundingTossPaymentScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>토스 테스트 결제</Text>
         <View style={styles.headerSpacer} />
-        {canUseDemoConfirm && (
-          <TouchableOpacity style={styles.headerDemoButton} onPress={handleDemoConfirm}>
-            <Text style={styles.headerDemoButtonText}>시연완료</Text>
-          </TouchableOpacity>
-        )}
       </View>
       {!webViewReady && (
         <View style={styles.loadingOverlay}>
@@ -407,14 +394,6 @@ export default function FundingTossPaymentScreen() {
           handleExternalUrl(state.url);
         }}
       />
-      {canUseDemoConfirm && (
-        <View style={[styles.demoBar, { paddingBottom: insets.bottom + 10 }]}>
-          <TouchableOpacity style={styles.demoButton} onPress={handleDemoConfirm}>
-            <Text style={styles.demoButtonText}>시연용 결제 완료</Text>
-          </TouchableOpacity>
-          <Text style={styles.demoHint}>외부 결제 앱 설치 화면에서 막히면 사용하세요.</Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -435,16 +414,6 @@ const styles = StyleSheet.create({
   iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, color: '#111827', fontWeight: '900' },
   headerSpacer: { width: 44, height: 44 },
-  headerDemoButton: {
-    minWidth: 66,
-    height: 34,
-    paddingHorizontal: 10,
-    borderRadius: 17,
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerDemoButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
   loadingOverlay: {
     position: 'absolute',
     top: 70,
@@ -471,25 +440,4 @@ const styles = StyleSheet.create({
   body: { fontSize: 14, lineHeight: 22, color: '#6B7280', fontWeight: '700', textAlign: 'center', marginBottom: 24 },
   primaryButton: { width: '100%', height: 54, borderRadius: 14, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
   primaryButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
-  demoBar: {
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    gap: 6,
-  },
-  demoButton: {
-    width: '100%',
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  demoButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
-  demoHint: { fontSize: 11, color: '#6B7280', fontWeight: '800' },
 });

@@ -17,6 +17,16 @@ function getFiniteAmount(value: string | undefined) {
   return Number.isFinite(amount) && amount > 0 ? amount : undefined;
 }
 
+function withPaymentTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
 export default function TossPaymentSuccessScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
@@ -75,16 +85,32 @@ export default function TossPaymentSuccessScreen() {
       }
 
       try {
-        const confirmed = await confirmTossPayment({
-          paymentKey: paymentInfo.paymentKey,
+        console.log('[TossPaymentSuccess] confirm request', {
           orderId: paymentInfo.orderId,
           amount: paymentInfo.amount,
+          fundingId: paymentInfo.fundingId,
+          numericOrderId: paymentInfo.numericOrderId,
+          hasPaymentKey: Boolean(paymentInfo.paymentKey),
         });
+        const confirmed = await withPaymentTimeout(
+          confirmTossPayment({
+            paymentKey: paymentInfo.paymentKey,
+            orderId: paymentInfo.orderId,
+            amount: paymentInfo.amount,
+          }),
+          30000,
+          '결제 승인 응답이 지연되고 있습니다. 잠시 후 다시 확인해주세요.'
+        );
+        console.log('[TossPaymentSuccess] confirm response', confirmed);
         const orderLookupId = paymentInfo.numericOrderId || paymentInfo.orderId;
         let detail: Awaited<ReturnType<typeof getFundingOrderDetail>> | null = null;
         if (orderLookupId) {
           try {
-            detail = await getFundingOrderDetail(orderLookupId);
+            detail = await withPaymentTimeout(
+              getFundingOrderDetail(orderLookupId),
+              8000,
+              '주문 상세 조회가 지연되고 있습니다.'
+            );
           } catch (detailError) {
             console.warn(getFundingApiErrorMessage(detailError, '주문 상세를 불러오지 못했습니다.'));
           }
@@ -100,7 +126,11 @@ export default function TossPaymentSuccessScreen() {
           const currentProject = projects.find((item) => item.id === fundingId);
           if (currentProject) {
             try {
-              const latestDetail = await getFundingDetail(fundingId);
+              const latestDetail = await withPaymentTimeout(
+                getFundingDetail(fundingId),
+                8000,
+                '펀딩 상세 재조회가 지연되고 있습니다.'
+              );
               mergeProject(fundingId, mergeFundingDetail(currentProject, latestDetail));
             } catch (detailError) {
               console.warn(getFundingApiErrorMessage(detailError, '펀딩 상세를 다시 불러오지 못했습니다.'));
@@ -115,6 +145,12 @@ export default function TossPaymentSuccessScreen() {
         setMessage('결제 승인과 후원 처리가 완료되었습니다.');
       } catch (error) {
         const errorMessage = getFundingApiErrorMessage(error, '토스 결제 승인 중 문제가 발생했습니다.');
+        console.warn('[TossPaymentSuccess] confirm failed', {
+          orderId: paymentInfo.orderId,
+          amount: paymentInfo.amount,
+          message: errorMessage,
+          error,
+        });
         if (/이미|already|PAID/i.test(errorMessage)) {
           if (mounted) {
             setConfirmedFundingId(paymentInfo.fundingId || null);

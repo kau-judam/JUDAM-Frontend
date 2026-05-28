@@ -116,6 +116,14 @@ function getTossPaymentOrderId(orderId: string | number, numericOrderId?: number
   return normalizeTossOrderId(`order_${Date.now()}`);
 }
 
+function goBackWithFallback(fallbackHref: string) {
+  if (router.canGoBack()) {
+    router.back();
+    return;
+  }
+  router.replace(fallbackHref as any);
+}
+
 export default function FundingSupportScreen() {
   const insets = useSafeAreaInsets();
   const { id, quantity: quantityParam, optionId: optionIdParam } = useLocalSearchParams();
@@ -334,6 +342,10 @@ export default function FundingSupportScreen() {
     setShowConfirmModal(true);
   };
 
+  const handleBackPress = () => {
+    goBackWithFallback(project ? `/funding/${project.id}` : '/funding');
+  };
+
   const handleConfirmPayment = async () => {
     if (!project || !user || !selectedPaymentMethod || isProcessing) return;
     setIsProcessing(true);
@@ -432,6 +444,7 @@ export default function FundingSupportScreen() {
         onPrimaryPress={() => router.replace('/login' as any)}
         secondaryLabel="펀딩으로 돌아가기"
         onSecondaryPress={() => router.replace('/funding' as any)}
+        backHref={project ? `/funding/${project.id}` : '/funding'}
       />
     );
   }
@@ -450,6 +463,7 @@ export default function FundingSupportScreen() {
         onPrimaryPress={() => router.replace(user.isBreweryVerified ? `/brewery/project/create?mode=edit&projectId=${project.id}` as any : '/brewery/verification' as any)}
         secondaryLabel="펀딩으로 돌아가기"
         onSecondaryPress={() => router.replace('/funding' as any)}
+        backHref={`/funding/${project.id}`}
       />
     );
   }
@@ -467,6 +481,7 @@ export default function FundingSupportScreen() {
         }
         primaryLabel="진행 펀딩 보기"
         onPrimaryPress={() => router.replace('/funding' as any)}
+        backHref={`/funding/${project.id}`}
       />
     );
   }
@@ -477,7 +492,7 @@ export default function FundingSupportScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.iconBtn} onPress={handleBackPress}>
           <ChevronLeft size={24} color="#111" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>후원하기</Text>
@@ -924,6 +939,7 @@ function AccessNotice({
   onPrimaryPress,
   secondaryLabel,
   onSecondaryPress,
+  backHref = '/funding',
 }: {
   insetsTop: number;
   title: string;
@@ -932,11 +948,12 @@ function AccessNotice({
   onPrimaryPress: () => void;
   secondaryLabel?: string;
   onSecondaryPress?: () => void;
+  backHref?: string;
 }) {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insetsTop }]}>
-        <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => goBackWithFallback(backHref)}>
           <ChevronLeft size={24} color="#111" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>후원하기</Text>

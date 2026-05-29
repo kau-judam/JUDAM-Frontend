@@ -3,6 +3,10 @@ export interface FundingReview {
   projectId: number;
   userId?: string;
   userName: string;
+  writerRole?: string;
+  isBrewery?: boolean;
+  writerIsBrewery?: boolean;
+  isProjectOwner?: boolean | null;
   rating: number;
   date: string;
   comment: string;
@@ -33,10 +37,31 @@ export interface FundingReviewComment {
   reviewId: number;
   author: string;
   authorType: "user" | "brewery";
+  writerRole?: string;
+  isBrewery?: boolean;
+  writerIsBrewery?: boolean;
+  isProjectOwner?: boolean | null;
   content: string;
   timestamp: string;
   likes: number;
   liked: boolean;
+}
+
+export type FundingBreweryBadgeSource = {
+  isProjectOwner?: boolean | null;
+  isBrewery?: boolean | null;
+  writerIsBrewery?: boolean | null;
+  writerRole?: string | null;
+};
+
+export function shouldShowFundingBreweryBadge(source: FundingBreweryBadgeSource | null | undefined) {
+  if (!source) return false;
+  return (
+    source.isProjectOwner === true ||
+    source.isBrewery === true ||
+    source.writerIsBrewery === true ||
+    source.writerRole?.trim().toUpperCase() === 'BREWERY'
+  );
 }
 
 export const fundingReviews: FundingReview[] = [

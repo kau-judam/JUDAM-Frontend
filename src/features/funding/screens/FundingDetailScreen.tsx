@@ -109,7 +109,11 @@ import {
   getProjectShippingFee,
   getProjectUnitPrice,
 } from '@/features/funding/supportConfig';
-import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/funding/reviews';
+import {
+  isFundingReviewOwnedByUser,
+  shouldShowFundingBreweryBadge,
+  type FundingReview,
+} from '@/features/funding/reviews';
 import { normalizeFundingImageUrl, normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { canAccessFundingReviews } from '@/features/funding/permissions';
@@ -203,10 +207,11 @@ function getFundingProjectOwnerIds(project: FundingProject | null | undefined) {
 }
 
 function isProjectOwnerBreweryWriter(
-  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery'>,
+  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery' | 'writerIsBrewery' | 'writerRole' | 'isProjectOwner'>,
   project: FundingProject | null | undefined,
   currentUser?: User | null
 ) {
+  if (shouldShowFundingBreweryBadge(writer)) return true;
   if (!project) return false;
   const writerId = normalizeFundingOwnerId(writer.writerId);
   const ownerIds = getFundingProjectOwnerIds(project);
@@ -226,7 +231,7 @@ function isProjectOwnerBreweryWriter(
 }
 
 function resolveBreweryLogWriter(
-  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery'>,
+  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery' | 'writerIsBrewery' | 'writerRole' | 'isProjectOwner'>,
   currentUser: User | null | undefined,
   project: FundingProject | null | undefined
 ) {
@@ -2404,7 +2409,10 @@ export default function FundingDetailScreen() {
                           <TouchableOpacity key={r.id} style={styles.reviewCard} activeOpacity={0.85} onPress={() => handleReviewPress(r.id)}>
                              <View style={styles.rowBetween}>
                                 <View>
-                                   <Text style={styles.reviewUser}>{r.userName}</Text>
+                                   <View style={styles.reviewUserRow}>
+                                      <Text style={styles.reviewUser}>{r.userName}</Text>
+                                      {shouldShowFundingBreweryBadge(r) && <View style={styles.brewBadge}><Text style={styles.brewBadgeTxt}>양조장</Text></View>}
+                                   </View>
                                    <View style={styles.starRow}>
                                       <FundingStarRating rating={r.rating} size={14} gap={2} />
                                    </View>
@@ -3025,6 +3033,7 @@ const styles = StyleSheet.create({
   writeReviewTxt: { color: '#FFF', fontSize: 14, fontWeight: '700' },
   reviewList: { gap: 12 },
   reviewCard: { width: '100%', backgroundColor: '#F9FAFB', borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', padding: 16 },
+  reviewUserRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   reviewUser: { fontSize: 14, fontWeight: '800', color: '#111' },
   reviewDate: { fontSize: 12, color: '#6B7280' },
   starRow: { flexDirection: 'row', gap: 2, marginTop: 4, marginBottom: 8 },

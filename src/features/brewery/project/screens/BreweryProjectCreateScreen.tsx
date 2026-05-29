@@ -3,6 +3,7 @@ import DateTimePicker, { type DateTimePickerEvent } from '@react-native-communit
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import {
+  ActivityIndicator,
   Animated,
   Image,
   KeyboardAvoidingView,
@@ -48,6 +49,7 @@ import { confirmPhoneVerification, getMyBreweryApplication, requestPhoneVerifica
 import {
   createFundingDraft,
   deleteFundingDraft,
+  generateFundingDraftAiImage,
   getFundingApiErrorMessage,
   getFundingDraftByFundingId,
   getFundingDraftList,
@@ -69,6 +71,7 @@ import {
   updateFundingDraft,
   updateFundingProjectApi,
 } from '@/features/funding/api';
+import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { FIXED_PROJECT_SHIPPING_FEE } from '@/features/funding/supportConfig';
 import SafeStorage from '@/utils/storage';
@@ -238,6 +241,53 @@ function normalizeProjectImageUrls(images?: string[]) {
 
 function normalizeServerProjectImageUrls(images?: string[]) {
   return normalizeProjectImageUrls(images).filter((image) => /^https?:\/\//i.test(image));
+}
+
+function sanitizeFundingCreateDebugValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    if (/^(data:|base64:)/i.test(value) || value.length > 500) {
+      return `${value.slice(0, 80)}...(${value.length} chars)`;
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(sanitizeFundingCreateDebugValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, sanitizeFundingCreateDebugValue(entry)])
+    );
+  }
+  return value;
+}
+
+function getFundingCreateImageKind(image: string) {
+  if (/^https?:\/\//i.test(image)) return 'remote';
+  if (/^file:\/\//i.test(image)) return 'file';
+  if (/^content:\/\//i.test(image)) return 'content';
+  if (/^data:/i.test(image)) return 'data';
+  if (/^base64:/i.test(image)) return 'base64';
+  return image ? 'other' : 'empty';
+}
+
+function summarizeFundingCreateImages(images?: string[]) {
+  const normalized = normalizeProjectImageUrls(images);
+  return {
+    thumbnailUrl: normalizeServerProjectImageUrls(normalized)[0],
+    imageUrl: normalized[0],
+    imageUrls: normalizeServerProjectImageUrls(normalized),
+    images: normalized.map((image) => ({
+      value: sanitizeFundingCreateDebugValue(image),
+      kind: getFundingCreateImageKind(image),
+      length: image.length,
+    })),
+    hasFileUri: normalized.some((image) => /^file:\/\//i.test(image)),
+    hasContentUri: normalized.some((image) => /^content:\/\//i.test(image)),
+    hasDataImage: normalized.some((image) => /^data:/i.test(image)),
+    hasBase64: normalized.some((image) => /^base64:/i.test(image)),
+  };
+}
+
+function logFundingCreatePayload(scope: 'SAVE' | 'SUBMIT' | 'AI_IMAGE', label: string, payload: unknown) {
+  console.log(`[FundingCreate][${scope}] ${label}`, JSON.stringify(sanitizeFundingCreateDebugValue(payload), null, 2));
 }
 
 function parseTextLines(value: string) {
@@ -702,6 +752,7 @@ export default function BreweryProjectCreateScreen() {
   const [isAccountVerifying, setIsAccountVerifying] = useState(false);
   const [tagDraft, setTagDraft] = useState('');
   const [isImageReordering, setIsImageReordering] = useState(false);
+  const [isAiImageGenerating, setIsAiImageGenerating] = useState(false);
   const [basicInfo, setBasicInfo] = useState({
     category: '막걸리',
     title: '',
@@ -1400,6 +1451,11 @@ export default function BreweryProjectCreateScreen() {
   const uploadProjectImagesToApi = async (draftId: number) => {
     const projectImages = normalizeProjectImageUrls(basicInfo.images);
     const nextImages: string[] = [];
+    console.log('[FundingCreate][Images]', {
+      step: 'uploadProjectImagesToApi:start',
+      draftId,
+      ...summarizeFundingCreateImages(projectImages),
+    });
 
     for (const [index, image] of projectImages.entries()) {
       if (!isLocalProjectImageUri(image)) {
@@ -1407,6 +1463,12 @@ export default function BreweryProjectCreateScreen() {
         continue;
       }
 
+      console.log('[FundingCreate][Images]', {
+        step: 'uploadProjectImagesToApi:upload-local',
+        draftId,
+        index,
+        image: summarizeFundingCreateImages([image]).images[0],
+      });
       const uploaded = await uploadFundingDraftFile(draftId, 'PROJECT_IMAGE', getProjectImageUploadFile(image, index));
       if (!uploaded.fileUrl) {
         throw new Error('대표 이미지 업로드 결과 URL을 확인할 수 없습니다.');
@@ -1419,12 +1481,31 @@ export default function BreweryProjectCreateScreen() {
       setBasicInfo((prev) => ({ ...prev, images: serverImageUrls }));
     }
 
+    console.log('[FundingCreate][Images]', {
+      step: 'uploadProjectImagesToApi:done',
+      draftId,
+      ...summarizeFundingCreateImages(serverImageUrls),
+    });
     return serverImageUrls;
   };
 
   const syncReadyProjectSectionsToApi = async (draftId: number, preparedImageUrls?: string[]) => {
     const alcoholPercentage = Number(basicInfo.alcoholContent);
     const serverImageUrls = preparedImageUrls ?? await uploadProjectImagesToApi(draftId);
+    logFundingCreatePayload('SAVE', 'basicInfo payload', {
+      draftId,
+      title: basicInfo.title.trim(),
+      shortTitle: basicInfo.shortTitle.trim() || undefined,
+      category: basicInfo.category.trim() || '막걸리',
+      mainIngredient: basicInfo.mainIngredient.trim(),
+      subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
+      alcoholPercentage: Number(basicInfo.alcoholContent),
+      summary: basicInfo.summary.trim(),
+      thumbnailUrl: serverImageUrls[0] || undefined,
+      imageUrls: serverImageUrls,
+      images: serverImageUrls,
+      tags: getReadyTags(),
+    });
     await saveFundingBasicInfo(draftId, {
       title: basicInfo.title.trim() || undefined,
       shortTitle: basicInfo.shortTitle.trim() || undefined,
@@ -1487,8 +1568,28 @@ export default function BreweryProjectCreateScreen() {
 
   const saveProjectSectionsToApi = async (draftId: number) => {
     const serverImageUrls = await uploadProjectImagesToApi(draftId);
-    await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(serverImageUrls));
+    const draftPayload = getDraftUpdatePayloadForApi(serverImageUrls);
+    logFundingCreatePayload('SUBMIT', 'updateFundingDraft payload', {
+      draftId,
+      ...draftPayload,
+      imagesDebug: summarizeFundingCreateImages(serverImageUrls),
+    });
+    await updateFundingDraft(draftId, draftPayload);
 
+    logFundingCreatePayload('SUBMIT', 'basicInfo payload', {
+      draftId,
+      title: basicInfo.title.trim(),
+      shortTitle: basicInfo.shortTitle.trim() || undefined,
+      category: basicInfo.category.trim() || '막걸리',
+      mainIngredient: basicInfo.mainIngredient.trim(),
+      subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
+      alcoholPercentage: Number(basicInfo.alcoholContent),
+      summary: basicInfo.summary.trim(),
+      thumbnailUrl: serverImageUrls[0] || undefined,
+      imageUrls: serverImageUrls,
+      images: serverImageUrls,
+      tags: getReadyTags(),
+    });
     await saveFundingBasicInfo(draftId, {
       title: basicInfo.title.trim(),
       shortTitle: basicInfo.shortTitle.trim() || undefined,
@@ -1586,6 +1687,13 @@ export default function BreweryProjectCreateScreen() {
   const saveDraft = async ({ showSavedModal = true, exitAfter = false }: { showSavedModal?: boolean; exitAfter?: boolean } = {}) => {
     setIsSaving(true);
     try {
+      console.log('[FundingCreate][SAVE] start', {
+        isEditMode,
+        editProjectId,
+        showSavedModal,
+        exitAfter,
+        ...summarizeFundingCreateImages(basicInfo.images),
+      });
       const previousDraft = await getSavedDraft();
       const localTimestamp = previousDraft?.timestamp || new Date().toISOString();
       await SafeStorage.setItem(tempSaveKey, JSON.stringify({
@@ -1599,7 +1707,13 @@ export default function BreweryProjectCreateScreen() {
       try {
         const draftId = await ensureServerDraft();
         const serverImageUrls = await uploadProjectImagesToApi(draftId);
-        await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(serverImageUrls));
+        const draftPayload = getDraftUpdatePayloadForApi(serverImageUrls);
+        logFundingCreatePayload('SAVE', 'updateFundingDraft payload', {
+          draftId,
+          ...draftPayload,
+          imagesDebug: summarizeFundingCreateImages(serverImageUrls),
+        });
+        await updateFundingDraft(draftId, draftPayload);
         const syncedUploadedFiles = await syncReadyProjectSectionsToApi(draftId, serverImageUrls);
         const savedDraft = await getSavedDraft();
         const nextTimestamp = savedDraft?.timestamp || localTimestamp;
@@ -1618,6 +1732,12 @@ export default function BreweryProjectCreateScreen() {
         }));
         setTempSaveTimestamp(nextTimestamp);
       } catch (syncError) {
+        console.log('[FundingCreate][ERROR]', {
+          scope: 'SAVE',
+          phase: 'server-sync',
+          error: syncError,
+          imagesDebug: summarizeFundingCreateImages(basicInfo.images),
+        });
         if (!isNetworkRequestFailure(syncError)) {
           throw syncError;
         }
@@ -1971,8 +2091,98 @@ export default function BreweryProjectCreateScreen() {
     }
   };
 
-  const handleGenerateAiImage = () => {
-    showAlert('AI 이미지 생성 API 연결 후 사용할 수 있습니다. 지금은 직접 이미지를 업로드해주세요.');
+  const handleGenerateAiImage = async () => {
+    if (isAiImageGenerating) return;
+    if (basicInfo.images.length >= 5) {
+      showAlert('대표 이미지는 최대 5개까지 등록할 수 있습니다.');
+      return;
+    }
+
+    setIsAiImageGenerating(true);
+    try {
+      const draftId = await ensureServerDraft();
+      const preparedImageUrls = await uploadProjectImagesToApi(draftId);
+      await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(preparedImageUrls));
+
+      const aiImagePayload = {
+        name: basicInfo.title.trim(),
+        description: basicInfo.summary.trim() || projectPlan.introduction.trim(),
+        flavorTags: getReadyTags(),
+        region: taxInfo.address.trim() || user?.breweryLocation || '',
+      };
+      console.log('[FundingCreate][Images]', {
+        step: 'ai-generate:before',
+        draftId,
+        generatedImageUrl: undefined,
+        ...summarizeFundingCreateImages(preparedImageUrls),
+      });
+      logFundingCreatePayload('AI_IMAGE', 'payload', { draftId, ...aiImagePayload });
+      const result = await generateFundingDraftAiImage(draftId, aiImagePayload);
+      console.log('[FundingCreate][AI_IMAGE] result', {
+        draftId,
+        status: result.status,
+        imageUrl: result.imageUrl,
+        thumbnailUrl: result.thumbnailUrl,
+        images: result.images,
+        promptUsed: result.promptUsed,
+        modelUsed: result.modelUsed,
+      });
+
+      if (result.status === 'prompt_only') {
+        showAlert(result.message || '이미지 생성에 실패했습니다. 프롬프트만 생성되었습니다.');
+        return;
+      }
+
+      const responseImages = normalizeFundingImageUrls(result.images);
+      const generatedImageUrls = responseImages.length
+        ? responseImages
+        : normalizeFundingImageUrls([result.imageUrl, result.thumbnailUrl]);
+
+      if (!generatedImageUrls.length) {
+        showAlert(result.message || '생성된 이미지 URL을 확인할 수 없습니다.');
+        return;
+      }
+
+      const nextImages = (responseImages.length
+        ? responseImages
+        : normalizeFundingImageUrls([...preparedImageUrls, ...generatedImageUrls])
+      ).slice(0, 5);
+
+      setBasicInfo((prev) => ({
+        ...prev,
+        images: nextImages,
+      }));
+
+      const savedDraft = await getSavedDraft();
+      await SafeStorage.setItem(tempSaveKey, JSON.stringify({
+        ...(savedDraft || createDraftPayload()),
+        timestamp: new Date().toISOString(),
+        basicInfo: {
+          ...(savedDraft?.basicInfo || basicInfo),
+          images: nextImages,
+          tags: getReadyTags(),
+        },
+        serverDraft: savedDraft?.serverDraft || {
+          draftId,
+          breweryId: getBreweryId(),
+          status: 'DRAFT',
+          progressRate: progress,
+          message: '',
+        },
+      }));
+      setHasTempSave(true);
+      showAlert('AI 이미지가 생성되었습니다.');
+    } catch (error) {
+      console.log('[FundingCreate][ERROR]', {
+        scope: 'AI_IMAGE',
+        phase: 'handleGenerateAiImage',
+        error,
+        imagesDebug: summarizeFundingCreateImages(basicInfo.images),
+      });
+      showAlert(getFundingApiErrorMessage(error, 'AI 이미지 생성 중 오류가 발생했습니다.'));
+    } finally {
+      setIsAiImageGenerating(false);
+    }
   };
 
   const moveProjectImage = (fromIndex: number, toIndex: number) => {
@@ -2286,14 +2496,30 @@ export default function BreweryProjectCreateScreen() {
     setIsSubmitting(true);
     setSubmitSyncWarning('');
     try {
+      console.log('[FundingCreate][SUBMIT] start', {
+        isEditMode,
+        editProjectId,
+        canSubmit,
+        ...summarizeFundingCreateImages(basicInfo.images),
+      });
       let submittedFundingId: number | null = null;
       let submittedImageUrls: string[] = [];
       if (!isEditMode) {
         try {
           const draftId = await ensureServerDraft();
+          console.log('[FundingCreate][SUBMIT] draft ready', {
+            draftId,
+            ...summarizeFundingCreateImages(basicInfo.images),
+          });
           submittedImageUrls = await saveProjectSectionsToApi(draftId);
+          console.log('[FundingCreate][SUBMIT] images prepared', {
+            draftId,
+            ...summarizeFundingCreateImages(submittedImageUrls),
+          });
           await uploadProjectDocumentsToApi(draftId);
+          console.log('[FundingCreate][SUBMIT] submitFundingDraft request', { draftId });
           const submittedDraft = await submitFundingDraft(draftId);
+          console.log('[FundingCreate][SUBMIT] submitFundingDraft response', submittedDraft);
           submittedFundingId = submittedDraft.fundingId || null;
         } catch (error) {
           const serverSyncError = getFundingApiErrorMessage(error, '서버 동기화 중 문제가 발생했습니다.')
@@ -2304,8 +2530,18 @@ export default function BreweryProjectCreateScreen() {
       }
       if (isEditMode && editProjectId) {
         const draftId = await ensureServerDraft();
+        console.log('[FundingCreate][SUBMIT] edit draft ready', {
+          draftId,
+          editProjectId,
+          ...summarizeFundingCreateImages(basicInfo.images),
+        });
         const serverImageUrls = await saveProjectSectionsToApi(draftId);
         submittedImageUrls = serverImageUrls;
+        console.log('[FundingCreate][SUBMIT] edit images prepared', {
+          draftId,
+          editProjectId,
+          ...summarizeFundingCreateImages(serverImageUrls),
+        });
         await uploadProjectDocumentsToApi(draftId);
         await updateFundingProjectApi(editProjectId, {
           title: basicInfo.title.trim(),
@@ -2493,11 +2729,18 @@ export default function BreweryProjectCreateScreen() {
               <RequiredLabel label="프로젝트 대표 이미지" required />
               <View style={styles.imageHeaderActions}>
                 <TouchableOpacity
-                  style={[styles.loadButton, basicInfo.images.length >= 5 && styles.disabledButton]}
+                  style={[styles.loadButton, (basicInfo.images.length >= 5 || isAiImageGenerating) && styles.disabledButton]}
                   onPress={handleGenerateAiImage}
-                  disabled={basicInfo.images.length >= 5}
+                  disabled={basicInfo.images.length >= 5 || isAiImageGenerating}
                 >
-                  <Text style={styles.loadButtonText}>AI 생성</Text>
+                  {isAiImageGenerating ? (
+                    <View style={styles.loadingButtonContent}>
+                      <ActivityIndicator size="small" color="#FFF" />
+                      <Text style={styles.loadButtonText}>생성 중</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.loadButtonText}>AI 생성</Text>
+                  )}
                 </TouchableOpacity>
                 <Text style={styles.smallMuted}>{basicInfo.images.length}/5</Text>
               </View>
@@ -4206,6 +4449,7 @@ const styles = StyleSheet.create({
   textGuideBox: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, gap: 4 },
   textGuideLine: { fontSize: 12, lineHeight: 18, fontWeight: '700', color: '#374151' },
   loadButton: { backgroundColor: '#111', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  loadingButtonContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   loadButtonText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
   profileUploadRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   profileImageBox: { width: 64, height: 64, borderRadius: 12, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -23,13 +23,64 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { initialNotifications, type AppNotification } from '@/features/notifications/data';
+import {
+  getBreweryDashboardNotifications,
+  markAllBreweryNotificationsRead,
+  markBreweryNotificationRead,
+  type BreweryDashboardNotification,
+} from '@/features/brewery/api';
 
 type Notification = AppNotification;
+
+const mapDashboardNotificationType = (type: string): AppNotification['type'] => {
+  switch (type) {
+    case 'FUNDING_SUCCESS':
+      return 'funding_success';
+    case 'FUNDING_ENDED':
+      return 'funding_end';
+    case 'FUNDING_CREATED':
+      return 'funding_new';
+    case 'FUNDING_PROGRESS':
+      return 'funding_progress';
+    case 'RECIPE_POPULAR':
+      return 'recipe_popular';
+    default:
+      return 'funding_progress';
+  }
+};
+
+const mapDashboardNotification = (notification: BreweryDashboardNotification): Notification => ({
+  id: notification.notificationId,
+  type: mapDashboardNotificationType(notification.type),
+  title: notification.title,
+  content: notification.content,
+  timestamp: notification.createdAt,
+  read: notification.isRead,
+  link: notification.linkUrl || undefined,
+  image: notification.imageUrl ? { uri: notification.imageUrl } : undefined,
+});
 
 export default function NotificationScreen() {
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
+
+  useEffect(() => {
+    let mounted = true;
+    getBreweryDashboardNotifications()
+      .then((response) => {
+        if (!mounted) return;
+        const nextNotifications = response.notifications || response.content || [];
+        setNotifications(nextNotifications.map(mapDashboardNotification));
+      })
+      .catch((error) => {
+        console.warn(error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const getIcon = (type: Notification["type"]) => {
     switch (type) {
@@ -47,10 +98,12 @@ export default function NotificationScreen() {
 
   const handleMarkAsRead = (id: number) => {
     setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+    markBreweryNotificationRead(id).catch(() => undefined);
   };
 
   const handleMarkAllAsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    markAllBreweryNotificationsRead().catch(() => undefined);
   };
 
   const unreadCount = notifications.filter(n => !n.read).length;

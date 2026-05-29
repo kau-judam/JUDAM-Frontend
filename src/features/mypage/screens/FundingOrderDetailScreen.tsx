@@ -113,7 +113,7 @@ const ORDER_OVERRIDES: Record<number, Partial<DerivedOrder>> = {
     orderId: 'JD-2026-009001',
     breweryPhone: '043-123-4567',
     paymentMethod: '테스트 결제',
-    deliveryStatus: Object.keys(STATUS_CONFIG)[2] as DeliveryStatus,
+    deliveryStatus: '완료',
     estimatedDate: '2026.06.05',
     paidAt: '2026.05.21 14:20',
     participatedAt: '2026.05.21',
@@ -174,7 +174,7 @@ function buildTimeline(order: Pick<DerivedOrder, 'participatedAt' | 'estimatedDa
 
   return [
     { date: addDays(order.participatedAt, 31), label: '상품 준비', done: prepared },
-    { date: addDays(order.participatedAt, 55), label: '집화', done: collected },
+    { date: addDays(order.participatedAt, 55), label: '배송 시작', done: collected },
     { date: addDays(order.participatedAt, 65), label: '배송 중', done: shipping },
     { date: order.estimatedDate, label: '배송 완료', done: delivered },
   ];
@@ -336,6 +336,11 @@ export default function FundingOrderDetailScreen() {
                 <View style={styles.timelineTextBox}>
                   <Text style={[styles.timelineLabel, step.done ? styles.timelineLabelDone : styles.timelineLabelTodo]}>{step.label}</Text>
                   <Text style={[styles.timelineDate, step.done ? styles.timelineDateDone : styles.timelineDateTodo]}>{step.date}</Text>
+                  {isLast && order.deliveryStatus === '완료' ? (
+                    <Text style={styles.deliveryCompleteHelp}>
+                      배송이 완료되었습니다.{'\n'}문의사항이 있는 경우 '문의하기' 버튼을 통해 문의해주세요.
+                    </Text>
+                  ) : null}
                 </View>
               </View>
             );
@@ -647,6 +652,7 @@ const styles = StyleSheet.create({
   timelineDate: { fontSize: 12, fontWeight: '800', marginTop: 3 },
   timelineDateDone: { color: '#9CA3AF' },
   timelineDateTodo: { color: '#E5E7EB' },
+  deliveryCompleteHelp: { marginTop: 6, fontSize: 11, lineHeight: 16, fontWeight: '700', color: '#9CA3AF' },
   productRow: { flexDirection: 'row', alignItems: 'center', gap: 13, paddingTop: 18 },
   productImage: { width: 74, height: 74, borderRadius: 15, backgroundColor: '#F3F4F6' },
   productInfo: { flex: 1, minWidth: 0 },

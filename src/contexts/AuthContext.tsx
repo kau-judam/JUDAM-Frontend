@@ -50,6 +50,7 @@ export interface User {
   breweryHistory?: string;
   breweryEstablished?: string;
   breweryProfileImage?: string;
+  breweryContactEmail?: string;
   businessNumber?: string;
   sulbti?: string;
   sulbtiProfile?: BtiTasteAxisValues;

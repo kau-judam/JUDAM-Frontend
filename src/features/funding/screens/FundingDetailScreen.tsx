@@ -48,6 +48,7 @@ import { useFunding } from '@/contexts/FundingContext';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
+import FundingStarRating from '@/features/funding/components/FundingStarRating';
 import {
   createFundingReport,
   createBreweryLogComment,
@@ -64,6 +65,7 @@ import {
   getFundingShareLink,
   getFundingSupportOptions,
   isFundingApiMissingEndpointError,
+  isFundingReviewNotFoundError,
   likeBreweryLog,
   likeBreweryLogComment,
   likeBreweryLogReply,
@@ -108,7 +110,7 @@ import {
   getProjectUnitPrice,
 } from '@/features/funding/supportConfig';
 import { isFundingReviewOwnedByUser, type FundingReview } from '@/features/funding/reviews';
-import { normalizeFundingImageUrl } from '@/features/funding/imageUrls';
+import { normalizeFundingImageUrl, normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { canAccessFundingReviews } from '@/features/funding/permissions';
 
@@ -444,6 +446,34 @@ export default function FundingDetailScreen() {
   const [likedJournalComments, setLikedJournalComments] = useState<Set<string>>(new Set());
   const [likedJournalReplies, setLikedJournalReplies] = useState<Set<string>>(new Set());
 
+  const loadFundingReviewState = useCallback(() => {
+    let mounted = true;
+    if (!Number.isFinite(projectId)) return () => {
+      mounted = false;
+    };
+
+    setReviewPermission(null);
+    getFundingReviews(projectId, { page: 0, size: 20, sort: 'LATEST' })
+      .then((response) => {
+        if (!mounted) return;
+        setReviewPermission({
+          canWriteReview: response.canWriteReview,
+          canReview: response.canReview,
+        });
+        mergeFundingReviews(projectId, response.content.map((review) => mapFundingReview(projectId, review)));
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setReviewPermission({ canWriteReview: false, canReview: false });
+        if (isFundingReviewNotFoundError(error)) return;
+        console.warn(getFundingApiErrorMessage(error, '????꾧린瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [mergeFundingReviews, projectId]);
+
   useEffect(() => {
     setActiveTab(getInitialTab(tab));
   }, [tab]);
@@ -684,6 +714,7 @@ export default function FundingDetailScreen() {
       .catch((error) => {
         if (!mounted) return;
         setReviewPermission({ canWriteReview: false, canReview: false });
+        if (isFundingReviewNotFoundError(error)) return;
         console.warn(getFundingApiErrorMessage(error, '펀딩 후기를 불러오지 못했습니다.'));
       });
 
@@ -691,6 +722,13 @@ export default function FundingDetailScreen() {
       mounted = false;
     };
   }, [activeTab, mergeFundingReviews, projectId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (getTabParam(activeTab) !== "review") return;
+      return loadFundingReviewState();
+    }, [activeTab, loadFundingReviewState])
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -2360,18 +2398,37 @@ export default function FundingDetailScreen() {
                      </View>
                    ) : (
                      <View style={styles.reviewList}>
-                        {projectReviews.map((r) => (
+                        {projectReviews.map((r) => {
+                          const reviewImageUrls = normalizeFundingImageUrls([r.imageUrls, r.images]);
+                          return (
                           <TouchableOpacity key={r.id} style={styles.reviewCard} activeOpacity={0.85} onPress={() => handleReviewPress(r.id)}>
                              <View style={styles.rowBetween}>
                                 <View>
                                    <Text style={styles.reviewUser}>{r.userName}</Text>
                                    <View style={styles.starRow}>
-                                      {[1,2,3,4,5].map(s => <Star key={s} size={14} color={s <= r.rating ? "#F59E0B" : "#E5E7EB"} fill={s <= r.rating ? "#F59E0B" : "transparent"} />)}
+                                      <FundingStarRating rating={r.rating} size={14} gap={2} />
                                    </View>
                                    <Text style={styles.reviewReward} numberOfLines={1}>{r.rewardName}</Text>
                                 </View>
                                 <Text style={styles.reviewDate}>{r.date}</Text>
                              </View>
+                             {reviewImageUrls.length > 0 && (
+                               <View style={styles.reviewImagePreviewRow}>
+                                 {reviewImageUrls.slice(0, 3).map((image, imageIndex) => (
+                                   <View key={`${image}-${imageIndex}`} style={styles.reviewImagePreviewWrap}>
+                                     <Image
+                                       source={{ uri: image }}
+                                       style={styles.reviewImagePreview}
+                                     />
+                                     {imageIndex === 2 && reviewImageUrls.length > 3 && (
+                                       <View style={styles.reviewImageMoreOverlay}>
+                                         <Text style={styles.reviewImageMoreText}>+{reviewImageUrls.length - 3}</Text>
+                                       </View>
+                                     )}
+                                   </View>
+                                 ))}
+                               </View>
+                             )}
                              <Text style={styles.reviewTxt} numberOfLines={3}>{r.comment}</Text>
                              {r.tags.length > 0 && (
                                <View style={styles.reviewTagRow}>
@@ -2383,7 +2440,8 @@ export default function FundingDetailScreen() {
                                </View>
                              )}
                           </TouchableOpacity>
-                        ))}
+                          );
+                        })}
                          {canWriteFundingReview && (
                          <TouchableOpacity style={styles.writeReviewOutline} onPress={handleReviewWrite}>
                            <Text style={styles.writeReviewOutlineTxt}>✏️ 나도 후기 작성하기</Text>
@@ -2971,6 +3029,11 @@ const styles = StyleSheet.create({
   reviewDate: { fontSize: 12, color: '#6B7280' },
   starRow: { flexDirection: 'row', gap: 2, marginTop: 4, marginBottom: 8 },
   reviewReward: { fontSize: 11, fontWeight: '800', color: '#6B7280', backgroundColor: '#F3F4F6', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, alignSelf: 'flex-start', maxWidth: 180 },
+  reviewImagePreviewRow: { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 12 },
+  reviewImagePreviewWrap: { width: 74, height: 74, borderRadius: 12, overflow: 'hidden', backgroundColor: '#E5E7EB' },
+  reviewImagePreview: { width: '100%', height: '100%', resizeMode: 'cover' },
+  reviewImageMoreOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(17,24,39,0.58)', alignItems: 'center', justifyContent: 'center' },
+  reviewImageMoreText: { fontSize: 14, fontWeight: '900', color: '#FFF' },
   reviewTxt: { fontSize: 14, color: '#374151', lineHeight: 22 },
   reviewTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
   reviewTagChip: { alignSelf: 'flex-start', justifyContent: 'center', backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },

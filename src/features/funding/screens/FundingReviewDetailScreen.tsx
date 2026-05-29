@@ -11,18 +11,21 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Heart, MessageCircle, Package, Send, Star, ChevronLeft, Pencil, Trash2 } from 'lucide-react-native';
+import { Heart, MessageCircle, Package, Send, ChevronLeft, Pencil, Trash2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth, type User } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import type { FundingProject } from '@/constants/data';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
+import FundingStarRating from '@/features/funding/components/FundingStarRating';
 import {
   createFundingReviewComment,
   deleteFundingReviewApi,
   getFundingApiErrorMessage,
   getFundingReviewComments,
   getFundingReviewDetail,
+  isFundingReviewNotFoundError,
   likeFundingReview,
   likeFundingReviewComment,
   type FundingReviewCommentItem,
@@ -30,6 +33,7 @@ import {
   unlikeFundingReviewComment,
 } from '@/features/funding/api';
 import { mapFundingReview } from '@/features/funding/apiMappers';
+import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { isFundingReviewOwnedByUser, type FundingReviewComment } from '@/features/funding/reviews';
 
 type ReviewDetailAlert = {
@@ -46,17 +50,52 @@ function formatReviewCommentTime(value: string) {
   return date.toISOString().slice(0, 10).replace(/-/g, '. ');
 }
 
+function normalizeOwnerId(value: string | number | null | undefined) {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value).trim();
+  return normalized || null;
+}
+
+function getProjectOwnerIds(project: FundingProject | null | undefined) {
+  if (!project) return [];
+  return [project.breweryUserId, project.ownerUserId, project.creatorId, project.breweryId]
+    .map(normalizeOwnerId)
+    .filter((id): id is string => Boolean(id));
+}
+
+function isProjectOwnerCommentWriter(
+  item: FundingReviewCommentItem,
+  project: FundingProject | null | undefined,
+  currentUser: User | null | undefined
+) {
+  if (!project) return false;
+  const writerId = normalizeOwnerId(item.writerId);
+  const ownerIds = getProjectOwnerIds(project);
+  if (writerId && ownerIds.length > 0) return ownerIds.includes(writerId);
+
+  const currentUserIds = currentUser
+    ? [currentUser.id, currentUser.uid].map(normalizeOwnerId).filter((id): id is string => Boolean(id))
+    : [];
+  if (writerId && currentUserIds.includes(writerId)) {
+    return currentUser?.type === 'brewery' && ownerIds.includes(writerId);
+  }
+
+  if (ownerIds.length === 0 && (item.isBrewery || item.writerRole?.toUpperCase().includes('BREWERY'))) {
+    const writerName = item.writerNickname?.trim();
+    return Boolean(writerName && project.brewery && writerName === project.brewery.trim());
+  }
+
+  return false;
+}
+
 function mapReviewComment(
   item: FundingReviewCommentItem,
   fallbackProjectId: number,
   fallbackReviewId: number,
-  currentUser: { id?: string; type?: string } | null
+  currentUser: User | null | undefined,
+  project: FundingProject | null | undefined
 ): FundingReviewComment {
-  const writerId = item.writerId !== undefined ? String(item.writerId) : undefined;
-  const isMine = Boolean(writerId && writerId === currentUser?.id);
-  const isBrewery = isMine
-    ? currentUser?.type === 'brewery'
-    : Boolean(item.isBrewery || item.writerRole?.toUpperCase().includes('BREWERY'));
+  const isBrewery = isProjectOwnerCommentWriter(item, project, currentUser);
   return {
     id: item.commentId,
     projectId: item.fundingId || fallbackProjectId,
@@ -81,6 +120,10 @@ export default function FundingReviewDetailScreen() {
   const review = useMemo(
     () => fundingReviews.find((item) => item.projectId === projectId && item.id === targetReviewId) || null,
     [fundingReviews, projectId, targetReviewId]
+  );
+  const reviewImageUrls = useMemo(
+    () => normalizeFundingImageUrls([review?.imageUrls, review?.images]),
+    [review?.imageUrls, review?.images]
   );
   const [commentInput, setCommentInput] = useState('');
   const [liked, setLiked] = useState(false);
@@ -138,16 +181,17 @@ export default function FundingReviewDetailScreen() {
     getFundingReviewComments(projectId, targetReviewId)
       .then((response) => {
         if (!isMounted) return;
-        setComments(response.content.map((item) => mapReviewComment(item, projectId, targetReviewId, user)));
+        setComments(response.content.map((item) => mapReviewComment(item, projectId, targetReviewId, user, project)));
       })
       .catch((error) => {
+        if (isFundingReviewNotFoundError(error)) return;
         console.warn(getFundingApiErrorMessage(error, '후기 댓글을 불러오지 못했습니다.'));
       });
 
     return () => {
       isMounted = false;
     };
-  }, [projectId, targetReviewId, user]);
+  }, [project, projectId, targetReviewId, user]);
 
   const handleBackToFundingReviews = () => {
     if (!project) {
@@ -201,7 +245,7 @@ export default function FundingReviewDetailScreen() {
     setIsCommentSubmitting(true);
     try {
       const savedComment = await createFundingReviewComment(projectId, targetReviewId, content);
-      setComments((prev) => [...prev, mapReviewComment(savedComment, projectId, targetReviewId, user)]);
+      setComments((prev) => [...prev, mapReviewComment(savedComment, projectId, targetReviewId, user, project)]);
       setCommentInput('');
     } catch (error) {
       setAlertModal({
@@ -330,9 +374,7 @@ export default function FundingReviewDetailScreen() {
 
         <View style={styles.ratingRewardRow}>
           <View style={styles.starRow}>
-            {[1, 2, 3, 4, 5].map((star) => (
-              <Star key={star} size={17} color={star <= review.rating ? '#F59E0B' : '#D1D5DB'} fill={star <= review.rating ? '#F59E0B' : 'transparent'} />
-            ))}
+            <FundingStarRating rating={review.rating} size={17} gap={2} />
           </View>
           <View style={styles.rewardBadge}>
             <Package size={14} color="#4B5563" />
@@ -370,11 +412,14 @@ export default function FundingReviewDetailScreen() {
           </View>
         )}
 
-        {review.images.length > 0 && (
-          <View style={review.images.length === 1 ? styles.imageSingleGrid : styles.imageGrid}>
-            {review.images.map((image, index) => (
-              <View key={`${image}-${index}`} style={review.images.length === 1 ? styles.reviewSingleImageWrap : styles.reviewImageWrap}>
-                <Image source={{ uri: image }} style={styles.reviewImage} />
+        {reviewImageUrls.length > 0 && (
+          <View style={reviewImageUrls.length === 1 ? styles.imageSingleGrid : styles.imageGrid}>
+            {reviewImageUrls.map((image, index) => (
+              <View key={`${image}-${index}`} style={reviewImageUrls.length === 1 ? styles.reviewSingleImageWrap : styles.reviewImageWrap}>
+                <Image
+                  source={{ uri: image }}
+                  style={styles.reviewImage}
+                />
               </View>
             ))}
           </View>

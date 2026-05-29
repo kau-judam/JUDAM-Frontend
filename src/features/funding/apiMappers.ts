@@ -487,6 +487,7 @@ export function mapBreweryLogs(logs: FundingBreweryLogItem[]): JournalEntry[] {
 }
 
 export function mapFundingReview(projectId: number, item: FundingReviewItem): FundingReview {
+  const imageUrls = normalizeFundingImageUrls(item.imageUrls);
   return {
     id: item.reviewId,
     projectId,
@@ -496,7 +497,8 @@ export function mapFundingReview(projectId: number, item: FundingReviewItem): Fu
     date: formatDate(item.createdAt),
     comment: item.content,
     rewardName: '후원 리워드',
-    images: normalizeFundingImageUrls(item.imageUrls),
+    imageUrls,
+    images: imageUrls,
     mood: item.mood,
     pairing: item.pairing,
     showRecordInReview: item.recordVisibility,

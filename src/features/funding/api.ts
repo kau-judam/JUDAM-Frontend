@@ -1596,7 +1596,7 @@ function normalizeBreweryLogItem(source: Record<string, unknown>): FundingBrewer
     stage: readFundingApiString(source, ['stage']) as FundingBreweryLogStage | string,
     title: readFundingApiString(source, ['title']),
     content: readFundingApiString(source, ['content', 'body', 'description']),
-    imageUrls: readFundingApiStringArray(source, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
+    imageUrls: readFundingApiUrlArray(source, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
     createdAt: readFundingApiString(source, ['createdAt', 'created_at', 'date']),
     likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
     liked: readFundingApiBoolean(source, ['liked']),
@@ -1676,7 +1676,7 @@ function normalizeBreweryLogMutationResponse(response: unknown): FundingBreweryL
     stage: readFundingApiString(data, ['stage']) as FundingBreweryLogStage | string,
     title: readFundingApiString(data, ['title']),
     content: readFundingApiString(data, ['content', 'body', 'description']),
-    imageUrls: readFundingApiStringArray(data, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
+    imageUrls: readFundingApiUrlArray(data, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
     message: readFundingApiString(responseData, ['message']) || readFundingApiString(data, ['message']),
   };
 }
@@ -2207,6 +2207,10 @@ export function getFundingApiErrorMessage(error: unknown, fallback = '요청을 
     return error.message || fallback;
   }
   return fallback;
+}
+
+export function isFundingReviewNotFoundError(error: unknown) {
+  return getFundingApiErrorMessage(error, '').includes('후기를 찾을 수 없습니다');
 }
 
 export function isFundingApiMissingEndpointError(error: unknown) {
@@ -2963,17 +2967,20 @@ export async function unlikeFundingReviewComment(fundingId: number, reviewId: nu
 }
 
 export async function createFundingReview(fundingId: number, payload: CreateFundingReviewPayload) {
-  const shouldUseFormData = Boolean(payload.images?.length || payload.imageUrls?.length);
+  const shouldUseFormData = Boolean(payload.images?.length);
   const detailReview = payload.detailReview || payload.content || '';
 
   if (!shouldUseFormData) {
+    const { images: _images, imageUrls: _imageUrls, ...jsonPayload } = payload;
     const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews`, {
       method: 'POST',
       auth: true,
       body: JSON.stringify({
-        ...payload,
+        ...jsonPayload,
         content: detailReview,
         detailReview,
+        tags: JSON.stringify(payload.tags || []),
+        imageUrls: JSON.stringify(payload.imageUrls || []),
         showRecord: payload.recordVisibility,
       }),
     });
@@ -3002,7 +3009,7 @@ export async function createFundingReview(fundingId: number, payload: CreateFund
 }
 
 export async function updateFundingReviewApi(fundingId: number, reviewId: number, payload: UpdateFundingReviewPayload) {
-  const shouldUseFormData = Boolean(payload.images?.length || payload.imageUrls?.length || payload.deleteImageUrls?.length);
+  const shouldUseFormData = Boolean(payload.images?.length);
 
   if (shouldUseFormData) {
     const formData = new FormData();
@@ -3028,14 +3035,33 @@ export async function updateFundingReviewApi(fundingId: number, reviewId: number
     return normalizeCreateFundingReviewResponse(result);
   }
 
+  const {
+    images: _images,
+    imageUrls,
+    deleteImageUrls,
+    ...jsonPayload
+  } = payload;
+  const detailReview = payload.detailReview || payload.content || '';
+  const imagePatch =
+    deleteImageUrls?.length
+      ? {
+          imageUrls: imageUrls || [],
+          deleteImageUrls,
+        }
+      : {};
+  const requestBody = {
+    ...jsonPayload,
+    content: detailReview,
+    detailReview,
+    tags: payload.tags || [],
+    ...imagePatch,
+    showRecord: payload.recordVisibility,
+  };
+
   const result = await requestFundingJson<unknown>(`/api/fundings/${fundingId}/reviews/${reviewId}`, {
     method: 'PATCH',
     auth: true,
-    body: JSON.stringify({
-      ...payload,
-      detailReview: payload.detailReview || payload.content,
-      showRecord: payload.recordVisibility,
-    }),
+    body: JSON.stringify(requestBody),
   });
   return normalizeCreateFundingReviewResponse(result);
 }

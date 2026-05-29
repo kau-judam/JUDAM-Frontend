@@ -49,7 +49,10 @@ function FundingProjectCard({
       <View style={styles.cardInner}>
         <View style={styles.thumbBox}>
           {imageSource ? (
-            <Image source={imageSource} style={styles.thumb} />
+            <Image
+              source={imageSource}
+              style={styles.thumb}
+            />
           ) : (
             <View style={styles.emptyThumb}>
               <ImageIcon size={20} color="#9CA3AF" />

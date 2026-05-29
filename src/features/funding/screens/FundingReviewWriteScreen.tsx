@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AlertCircle, BookOpen, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Image as ImageIcon, Plus, Star, X } from 'lucide-react-native';
@@ -21,7 +22,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
-import { createFundingReview, getFundingApiErrorMessage, getFundingReviews, updateFundingReviewApi, type FundingUploadFile } from '@/features/funding/api';
+import { createFundingReview, getFundingApiErrorMessage, getFundingReviewDetail, getFundingReviews, isFundingReviewNotFoundError, updateFundingReviewApi, type FundingReviewItem, type FundingUploadFile } from '@/features/funding/api';
 import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
 
@@ -31,6 +32,9 @@ type ReviewAlert = {
   tone?: FundingAlertTone;
   buttons?: FundingAlertButton[];
 };
+
+const REVIEW_IMAGE_STORAGE_ROOT = FileSystem.documentDirectory || FileSystem.cacheDirectory || '';
+const REVIEW_IMAGE_CACHE_DIR = `${REVIEW_IMAGE_STORAGE_ROOT}judam-review-images/`;
 
 function getReviewImageFileName(uri: string, index: number) {
   const rawName = uri.split('/').pop()?.split('?')[0];
@@ -42,6 +46,92 @@ function getReviewImageMimeType(fileName: string) {
   const extension = fileName.split('.').pop()?.toLowerCase();
   if (extension === 'png') return 'image/png';
   return 'image/jpeg';
+}
+
+function isRemoteReviewImageUri(uri: string) {
+  return /^https?:\/\//i.test(uri);
+}
+
+function sanitizeReviewImageFileName(fileName: string, fallbackIndex: number) {
+  const fallbackName = `funding-review-${Date.now()}-${fallbackIndex}.jpg`;
+  const normalized = fileName.trim() || fallbackName;
+  const safeName = normalized.replace(/[^\w.-]+/g, '-');
+  return safeName.includes('.') ? safeName : `${safeName}.jpg`;
+}
+
+async function prepareReviewImageForUpload(file: FundingUploadFile, index: number): Promise<FundingUploadFile | null> {
+  if (isRemoteReviewImageUri(file.uri)) {
+    return file;
+  }
+
+  if (!REVIEW_IMAGE_STORAGE_ROOT) {
+    return file;
+  }
+
+  const name = sanitizeReviewImageFileName(file.name, index);
+
+  try {
+    if (file.uri.startsWith(REVIEW_IMAGE_CACHE_DIR)) {
+      const cachedInfo = await FileSystem.getInfoAsync(file.uri);
+      return cachedInfo.exists ? file : null;
+    }
+
+    if (file.uri.startsWith('file://')) {
+      const sourceInfo = await FileSystem.getInfoAsync(file.uri);
+      if (!sourceInfo.exists) {
+        return null;
+      }
+    }
+
+    await FileSystem.makeDirectoryAsync(REVIEW_IMAGE_CACHE_DIR, { intermediates: true });
+    const targetUri = `${REVIEW_IMAGE_CACHE_DIR}${Date.now()}-${index}-${name}`;
+    await FileSystem.copyAsync({ from: file.uri, to: targetUri });
+    const info = await FileSystem.getInfoAsync(targetUri);
+    if (info.exists) {
+      return {
+        ...file,
+        uri: targetUri,
+        name,
+        mimeType: file.mimeType || getReviewImageMimeType(name),
+      };
+    }
+  } catch (error) {
+    console.warn('[FundingReviewWrite] Failed to prepare picked image for upload', error);
+  }
+
+  return null;
+}
+
+function normalizeReviewTags(tags?: string[]) {
+  return [...new Set((tags || []).map((tag) => tag.trim()).filter(Boolean))].sort();
+}
+
+function reviewTagsMatch(left?: string[], right?: string[]) {
+  const normalizedLeft = normalizeReviewTags(left);
+  const normalizedRight = normalizeReviewTags(right);
+  if (normalizedLeft.length !== normalizedRight.length) return false;
+  return normalizedLeft.every((tag, index) => tag === normalizedRight[index]);
+}
+
+function didServerApplyReviewUpdate(
+  review: FundingReviewItem,
+  expected: {
+    rating: number;
+    content: string;
+    mood?: string;
+    pairing?: string;
+    tags: string[];
+    recordVisibility: boolean;
+  }
+) {
+  return (
+    review.rating === expected.rating &&
+    review.content.trim() === expected.content.trim() &&
+    (review.mood || '').trim() === (expected.mood || '').trim() &&
+    (review.pairing || '').trim() === (expected.pairing || '').trim() &&
+    Boolean(review.showRecord ?? review.recordVisibility) === expected.recordVisibility &&
+    reviewTagsMatch(review.tags, expected.tags)
+  );
 }
 
 function RatingStars({ value, onChange }: { value: number; onChange: (value: number) => void }) {
@@ -132,7 +222,11 @@ export default function FundingReviewWriteScreen() {
   const rewardName = project?.rewardItems?.[0] || `${project?.bottleSize || '375ml'} 1병`;
 
   const showReviewAlert = (title: string, body: string, tone: FundingAlertTone = 'info', buttons?: FundingAlertButton[]) => {
-    setAlertModal({ title, body, tone, buttons });
+    const nextAlert = { title, body, tone, buttons };
+    setAlertModal(null);
+    requestAnimationFrame(() => {
+      setAlertModal(nextAlert);
+    });
   };
 
   const showLoginPrompt = (message: string) => {
@@ -140,6 +234,24 @@ export default function FundingReviewWriteScreen() {
       { label: '로그인하기', onPress: () => router.push('/login' as any) },
       { label: '닫기', variant: 'secondary' },
     ]);
+  };
+
+  const resolveSavedReviewImageUrls = async (savedReviewId: number | undefined, fallbackImageUrls: string[]) => {
+    const responseSafeFallback = normalizeFundingImageUrls(fallbackImageUrls);
+    if (!savedReviewId || !Number.isFinite(savedReviewId) || !Number.isFinite(projectId) || projectId <= 0) {
+      return responseSafeFallback;
+    }
+
+    try {
+      const latestReview = await getFundingReviewDetail(projectId, savedReviewId);
+      const serverImageUrls = normalizeFundingImageUrls(latestReview.imageUrls);
+      return serverImageUrls.length ? serverImageUrls : responseSafeFallback;
+    } catch (error) {
+      if (!isFundingReviewNotFoundError(error)) {
+        console.warn('[FundingReviewWrite] Failed to refresh saved review images', error);
+      }
+      return responseSafeFallback;
+    }
   };
 
   useEffect(() => {
@@ -168,6 +280,7 @@ export default function FundingReviewWriteScreen() {
       .catch((error) => {
         if (!mounted) return;
         setReviewPermission({ canWriteReview: false, canReview: false });
+        if (isFundingReviewNotFoundError(error)) return;
         console.warn(getFundingApiErrorMessage(error, '후기 작성 권한을 확인하지 못했습니다.'));
       })
       .finally(() => {
@@ -188,7 +301,7 @@ export default function FundingReviewWriteScreen() {
     )?.[0];
 
     setRating(editableReview.rating);
-    setUploadedImages(editableReview.images || []);
+    setUploadedImages(normalizeFundingImageUrls(editableReview.images));
     setImageFilesByUri({});
     setSelectedTags(presetTags);
     setCustomTags(extraTags);
@@ -199,6 +312,60 @@ export default function FundingReviewWriteScreen() {
     setPairing(editableReview.pairing || '');
     setShowRecordInReview(Boolean(editableReview.showRecordInReview));
   }, [editableReview, isEditMode, presetTagValues]);
+
+  useEffect(() => {
+    if (isArchiveMode || !editableReview || !isEditMode || !Number.isFinite(projectId) || projectId <= 0) return;
+
+    let mounted = true;
+    getFundingReviewDetail(projectId, editableReview.id)
+      .then((latestReview) => {
+        if (!mounted) return;
+
+        const serverImageUrls = normalizeFundingImageUrls(latestReview.imageUrls);
+        const serverTags = latestReview.tags || [];
+        const presetTags = serverTags.filter((tag) => presetTagValues.has(tag));
+        const extraTags = serverTags.filter((tag) => !presetTagValues.has(tag));
+        const firstOpenSection = Object.entries(reviewPresetTags).find(([, tags]) =>
+          tags.some((tag) => presetTags.includes(tag))
+        )?.[0];
+
+        setRating(latestReview.rating || editableReview.rating);
+        setReviewText(latestReview.content || editableReview.comment || '');
+        setMood(latestReview.mood || '');
+        setPairing(latestReview.pairing || '');
+        setSelectedTags(presetTags);
+        setCustomTags(extraTags);
+        setCustomInput('');
+        setOpenSection(firstOpenSection || '留쎛룻뼢');
+        setShowRecordInReview(Boolean(latestReview.showRecord ?? latestReview.recordVisibility));
+        setUploadedImages(serverImageUrls);
+        setImageFilesByUri({});
+
+        updateFundingReview(editableReview.id, {
+          id: latestReview.reviewId || editableReview.id,
+          projectId,
+          userId: user?.id,
+          userName: latestReview.writerNickname || editableReview.userName,
+          rating: latestReview.rating || editableReview.rating,
+          comment: latestReview.content || editableReview.comment,
+          rewardName,
+          imageUrls: serverImageUrls,
+          images: serverImageUrls,
+          mood: latestReview.mood || '',
+          pairing: latestReview.pairing || '',
+          showRecordInReview: Boolean(latestReview.showRecord ?? latestReview.recordVisibility),
+          tags: serverTags,
+        });
+      })
+      .catch((error) => {
+        if (isFundingReviewNotFoundError(error)) return;
+        console.warn('[FundingReviewWrite] Failed to refresh review before edit', error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [editableReview?.id, isArchiveMode, isEditMode, presetTagValues, projectId]);
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]));
@@ -238,14 +405,35 @@ export default function FundingReviewWriteScreen() {
         });
         return files;
       }, []);
-    setUploadedImages((prev) => [...prev, ...selected.map((asset) => asset.uri)].slice(0, 3));
+    const preparedSelected = await Promise.all(
+      selected.map((asset, index) => prepareReviewImageForUpload(asset, index))
+    );
+    const uploadableSelected = preparedSelected.filter((asset): asset is FundingUploadFile => Boolean(asset));
+    if (uploadableSelected.length !== selected.length) {
+      showReviewAlert('사진 선택 오류', '선택한 사진 파일을 불러오지 못했습니다. 다시 선택해주세요.', 'warning');
+    }
+    if (!uploadableSelected.length) return;
+    setUploadedImages((prev) => [...prev, ...uploadableSelected.map((asset) => asset.uri)].slice(0, 3));
     setImageFilesByUri((prev) => {
       const next = { ...prev };
-      selected.forEach((asset) => {
+      uploadableSelected.forEach((asset) => {
         next[asset.uri] = asset;
       });
       return next;
     });
+  };
+
+  const removeImageAt = (index: number) => {
+    const removedImage = uploadedImages[index];
+    setUploadedImages((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+    if (removedImage) {
+      setImageFilesByUri((prev) => {
+        if (!prev[removedImage]) return prev;
+        const next = { ...prev };
+        delete next[removedImage];
+        return next;
+      });
+    }
   };
 
   const loadExistingFundingReview = () => {
@@ -255,7 +443,7 @@ export default function FundingReviewWriteScreen() {
     }
 
     setRating(ownExistingReview.rating);
-    setUploadedImages(ownExistingReview.images || []);
+    setUploadedImages(normalizeFundingImageUrls(ownExistingReview.images));
     setImageFilesByUri({});
     setReviewText(ownExistingReview.comment || '');
     setMood(ownExistingReview.mood || '');
@@ -302,9 +490,24 @@ export default function FundingReviewWriteScreen() {
 
     setIsLoading(true);
     try {
-      const imageFiles = uploadedImages.map((image) => imageFilesByUri[image]).filter((file): file is FundingUploadFile => Boolean(file));
+      const localImageUris = uploadedImages.filter((image) => !isRemoteReviewImageUri(image));
+      const selectedImageFiles = localImageUris.map((image) => imageFilesByUri[image]).filter((file): file is FundingUploadFile => Boolean(file));
+      if (selectedImageFiles.length !== localImageUris.length) {
+        showReviewAlert('사진을 다시 선택해주세요', '선택한 사진 파일을 찾을 수 없습니다. 사진을 다시 선택한 뒤 저장해주세요.', 'warning');
+        return;
+      }
+      const preparedImageFiles = await Promise.all(
+        selectedImageFiles.map((file, index) => prepareReviewImageForUpload(file, index))
+      );
+      const imageFiles = preparedImageFiles.filter((file): file is FundingUploadFile => Boolean(file));
+      if (imageFiles.length !== selectedImageFiles.length) {
+        showReviewAlert('사진을 다시 선택해주세요', '선택한 사진 파일을 찾을 수 없습니다. 사진을 다시 선택한 뒤 저장해주세요.', 'warning');
+        return;
+      }
+      const retainedImageUrls = normalizeFundingImageUrls(uploadedImages);
+      const originalImageUrls = normalizeFundingImageUrls(editableReview?.images);
       const deleteImageUrls = isEditMode && editableReview
-        ? (editableReview.images || []).filter((imageUrl) => !uploadedImages.includes(imageUrl))
+        ? originalImageUrls.filter((imageUrl) => !retainedImageUrls.includes(imageUrl))
         : [];
       const response = isArchiveMode
         ? null
@@ -317,6 +520,7 @@ export default function FundingReviewWriteScreen() {
               pairing: pairing.trim() || undefined,
               tags: allTags,
               recordVisibility: showRecordInReview,
+              imageUrls: retainedImageUrls,
               images: imageFiles,
               deleteImageUrls,
             })
@@ -331,15 +535,23 @@ export default function FundingReviewWriteScreen() {
               images: imageFiles,
             });
       const responseImageUrls = normalizeFundingImageUrls(response?.imageUrls);
+      const savedReviewId = response?.reviewId || editableReview?.id;
+      const savedImageUrls = isArchiveMode
+        ? uploadedImages
+        : await resolveSavedReviewImageUrls(
+            savedReviewId,
+            responseImageUrls.length ? responseImageUrls : retainedImageUrls
+          );
       const reviewPayload = {
-        id: response?.reviewId || editableReview?.id,
+        id: savedReviewId,
         projectId,
         userId: user.id,
         userName: user.name || '사용자',
         rating: response?.rating || rating,
         comment: reviewText.trim(),
         rewardName: isNormalArchiveMode ? normalDrinkName.trim() : rewardName,
-        images: responseImageUrls.length ? responseImageUrls : uploadedImages,
+        imageUrls: savedImageUrls,
+        images: savedImageUrls,
         mood: mood.trim(),
         pairing: pairing.trim(),
         showRecordInReview,
@@ -349,9 +561,23 @@ export default function FundingReviewWriteScreen() {
         isEditMode && editableReview
           ? updateFundingReview(editableReview.id, reviewPayload)
           : addFundingReview(reviewPayload);
-      if (!savedReview) {
+      const resolvedReview = savedReview || (isEditMode && editableReview
+        ? {
+            ...editableReview,
+            ...reviewPayload,
+            id: editableReview.id,
+            date: editableReview.date,
+            timestamp: '방금 수정',
+            likes: editableReview.likes,
+          }
+        : null);
+      if (!resolvedReview) {
         showReviewAlert('알림', '후기를 저장하지 못했습니다. 다시 시도해주세요.', 'warning');
         return;
+      }
+      if (!isArchiveMode) {
+        setUploadedImages(savedImageUrls);
+        setImageFilesByUri({});
       }
       if (isArchiveMode) {
         showReviewAlert('저장 완료', '나의 술 기록이 저장되었습니다.', 'success', [
@@ -359,10 +585,57 @@ export default function FundingReviewWriteScreen() {
         ]);
         return;
       }
+      setIsLoading(false);
       showReviewAlert(isEditMode ? '후기가 수정되었습니다!' : '후기가 등록되었습니다!', isEditMode ? '수정한 내용이 후기 게시글에 반영되었습니다.' : '소중한 후기를 남겨주셔서 감사합니다.', 'success', [
-        { label: '확인', onPress: () => router.replace(`/funding/${projectId}/review/${savedReview.id}` as any) },
+        { label: '확인', onPress: () => router.replace(`/funding/${projectId}/review/${resolvedReview.id}` as any) },
       ]);
     } catch (error) {
+      if (!isArchiveMode && isEditMode && editableReview) {
+        try {
+          const latestReview = await getFundingReviewDetail(projectId, editableReview.id);
+          const expectedUpdate = {
+            rating,
+            content: reviewText.trim(),
+            mood: mood.trim() || undefined,
+            pairing: pairing.trim() || undefined,
+            tags: allTags,
+            recordVisibility: showRecordInReview,
+          };
+
+          if (didServerApplyReviewUpdate(latestReview, expectedUpdate)) {
+            const serverImageUrls = normalizeFundingImageUrls(latestReview.imageUrls);
+            const fallbackImageUrls = serverImageUrls.length ? serverImageUrls : normalizeFundingImageUrls(uploadedImages);
+            const savedReview = updateFundingReview(editableReview.id, {
+              id: latestReview.reviewId || editableReview.id,
+              projectId,
+              userId: user.id,
+              userName: user.name || '사용자',
+              rating: latestReview.rating || rating,
+              comment: latestReview.content || reviewText.trim(),
+              rewardName,
+              imageUrls: fallbackImageUrls,
+              images: fallbackImageUrls,
+              mood: latestReview.mood || mood.trim(),
+              pairing: latestReview.pairing || pairing.trim(),
+              showRecordInReview: Boolean(latestReview.showRecord ?? latestReview.recordVisibility),
+              tags: latestReview.tags || allTags,
+            });
+
+            if (savedReview) {
+              setUploadedImages(fallbackImageUrls);
+              setImageFilesByUri({});
+              showReviewAlert('후기가 수정되었습니다', '수정한 내용이 후기 게시글에 반영되었습니다.', 'success', [
+                { label: '확인', onPress: () => router.replace(`/funding/${projectId}/review/${savedReview.id}` as any) },
+              ]);
+              return;
+            }
+          }
+        } catch (fallbackError) {
+          if (!isFundingReviewNotFoundError(fallbackError)) {
+            console.warn('[FundingReviewWrite] Failed to verify review update after API error', fallbackError);
+          }
+        }
+      }
       showReviewAlert('알림', getFundingApiErrorMessage(error, '후기를 저장하지 못했습니다. 다시 시도해주세요.'), 'warning');
     } finally {
       setIsLoading(false);
@@ -476,8 +749,11 @@ export default function FundingReviewWriteScreen() {
           <View style={styles.imageRow}>
             {uploadedImages.map((image, index) => (
               <View key={`${image}-${index}`} style={styles.imageThumbWrap}>
-                <Image source={{ uri: image }} style={styles.imageThumb} />
-                <TouchableOpacity style={styles.imageRemove} onPress={() => setUploadedImages((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}>
+                <Image
+                  source={{ uri: image }}
+                  style={styles.imageThumb}
+                />
+                <TouchableOpacity style={styles.imageRemove} onPress={() => removeImageAt(index)}>
                   <X size={13} color="#FFF" />
                 </TouchableOpacity>
               </View>

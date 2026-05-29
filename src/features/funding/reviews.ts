@@ -7,6 +7,7 @@ export interface FundingReview {
   date: string;
   comment: string;
   rewardName: string;
+  imageUrls?: string[];
   images: string[];
   mood?: string;
   pairing?: string;

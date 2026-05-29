@@ -148,23 +148,29 @@ export default function HomeScreen() {
               const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
               setCurrentSlide(index);
             }}
-            renderItem={({ item }) => (
-              <View style={styles.bannerSlide}>
-                <View style={styles.bannerImageFrame}>
-                  <Image source={item.image} style={styles.bannerImage} resizeMode="contain" />
+            renderItem={({ item }) => {
+              return (
+                <View style={styles.bannerSlide}>
+                  <View style={styles.bannerImageFrame}>
+                    <Image
+                      source={item.image}
+                      style={styles.bannerImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  <LinearGradient
+                    colors={['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)']}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  <View style={styles.bannerText}>
+                    <Text style={styles.bannerBadge}>EVERYDAY ESSENTIAL</Text>
+                    <Text style={styles.bannerTitle}>{item.title}</Text>
+                    <Text style={styles.bannerSubtitle}>{item.subtitle}</Text>
+                    <Text style={styles.bannerDesc}>{item.description}</Text>
+                  </View>
                 </View>
-                <LinearGradient
-                  colors={['rgba(0,0,0,0.6)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)']}
-                  style={StyleSheet.absoluteFill}
-                />
-                <View style={styles.bannerText}>
-                  <Text style={styles.bannerBadge}>EVERYDAY ESSENTIAL</Text>
-                  <Text style={styles.bannerTitle}>{item.title}</Text>
-                  <Text style={styles.bannerSubtitle}>{item.subtitle}</Text>
-                  <Text style={styles.bannerDesc}>{item.description}</Text>
-                </View>
-              </View>
-            )}
+              );
+            }}
             keyExtractor={(item) => item.id.toString()}
           />
           <View style={styles.bannerPagination}>
@@ -219,6 +225,7 @@ export default function HomeScreen() {
           <View style={styles.fundingList}>
             {popularFundingProjects.map((project) => {
               const progress = (project.currentAmount / project.goalAmount) * 100;
+              const fundingImageSource = getFundingProjectImageSource(project);
               return (
                 <TouchableOpacity 
                   key={project.id} 
@@ -228,7 +235,11 @@ export default function HomeScreen() {
                 >
                   <View style={styles.fundingRow}>
                     <View style={styles.fundingThumbBox}>
-                      <Image source={getFundingProjectImageSource(project)} style={styles.fundingThumb} resizeMode="contain" />
+                      <Image
+                        source={fundingImageSource}
+                        style={styles.fundingThumb}
+                        resizeMode="contain"
+                      />
                     </View>
                     <View style={styles.fundingInfo}>
                       <View style={styles.fundingMeta}>

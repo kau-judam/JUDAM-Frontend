@@ -241,6 +241,23 @@ type FundingBasicInfoPayload = {
   tags?: string[];
 };
 
+export type FundingDraftAiImagePayload = {
+  name?: string;
+  description?: string;
+  flavorTags?: string[];
+  region?: string;
+};
+
+export type FundingDraftAiImageResponse = {
+  imageUrl: string;
+  thumbnailUrl: string;
+  images: string[];
+  promptUsed: string;
+  modelUsed: string;
+  status: string;
+  message: string;
+};
+
 type FundingSchedulePayload = {
   pricePerBottle: number;
   totalQuantity: number;
@@ -1439,6 +1456,34 @@ function normalizeFundingDraftListResponse(response: unknown): FundingDraftListR
   };
 }
 
+function normalizeFundingDraftAiImageResponse(response: unknown): FundingDraftAiImageResponse {
+  const raw = getFundingApiRawObject(response);
+  const data = getFundingApiObject(response);
+  const imageUrls = readFundingApiUrlArray(data, ['images', 'imageUrls', 'image_urls'])
+    .filter((url) => /^https?:\/\//i.test(url));
+  const fallbackImageUrls = imageUrls.length
+    ? imageUrls
+    : readFundingApiUrlArray(raw, ['images', 'imageUrls', 'image_urls'])
+        .filter((url) => /^https?:\/\//i.test(url));
+  const imageUrl = readFundingApiString(data, ['imageUrl', 'image_url'])
+    || readFundingApiString(raw, ['imageUrl', 'image_url'])
+    || fallbackImageUrls[0]
+    || '';
+  const thumbnailUrl = readFundingApiString(data, ['thumbnailUrl', 'thumbnail_url'])
+    || readFundingApiString(raw, ['thumbnailUrl', 'thumbnail_url'])
+    || imageUrl;
+
+  return {
+    imageUrl: /^https?:\/\//i.test(imageUrl) ? imageUrl : '',
+    thumbnailUrl: /^https?:\/\//i.test(thumbnailUrl) ? thumbnailUrl : '',
+    images: fallbackImageUrls.slice(0, 5),
+    promptUsed: readFundingApiString(data, ['promptUsed', 'prompt_used']) || readFundingApiString(raw, ['promptUsed', 'prompt_used']),
+    modelUsed: readFundingApiString(data, ['modelUsed', 'model_used']) || readFundingApiString(raw, ['modelUsed', 'model_used']),
+    status: readFundingApiString(data, ['status']) || readFundingApiString(raw, ['status']),
+    message: readFundingApiString(data, ['message']) || readFundingApiString(raw, ['message']),
+  };
+}
+
 function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPreviewResponse {
   const responseData = response && typeof response === 'object' ? response as Record<string, unknown> : {};
   const data = getFundingApiObject(response);
@@ -2106,6 +2151,65 @@ function normalizeBreweryId(value: unknown) {
   return breweryId;
 }
 
+function shouldLogFundingCreateApi(path: string) {
+  return path.startsWith('/api/fundings/drafts');
+}
+
+function getFundingCreateLogScope(path: string, method?: string) {
+  const normalizedMethod = (method || 'GET').toUpperCase();
+  if (path.includes('/images/ai-generate')) return 'AI_IMAGE';
+  if (path.endsWith('/submit')) return 'SUBMIT';
+  if (path.includes('/files') || path.includes('/documents')) return 'UPLOAD';
+  if (normalizedMethod === 'PATCH' || normalizedMethod === 'POST' || normalizedMethod === 'DELETE') return 'SAVE';
+  return 'DRAFT';
+}
+
+function sanitizeFundingCreateDebugValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    if (/^(data:|base64:)/i.test(value) || value.length > 500) {
+      return `${value.slice(0, 80)}...(${value.length} chars)`;
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(sanitizeFundingCreateDebugValue);
+  if (value && typeof value === 'object') {
+    const objectValue = value as Record<string, unknown>;
+    if ('uri' in objectValue || 'name' in objectValue || 'type' in objectValue || 'mimeType' in objectValue) {
+      return Object.fromEntries(
+        Object.entries(objectValue).map(([key, entry]) => [key, sanitizeFundingCreateDebugValue(entry)])
+      );
+    }
+    return Object.fromEntries(
+      Object.entries(objectValue).map(([key, entry]) => [key, sanitizeFundingCreateDebugValue(entry)])
+    );
+  }
+  return value;
+}
+
+function getFundingCreateDebugBody(body: unknown) {
+  if (typeof body === 'string') {
+    try {
+      return sanitizeFundingCreateDebugValue(JSON.parse(body));
+    } catch {
+      return sanitizeFundingCreateDebugValue(body);
+    }
+  }
+  return sanitizeFundingCreateDebugValue(body);
+}
+
+function getFundingCreateFormDebugBody(formData: FormData) {
+  const parts = (formData as unknown as { _parts?: unknown[] })._parts;
+  if (!Array.isArray(parts)) return '[FormData]';
+  return parts.map((part) => {
+    if (!Array.isArray(part)) return sanitizeFundingCreateDebugValue(part);
+    const [key, value] = part;
+    return {
+      key,
+      value: sanitizeFundingCreateDebugValue(value),
+    };
+  });
+}
+
 async function requestFundingJson<T>(path: string, options: RequestInit & { auth?: boolean; skipAuth?: boolean } = {}) {
   const { auth, skipAuth, headers, ...requestOptions } = options;
   const createHeaders = (token?: string | null): Record<string, string> => ({
@@ -2119,22 +2223,78 @@ async function requestFundingJson<T>(path: string, options: RequestInit & { auth
     throw new Error('NEEDS_ACCESS_TOKEN');
   }
 
-  let response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
-    ...requestOptions,
-    headers: createHeaders(token),
-  });
+  const url = `${JUDAM_FUNDING_API_BASE_URL}${path}`;
+  const method = requestOptions.method || 'GET';
+  const debugScope = getFundingCreateLogScope(path, method);
+  const shouldDebug = shouldLogFundingCreateApi(path);
+  const debugRequest = {
+    url,
+    path,
+    method,
+    hasToken: Boolean(token),
+    body: getFundingCreateDebugBody(requestOptions.body),
+  };
+  if (shouldDebug) {
+    console.log(`[FundingCreate][${debugScope}] request`, debugRequest);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...requestOptions,
+      headers: createHeaders(token),
+    });
+  } catch (error) {
+    if (shouldDebug) {
+      console.log('[FundingCreate][ERROR]', { scope: debugScope, ...debugRequest, error });
+    }
+    throw error;
+  }
   let text = await response.text();
   let data = parseFundingResponseBody(path, response, text);
+
+  if (shouldDebug) {
+    console.log(`[FundingCreate][${debugScope}] response`, {
+      url,
+      path,
+      method,
+      status: response.status,
+      body: sanitizeFundingCreateDebugValue(text),
+    });
+  }
 
   if (response.status === 401 && !skipAuth && (auth || token)) {
     const refreshedToken = await refreshAuthAccessToken();
     if (refreshedToken) {
-      response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
-        ...requestOptions,
-        headers: createHeaders(refreshedToken),
-      });
+      if (shouldDebug) {
+        console.log(`[FundingCreate][${debugScope}] retry request`, {
+          ...debugRequest,
+          hasToken: true,
+          refreshed: true,
+        });
+      }
+      try {
+        response = await fetch(url, {
+          ...requestOptions,
+          headers: createHeaders(refreshedToken),
+        });
+      } catch (error) {
+        if (shouldDebug) {
+          console.log('[FundingCreate][ERROR]', { scope: debugScope, ...debugRequest, refreshed: true, error });
+        }
+        throw error;
+      }
       text = await response.text();
       data = parseFundingResponseBody(path, response, text);
+      if (shouldDebug) {
+        console.log(`[FundingCreate][${debugScope}] retry response`, {
+          url,
+          path,
+          method,
+          status: response.status,
+          body: sanitizeFundingCreateDebugValue(text),
+        });
+      }
     }
   }
 
@@ -2158,24 +2318,80 @@ async function requestFundingForm<T>(path: string, formData: FormData, options: 
     throw new Error('NEEDS_ACCESS_TOKEN');
   }
 
-  let response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
-    ...requestOptions,
-    headers: createHeaders(token),
-    body: formData,
-  });
+  const url = `${JUDAM_FUNDING_API_BASE_URL}${path}`;
+  const method = requestOptions.method || 'GET';
+  const debugScope = getFundingCreateLogScope(path, method);
+  const shouldDebug = shouldLogFundingCreateApi(path);
+  const debugRequest = {
+    url,
+    path,
+    method,
+    hasToken: Boolean(token),
+    body: getFundingCreateFormDebugBody(formData),
+  };
+  if (shouldDebug) {
+    console.log(`[FundingCreate][${debugScope}] request`, debugRequest);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...requestOptions,
+      headers: createHeaders(token),
+      body: formData,
+    });
+  } catch (error) {
+    if (shouldDebug) {
+      console.log('[FundingCreate][ERROR]', { scope: debugScope, ...debugRequest, error });
+    }
+    throw error;
+  }
   let text = await response.text();
   let data = parseFundingResponseBody(path, response, text);
+
+  if (shouldDebug) {
+    console.log(`[FundingCreate][${debugScope}] response`, {
+      url,
+      path,
+      method,
+      status: response.status,
+      body: sanitizeFundingCreateDebugValue(text),
+    });
+  }
 
   if (response.status === 401 && (auth || token)) {
     const refreshedToken = await refreshAuthAccessToken();
     if (refreshedToken) {
-      response = await fetch(`${JUDAM_FUNDING_API_BASE_URL}${path}`, {
-        ...requestOptions,
-        headers: createHeaders(refreshedToken),
-        body: formData,
-      });
+      if (shouldDebug) {
+        console.log(`[FundingCreate][${debugScope}] retry request`, {
+          ...debugRequest,
+          hasToken: true,
+          refreshed: true,
+        });
+      }
+      try {
+        response = await fetch(url, {
+          ...requestOptions,
+          headers: createHeaders(refreshedToken),
+          body: formData,
+        });
+      } catch (error) {
+        if (shouldDebug) {
+          console.log('[FundingCreate][ERROR]', { scope: debugScope, ...debugRequest, refreshed: true, error });
+        }
+        throw error;
+      }
       text = await response.text();
       data = parseFundingResponseBody(path, response, text);
+      if (shouldDebug) {
+        console.log(`[FundingCreate][${debugScope}] retry response`, {
+          url,
+          path,
+          method,
+          status: response.status,
+          body: sanitizeFundingCreateDebugValue(text),
+        });
+      }
     }
   }
 
@@ -2363,6 +2579,15 @@ export async function saveFundingBasicInfo(draftId: number, payload: FundingBasi
     body: JSON.stringify(payload),
   });
   return normalizeFundingSectionResponse(result);
+}
+
+export async function generateFundingDraftAiImage(draftId: number, payload: FundingDraftAiImagePayload) {
+  const result = await requestFundingJson<unknown>(`/api/fundings/drafts/${draftId}/images/ai-generate`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return normalizeFundingDraftAiImageResponse(result);
 }
 
 export async function saveFundingSchedule(draftId: number, payload: FundingSchedulePayload) {

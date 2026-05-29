@@ -34,7 +34,11 @@ import {
 } from '@/features/funding/api';
 import { mapFundingReview } from '@/features/funding/apiMappers';
 import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
-import { isFundingReviewOwnedByUser, type FundingReviewComment } from '@/features/funding/reviews';
+import {
+  isFundingReviewOwnedByUser,
+  shouldShowFundingBreweryBadge,
+  type FundingReviewComment,
+} from '@/features/funding/reviews';
 
 type ReviewDetailAlert = {
   title: string;
@@ -95,13 +99,17 @@ function mapReviewComment(
   currentUser: User | null | undefined,
   project: FundingProject | null | undefined
 ): FundingReviewComment {
-  const isBrewery = isProjectOwnerCommentWriter(item, project, currentUser);
+  const isBrewery = shouldShowFundingBreweryBadge(item) || isProjectOwnerCommentWriter(item, project, currentUser);
   return {
     id: item.commentId,
     projectId: item.fundingId || fallbackProjectId,
     reviewId: item.reviewId || fallbackReviewId,
     author: item.writerNickname || '사용자',
     authorType: isBrewery ? 'brewery' : 'user',
+    writerRole: item.writerRole,
+    isBrewery: item.isBrewery,
+    writerIsBrewery: item.writerIsBrewery,
+    isProjectOwner: item.isProjectOwner,
     content: item.content,
     timestamp: formatReviewCommentTime(item.createdAt),
     likes: item.likeCount || 0,
@@ -125,6 +133,7 @@ export default function FundingReviewDetailScreen() {
     () => normalizeFundingImageUrls([review?.imageUrls, review?.images]),
     [review?.imageUrls, review?.images]
   );
+  const showReviewAuthorBreweryBadge = shouldShowFundingBreweryBadge(review);
   const [commentInput, setCommentInput] = useState('');
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(review?.likes || 0);
@@ -367,7 +376,14 @@ export default function FundingReviewDetailScreen() {
             <Text style={styles.avatarText}>{review.userName[0]}</Text>
           </View>
           <View style={styles.reviewHeaderText}>
-            <Text style={styles.reviewUser}>{review.userName}</Text>
+            <View style={styles.reviewUserRow}>
+              <Text style={styles.reviewUser}>{review.userName}</Text>
+              {showReviewAuthorBreweryBadge && (
+                <View style={styles.breweryBadge}>
+                  <Text style={styles.breweryBadgeText}>{'\uC591\uC870\uC7A5'}</Text>
+                </View>
+              )}
+            </View>
             <Text style={styles.reviewDate}>{review.timestamp}</Text>
           </View>
         </View>
@@ -535,6 +551,7 @@ const styles = StyleSheet.create({
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#FFF', fontSize: 16, fontWeight: '900' },
   reviewHeaderText: { flex: 1 },
+  reviewUserRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   reviewUser: { fontSize: 15, fontWeight: '900', color: '#111' },
   reviewDate: { fontSize: 12, fontWeight: '700', color: '#9CA3AF', marginTop: 3 },
   ratingRewardRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },

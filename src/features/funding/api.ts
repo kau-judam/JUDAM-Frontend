@@ -942,6 +942,8 @@ export type FundingBreweryLogReplyItem = {
   writerProfileImage?: string | null;
   writerRole?: string;
   isBrewery?: boolean;
+  writerIsBrewery?: boolean;
+  isProjectOwner?: boolean | null;
   content: string;
   createdAt: string;
   likeCount?: number;
@@ -955,6 +957,8 @@ export type FundingBreweryLogCommentItem = {
   writerProfileImage?: string | null;
   writerRole?: string;
   isBrewery?: boolean;
+  writerIsBrewery?: boolean;
+  isProjectOwner?: boolean | null;
   content: string;
   createdAt: string;
   likeCount?: number;
@@ -973,6 +977,8 @@ export type FundingQuestionItem = {
   writerProfileImage?: string | null;
   writerRole?: string;
   isBrewery?: boolean;
+  writerIsBrewery?: boolean;
+  isProjectOwner?: boolean | null;
   title: string;
   content: string;
   answered: boolean;
@@ -989,6 +995,8 @@ export type FundingQuestionReplyItem = {
   writerProfileImage?: string | null;
   writerRole?: string;
   isBrewery?: boolean;
+  writerIsBrewery?: boolean;
+  isProjectOwner?: boolean | null;
   content: string;
   createdAt: string;
   likeCount?: number;
@@ -1031,6 +1039,10 @@ export type FundingReviewItem = {
   fundingId?: number;
   writerId?: number | string;
   writerNickname: string;
+  writerRole?: string;
+  isBrewery?: boolean;
+  writerIsBrewery?: boolean;
+  isProjectOwner?: boolean | null;
   rating: number;
   content: string;
   imageUrls: string[];
@@ -1055,6 +1067,8 @@ export type FundingReviewCommentItem = {
   writerProfileImage?: string | null;
   writerRole?: string;
   isBrewery?: boolean;
+  writerIsBrewery?: boolean;
+  isProjectOwner?: boolean | null;
   content: string;
   likeCount: number;
   liked: boolean;
@@ -1313,6 +1327,21 @@ function readFundingReviewPermission(...sources: Record<string, unknown>[]): Fun
   return {
     canWriteReview,
     canReview,
+  };
+}
+
+function readFundingWriterBadgeFields(source: Record<string, unknown>) {
+  const writerRole = readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']);
+  const writerIsBrewery = readFundingApiBoolean(source, ['writerIsBrewery', 'writer_is_brewery']);
+  const isBrewery =
+    readFundingApiBoolean(source, ['isBrewery', 'is_brewery']) ||
+    writerIsBrewery ||
+    writerRole.toUpperCase().includes('BREWERY');
+  return {
+    writerRole: writerRole || undefined,
+    isBrewery,
+    writerIsBrewery,
+    isProjectOwner: readFundingApiBoolean(source, ['isProjectOwner', 'is_project_owner']),
   };
 }
 
@@ -1682,10 +1711,7 @@ function normalizeBreweryLogCommentItem(source: Record<string, unknown>): Fundin
     writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
     writerProfileImage: readFundingApiNullableString(source, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
-    writerRole: readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
-    isBrewery:
-      readFundingApiBoolean(source, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
-      readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
+    ...readFundingWriterBadgeFields(source),
     content: readFundingApiString(source, ['content', 'body']),
     createdAt: readFundingApiString(source, ['createdAt', 'created_at', 'date']),
     likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
@@ -1695,10 +1721,7 @@ function normalizeBreweryLogCommentItem(source: Record<string, unknown>): Fundin
       writerId: readFundingApiString(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
       writerNickname: readFundingApiString(reply, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
       writerProfileImage: readFundingApiNullableString(reply, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
-      writerRole: readFundingApiString(reply, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
-      isBrewery:
-        readFundingApiBoolean(reply, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
-        readFundingApiString(reply, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
+      ...readFundingWriterBadgeFields(reply),
       content: readFundingApiString(reply, ['content', 'body']),
       createdAt: readFundingApiString(reply, ['createdAt', 'created_at', 'date']),
       likeCount: readFundingApiNumber(reply, ['likeCount', 'like_count', 'likes']),
@@ -1732,6 +1755,7 @@ function normalizeFundingReviewItem(source: Record<string, unknown>): FundingRev
     fundingId: readFundingApiNumber(source, ['fundingId', 'funding_id']) || undefined,
     writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']),
+    ...readFundingWriterBadgeFields(source),
     rating: readFundingApiNumber(source, ['rating']),
     content: readFundingApiString(source, ['content', 'detailReview', 'detail_review', 'comment', 'reviewContent', 'review_content', 'body']),
     imageUrls: readFundingApiStringArray(source, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
@@ -1773,10 +1797,7 @@ function normalizeFundingReviewCommentItem(source: Record<string, unknown>): Fun
     writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']),
     writerProfileImage: readFundingApiNullableString(source, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
-    writerRole: readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
-    isBrewery:
-      readFundingApiBoolean(source, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
-      readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
+    ...readFundingWriterBadgeFields(source),
     content: readFundingApiString(source, ['content', 'body', 'comment']),
     likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
     liked: readFundingApiBoolean(source, ['liked']),
@@ -2031,10 +2052,7 @@ function normalizeFundingQuestionItem(source: Record<string, unknown>): FundingQ
     writerId: readFundingApiString(source, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(source, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(source, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname'], '사용자'),
     writerProfileImage: readFundingApiNullableString(source, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
-    writerRole: readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
-    isBrewery:
-      readFundingApiBoolean(source, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
-      readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
+    ...readFundingWriterBadgeFields(source),
     title: readFundingApiString(source, ['title']),
     content: readFundingApiString(source, ['content', 'body']),
     answered: readFundingApiBoolean(source, ['answered']),
@@ -2046,10 +2064,7 @@ function normalizeFundingQuestionItem(source: Record<string, unknown>): FundingQ
       writerId: readFundingApiString(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(reply, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
       writerNickname: readFundingApiString(reply, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
       writerProfileImage: readFundingApiNullableString(reply, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
-      writerRole: readFundingApiString(reply, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
-      isBrewery:
-        readFundingApiBoolean(reply, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
-        readFundingApiString(reply, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
+      ...readFundingWriterBadgeFields(reply),
       content: readFundingApiString(reply, ['content', 'body']),
       createdAt: readFundingApiString(reply, ['createdAt', 'created_at', 'date']),
       likeCount: readFundingApiNumber(reply, ['likeCount', 'like_count', 'likes']),
@@ -2881,10 +2896,7 @@ export async function createBreweryLogCommentReply(fundingId: number, breweryLog
     writerId: readFundingApiString(data, ['writerId', 'writer_id', 'userId', 'user_id']) || readFundingApiNumber(data, ['writerId', 'writer_id', 'userId', 'user_id']) || undefined,
     writerNickname: readFundingApiString(data, ['writerNickname', 'writer_nickname', 'userName', 'user_name', 'nickname']) || undefined,
     writerProfileImage: readFundingApiNullableString(data, ['writerProfileImage', 'writer_profile_image', 'profileImage', 'profile_image', 'profileImageUrl', 'profile_image_url']),
-    writerRole: readFundingApiString(data, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']) || undefined,
-    isBrewery:
-      readFundingApiBoolean(data, ['isBrewery', 'is_brewery', 'writerIsBrewery', 'writer_is_brewery']) ||
-      readFundingApiString(data, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']).toUpperCase().includes('BREWERY'),
+    ...readFundingWriterBadgeFields(data),
     content: readFundingApiString(data, ['content', 'body']),
     createdAt: readFundingApiString(data, ['createdAt', 'created_at', 'date']),
     likeCount: readFundingApiNumber(data, ['likeCount', 'like_count', 'likes']),

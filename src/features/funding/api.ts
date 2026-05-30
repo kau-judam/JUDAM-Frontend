@@ -454,6 +454,7 @@ type FundingBreweryLogMutationPayload = {
   stage?: FundingBreweryLogStage;
   title?: string;
   content?: string;
+  videoUrl?: string;
   images?: FundingUploadFile[];
   deleteImageUrls?: string[];
 };
@@ -464,6 +465,7 @@ type FundingBreweryLogMutationResponse = {
   stage: FundingBreweryLogStage | string;
   title: string;
   content?: string;
+  videoUrl?: string | null;
   imageUrls: string[];
   message: string;
 };
@@ -934,6 +936,7 @@ export type FundingBreweryLogItem = {
   stage?: FundingBreweryLogStage | string;
   title: string;
   content: string;
+  videoUrl?: string;
   imageUrls: string[];
   createdAt: string;
   likeCount?: number;
@@ -1680,6 +1683,7 @@ function normalizeBreweryLogItem(source: Record<string, unknown>): FundingBrewer
     stage: readFundingApiString(source, ['stage']) as FundingBreweryLogStage | string,
     title: readFundingApiString(source, ['title']),
     content: readFundingApiString(source, ['content', 'body', 'description']),
+    videoUrl: readFundingApiString(source, ['videoUrl', 'video_url', 'url']),
     imageUrls: readFundingApiUrlArray(source, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
     createdAt: readFundingApiString(source, ['createdAt', 'created_at', 'date']),
     likeCount: readFundingApiNumber(source, ['likeCount', 'like_count', 'likes']),
@@ -1754,6 +1758,7 @@ function normalizeBreweryLogMutationResponse(response: unknown): FundingBreweryL
     stage: readFundingApiString(data, ['stage']) as FundingBreweryLogStage | string,
     title: readFundingApiString(data, ['title']),
     content: readFundingApiString(data, ['content', 'body', 'description']),
+    videoUrl: readFundingApiString(data, ['videoUrl', 'video_url', 'url']),
     imageUrls: readFundingApiUrlArray(data, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
     message: readFundingApiString(responseData, ['message']) || readFundingApiString(data, ['message']),
   };
@@ -2824,11 +2829,16 @@ export async function uploadFundingDraftFile(draftId: number, fileType: FundingD
   });
 }
 
-export async function createBreweryLog(fundingId: number, payload: Required<Pick<FundingBreweryLogMutationPayload, 'stage' | 'title' | 'content'>> & Pick<FundingBreweryLogMutationPayload, 'images'>) {
+export async function createBreweryLog(
+  fundingId: number,
+  payload: Required<Pick<FundingBreweryLogMutationPayload, 'stage' | 'title' | 'content'>> &
+    Pick<FundingBreweryLogMutationPayload, 'images' | 'videoUrl'>
+) {
   const formData = new FormData();
   formData.append('stage', payload.stage);
   formData.append('title', payload.title);
   formData.append('content', payload.content);
+  if (payload.videoUrl) formData.append('videoUrl', payload.videoUrl);
   appendFundingFormFiles(formData, 'images', payload.images);
 
   const result = await requestFundingForm<unknown>(`/api/fundings/${fundingId}/brewery-logs`, formData, {
@@ -2843,6 +2853,7 @@ export async function updateBreweryLog(fundingId: number, breweryLogId: number, 
   if (payload.stage) formData.append('stage', payload.stage);
   if (payload.title) formData.append('title', payload.title);
   if (payload.content) formData.append('content', payload.content);
+  if (payload.videoUrl !== undefined) formData.append('videoUrl', payload.videoUrl);
   payload.deleteImageUrls?.forEach((url) => {
     formData.append('deleteImageUrls', url);
   });

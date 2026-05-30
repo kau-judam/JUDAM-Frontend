@@ -11,6 +11,10 @@ export interface AppNotification {
   read: boolean;
   link?: string;
   image?: ImageSourcePropType;
+  fundingId?: number | null;
+  recipeId?: number | null;
+  progressThreshold?: number | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 const getFundingNotificationImage = (projectId: number) => {

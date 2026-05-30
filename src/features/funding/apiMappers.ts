@@ -492,6 +492,7 @@ export function mapBreweryLogs(logs: FundingBreweryLogItem[]): JournalEntry[] {
     date: formatDate(log.createdAt),
     title: log.title,
     content: log.content,
+    videoUrl: log.videoUrl,
     images: normalizeFundingImageUrls(log.imageUrls),
     likes: log.likeCount || 0,
     liked: log.liked,

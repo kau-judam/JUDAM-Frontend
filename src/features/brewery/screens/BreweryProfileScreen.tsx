@@ -7,7 +7,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
-import { updateMyBreweryApplication } from '@/features/auth/api';
+import {
+  getBreweryApiErrorMessage,
+  getBreweryProfile,
+  updateBreweryProfile,
+  uploadBreweryProfileImage,
+  type BreweryProfile,
+} from '@/features/brewery/api';
 
 type BreweryProfileForm = {
   profileImage?: string;
@@ -65,24 +71,56 @@ export default function BreweryProfileScreen() {
     () => (!Number.isNaN(projectId) ? projects.find((item) => item.id === projectId) || null : null),
     [projectId, projects],
   );
+  const [serverProfile, setServerProfile] = useState<BreweryProfile | null>(null);
   const profileValues = useMemo<BreweryProfileForm>(() => ({
     ...DEFAULT_PROFILE,
-    profileImage: isOwnProfile ? user?.breweryProfileImage || '' : project?.breweryProfileImage || '',
-    breweryName: isOwnProfile ? user?.breweryName || '' : project?.brewery || '',
-    brandStory: isOwnProfile ? user?.breweryBrandStory || '' : '',
-    description: isOwnProfile ? user?.breweryDescription || '' : project?.breweryBio || '',
-    brandStoryLong: isOwnProfile ? user?.breweryBrandStoryLong || '' : '',
-    history: isOwnProfile ? user?.breweryHistory || '' : project?.breweryBio || '',
-    address: isOwnProfile ? user?.breweryLocation || '' : project?.location || '',
-    businessNumber: isOwnProfile ? user?.businessNumber || '' : '',
-    representative: user?.name || '',
-    phone: user?.phone || '',
-    email: user?.email || '',
-    established: isOwnProfile ? user?.breweryEstablished || '' : '',
-  }), [isOwnProfile, project?.brewery, project?.breweryBio, project?.breweryProfileImage, project?.location, user]);
+    profileImage: isOwnProfile ? serverProfile?.profileImageUrl || user?.breweryProfileImage || '' : project?.breweryProfileImage || '',
+    breweryName: isOwnProfile ? serverProfile?.breweryName || user?.breweryName || '' : project?.brewery || '',
+    brandStory: isOwnProfile ? serverProfile?.oneLineIntroduction || user?.breweryBrandStory || '' : '',
+    description: isOwnProfile ? serverProfile?.shortIntroduction || user?.breweryDescription || '' : project?.breweryBio || '',
+    brandStoryLong: isOwnProfile ? serverProfile?.brandStory || user?.breweryBrandStoryLong || '' : '',
+    history: isOwnProfile ? serverProfile?.history || user?.breweryHistory || '' : project?.breweryBio || '',
+    address: isOwnProfile ? serverProfile?.address || user?.breweryLocation || '' : project?.location || '',
+    businessNumber: isOwnProfile ? serverProfile?.businessRegistrationNumber || user?.businessNumber || '' : '',
+    representative: isOwnProfile ? serverProfile?.representativeName || user?.name || '' : user?.name || '',
+    phone: isOwnProfile ? serverProfile?.phoneNumber || user?.phone || '' : user?.phone || '',
+    email: isOwnProfile ? serverProfile?.email || user?.breweryContactEmail || user?.email || '' : user?.email || '',
+    established: isOwnProfile ? String(serverProfile?.establishedYear || user?.breweryEstablished || '') : '',
+  }), [isOwnProfile, project?.brewery, project?.breweryBio, project?.breweryProfileImage, project?.location, serverProfile, user]);
   const [isEditing, setIsEditing] = useState(isOwnProfile && editParam === '1');
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<BreweryProfileForm>(profileValues);
+
+  useEffect(() => {
+    if (!isOwnProfile || !user) return;
+
+    let mounted = true;
+    getBreweryProfile()
+      .then((profile) => {
+        if (!mounted) return;
+        setServerProfile(profile);
+        void updateUser({
+          breweryName: profile.breweryName || user.breweryName,
+          breweryLocation: profile.address || user.breweryLocation,
+          breweryBrandStory: profile.oneLineIntroduction || undefined,
+          breweryDescription: profile.shortIntroduction || undefined,
+          breweryBrandStoryLong: profile.brandStory || undefined,
+          breweryHistory: profile.history || undefined,
+          breweryEstablished: profile.establishedYear ? String(profile.establishedYear) : undefined,
+          breweryProfileImage: profile.profileImageUrl || undefined,
+          businessNumber: profile.businessRegistrationNumber || user.businessNumber,
+          phone: profile.phoneNumber || user.phone,
+          breweryContactEmail: profile.email || undefined,
+        });
+      })
+      .catch((error) => {
+        console.warn(getBreweryApiErrorMessage(error, '양조장 프로필을 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isOwnProfile, user?.id]);
 
   useEffect(() => {
     if (!isEditing) setForm(profileValues);
@@ -139,6 +177,23 @@ export default function BreweryProfileScreen() {
     if (!asset?.uri) return;
 
     updateField('profileImage', asset.uri);
+
+    try {
+      setIsSaving(true);
+      const response = await uploadBreweryProfileImage({
+        uri: asset.uri,
+        name: asset.fileName || asset.uri.split('/').pop() || `brewery-profile-${Date.now()}.jpg`,
+        type: asset.mimeType || 'image/jpeg',
+      });
+      const nextProfileImage = response.profile?.profileImageUrl || response.profileImageUrl;
+      updateField('profileImage', nextProfileImage);
+      if (response.profile) setServerProfile(response.profile);
+      await updateUser({ breweryProfileImage: nextProfileImage });
+    } catch (error) {
+      Alert.alert('오류', getBreweryApiErrorMessage(error, '대표 이미지를 업로드하지 못했습니다.'));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const openVerificationEdit = () => {
@@ -154,10 +209,19 @@ export default function BreweryProfileScreen() {
     setIsSaving(true);
     try {
       if (isOwnProfile && user?.isBreweryVerified) {
-        await updateMyBreweryApplication({
+        const profile = await updateBreweryProfile({
+          profileImageUrl: form.profileImage?.trim() || null,
           breweryName: form.breweryName.trim(),
-          location: form.address.trim(),
+          oneLineIntroduction: form.brandStory.trim() || null,
+          shortIntroduction: form.description.trim() || null,
+          brandStory: form.brandStoryLong.trim() || null,
+          history: form.history.trim() || null,
+          establishedYear: form.established.trim() ? Number(form.established.trim()) || form.established.trim() : null,
+          representativeName: form.representative.trim() || null,
+          address: form.address.trim(),
+          email: form.email.trim() || null,
         });
+        setServerProfile(profile);
       }
       await updateUser({
         breweryName: form.breweryName.trim(),
@@ -169,7 +233,7 @@ export default function BreweryProfileScreen() {
         breweryEstablished: form.established.trim(),
         breweryProfileImage: form.profileImage?.trim() || undefined,
         name: form.representative.trim() || user?.name,
-        email: form.email.trim() || user?.email,
+        breweryContactEmail: form.email.trim() || undefined,
       });
       setIsEditing(false);
       Alert.alert('완료', '양조장 프로필이 수정되었습니다.');

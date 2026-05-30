@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -23,10 +23,12 @@ import {
   createBreweryLog,
   deleteBreweryLog,
   getFundingApiErrorMessage,
+  getFundingBreweryLogs,
   updateBreweryLog,
   type FundingBreweryLogStage,
   type FundingUploadFile,
 } from '@/features/funding/api';
+import { mapBreweryLogs } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 
 function todayText() {
@@ -113,11 +115,33 @@ export default function BreweryJournalManageScreen() {
   const [images, setImages] = useState<string[]>([]);
   const [imageFilesByUri, setImageFilesByUri] = useState<Record<string, FundingUploadFile>>({});
   const [originalImages, setOriginalImages] = useState<string[]>([]);
+  const [serverJournals, setServerJournals] = useState<JournalEntry[] | null>(null);
   const [message, setMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  const journals = project?.journals || [];
+  const journals = serverJournals ?? project?.journals ?? [];
   const canManage = Boolean(user?.isBreweryVerified && isFundingProjectOwnedByBrewery(user, project));
+
+  useEffect(() => {
+    if (!project || !canManage) return;
+
+    let mounted = true;
+    getFundingBreweryLogs(project.id)
+      .then((response) => {
+        if (!mounted) return;
+        const nextJournals = mapBreweryLogs(response.logs);
+        setServerJournals(nextJournals);
+        updateProjectJournals(project.id, nextJournals);
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setMessage(getFundingApiErrorMessage(error, '양조일지를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [canManage, project?.id, updateProjectJournals]);
 
   const resetForm = () => {
     setEditingEntry(null);
@@ -194,6 +218,7 @@ export default function BreweryJournalManageScreen() {
             stage: BREWING_STAGE_TO_API_STAGE[selectedStage],
             title: title.trim(),
             content: content.trim(),
+            videoUrl: videoUrl.trim(),
             images: localImageFiles,
             deleteImageUrls: originalImages.filter((image) => !images.includes(image)),
           })
@@ -201,6 +226,7 @@ export default function BreweryJournalManageScreen() {
             stage: BREWING_STAGE_TO_API_STAGE[selectedStage],
             title: title.trim(),
             content: content.trim(),
+            videoUrl: videoUrl.trim() || undefined,
             images: localImageFiles,
           });
       let response: Awaited<ReturnType<typeof submitBreweryLog>>;
@@ -219,7 +245,7 @@ export default function BreweryJournalManageScreen() {
         title: response.title || title.trim(),
         content: response.content || content.trim(),
         images: response.imageUrls?.length ? response.imageUrls : images.length > 0 ? images : undefined,
-        videoUrl: videoUrl.trim() || undefined,
+        videoUrl: response.videoUrl || undefined,
         likes: editingEntry?.likes || 0,
         comments: editingEntry?.comments || [],
       };
@@ -228,6 +254,7 @@ export default function BreweryJournalManageScreen() {
         ? replaceSingleJournalEntry(journals, editingEntry, nextEntry)
         : [nextEntry, ...journals];
 
+      setServerJournals(nextJournals);
       updateProjectJournals(project.id, nextJournals);
       resetForm();
       setSelectedStage(null);
@@ -243,7 +270,9 @@ export default function BreweryJournalManageScreen() {
     if (!project) return;
     try {
       const response = await deleteBreweryLog(project.id, targetEntry.id);
-      updateProjectJournals(project.id, removeSingleJournalEntry(journals, targetEntry));
+      const nextJournals = removeSingleJournalEntry(journals, targetEntry);
+      setServerJournals(nextJournals);
+      updateProjectJournals(project.id, nextJournals);
       setMessage(response.message || '양조일지가 삭제되었습니다.');
     } catch (error) {
       setMessage(getFundingApiErrorMessage(error, '양조일지를 삭제하지 못했습니다.'));

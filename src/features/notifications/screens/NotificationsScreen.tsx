@@ -22,7 +22,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
-import { initialNotifications, type AppNotification } from '@/features/notifications/data';
+import type { AppNotification } from '@/features/notifications/data';
 import {
   getBreweryDashboardNotifications,
   markAllBreweryNotificationsRead,
@@ -58,12 +58,16 @@ const mapDashboardNotification = (notification: BreweryDashboardNotification): N
   read: notification.isRead,
   link: notification.linkUrl || undefined,
   image: notification.imageUrl ? { uri: notification.imageUrl } : undefined,
+  fundingId: notification.fundingId ?? null,
+  recipeId: notification.recipeId ?? null,
+  progressThreshold: notification.progressThreshold ?? null,
+  metadata: notification.metadata ?? null,
 });
 
 export default function NotificationScreen() {
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<"all" | "unread">("all");
-  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
     let mounted = true;

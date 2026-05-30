@@ -88,6 +88,18 @@ export type BreweryDashboardFundingList = {
   totalPages: number;
 };
 
+export type BreweryFundingDeliveryInfo = {
+  fundingId: number;
+  courier: string | null;
+  trackingNumber: string | null;
+  updatedAt: string | null;
+};
+
+export type UpdateBreweryFundingDeliveryPayload = {
+  courier: string;
+  trackingNumber: string;
+};
+
 export type BreweryDashboardNotification = {
   notificationId: number;
   type: 'FUNDING_CREATED' | 'FUNDING_PROGRESS' | 'FUNDING_ENDED' | 'FUNDING_SUCCESS' | 'RECIPE_POPULAR' | string;
@@ -97,6 +109,10 @@ export type BreweryDashboardNotification = {
   isRead: boolean;
   linkUrl?: string | null;
   imageUrl?: string | null;
+  fundingId?: number | null;
+  recipeId?: number | null;
+  progressThreshold?: 30 | 50 | 80 | number | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export type BreweryDashboardNotificationsResponse = {
@@ -263,6 +279,24 @@ export async function getBreweryDashboardFundings(params: {
     `/api/breweries/me/dashboard/fundings?${query.toString()}`,
   );
   return unwrapBreweryData<BreweryDashboardFundingList>(response);
+}
+
+export async function getBreweryFundingDelivery(fundingId: number) {
+  const response = await requestBreweryJson<BreweryApiEnvelope<BreweryFundingDeliveryInfo> | BreweryFundingDeliveryInfo>(
+    `/api/breweries/me/dashboard/fundings/${fundingId}/delivery`,
+  );
+  return unwrapBreweryData<BreweryFundingDeliveryInfo>(response);
+}
+
+export async function updateBreweryFundingDelivery(fundingId: number, payload: UpdateBreweryFundingDeliveryPayload) {
+  const response = await requestBreweryJson<BreweryApiEnvelope<BreweryFundingDeliveryInfo> | BreweryFundingDeliveryInfo>(
+    `/api/breweries/me/dashboard/fundings/${fundingId}/delivery`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    },
+  );
+  return unwrapBreweryData<BreweryFundingDeliveryInfo>(response);
 }
 
 export async function getBreweryDashboardNotifications() {

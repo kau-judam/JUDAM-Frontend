@@ -465,7 +465,7 @@ type FundingBreweryLogMutationResponse = {
   stage: FundingBreweryLogStage | string;
   title: string;
   content?: string;
-  videoUrl?: string;
+  videoUrl?: string | null;
   imageUrls: string[];
   message: string;
 };

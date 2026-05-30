@@ -49,7 +49,9 @@ import {
   getBreweryDashboardBasicInfo,
   getBreweryDashboardFundings,
   getBreweryDashboardNotifications,
+  getBreweryFundingDelivery,
   getBreweryFundingSummary,
+  updateBreweryFundingDelivery,
   type BreweryDashboardBasicInfo,
   type BreweryDashboardNotification,
   type BreweryFundingSummary,
@@ -138,6 +140,10 @@ const mapDashboardNotification = (notification: BreweryDashboardNotification): A
   read: notification.isRead,
   link: notification.linkUrl || undefined,
   image: notification.imageUrl ? { uri: notification.imageUrl } : undefined,
+  fundingId: notification.fundingId ?? null,
+  recipeId: notification.recipeId ?? null,
+  progressThreshold: notification.progressThreshold ?? null,
+  metadata: notification.metadata ?? null,
 });
 
 const manufacturingStages = ["원료준비", "원료 가공", "발효", "제성", "병입"];
@@ -176,6 +182,9 @@ export default function BreweryDashboardScreen() {
   const [deliveryTrackingNumber, setDeliveryTrackingNumber] = useState('');
   const [deliveryInfoByProjectId, setDeliveryInfoByProjectId] = useState<Record<number, { courier: string; trackingNumber: string }>>({});
   const [isDeliveryEditing, setIsDeliveryEditing] = useState(false);
+  const [isDeliveryLoading, setIsDeliveryLoading] = useState(false);
+  const [isDeliverySaving, setIsDeliverySaving] = useState(false);
+  const [deliveryMessage, setDeliveryMessage] = useState('');
   const [isInsightPaymentVisible, setIsInsightPaymentVisible] = useState(false);
   const [dashboardBasicInfo, setDashboardBasicInfo] = useState<BreweryDashboardBasicInfo | null>(null);
   const [fundingSummary, setFundingSummary] = useState<BreweryFundingSummary | null>(null);
@@ -350,12 +359,44 @@ export default function BreweryDashboardScreen() {
     Alert.alert("완료", `프로젝트 상태가 '${status}'로 변경되었습니다.`);
   };
 
-  const openDeliveryModal = (project: FundingProject) => {
+  const openDeliveryModal = async (project: FundingProject) => {
     const savedInfo = deliveryInfoByProjectId[project.id];
     setSelectedDeliveryProject(project);
     setDeliveryCourier(savedInfo?.courier || '');
     setDeliveryTrackingNumber(savedInfo?.trackingNumber || '');
     setIsDeliveryEditing(!savedInfo);
+
+    setDeliveryMessage('');
+    if (project.id === TEMP_COMPLETED_FUNDING_FOR_DELIVERY_UI.id) return;
+
+    setIsDeliveryLoading(true);
+    try {
+      const delivery = await getBreweryFundingDelivery(project.id);
+      const hasDeliveryInfo = Boolean(delivery.courier && delivery.trackingNumber);
+
+      if (hasDeliveryInfo) {
+        const nextInfo = {
+          courier: delivery.courier || '',
+          trackingNumber: delivery.trackingNumber || '',
+        };
+        setDeliveryInfoByProjectId((prev) => ({
+          ...prev,
+          [project.id]: nextInfo,
+        }));
+        setDeliveryCourier(nextInfo.courier);
+        setDeliveryTrackingNumber(nextInfo.trackingNumber);
+        setIsDeliveryEditing(false);
+      } else {
+        setDeliveryCourier('');
+        setDeliveryTrackingNumber('');
+        setIsDeliveryEditing(true);
+      }
+    } catch (error) {
+      console.warn(getBreweryApiErrorMessage(error, 'Failed to load delivery information.'));
+      setDeliveryMessage('배송 정보를 불러오지 못했습니다.');
+    } finally {
+      setIsDeliveryLoading(false);
+    }
   };
 
   const closeDeliveryModal = () => {
@@ -363,23 +404,54 @@ export default function BreweryDashboardScreen() {
     setDeliveryCourier('');
     setDeliveryTrackingNumber('');
     setIsDeliveryEditing(false);
+    setIsDeliveryLoading(false);
+    setIsDeliverySaving(false);
+    setDeliveryMessage('');
   };
 
-  const handleDeliverySubmit = () => {
+  const handleDeliverySubmit = async () => {
     if (!selectedDeliveryProject) return;
     if (!deliveryCourier.trim() || !deliveryTrackingNumber.trim()) {
       Alert.alert('알림', '택배사와 송장번호를 모두 입력해주세요.');
       return;
     }
 
-    setDeliveryInfoByProjectId((prev) => ({
-      ...prev,
-      [selectedDeliveryProject.id]: {
-        courier: deliveryCourier.trim(),
-        trackingNumber: deliveryTrackingNumber.trim(),
-      },
-    }));
-    setIsDeliveryEditing(false);
+    const nextInfo = {
+      courier: deliveryCourier.trim(),
+      trackingNumber: deliveryTrackingNumber.trim(),
+    };
+
+    if (selectedDeliveryProject.id === TEMP_COMPLETED_FUNDING_FOR_DELIVERY_UI.id) {
+      setDeliveryInfoByProjectId((prev) => ({
+        ...prev,
+        [selectedDeliveryProject.id]: nextInfo,
+      }));
+      setIsDeliveryEditing(false);
+      return;
+    }
+
+    setIsDeliverySaving(true);
+    setDeliveryMessage('');
+    try {
+      const savedDelivery = await updateBreweryFundingDelivery(selectedDeliveryProject.id, nextInfo);
+      const savedInfo = {
+        courier: savedDelivery.courier || nextInfo.courier,
+        trackingNumber: savedDelivery.trackingNumber || nextInfo.trackingNumber,
+      };
+      setDeliveryInfoByProjectId((prev) => ({
+        ...prev,
+        [selectedDeliveryProject.id]: savedInfo,
+      }));
+      setDeliveryCourier(savedInfo.courier);
+      setDeliveryTrackingNumber(savedInfo.trackingNumber);
+      setIsDeliveryEditing(false);
+    } catch (error) {
+      const message = getBreweryApiErrorMessage(error, '배송 정보를 저장하지 못했습니다.');
+      setDeliveryMessage(message);
+      Alert.alert('알림', message);
+    } finally {
+      setIsDeliverySaving(false);
+    }
   };
 
   if (!user || user.type !== "brewery") {
@@ -769,7 +841,11 @@ export default function BreweryDashboardScreen() {
                 <X size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
-            {selectedDeliveryInfo && !isDeliveryEditing ? (
+            {isDeliveryLoading ? (
+              <View style={styles.deliveryForm}>
+                <Text style={styles.deliveryLoadingText}>배송 정보를 불러오는 중입니다.</Text>
+              </View>
+            ) : selectedDeliveryInfo && !isDeliveryEditing ? (
               <View style={styles.deliverySummary}>
                 <View style={styles.deliverySummaryHeader}>
                   <View>
@@ -794,6 +870,7 @@ export default function BreweryDashboardScreen() {
               </View>
             ) : (
               <View style={styles.deliveryForm}>
+                {deliveryMessage ? <Text style={styles.deliveryMessageText}>{deliveryMessage}</Text> : null}
                 <Text style={styles.listLab}>택배사</Text>
                 <TextInput
                   value={deliveryCourier}
@@ -811,10 +888,14 @@ export default function BreweryDashboardScreen() {
                   keyboardType="number-pad"
                   style={styles.deliveryInput}
                 />
-                <TouchableOpacity style={styles.deliverySubmitButton} onPress={handleDeliverySubmit}>
+                <TouchableOpacity
+                  style={[styles.deliverySubmitButton, isDeliverySaving && styles.deliverySubmitButtonDisabled]}
+                  onPress={handleDeliverySubmit}
+                  disabled={isDeliverySaving}
+                >
                   <Truck size={16} color="#FFF" />
                   <Text style={styles.deliverySubmitText}>
-                    {selectedDeliveryInfo ? '배송 정보 수정' : '배송 정보 저장'}
+                    {isDeliverySaving ? '저장 중...' : selectedDeliveryInfo ? '배송 정보 수정' : '배송 정보 저장'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -998,6 +1079,8 @@ const styles = StyleSheet.create({
   modalList: { padding: 24 },
   listLab: { fontSize: 14, fontWeight: '700', color: '#111', marginBottom: 16 },
   deliveryForm: { padding: 24, gap: 10 },
+  deliveryLoadingText: { fontSize: 14, fontWeight: '800', color: '#6B7280', textAlign: 'center' },
+  deliveryMessageText: { fontSize: 12, fontWeight: '700', color: '#EF4444', marginBottom: 2 },
   deliveryInput: {
     height: 48,
     borderRadius: 14,
@@ -1020,6 +1103,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 8,
   },
+  deliverySubmitButtonDisabled: { opacity: 0.55 },
   deliverySubmitText: { fontSize: 14, fontWeight: '900', color: '#FFF' },
   deliverySummary: { padding: 24, gap: 16 },
   deliverySummaryHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },

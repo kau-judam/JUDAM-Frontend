@@ -38,6 +38,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
   getFundingProjectImageSource,
+  getFundingStatusTone,
   getFundingStatusLabel,
   isCompletedFundingStatus,
   isSupportableFundingStatus,
@@ -87,6 +88,24 @@ const statusOptions: ProjectStatus[] = [
   "배송 중",
   "완료",
 ];
+
+function getDashboardStatusBadgeStyle(tone: ReturnType<typeof getFundingStatusTone>) {
+  if (tone === 'success') return styles.statusBadgeSuccess;
+  if (tone === 'failed') return styles.statusBadgeFailed;
+  if (tone === 'ended') return styles.statusBadgeEnded;
+  if (tone === 'reviewing') return styles.statusBadgeReviewing;
+  if (tone === 'neutral') return styles.statusBadgeNeutral;
+  return styles.statusBadgeActive;
+}
+
+function getDashboardStatusTextStyle(tone: ReturnType<typeof getFundingStatusTone>) {
+  if (tone === 'success') return styles.statusBadgeTxtSuccess;
+  if (tone === 'failed') return styles.statusBadgeTxtFailed;
+  if (tone === 'ended') return styles.statusBadgeTxtEnded;
+  if (tone === 'reviewing') return styles.statusBadgeTxtReviewing;
+  if (tone === 'neutral') return styles.statusBadgeTxtNeutral;
+  return styles.statusBadgeTxtActive;
+}
 
 export default function BreweryDashboardScreen() {
   const insets = useSafeAreaInsets();
@@ -342,9 +361,11 @@ export default function BreweryDashboardScreen() {
           {/* Funding List */}
           <View style={styles.fundingList}>
             {visibleFundings.map((funding) => {
-              const progress = Math.min((funding.currentAmount / funding.goalAmount) * 100, 100);
+              const progress = funding.goalAmount > 0 ? (funding.currentAmount / funding.goalAmount) * 100 : 0;
+              const progressBarValue = Math.min(progress, 100);
               const progressLabel = Math.round(progress);
               const status = getFundingStatusLabel(funding.status);
+              const statusTone = getFundingStatusTone(funding.status);
 
               return (
                 <TouchableOpacity key={funding.id} style={styles.fundingItemCard} activeOpacity={0.8} onPress={() => router.push(`/funding/${funding.id}` as any)}>
@@ -354,11 +375,11 @@ export default function BreweryDashboardScreen() {
                          <View style={styles.rowBetween}>
                             <Text style={styles.fundingBrewery}>{funding.brewery}</Text>
                             <TouchableOpacity
-                              style={[styles.statusBadge, isCompletedFundingStatus(funding.status) ? styles.statusBadgeSuccess : styles.statusBadgeActive]}
+                              style={[styles.statusBadge, getDashboardStatusBadgeStyle(statusTone)]}
                               activeOpacity={0.85}
                               onPress={() => setSelectedStatusProject(funding.id)}
                             >
-                               <Text style={styles.statusBadgeTxt}>{status}</Text>
+                               <Text style={[styles.statusBadgeTxt, getDashboardStatusTextStyle(statusTone)]}>{status}</Text>
                             </TouchableOpacity>
                          </View>
                          <Text style={styles.fundingTitle} numberOfLines={1}>{funding.title}</Text>
@@ -369,7 +390,7 @@ export default function BreweryDashboardScreen() {
                             </View>
                             <Text style={styles.dday}>{isCompletedFundingStatus(funding.status) ? '종료' : `D-${funding.daysLeft}`}</Text>
                          </View>
-                         <Progress value={progress} style={styles.progressBar} />
+                         <Progress value={progressBarValue} style={styles.progressBar} />
                          <TouchableOpacity style={styles.stageUpdateBtnMini} onPress={() => router.push(`/brewery/project/${funding.id}/journal` as any)}>
                            <Text style={styles.stageUpdateBtnMiniText}>양조일지 관리</Text>
                          </TouchableOpacity>
@@ -641,8 +662,18 @@ const styles = StyleSheet.create({
   fundingBrewery: { fontSize: 11, fontWeight: '700', color: '#6B7280' },
   statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   statusBadgeActive: { backgroundColor: '#ECFDF5' },
-  statusBadgeSuccess: { backgroundColor: '#EFF6FF' },
-  statusBadgeTxt: { fontSize: 10, fontWeight: '800', color: '#059669' },
+  statusBadgeSuccess: { backgroundColor: '#DCFCE7' },
+  statusBadgeFailed: { backgroundColor: '#F3F4F6' },
+  statusBadgeEnded: { backgroundColor: '#F3F4F6' },
+  statusBadgeReviewing: { backgroundColor: '#FEF3C7' },
+  statusBadgeNeutral: { backgroundColor: '#F3F4F6' },
+  statusBadgeTxt: { fontSize: 10, fontWeight: '800' },
+  statusBadgeTxtActive: { color: '#059669' },
+  statusBadgeTxtSuccess: { color: '#15803D' },
+  statusBadgeTxtFailed: { color: '#6B7280' },
+  statusBadgeTxtEnded: { color: '#6B7280' },
+  statusBadgeTxtReviewing: { color: '#B45309' },
+  statusBadgeTxtNeutral: { color: '#4B5563' },
   fundingTitle: { fontSize: 15, fontWeight: '700', color: '#111', marginVertical: 6 },
   rowBetweenBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6 },
   rowAlign: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 },

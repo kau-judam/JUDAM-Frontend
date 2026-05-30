@@ -54,7 +54,6 @@ type FundingListAlert = {
 
 function getFundingApiStatus(status: FundingStatusFilter) {
   if (status === "진행중인 프로젝트") return "ONGOING";
-  if (status === "성사된 프로젝트") return "ENDED";
   return undefined;
 }
 

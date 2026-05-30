@@ -27,11 +27,24 @@ function getDaysLeft(value?: string) {
   return Math.max(0, Math.ceil((end - startOfToday) / (1000 * 60 * 60 * 24)));
 }
 
-export function mapFundingStatus(status: string, currentAmount = 0, targetAmount = 0): ProjectStatus {
-  if (status === 'UPCOMING') return '펀딩 예정';
-  if (status === 'ONGOING' || status === 'ACTIVE') return '진행 중';
-  if (status === 'ENDED') return currentAmount >= targetAmount ? '펀딩 성공' : '펀딩 실패';
+export function mapFundingStatus(status: string, _currentAmount = 0, _targetAmount = 0): ProjectStatus {
+  const normalized = String(status || '').trim().toUpperCase();
+  if (normalized === 'READY') return '대기 중';
+  if (normalized === 'REVIEWING') return '심사 중';
+  if (normalized === 'UPCOMING') return '펀딩 예정';
+  if (normalized === 'ONGOING' || normalized === 'ACTIVE') return '진행 중';
+  if (normalized === 'SUCCESS') return '펀딩 성공';
+  if (normalized === 'FAILED') return '펀딩 실패';
+  if (normalized === 'ENDED') return '종료';
+  if (normalized === 'CANCELLED') return '종료';
   return '진행 중';
+}
+
+function normalizeSupporterCount(value: unknown, fallback = 0) {
+  if (value === null) return 0;
+  const count = Number(value);
+  if (!Number.isFinite(count) || count < 0) return fallback;
+  return Math.trunc(count);
 }
 
 function normalizeTasteValue(value?: number) {
@@ -273,7 +286,7 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     matchRate: matchScore ?? existing?.matchRate,
     goalAmount: item.targetAmount || existing?.goalAmount || 1,
     currentAmount: item.currentAmount ?? existing?.currentAmount ?? 0,
-    backers: existing?.backers || 0,
+    backers: normalizeSupporterCount(item.supporterCount, existing?.backers ?? 0),
     daysLeft: getDaysLeft(item.endDate) || existing?.daysLeft || 0,
     status,
     startDate: existing?.startDate,
@@ -360,7 +373,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     shortDescription: sameProject ? detail.description || detail.summary || existing.shortDescription : existing.shortDescription,
     currentAmount: sameProject ? detail.currentAmount ?? existing.currentAmount : existing.currentAmount,
     goalAmount: sameProject ? detail.targetAmount || existing.goalAmount : existing.goalAmount,
-    backers: sameProject ? detail.supporterCount ?? existing.backers : existing.backers,
+    backers: sameProject ? normalizeSupporterCount(detail.supporterCount, existing.backers) : existing.backers,
     daysLeft: sameProject ? getDaysLeft(detail.endDate) || existing.daysLeft : existing.daysLeft,
     status: sameProject ? mapFundingStatus(detail.status, detail.currentAmount, detail.targetAmount) : existing.status,
     endDate: sameProject ? formatDate(detail.endDate) || existing.endDate : existing.endDate,

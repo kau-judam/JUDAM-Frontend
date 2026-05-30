@@ -5,8 +5,9 @@ import { Heart, Image as ImageIcon } from 'lucide-react-native';
 import { Progress } from '@/components/ui/progress';
 import {
   getFundingProjectImageSource,
+  getFundingStatusTone,
   getFundingStatusLabel,
-  isCompletedFundingStatus,
+  isSupportableFundingStatus,
 } from '@/constants/data';
 import type { FundingProject, TasteProfile } from '@/constants/data';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
@@ -31,8 +32,10 @@ function FundingProjectCard({
   onPress,
   onFavoritePress,
 }: FundingProjectCardProps) {
-  const progressPercentage = project.goalAmount > 0 ? Math.min((project.currentAmount / project.goalAmount) * 100, 100) : 0;
-  const completed = isCompletedFundingStatus(project.status);
+  const progressPercentage = project.goalAmount > 0 ? (project.currentAmount / project.goalAmount) * 100 : 0;
+  const progressBarValue = Math.min(progressPercentage, 100);
+  const statusTone = getFundingStatusTone(project.status);
+  const isSupportable = isSupportableFundingStatus(project.status);
   const tasteMatchScore = getTasteMatchScore(project, tasteProfile);
   const showMatch = showTasteMatch && tasteMatchScore !== null;
   const favoriteCount = getDisplayFavoriteCount(project, favorite);
@@ -70,8 +73,8 @@ function FundingProjectCard({
             <View style={styles.categoryBadge}>
               <Text style={styles.categoryTxt} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text>
             </View>
-            <View style={[styles.statusBadge, completed ? styles.statusBadgeSuccess : styles.statusBadgeActive]}>
-              <Text style={[styles.statusTxt, completed && styles.statusTxtSuccess]}>{getFundingStatusLabel(project.status)}</Text>
+            <View style={[styles.statusBadge, getStatusBadgeStyle(statusTone)]}>
+              <Text style={[styles.statusTxt, getStatusTextStyle(statusTone)]}>{getFundingStatusLabel(project.status)}</Text>
             </View>
           </View>
           {ownProject && (
@@ -90,9 +93,10 @@ function FundingProjectCard({
               <Text style={styles.progressPct}>{progressPercentage.toFixed(0)}%</Text>
               <Text style={styles.amountTxt}>{(project.currentAmount / 10000).toLocaleString()}만원</Text>
             </View>
-            <Text style={styles.daysLeft}>{completed ? '펀딩 종료' : `${project.daysLeft}일 남음`}</Text>
+            <Text style={styles.daysLeft}>{isSupportable ? `${project.daysLeft}일 남음` : getFundingStatusLabel(project.status)}</Text>
           </View>
-          <Progress value={progressPercentage} style={styles.progressBar} indicatorStyle={{ backgroundColor: '#111' }} />
+          <Progress value={progressBarValue} style={styles.progressBar} indicatorStyle={{ backgroundColor: '#111' }} />
+          <Text style={styles.supporterText}>{Math.max(0, project.backers || 0).toLocaleString()}명 참여</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -112,6 +116,24 @@ function formatFavoriteCount(count: number) {
   return String(count);
 }
 
+function getStatusBadgeStyle(tone: ReturnType<typeof getFundingStatusTone>) {
+  if (tone === 'success') return styles.statusBadgeSuccess;
+  if (tone === 'failed') return styles.statusBadgeFailed;
+  if (tone === 'ended') return styles.statusBadgeEnded;
+  if (tone === 'reviewing') return styles.statusBadgeReviewing;
+  if (tone === 'neutral') return styles.statusBadgeNeutral;
+  return styles.statusBadgeActive;
+}
+
+function getStatusTextStyle(tone: ReturnType<typeof getFundingStatusTone>) {
+  if (tone === 'success') return styles.statusTxtSuccess;
+  if (tone === 'failed') return styles.statusTxtFailed;
+  if (tone === 'ended') return styles.statusTxtEnded;
+  if (tone === 'reviewing') return styles.statusTxtReviewing;
+  if (tone === 'neutral') return styles.statusTxtNeutral;
+  return styles.statusTxtActive;
+}
+
 const styles = StyleSheet.create({
   card: { backgroundColor: '#FFF', borderRadius: 28, padding: 16, borderWidth: 1, borderColor: '#F3F4F6', elevation: 3, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10 },
   cardInner: { flexDirection: 'row', gap: 16 },
@@ -129,9 +151,18 @@ const styles = StyleSheet.create({
   categoryTxt: { fontSize: 10, fontWeight: '800', color: '#4B5563' },
   statusBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   statusBadgeActive: { backgroundColor: '#ECFDF5' },
-  statusBadgeSuccess: { backgroundColor: '#EFF6FF' },
-  statusTxt: { fontSize: 10, fontWeight: '900', color: '#059669' },
-  statusTxtSuccess: { color: '#2563EB' },
+  statusBadgeSuccess: { backgroundColor: '#DCFCE7' },
+  statusBadgeFailed: { backgroundColor: '#F3F4F6' },
+  statusBadgeEnded: { backgroundColor: '#F3F4F6' },
+  statusBadgeReviewing: { backgroundColor: '#FEF3C7' },
+  statusBadgeNeutral: { backgroundColor: '#F3F4F6' },
+  statusTxt: { fontSize: 10, fontWeight: '900' },
+  statusTxtActive: { color: '#059669' },
+  statusTxtSuccess: { color: '#15803D' },
+  statusTxtFailed: { color: '#6B7280' },
+  statusTxtEnded: { color: '#6B7280' },
+  statusTxtReviewing: { color: '#B45309' },
+  statusTxtNeutral: { color: '#4B5563' },
   ownProjectBadge: { alignSelf: 'flex-start', backgroundColor: '#111', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6 },
   ownProjectTxt: { color: '#FFF', fontSize: 10, fontWeight: '900' },
   projectTitle: { fontSize: 16, fontWeight: '800', color: '#111', lineHeight: 22, marginBottom: 8 },
@@ -143,4 +174,5 @@ const styles = StyleSheet.create({
   amountTxt: { fontSize: 12, color: '#9CA3AF', fontWeight: '600' },
   daysLeft: { fontSize: 12, fontWeight: '800', color: '#111' },
   progressBar: { height: 6, borderRadius: 3 },
+  supporterText: { marginTop: 6, fontSize: 11, fontWeight: '700', color: '#6B7280' },
 });

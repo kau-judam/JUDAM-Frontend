@@ -27,7 +27,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Progress } from '@/components/ui/progress';
-import { getFundingProjectImageSource, isSupportableFundingStatus } from '@/constants/data';
+import { getFundingProjectImageSource, getFundingStatusLabel, getFundingSupportUnavailableMessage, isSupportableFundingStatus } from '@/constants/data';
 import type { FundingProject } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
@@ -354,7 +354,16 @@ export default function FundingSupportScreen() {
   };
 
   const handlePayment = () => {
-    if (!canSubmit || !project || isProcessing) return;
+    if (!project || isProcessing) return;
+    if (!isSupportableFundingStatus(project.status)) {
+      setAlertModal({
+        title: '후원 진행 안내',
+        body: getFundingSupportUnavailableMessage(project.status),
+        tone: 'warning',
+      });
+      return;
+    }
+    if (!canSubmit) return;
     if (!validateForm()) {
       setAlertModal({
         title: '입력 정보를 확인해주세요',
@@ -372,6 +381,15 @@ export default function FundingSupportScreen() {
 
   const handleConfirmPayment = async () => {
     if (!project || !user || !selectedPaymentMethod || isProcessing) return;
+    if (!isSupportableFundingStatus(project.status)) {
+      setShowConfirmModal(false);
+      setAlertModal({
+        title: '후원 진행 안내',
+        body: getFundingSupportUnavailableMessage(project.status),
+        tone: 'warning',
+      });
+      return;
+    }
     if (!validateForm()) {
       setShowConfirmModal(false);
       setAlertModal({
@@ -550,7 +568,8 @@ export default function FundingSupportScreen() {
   }
 
   if (!isSupportableFundingStatus(project.status)) {
-    const isPreparingFunding = project.status === '심사 중' || project.status === '펀딩 예정';
+    const statusLabel = getFundingStatusLabel(project.status);
+    const isPreparingFunding = statusLabel === '심사 중' || statusLabel === '대기 중' || statusLabel === '펀딩 예정';
     return (
       <AccessNotice
         insetsTop={insets.top}
@@ -558,7 +577,7 @@ export default function FundingSupportScreen() {
         body={
           isPreparingFunding
             ? '아직 후원을 받을 수 없는 프로젝트입니다. 프로젝트 상세에서 진행 상태를 확인해주세요.'
-            : '이미 종료된 프로젝트는 새 후원을 받을 수 없어요. 진행 중인 다른 프로젝트를 둘러보세요.'
+            : getFundingSupportUnavailableMessage(project.status)
         }
         primaryLabel="진행 펀딩 보기"
         onPrimaryPress={() => router.replace('/funding' as any)}

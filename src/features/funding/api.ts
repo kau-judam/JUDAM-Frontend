@@ -768,7 +768,16 @@ type MyLikedFundingsResponse = {
   content: MyLikedFundingItem[];
 };
 
-export type FundingListStatus = 'UPCOMING' | 'ONGOING' | 'ENDED';
+export type FundingListStatus =
+  | 'READY'
+  | 'REVIEWING'
+  | 'UPCOMING'
+  | 'ONGOING'
+  | 'ACTIVE'
+  | 'ENDED'
+  | 'SUCCESS'
+  | 'FAILED'
+  | 'CANCELLED';
 export type FundingListSort = 'popular' | 'latest' | 'endingSoon' | 'recommended';
 
 export type FundingListItem = {
@@ -796,6 +805,7 @@ export type FundingListItem = {
   currentAmount: number;
   targetAmount: number;
   achievementRate: number;
+  supporterCount?: number | null;
   status: FundingListStatus | string;
   startDate?: string;
   endDate: string;
@@ -857,7 +867,7 @@ export type FundingDetailResponse = {
   targetAmount: number;
   achievementRate: number;
   description?: string;
-  supporterCount?: number;
+  supporterCount?: number | null;
   startDate: string;
   endDate: string;
   expectedDeliveryDate?: string;

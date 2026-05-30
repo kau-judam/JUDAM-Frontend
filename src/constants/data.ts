@@ -1,7 +1,15 @@
 import type { ImageSourcePropType } from 'react-native';
 
 export type ProjectStatus =
+  | "READY"
+  | "REVIEWING"
+  | "ACTIVE"
+  | "ENDED"
+  | "SUCCESS"
+  | "FAILED"
+  | "CANCELLED"
   | "작성 중"
+  | "대기 중"
   | "심사 중"
   | "심사 반려"
   | "펀딩 예정"
@@ -9,6 +17,9 @@ export type ProjectStatus =
   | "목표 달성"
   | "펀딩 성공"
   | "펀딩 실패"
+  | "성공 종료"
+  | "실패 종료"
+  | "종료"
   | "제작 중"
   | "배송 중"
   | "완료";
@@ -226,27 +237,92 @@ export function getFundingProjectImageSource(project: FundingProject) {
   return project.localImage || getImageSource(project.image);
 }
 
-export const activeFundingStatuses: ProjectStatus[] = ["펀딩 예정", "진행 중", "목표 달성"];
+export type FundingStatusTone = "active" | "reviewing" | "success" | "failed" | "ended" | "neutral";
 
-export const completedFundingStatuses: ProjectStatus[] = ["펀딩 성공", "펀딩 실패", "제작 중", "배송 중", "완료"];
+export const activeFundingStatuses: ProjectStatus[] = ["펀딩 예정", "진행 중", "목표 달성", "READY", "ACTIVE"];
+
+export const completedFundingStatuses: ProjectStatus[] = [
+  "펀딩 성공",
+  "펀딩 실패",
+  "종료",
+  "제작 중",
+  "배송 중",
+  "완료",
+  "ENDED",
+  "SUCCESS",
+  "FAILED",
+];
+
+function normalizeFundingStatus(status: ProjectStatus | string) {
+  return String(status || '').trim().toUpperCase();
+}
+
+function getFundingStatusText(status: ProjectStatus | string) {
+  return String(status || '').trim();
+}
 
 export function isActiveFundingStatus(status: ProjectStatus) {
-  return activeFundingStatuses.includes(status);
+  const normalized = normalizeFundingStatus(status);
+  return activeFundingStatuses.includes(status) || normalized === "READY" || normalized === "ACTIVE";
 }
 
 export function isSupportableFundingStatus(status: ProjectStatus) {
-  return status === "진행 중" || status === "목표 달성";
+  const normalized = normalizeFundingStatus(status);
+  return normalized === "ACTIVE" || getFundingStatusText(status) === "진행 중";
 }
 
 export function isCompletedFundingStatus(status: ProjectStatus) {
-  return completedFundingStatuses.includes(status);
+  const normalized = normalizeFundingStatus(status);
+  return (
+    completedFundingStatuses.includes(status) ||
+    normalized === "SUCCESS" ||
+    normalized === "FAILED" ||
+    normalized === "ENDED"
+  );
+}
+
+export function isSuccessfulFundingStatus(status: ProjectStatus) {
+  const normalized = normalizeFundingStatus(status);
+  const text = getFundingStatusText(status);
+  return normalized === "SUCCESS" || text === "펀딩 성공" || text === "성공 종료" || text === "목표 달성";
+}
+
+export function isFailedFundingStatus(status: ProjectStatus) {
+  const normalized = normalizeFundingStatus(status);
+  const text = getFundingStatusText(status);
+  return normalized === "FAILED" || text === "펀딩 실패" || text === "실패 종료";
+}
+
+export function getFundingStatusTone(status: ProjectStatus): FundingStatusTone {
+  const normalized = normalizeFundingStatus(status);
+  if (isSuccessfulFundingStatus(status)) return "success";
+  if (isFailedFundingStatus(status)) return "failed";
+  if (normalized === "ENDED" || getFundingStatusText(status) === "종료") return "ended";
+  if (isSupportableFundingStatus(status)) return "active";
+  if (normalized === "REVIEWING" || getFundingStatusText(status) === "심사 중") return "reviewing";
+  return "neutral";
 }
 
 export function getFundingStatusLabel(status: ProjectStatus) {
+  const normalized = normalizeFundingStatus(status);
+  if (normalized === "READY") return "대기 중";
+  if (normalized === "REVIEWING") return "심사 중";
+  if (normalized === "ACTIVE") return "진행 중";
+  if (normalized === "SUCCESS") return "펀딩 성공";
+  if (normalized === "FAILED") return "펀딩 실패";
+  if (normalized === "ENDED") return "종료";
+  if (normalized === "CANCELLED") return "종료";
   if (status === "목표 달성") return "목표 달성";
-  if (status === "펀딩 성공") return "펀딩 성공";
-  if (status === "펀딩 실패") return "펀딩 실패";
+  if (status === "성공 종료") return "펀딩 성공";
+  if (status === "실패 종료") return "펀딩 실패";
   return status;
+}
+
+export function getFundingSupportUnavailableMessage(status: ProjectStatus) {
+  if (isSuccessfulFundingStatus(status)) return "목표 금액을 달성한 펀딩입니다.";
+  if (isFailedFundingStatus(status)) return "목표 금액을 달성하지 못한 펀딩입니다.";
+  if (isCompletedFundingStatus(status)) return "종료된 펀딩에는 후원할 수 없습니다.";
+  return "진행 중인 펀딩만 후원할 수 있습니다.";
 }
 
 export function sortFundingProjectsByPopularity(projects: FundingProject[]) {

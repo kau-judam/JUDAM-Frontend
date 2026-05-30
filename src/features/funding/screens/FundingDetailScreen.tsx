@@ -94,6 +94,7 @@ import {
   getImageSource,
   getFundingProjectImageSource,
   getFundingStatusLabel,
+  getFundingSupportUnavailableMessage,
   isSupportableFundingStatus,
 } from '@/constants/data';
 import type { BrewingStage, FundingProject, JournalComment, JournalEntry, JournalReply } from '@/constants/data';
@@ -837,10 +838,14 @@ export default function FundingDetailScreen() {
     );
   }
 
-  const progressPercentage = project.goalAmount > 0 ? Math.min((project.currentAmount / project.goalAmount) * 100, 100) : 0;
+  const progressPercentage = project.goalAmount > 0 ? (project.currentAmount / project.goalAmount) * 100 : 0;
+  const progressBarValue = Math.min(progressPercentage, 100);
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified;
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
   const canManageOwnBreweryProject = Boolean(isBrewery && isOwnBreweryProject);
+  const isProjectSupportable = isSupportableFundingStatus(project.status);
+  const projectStatusLabel = getFundingStatusLabel(project.status);
+  const supportUnavailableMessage = getFundingSupportUnavailableMessage(project.status);
   const unitPrice = getProjectUnitPrice(project);
   const shippingFee = getProjectShippingFee(project);
   const bottleSize = getProjectBottleSize(project);
@@ -859,8 +864,8 @@ export default function FundingDetailScreen() {
       ? user?.isBreweryVerified
         ? "프로젝트 관리하기"
         : "양조장 인증하기"
-      : !isSupportableFundingStatus(project.status)
-      ? project.status === "심사 중" || project.status === "펀딩 예정"
+      : !isProjectSupportable
+      ? projectStatusLabel === "심사 중" || projectStatusLabel === "대기 중" || projectStatusLabel === "펀딩 예정"
         ? "후원 준비중"
         : "펀딩 종료"
       : "프로젝트 후원하기";
@@ -876,7 +881,13 @@ export default function FundingDetailScreen() {
       router.push(user.isBreweryVerified ? `/brewery/project/create?mode=edit&projectId=${project.id}` as any : '/brewery/verification' as any);
       return;
     }
-    if (!isSupportableFundingStatus(project.status)) return;
+    if (!isProjectSupportable) {
+      setFeedbackModal({
+        title: '후원 진행 안내',
+        body: supportUnavailableMessage,
+      });
+      return;
+    }
     setShowFundingOptionModal(true);
   };
 
@@ -1733,14 +1744,19 @@ export default function FundingDetailScreen() {
                 <Text style={styles.statusLab}>후원자</Text>
              </View>
           </View>
-          <Progress value={progressPercentage} style={styles.progressBar} indicatorStyle={{ backgroundColor: '#111' }} />
+          <Progress value={progressBarValue} style={styles.progressBar} indicatorStyle={{ backgroundColor: '#111' }} />
           <View style={styles.dateInfo}>
              <View style={styles.dateRow}>
                 <Calendar size={16} color="#4B5563" />
-                <Text style={styles.dateTxt}>{isSupportableFundingStatus(project.status) ? `${project.daysLeft}일 남음` : getFundingStatusLabel(project.status)}</Text>
+                <Text style={styles.dateTxt}>{isProjectSupportable ? `${project.daysLeft}일 남음` : projectStatusLabel}</Text>
              </View>
              <Text style={styles.periodTxt}>{project.startDate} ~ {project.endDate}</Text>
           </View>
+          {!isOwnBreweryProject && !isProjectSupportable ? (
+            <View style={styles.supportStatusNotice}>
+              <Text style={styles.supportStatusNoticeText}>{supportUnavailableMessage}</Text>
+            </View>
+          ) : null}
         </Animated.View>
 
         {/* 4. Brewery Info */}
@@ -2502,8 +2518,8 @@ export default function FundingDetailScreen() {
             <Text style={[styles.heartCountText, isProjectFavorite && styles.heartCountTextActive]}>{favoriteCountLabel}</Text>
          </TouchableOpacity>
          <TouchableOpacity 
-           style={[styles.mainSupportBtn, !isOwnBreweryProject && !isSupportableFundingStatus(project.status) && { backgroundColor: '#374151' }]}
-           disabled={!isOwnBreweryProject && !isSupportableFundingStatus(project.status)}
+           style={[styles.mainSupportBtn, !isOwnBreweryProject && !isProjectSupportable && { backgroundColor: '#374151' }]}
+           disabled={!isOwnBreweryProject && !isProjectSupportable}
            onPress={handleSupportClick}
          >
             <Text style={styles.mainSupportTxt}>{supportButtonLabel}</Text>
@@ -2873,6 +2889,8 @@ const styles = StyleSheet.create({
   dateRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dateTxt: { fontSize: 14, fontWeight: '600', color: '#111' },
   periodTxt: { fontSize: 12, color: '#9CA3AF', marginLeft: 22 },
+  supportStatusNotice: { marginTop: 14, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB' },
+  supportStatusNoticeText: { fontSize: 13, fontWeight: '700', color: '#4B5563', lineHeight: 19 },
   breweryCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, backgroundColor: '#FFF', borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB' },
   breweryLogo: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   breweryLogoImage: { width: '100%', height: '100%', resizeMode: 'cover' },

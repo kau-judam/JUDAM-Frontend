@@ -218,7 +218,7 @@ export default function BreweryJournalManageScreen() {
             stage: BREWING_STAGE_TO_API_STAGE[selectedStage],
             title: title.trim(),
             content: content.trim(),
-            videoUrl: videoUrl.trim() || undefined,
+            videoUrl: videoUrl.trim(),
             images: localImageFiles,
             deleteImageUrls: originalImages.filter((image) => !images.includes(image)),
           })
@@ -245,7 +245,7 @@ export default function BreweryJournalManageScreen() {
         title: response.title || title.trim(),
         content: response.content || content.trim(),
         images: response.imageUrls?.length ? response.imageUrls : images.length > 0 ? images : undefined,
-        videoUrl: videoUrl.trim() || undefined,
+        videoUrl: response.videoUrl || undefined,
         likes: editingEntry?.likes || 0,
         comments: editingEntry?.comments || [],
       };

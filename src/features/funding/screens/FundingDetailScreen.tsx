@@ -328,9 +328,7 @@ function getQnaCommentInputKey(comment: FundingQuestionComment) {
 }
 
 function getDisplayFavoriteCount(project: FundingProject, favorite: boolean) {
-  const baseCount = Math.max(0, project.favoriteCount || 0);
-  if (typeof project.liked !== 'boolean' || project.liked === favorite) return baseCount;
-  return Math.max(0, baseCount + (favorite ? 1 : -1));
+  return Math.max(0, project.favoriteCount || 0);
 }
 
 function formatFavoriteCount(count: number) {
@@ -393,7 +391,7 @@ export default function FundingDetailScreen() {
   const insets = useSafeAreaInsets();
   const { width: viewportWidth } = useWindowDimensions();
   const { user } = useAuth();
-  const { favoriteFundings, isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
+  const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
   const { projects, updateProjectJournals, fundingReviews, mergeProject, mergeProjects, mergeFundingReviews } = useFunding();
   const projectRef = useRef<(typeof projects)[number] | null>(null);
   const rawProjectId = Array.isArray(id) ? id[0] : id;
@@ -791,10 +789,9 @@ export default function FundingDetailScreen() {
     return sortFundingProjectsForDisplay(
       projects.filter((item) => item.id !== project.id),
       "추천순",
-      userTasteProfile,
-      favoriteFundings
+      userTasteProfile
     ).slice(0, 4);
-  }, [favoriteFundings, project, projects, userTasteProfile]);
+  }, [project, projects, userTasteProfile]);
   const projectReviews = useMemo(
     () => (project ? fundingReviews.filter((review) => review.projectId === project.id) : []),
     [fundingReviews, project]
@@ -1224,12 +1221,17 @@ export default function FundingDetailScreen() {
     setExpandedComments(newExpanded);
   };
 
-  const handleFavoritePress = (targetProjectId: number) => {
+  const handleFavoritePress = async (targetProjectId: number) => {
     if (!user) {
       showLoginRequired('펀딩 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
-    toggleFavoriteFunding(targetProjectId);
+    const response = await toggleFavoriteFunding(targetProjectId);
+    if (!response) return;
+    mergeProject(response.fundingId || targetProjectId, {
+      liked: response.liked,
+      favoriteCount: response.likeCount,
+    });
   };
 
   const handleReplyOpen = (comment: FundingQuestionComment, commentInputKey: string) => {

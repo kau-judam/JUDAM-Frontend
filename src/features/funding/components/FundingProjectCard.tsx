@@ -107,9 +107,7 @@ function FundingProjectCard({
 export default memo(FundingProjectCard);
 
 function getDisplayFavoriteCount(project: FundingProject, favorite: boolean) {
-  const baseCount = Math.max(0, project.favoriteCount || 0);
-  if (typeof project.liked !== 'boolean' || project.liked === favorite) return baseCount;
-  return Math.max(0, baseCount + (favorite ? 1 : -1));
+  return Math.max(0, project.favoriteCount || 0);
 }
 
 function formatFavoriteCount(count: number) {

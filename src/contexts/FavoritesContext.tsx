@@ -5,11 +5,12 @@ import {
   getMyLikedFundings,
   likeFundingProject,
   unlikeFundingProject,
+  type FundingLikeResponse,
 } from "@/features/funding/api";
 
 interface FavoritesContextType {
   favoriteFundings: number[];
-  toggleFavoriteFunding: (fundingId: number) => void;
+  toggleFavoriteFunding: (fundingId: number) => Promise<FundingLikeResponse | null>;
   isFavoriteFunding: (fundingId: number) => boolean;
 }
 
@@ -55,7 +56,7 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthReady, user?.id]);
 
   const toggleFavoriteFunding = async (fundingId: number) => {
-    if (pendingFavoriteIdsRef.current.has(fundingId)) return;
+    if (pendingFavoriteIdsRef.current.has(fundingId)) return null;
     const wasFavorite = favoriteFundings.includes(fundingId);
     pendingFavoriteIdsRef.current.add(fundingId);
 
@@ -74,20 +75,22 @@ export function FavoritesProvider({ children }: { children: React.ReactNode }) {
           return next;
         });
       }
+      return response;
     } catch (error) {
       const message = getFundingApiErrorMessage(error, "펀딩 찜 상태를 저장하지 못했습니다.");
       if (message.includes("API 응답이 JSON이 아닙니다.") && message.includes("/likes")) {
-        return;
+        return null;
       }
       if (!wasFavorite && message.includes("이미 찜한")) {
         setFavoriteFundings((prev) => Array.from(new Set([...prev, fundingId])));
-        return;
+        return null;
       }
       if (wasFavorite && message.includes("찜하지 않은")) {
         setFavoriteFundings((prev) => prev.filter((id) => id !== fundingId));
-        return;
+        return null;
       }
       console.warn(message);
+      return null;
     } finally {
       pendingFavoriteIdsRef.current.delete(fundingId);
     }

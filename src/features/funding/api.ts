@@ -725,7 +725,7 @@ type UpdateFundingReviewPayload = {
   deleteImageUrls?: string[];
 };
 
-type FundingLikeResponse = {
+export type FundingLikeResponse = {
   fundingId: number;
   liked: boolean;
   likeCount: number;
@@ -3180,10 +3180,10 @@ export async function getFundingList(params: {
   query.set('page', String(params.page ?? 0));
   query.set('size', String(params.size ?? 10));
   const suffix = query.toString();
-  const shouldIncludeAuth = Boolean(params.mine || params.sort === 'RECOMMENDED');
+  const shouldRequireAuth = Boolean(params.mine || params.sort === 'RECOMMENDED');
   const result = await requestFundingJson<FundingListApiResponse>(`/api/fundings${suffix ? `?${suffix}` : ''}`, {
-    auth: params.mine,
-    skipAuth: !shouldIncludeAuth,
+    auth: shouldRequireAuth,
+    skipAuth: !shouldRequireAuth,
   });
   const data = Array.isArray(result.data) ? result.data : result.content ?? [];
   return {

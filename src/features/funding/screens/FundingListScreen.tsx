@@ -72,7 +72,7 @@ export default function FundingListScreen() {
   const currentScrollYRef = useRef(0);
   const pendingPaginationScrollYRef = useRef<number | null>(null);
   const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
-  const { projects, replaceProjects } = useFunding();
+  const { projects, replaceProjects, mergeProject } = useFunding();
   const projectsRef = useRef(projects);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<FundingStatusFilter>("전체 프로젝트");
@@ -143,7 +143,7 @@ export default function FundingListScreen() {
     return () => {
       mounted = false;
     };
-  }, [replaceProjects, selectedSort, selectedStatus, user?.id]);
+  }, [replaceProjects, selectedSort, selectedStatus, user?.id, user?.sulbti]);
 
   useEffect(() => {
     let mounted = true;
@@ -253,12 +253,17 @@ export default function FundingListScreen() {
     router.push('/brewery/verification' as any);
   };
 
-  const handleFavoritePress = (projectId: number) => {
+  const handleFavoritePress = async (projectId: number) => {
     if (!user) {
       showLoginPrompt('펀딩 좋아요는 로그인 후 이용할 수 있어요.');
       return;
     }
-    toggleFavoriteFunding(projectId);
+    const response = await toggleFavoriteFunding(projectId);
+    if (!response) return;
+    mergeProject(response.fundingId || projectId, {
+      liked: response.liked,
+      favoriteCount: response.likeCount,
+    });
   };
 
   const handleSortPress = (option: FundingSortOption) => {

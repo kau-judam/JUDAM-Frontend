@@ -90,8 +90,8 @@ export function matchesFundingSearch(project: FundingProject, searchTerm: string
   );
 }
 
-export function getProjectFavoriteCount(project: FundingProject, favoriteFundings: number[] = []) {
-  return (project.favoriteCount || 0) + (favoriteFundings.includes(project.id) ? 1 : 0);
+export function getProjectFavoriteCount(project: FundingProject, _favoriteFundings: number[] = []) {
+  return project.favoriteCount || 0;
 }
 
 export function getProjectCreatedTime(project: FundingProject) {

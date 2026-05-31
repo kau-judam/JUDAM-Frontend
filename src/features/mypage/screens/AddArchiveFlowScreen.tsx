@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
+  ImageSourcePropType,
   ScrollView,
   StyleSheet,
   Text,
@@ -8,40 +10,55 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { ArrowLeft, ChevronRight, Heart, Sparkles, Wine } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Progress } from '@/components/ui/progress';
 import {
-  FundingProject,
-  getFundingProjectImageSource,
-  getFundingStatusLabel,
-  isCompletedFundingStatus,
-} from '@/constants/data';
-import { useFunding } from '@/contexts/FundingContext';
-import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
+  getMyPageApiErrorMessage,
+  getMyPageParticipatedFundings,
+  type MyPageParticipatedFunding,
+} from '@/features/mypage/api';
 
 type Step = 'select-type' | 'select-funding';
 
-const ARCHIVE_REVIEW_PROJECT_ID = 5;
 export default function AddArchiveFlowScreen() {
   const insets = useSafeAreaInsets();
-  const { projects } = useFunding();
   const [step, setStep] = useState<Step>('select-type');
+  const [fundingOptions, setFundingOptions] = useState<MyPageParticipatedFunding[]>([]);
+  const [isFundingLoading, setIsFundingLoading] = useState(false);
+  const [fundingError, setFundingError] = useState('');
 
-  const completedFundingProjects = useMemo(() => {
-    return projects.filter((project) => project.id === ARCHIVE_REVIEW_PROJECT_ID && isCompletedFundingStatus(project.status));
-  }, [projects]);
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      setIsFundingLoading(true);
+      setFundingError('');
 
-  const fallbackProject = useMemo(
-    () => projects.find((project) => project.id === ARCHIVE_REVIEW_PROJECT_ID) || null,
-    [projects]
+      getMyPageParticipatedFundings()
+        .then((items) => {
+          if (!active) return;
+          setFundingOptions(items);
+        })
+        .catch((error) => {
+          if (!active) return;
+          setFundingOptions([]);
+          setFundingError(getMyPageApiErrorMessage(error, '참여 펀딩 목록을 불러오지 못했습니다.'));
+        })
+        .finally(() => {
+          if (active) setIsFundingLoading(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [])
   );
-  const fundingOptions = completedFundingProjects.length > 0 ? completedFundingProjects : fallbackProject ? [fallbackProject] : [];
 
   const currentStep = step === 'select-type' ? 1 : 2;
-  const totalSteps = step === 'select-type' ? 2 : 3;
-  const headerTitle = step === 'select-type' ? '새로운 술 기록' : '펀딩 프로젝트 선택';
+  const totalSteps = 2;
+  const headerTitle = step === 'select-type' ? '새로운 술 기록' : '펀딩 술 선택';
 
   const handleBack = () => {
     if (step === 'select-funding') {
@@ -55,8 +72,14 @@ export default function AddArchiveFlowScreen() {
     router.push('/mypage/archive/write?type=normal' as any);
   };
 
-  const goFundingReview = (projectId: number) => {
-    router.push(`/mypage/archive/write?type=funding&fundingId=${projectId}` as any);
+  const goFundingReview = (funding: MyPageParticipatedFunding) => {
+    const query = new URLSearchParams({
+      type: 'funding',
+      fundingId: String(funding.fundingId),
+      orderId: String(funding.orderId),
+    });
+    if (funding.reviewId) query.set('reviewId', String(funding.reviewId));
+    router.push(`/mypage/archive/write?${query.toString()}` as any);
   };
 
   return (
@@ -67,7 +90,9 @@ export default function AddArchiveFlowScreen() {
             <ArrowLeft size={22} color="#111827" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{headerTitle}</Text>
-          <Text style={styles.stepText}>{currentStep} / {totalSteps}</Text>
+          <Text style={styles.stepText}>
+            {currentStep} / {totalSteps}
+          </Text>
         </View>
         <View style={styles.progressTrack}>
           <View style={[styles.progressFill, { width: `${(currentStep / totalSteps) * 100}%` }]} />
@@ -82,7 +107,7 @@ export default function AddArchiveFlowScreen() {
           <View style={styles.typeContent}>
             <View style={styles.introBlock}>
               <Text style={styles.questionTitle}>어떤 술을 기록할까요?</Text>
-              <Text style={styles.questionDesc}>기록 유형에 따라 입력 항목이 달라져요</Text>
+              <Text style={styles.questionDesc}>기록 유형에 따라 입력 항목이 달라져요.</Text>
             </View>
 
             <TouchableOpacity style={styles.fundingTypeCard} activeOpacity={0.88} onPress={() => setStep('select-funding')}>
@@ -91,8 +116,8 @@ export default function AddArchiveFlowScreen() {
                   <Sparkles size={16} color="#FACC15" />
                   <Text style={styles.fundingEyebrow}>펀딩 참여 술</Text>
                 </View>
-                <Text style={styles.fundingTypeTitle}>주담에서 펀딩한 술</Text>
-                <Text style={styles.fundingTypeDesc}>내가 후원한 펀딩 술을 기록해요.{'\n'}배송 내역과 함께 시음 노트를 작성하세요!</Text>
+                <Text style={styles.fundingTypeTitle}>주담에서 후원한 술</Text>
+                <Text style={styles.fundingTypeDesc}>내가 참여한 펀딩 목록에서 술을 골라 기록해요.</Text>
               </View>
               <ChevronRight size={22} color="#8C92A0" />
             </TouchableOpacity>
@@ -104,7 +129,7 @@ export default function AddArchiveFlowScreen() {
                   <Text style={styles.normalEyebrow}>일반 술</Text>
                 </View>
                 <Text style={styles.normalTypeTitle}>그 외 전통주</Text>
-                <Text style={styles.normalTypeDesc}>구매하거나 선물받은 술,{'\n'}식당에서 마신 술 등을 기록해요.</Text>
+                <Text style={styles.normalTypeDesc}>직접 마신 술 이름과 도수를 입력해서 기록해요.</Text>
               </View>
               <ChevronRight size={22} color="#A0A7B3" />
             </TouchableOpacity>
@@ -113,14 +138,35 @@ export default function AddArchiveFlowScreen() {
           <View style={styles.fundingContent}>
             <View style={styles.introBlock}>
               <Text style={styles.questionTitle}>어떤 펀딩 술인가요?</Text>
-              <Text style={styles.questionDesc}>주담에서 진행된 펀딩을 선택해주세요</Text>
+              <Text style={styles.questionDesc}>결제 완료된 참여 펀딩 목록에서 선택해주세요.</Text>
             </View>
 
-            <View style={styles.projectList}>
-              {fundingOptions.map((project) => (
-                <FundingOptionCard key={project.id} project={project} onPress={() => goFundingReview(project.id)} />
-              ))}
-            </View>
+            {isFundingLoading ? (
+              <EmptyBox>
+                <ActivityIndicator color="#111827" />
+                <Text style={styles.emptyText}>참여 펀딩 목록을 불러오는 중입니다.</Text>
+              </EmptyBox>
+            ) : fundingError ? (
+              <EmptyBox>
+                <Text style={styles.emptyTitle}>목록을 불러오지 못했어요</Text>
+                <Text style={styles.emptyText}>{fundingError}</Text>
+              </EmptyBox>
+            ) : fundingOptions.length === 0 ? (
+              <EmptyBox>
+                <Text style={styles.emptyTitle}>참여한 펀딩이 없어요</Text>
+                <Text style={styles.emptyText}>결제 완료된 펀딩이 있으면 이곳에서 술 기록을 작성할 수 있어요.</Text>
+              </EmptyBox>
+            ) : (
+              <View style={styles.projectList}>
+                {fundingOptions.map((funding) => (
+                  <FundingOptionCard
+                    key={`${funding.fundingId}-${funding.orderId}`}
+                    funding={funding}
+                    onPress={() => goFundingReview(funding)}
+                  />
+                ))}
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -128,14 +174,19 @@ export default function AddArchiveFlowScreen() {
   );
 }
 
-function FundingOptionCard({ project, onPress }: { project: FundingProject; onPress: () => void }) {
-  const progress = Math.min(Math.round((project.currentAmount / project.goalAmount) * 100), 100);
-  const completed = isCompletedFundingStatus(project.status);
+function EmptyBox({ children }: { children: React.ReactNode }) {
+  return <View style={styles.emptyBox}>{children}</View>;
+}
 
+function getFundingImageSource(funding: MyPageParticipatedFunding): ImageSourcePropType {
+  return funding.thumbnailUrl ? { uri: funding.thumbnailUrl } : require('@/assets/images/splash-icon.png');
+}
+
+function FundingOptionCard({ funding, onPress }: { funding: MyPageParticipatedFunding; onPress: () => void }) {
   return (
     <TouchableOpacity style={styles.projectCard} activeOpacity={0.9} onPress={onPress}>
       <View style={styles.projectImageWrap}>
-        <Image source={getFundingProjectImageSource(project)} style={styles.projectImage} />
+        <Image source={getFundingImageSource(funding)} style={styles.projectImage} />
         <View style={styles.heartBubble}>
           <Heart size={14} color="#FFFFFF" />
         </View>
@@ -143,23 +194,27 @@ function FundingOptionCard({ project, onPress }: { project: FundingProject; onPr
 
       <View style={styles.projectInfo}>
         <View style={styles.projectMetaRow}>
-          <Text style={styles.breweryText} numberOfLines={1}>{project.brewery}</Text>
+          <Text style={styles.breweryText} numberOfLines={1}>
+            {funding.breweryName || '양조장'}
+          </Text>
           <View style={styles.categoryBadge}>
-            <Text style={styles.categoryText} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text>
-          </View>
-          <View style={[styles.statusBadge, completed ? styles.statusDone : styles.statusActive]}>
-            <Text style={[styles.statusText, completed ? styles.statusDoneText : styles.statusActiveText]}>
-              {getFundingStatusLabel(project.status)}
+            <Text style={styles.categoryText} numberOfLines={1}>
+              {funding.ingredients || '재료 정보 없음'}
             </Text>
+          </View>
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusText}>{funding.fundingStatus}</Text>
           </View>
         </View>
 
-        <Text style={styles.projectTitle} numberOfLines={2}>{project.title}</Text>
+        <Text style={styles.projectTitle} numberOfLines={2}>
+          {funding.projectName}
+        </Text>
         <View style={styles.projectProgressRow}>
-          <Text style={styles.projectProgressText}>{progress}%</Text>
-          <Text style={styles.projectDaysText}>{completed ? '펀딩 종료' : `${project.daysLeft}일 남음`}</Text>
+          <Text style={styles.projectProgressText}>{funding.abv ? `${funding.abv}%` : '-'}</Text>
+          <Text style={styles.projectDaysText}>{funding.hasReview ? '후기 있음' : '후기 없음'}</Text>
         </View>
-        <Progress value={progress} style={styles.projectProgressBar} indicatorStyle={styles.projectProgressFill} />
+        <Progress value={funding.hasReview ? 100 : 0} style={styles.projectProgressBar} indicatorStyle={styles.projectProgressFill} />
       </View>
 
       <ChevronRight size={18} color="#9CA3AF" />
@@ -199,19 +254,18 @@ const styles = StyleSheet.create({
   heartBubble: { position: 'absolute', left: 7, bottom: 7, width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
   projectInfo: { flex: 1, minWidth: 0 },
   projectMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  breweryText: { maxWidth: 80, fontSize: 12, fontWeight: '900', color: '#4B5563' },
-  categoryBadge: { maxWidth: 92, borderRadius: 999, backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 4 },
+  breweryText: { maxWidth: 86, fontSize: 12, fontWeight: '900', color: '#4B5563' },
+  categoryBadge: { maxWidth: 110, borderRadius: 999, backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 4 },
   categoryText: { fontSize: 11, fontWeight: '900', color: '#6B7280' },
-  statusBadge: { marginLeft: 'auto', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
-  statusActive: { backgroundColor: '#ECFDF5' },
-  statusDone: { backgroundColor: '#EFF6FF' },
-  statusText: { fontSize: 11, fontWeight: '900' },
-  statusActiveText: { color: '#059669' },
-  statusDoneText: { color: '#2563EB' },
+  statusBadge: { marginLeft: 'auto', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: '#EFF6FF' },
+  statusText: { fontSize: 11, fontWeight: '900', color: '#2563EB' },
   projectTitle: { fontSize: 16, lineHeight: 22, fontWeight: '900', color: '#111827', marginBottom: 8 },
   projectProgressRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 5 },
   projectProgressText: { fontSize: 24, lineHeight: 29, fontWeight: '900', color: '#111827' },
   projectDaysText: { fontSize: 12, fontWeight: '800', color: '#4B5563' },
   projectProgressBar: { height: 5, borderRadius: 999, backgroundColor: '#E5E7EB' },
   projectProgressFill: { backgroundColor: '#111827' },
+  emptyBox: { minHeight: 180, borderRadius: 18, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
+  emptyTitle: { fontSize: 17, fontWeight: '900', color: '#111827', textAlign: 'center' },
+  emptyText: { fontSize: 13, lineHeight: 20, fontWeight: '700', color: '#6B7280', textAlign: 'center' },
 });

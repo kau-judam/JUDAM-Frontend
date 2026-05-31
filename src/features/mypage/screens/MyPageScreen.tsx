@@ -33,6 +33,7 @@ import {
   Scroll,
   Utensils,
   BadgeCheck,
+  ShieldCheck,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -222,6 +223,7 @@ export default function MyPageScreen() {
 
   const initial = user.name?.[0] || 'U';
   const isBrewery = user.type === 'brewery';
+  const isAdmin = String(user.role || '').toUpperCase() === 'ADMIN';
   const summaryBtiCode = summary?.sulbti?.hasResult ? resolveSulbtiCode(summary.sulbti.btiCode || summary.sulbti.type) : null;
   const savedBtiCode = resolveSulbtiCode(user.sulbti) || summaryBtiCode;
   const savedBtiType = resolveBtiType(savedBtiCode);
@@ -252,8 +254,8 @@ export default function MyPageScreen() {
               <View style={styles.profileInfo}>
                  <Text style={styles.profileName}>{user.name} 님</Text>
                  <View style={styles.typeBadge}>
-                    {isBrewery ? <Factory size={10} color="#6B7280" /> : <Wine size={10} color="#6B7280" />}
-                    <Text style={styles.typeBadgeTxt}>{isBrewery ? "양조장 계정" : "일반 유저"}</Text>
+                    {isAdmin ? <ShieldCheck size={10} color="#6B7280" /> : isBrewery ? <Factory size={10} color="#6B7280" /> : <Wine size={10} color="#6B7280" />}
+                    <Text style={styles.typeBadgeTxt}>{isAdmin ? "관리자 계정" : isBrewery ? "양조장 계정" : "일반 유저"}</Text>
                  </View>
               </View>
               <TouchableOpacity
@@ -306,7 +308,16 @@ export default function MyPageScreen() {
 
         {/* 4. Sections */}
         <View style={styles.sectionArea}>
-           <Text style={styles.sectionLabel}>나의 활동</Text>
+           {isAdmin && (
+             <>
+               <Text style={styles.sectionLabel}>관리자</Text>
+               <View style={styles.menuCard}>
+                  <MenuItem icon={<ShieldCheck size={18} color="#6B7280" />} title="펀딩 심사 관리" last onPress={() => router.push('/admin/fundings/drafts' as any)} />
+               </View>
+             </>
+           )}
+
+           <Text style={[styles.sectionLabel, isAdmin && { marginTop: 28 }]}>나의 활동</Text>
            <View style={styles.menuCard}>
               <MenuItem icon={<Utensils size={18} color="#6B7280" />} title="레시피" onPress={() => router.push('/mypage/activity/recipe' as any)} />
               <MenuItem icon={<TrendingUp size={18} color="#6B7280" />} title="펀딩" onPress={() => router.push('/mypage/activity/funding' as any)} />
@@ -316,7 +327,7 @@ export default function MyPageScreen() {
            <Text style={[styles.sectionLabel, { marginTop: 28 }]}>기타</Text>
            <View style={styles.menuCard}>
               <MenuItem icon={<Settings size={18} color="#6B7280" />} title="설정" onPress={() => router.push('/mypage/settings' as any)} />
-              {!isBrewery && (
+              {!isBrewery && !isAdmin && (
                 <MenuItem
                   icon={<BadgeCheck size={18} color="#6B7280" />}
                   title="양조장 인증하기"

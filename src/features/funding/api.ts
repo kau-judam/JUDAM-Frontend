@@ -109,6 +109,28 @@ export type FundingDraftListItem = {
   updatedAt: string;
 };
 
+export type AdminFundingDraft = {
+  draftId: number;
+  fundingId?: number;
+  breweryId?: number;
+  title: string;
+  breweryName: string;
+  status: string;
+  progressRate?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  submittedAt?: string;
+  summary?: string;
+  category?: string;
+  mainIngredient?: string;
+  targetAmount?: number;
+  pricePerBottle?: number;
+  totalQuantity?: number;
+  thumbnailUrl?: string | null;
+  imageUrls?: string[];
+  raw?: Record<string, unknown>;
+};
+
 type FundingDraftListResponse = {
   drafts: FundingDraftListItem[];
   message: string;
@@ -649,7 +671,7 @@ type CompleteFundingPaymentResponse = {
 type AdminFundingDraftStatus = 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 
 type AdminFundingDraftListResponse = {
-  drafts: FundingDraftListItem[];
+  drafts: AdminFundingDraft[];
   message: string;
 };
 
@@ -1379,6 +1401,142 @@ function readFundingApiStringArray(source: Record<string, unknown>, arrayKeys: s
   if (array.length > 0) return array;
   const singleValue = readFundingApiString(source, stringKeys);
   return singleValue ? [singleValue] : [];
+}
+
+function normalizeFundingApiImageUrl(imageUrl?: unknown): string {
+  if (Array.isArray(imageUrl)) {
+    return normalizeFundingApiImageUrl(imageUrl[0]);
+  }
+  if (imageUrl && typeof imageUrl === 'object') {
+    const image = imageUrl as Record<string, unknown>;
+    return normalizeFundingApiImageUrl(
+      image.imageUrl ??
+      image.image_url ??
+      image.url ??
+      image.fileUrl ??
+      image.file_url ??
+      image.thumbnailUrl ??
+      image.thumbnail_url
+    );
+  }
+  if (typeof imageUrl !== 'string') return '';
+
+  const trimmed = imageUrl.trim();
+  if (!trimmed) return '';
+  if (/^(file:|content:|data:|asset:)/i.test(trimmed)) return '';
+  const nestedAbsoluteUrl = trimmed.match(/^https?:\/\/[^/]+\/(https?:\/\/.+)$/i);
+  if (nestedAbsoluteUrl?.[1]) return nestedAbsoluteUrl[1];
+  if (/^https?:/i.test(trimmed)) return trimmed;
+  return `${JUDAM_FUNDING_API_BASE_URL}/${trimmed.replace(/^\/+/, '')}`;
+}
+
+function coerceFundingApiImageUrls(imageUrls: unknown): string[] {
+  if (!imageUrls) return [];
+  if (Array.isArray(imageUrls)) {
+    return imageUrls.flatMap(coerceFundingApiImageUrls);
+  }
+  if (imageUrls && typeof imageUrls === 'object') {
+    const image = imageUrls as Record<string, unknown>;
+    return coerceFundingApiImageUrls(
+      image.imageUrl ??
+      image.image_url ??
+      image.url ??
+      image.fileUrl ??
+      image.file_url ??
+      image.thumbnailUrl ??
+      image.thumbnail_url
+    );
+  }
+  if (typeof imageUrls !== 'string') return [];
+
+  const trimmed = imageUrls.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      return coerceFundingApiImageUrls(JSON.parse(trimmed));
+    } catch {
+      return [trimmed];
+    }
+  }
+  return [trimmed];
+}
+
+function normalizeFundingApiImageUrls(imageUrls?: unknown) {
+  return Array.from(new Set(coerceFundingApiImageUrls(imageUrls).map(normalizeFundingApiImageUrl).filter(Boolean)));
+}
+
+function normalizeAdminFundingDraftItem(value: unknown): AdminFundingDraft | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const basicInfo = getFundingApiNestedObject(source, ['basicInfo', 'basic_info']);
+  const schedule = getFundingApiNestedObject(source, ['schedule']);
+  const breweryInfo = getFundingApiNestedObject(source, ['breweryInfo', 'brewery_info']);
+  const draftId = readFundingApiNumber(source, ['draftId', 'draft_id', 'id'], 0);
+  if (!draftId) return null;
+
+  const title =
+    readFundingApiString(source, ['title']) ||
+    readFundingApiString(basicInfo, ['title', 'projectTitle', 'project_title']);
+  const imageUrls = normalizeFundingApiImageUrls(
+    readFundingApiArray<string>(source, ['imageUrls', 'image_urls', 'images'])
+      .concat(readFundingApiArray<string>(basicInfo, ['imageUrls', 'image_urls', 'images']))
+  ).slice(0, 5);
+
+  return {
+    draftId,
+    fundingId: readFundingApiOptionalNumber(source, ['fundingId', 'funding_id']),
+    breweryId: readFundingApiOptionalNumber(source, ['breweryId', 'brewery_id']),
+    title: title || `Draft #${draftId}`,
+    breweryName:
+      readFundingApiString(source, ['breweryName', 'brewery_name']) ||
+      readFundingApiString(breweryInfo, ['breweryName', 'brewery_name']) ||
+      '양조장 정보 없음',
+    status: readFundingApiString(source, ['status', 'draftStatus', 'draft_status'], 'UNKNOWN'),
+    progressRate: readFundingApiOptionalNumber(source, ['progressRate', 'progress_rate']),
+    createdAt: readFundingApiString(source, ['createdAt', 'created_at']),
+    updatedAt: readFundingApiString(source, ['updatedAt', 'updated_at']),
+    submittedAt: readFundingApiString(source, ['submittedAt', 'submitted_at']),
+    summary:
+      readFundingApiString(source, ['summary', 'description']) ||
+      readFundingApiString(basicInfo, ['summary', 'description']),
+    category:
+      readFundingApiString(source, ['category']) ||
+      readFundingApiString(basicInfo, ['category']),
+    mainIngredient:
+      readFundingApiString(source, ['mainIngredient', 'primaryIngredient', 'main_ingredient', 'primary_ingredient']) ||
+      readFundingApiString(basicInfo, ['mainIngredient', 'primaryIngredient', 'main_ingredient', 'primary_ingredient']),
+    targetAmount:
+      readFundingApiOptionalNumber(source, ['targetAmount', 'target_amount']) ??
+      readFundingApiOptionalNumber(schedule, ['targetAmount', 'target_amount']),
+    pricePerBottle:
+      readFundingApiOptionalNumber(source, ['pricePerBottle', 'price_per_bottle']) ??
+      readFundingApiOptionalNumber(schedule, ['pricePerBottle', 'price_per_bottle']),
+    totalQuantity:
+      readFundingApiOptionalNumber(source, ['totalQuantity', 'total_quantity']) ??
+      readFundingApiOptionalNumber(schedule, ['totalQuantity', 'total_quantity']),
+    thumbnailUrl:
+      normalizeFundingApiImageUrl(readFundingApiString(source, ['thumbnailUrl', 'thumbnail_url'])) ||
+      normalizeFundingApiImageUrl(readFundingApiString(basicInfo, ['thumbnailUrl', 'thumbnail_url'])) ||
+      imageUrls[0] ||
+      null,
+    imageUrls,
+    raw: source,
+  };
+}
+
+function normalizeAdminFundingDraftsResponse(response: unknown) {
+  const raw = getFundingApiRawObject(response);
+  const data = getFundingResponseData<unknown>(response);
+  const dataObject = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {};
+  const candidates = [
+    Array.isArray(data) ? data : null,
+    readFundingApiArray<unknown>(dataObject, ['drafts', 'content', 'items', 'fundings']),
+    readFundingApiArray<unknown>(raw, ['drafts', 'content', 'items', 'fundings']),
+  ];
+  const items = candidates.find((candidate): candidate is unknown[] => Array.isArray(candidate) && candidate.length > 0) || [];
+  return items
+    .map(normalizeAdminFundingDraftItem)
+    .filter((item): item is AdminFundingDraft => Boolean(item));
 }
 
 function readFundingApiUrlArray(source: Record<string, unknown>, arrayKeys: string[], stringKeys: string[] = []) {
@@ -3438,7 +3596,12 @@ export async function getAdminFundingDrafts(status: AdminFundingDraftStatus = 'S
   const result = await requestFundingJson<unknown>(`/api/admin/fundings/drafts?${query.toString()}`, {
     auth: true,
   });
-  return normalizeFundingDraftListResponse(result) as AdminFundingDraftListResponse;
+  const raw = getFundingApiRawObject(result);
+  const data = getFundingApiObject(result);
+  return {
+    drafts: normalizeAdminFundingDraftsResponse(result),
+    message: readFundingApiString(data, ['message']) || readFundingApiString(raw, ['message']),
+  } satisfies AdminFundingDraftListResponse;
 }
 
 export async function approveAdminFundingDraft(draftId: number) {

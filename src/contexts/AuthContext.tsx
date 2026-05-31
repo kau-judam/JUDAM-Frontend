@@ -37,6 +37,7 @@ export interface User {
   uid: string;
   name: string;
   email: string;
+  role?: AuthRole;
   phone?: string;
   profileImage?: string;
   type: UserType;
@@ -141,6 +142,7 @@ function mapAuthApiUser(apiUser: AuthApiUser, fallbackType: UserType = "user"): 
     uid: generateUID(type === "brewery" ? "JD-BREW" : "JD-USER"),
     name: apiUser.nickname,
     email: apiUser.email,
+    role: apiUser.role,
     phone: apiUser.phoneNumber || undefined,
     profileImage: apiUser.profileImage || undefined,
     type,

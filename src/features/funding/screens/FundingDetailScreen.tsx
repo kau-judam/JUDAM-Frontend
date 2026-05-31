@@ -93,9 +93,11 @@ import {
   BREWING_STAGES,
   getImageSource,
   getFundingProjectImageSource,
-  getFundingStatusLabel,
-  getFundingSupportUnavailableMessage,
-  isSupportableFundingStatus,
+  getFundingProjectStatusLabel,
+  getFundingProjectSupportUnavailableMessage,
+  isFundingEndDateExpired,
+  isFundingProjectManageable,
+  isFundingProjectSupportable,
 } from '@/constants/data';
 import type { BrewingStage, FundingProject, JournalComment, JournalEntry, JournalReply } from '@/constants/data';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
@@ -842,10 +844,11 @@ export default function FundingDetailScreen() {
   const progressBarValue = Math.min(progressPercentage, 100);
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified;
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
-  const canManageOwnBreweryProject = Boolean(isBrewery && isOwnBreweryProject);
-  const isProjectSupportable = isSupportableFundingStatus(project.status);
-  const projectStatusLabel = getFundingStatusLabel(project.status);
-  const supportUnavailableMessage = getFundingSupportUnavailableMessage(project.status);
+  const canManageOwnBreweryProject = Boolean(isBrewery && isOwnBreweryProject && isFundingProjectManageable(project));
+  const isProjectSupportable = isFundingProjectSupportable(project);
+  const isProjectExpiredByEndDate = isFundingEndDateExpired(project);
+  const projectStatusLabel = getFundingProjectStatusLabel(project);
+  const supportUnavailableMessage = getFundingProjectSupportUnavailableMessage(project);
   const unitPrice = getProjectUnitPrice(project);
   const shippingFee = getProjectShippingFee(project);
   const bottleSize = getProjectBottleSize(project);
@@ -859,33 +862,136 @@ export default function FundingDetailScreen() {
   const optionTotalAmount = selectedSupportOptionPrice * selectedQuantity + shippingFee;
   const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
   const mainIngredientLabel = getFundingMainIngredientLabel(project);
+  const ownerClosedProjectLabel = (() => {
+    if (projectStatusLabel === "펀딩 성공") return "성공한 프로젝트";
+    if (projectStatusLabel === "펀딩 실패") return "실패한 프로젝트";
+    if (projectStatusLabel === "취소된 펀딩") return "취소된 프로젝트";
+    if (isProjectExpiredByEndDate || projectStatusLabel === "펀딩 마감") return "마감된 프로젝트";
+    if (projectStatusLabel === "심사 중") return "심사 중인 프로젝트";
+    if (projectStatusLabel === "대기 중") return "대기 중인 프로젝트";
+    return "프로젝트 상태 확인";
+  })();
   const supportButtonLabel =
     isOwnBreweryProject
       ? user?.isBreweryVerified
-        ? "프로젝트 관리하기"
+        ? canManageOwnBreweryProject
+          ? "프로젝트 관리하기"
+          : ownerClosedProjectLabel
         : "양조장 인증하기"
       : !isProjectSupportable
       ? projectStatusLabel === "심사 중" || projectStatusLabel === "대기 중" || projectStatusLabel === "펀딩 예정"
         ? "후원 준비중"
-        : "펀딩 종료"
+        : projectStatusLabel
       : "프로젝트 후원하기";
+  const isMainSupportButtonMuted = isOwnBreweryProject
+    ? Boolean(user?.isBreweryVerified && !canManageOwnBreweryProject)
+    : !isProjectSupportable;
+  const getSupportBlockedFeedback = () => {
+    if (projectStatusLabel === "펀딩 마감") {
+      return {
+        title: "펀딩이 마감되었습니다",
+        body: "마감일이 지나 더 이상 후원할 수 없습니다. 정산이 완료되면 펀딩 성공 또는 실패 상태로 표시됩니다.",
+      };
+    }
+    if (projectStatusLabel === "펀딩 성공") {
+      return {
+        title: "펀딩 성공 프로젝트입니다",
+        body: "목표 금액을 달성해 후원 접수가 종료된 프로젝트입니다.",
+      };
+    }
+    if (projectStatusLabel === "펀딩 실패") {
+      return {
+        title: "펀딩 실패 프로젝트입니다",
+        body: "목표 금액을 달성하지 못해 후원 접수가 종료된 프로젝트입니다.",
+      };
+    }
+    if (projectStatusLabel === "취소된 펀딩") {
+      return {
+        title: "취소된 프로젝트입니다",
+        body: "운영 또는 진행 사유로 취소되어 후원할 수 없는 프로젝트입니다.",
+      };
+    }
+    if (projectStatusLabel === "심사 중") {
+      return {
+        title: "심사 중인 프로젝트입니다",
+        body: "관리자 심사가 완료된 뒤 후원 가능 상태가 되면 참여할 수 있습니다.",
+      };
+    }
+    if (projectStatusLabel === "대기 중" || projectStatusLabel === "펀딩 예정") {
+      return {
+        title: "후원 준비중입니다",
+        body: "아직 후원을 받을 수 없는 프로젝트입니다. 프로젝트 상태가 진행 중으로 바뀐 뒤 참여할 수 있습니다.",
+      };
+    }
+    return {
+      title: "후원 진행 안내",
+      body: supportUnavailableMessage,
+    };
+  };
+  const getOwnerManageBlockedFeedback = () => {
+    if (projectStatusLabel === "펀딩 마감" || isProjectExpiredByEndDate) {
+      return {
+        title: "마감된 프로젝트입니다",
+        body: "마감일이 지나 프로젝트 수정이 제한됩니다. 정산이 완료되면 성공 또는 실패 상태로 확인할 수 있습니다.",
+      };
+    }
+    if (projectStatusLabel === "펀딩 성공") {
+      return {
+        title: "성공한 프로젝트입니다",
+        body: "정산이 완료된 성공 프로젝트는 수정 제출할 수 없습니다. 상세 정보와 후원 현황만 확인할 수 있습니다.",
+      };
+    }
+    if (projectStatusLabel === "펀딩 실패") {
+      return {
+        title: "실패한 프로젝트입니다",
+        body: "정산이 완료된 실패 프로젝트는 수정 제출할 수 없습니다. 상세 정보와 진행 결과만 확인할 수 있습니다.",
+      };
+    }
+    if (projectStatusLabel === "취소된 펀딩") {
+      return {
+        title: "취소된 프로젝트입니다",
+        body: "취소 처리된 프로젝트는 수정하거나 다시 후원을 받을 수 없습니다.",
+      };
+    }
+    if (projectStatusLabel === "심사 중") {
+      return {
+        title: "심사 중인 프로젝트입니다",
+        body: "관리자 심사가 진행 중인 프로젝트입니다. 심사가 완료되기 전에는 수정 관리가 제한됩니다.",
+      };
+    }
+    if (projectStatusLabel === "대기 중") {
+      return {
+        title: "대기 중인 프로젝트입니다",
+        body: "아직 후원 진행 전 단계입니다. 프로젝트 상태가 진행 중으로 변경된 뒤 관리할 수 있습니다.",
+      };
+    }
+    return {
+      title: "프로젝트 상태 확인",
+      body: "현재 상태에서는 프로젝트 수정이 제한됩니다. 프로젝트 상태를 확인한 뒤 다시 시도해주세요.",
+    };
+  };
 
   const journals = project.journals || [];
 
   const handleSupportClick = () => {
+    if (!isOwnBreweryProject && !isProjectSupportable) {
+      setFeedbackModal(getSupportBlockedFeedback());
+      return;
+    }
     if (!user) {
       showLoginRequired('후원하려면 먼저 로그인해주세요.');
       return;
     }
     if (isOwnBreweryProject) {
+      if (!user.isBreweryVerified) {
+        router.push('/brewery/verification' as any);
+        return;
+      }
+      if (!canManageOwnBreweryProject) {
+        setFeedbackModal(getOwnerManageBlockedFeedback());
+        return;
+      }
       router.push(user.isBreweryVerified ? `/brewery/project/create?mode=edit&projectId=${project.id}` as any : '/brewery/verification' as any);
-      return;
-    }
-    if (!isProjectSupportable) {
-      setFeedbackModal({
-        title: '후원 진행 안내',
-        body: supportUnavailableMessage,
-      });
       return;
     }
     setShowFundingOptionModal(true);
@@ -2518,8 +2624,7 @@ export default function FundingDetailScreen() {
             <Text style={[styles.heartCountText, isProjectFavorite && styles.heartCountTextActive]}>{favoriteCountLabel}</Text>
          </TouchableOpacity>
          <TouchableOpacity 
-           style={[styles.mainSupportBtn, !isOwnBreweryProject && !isProjectSupportable && { backgroundColor: '#374151' }]}
-           disabled={!isOwnBreweryProject && !isProjectSupportable}
+           style={[styles.mainSupportBtn, isMainSupportButtonMuted && { backgroundColor: '#374151' }]}
            onPress={handleSupportClick}
          >
             <Text style={styles.mainSupportTxt}>{supportButtonLabel}</Text>

@@ -53,15 +53,16 @@ type FundingListAlert = {
 };
 
 function getFundingApiStatus(status: FundingStatusFilter) {
-  if (status === "진행중인 프로젝트") return "ONGOING";
+  if (status === "진행중인 프로젝트") return "ACTIVE";
+  if (status === "성사된 프로젝트") return "SUCCESS";
   return undefined;
 }
 
 function getFundingApiSort(sort: FundingSortOption) {
-  if (sort === "추천순") return "recommended";
-  if (sort === "마감임박") return "endingSoon";
-  if (sort === "최신순") return "latest";
-  return "popular";
+  if (sort === "추천순") return "RECOMMENDED";
+  if (sort === "마감임박") return "DEADLINE";
+  if (sort === "최신순") return "LATEST";
+  return "POPULAR";
 }
 
 export default function FundingListScreen() {

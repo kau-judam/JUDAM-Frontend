@@ -27,7 +27,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Progress } from '@/components/ui/progress';
-import { getFundingProjectImageSource, getFundingStatusLabel, getFundingSupportUnavailableMessage, isSupportableFundingStatus } from '@/constants/data';
+import {
+  getFundingProjectImageSource,
+  getFundingProjectStatusLabel,
+  getFundingProjectSupportUnavailableMessage,
+  isFundingProjectManageable,
+  isFundingProjectSupportable,
+} from '@/constants/data';
 import type { FundingProject } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
@@ -355,10 +361,10 @@ export default function FundingSupportScreen() {
 
   const handlePayment = () => {
     if (!project || isProcessing) return;
-    if (!isSupportableFundingStatus(project.status)) {
+    if (!isFundingProjectSupportable(project)) {
       setAlertModal({
         title: '후원 진행 안내',
-        body: getFundingSupportUnavailableMessage(project.status),
+        body: getFundingProjectSupportUnavailableMessage(project),
         tone: 'warning',
       });
       return;
@@ -381,11 +387,11 @@ export default function FundingSupportScreen() {
 
   const handleConfirmPayment = async () => {
     if (!project || !user || !selectedPaymentMethod || isProcessing) return;
-    if (!isSupportableFundingStatus(project.status)) {
+    if (!isFundingProjectSupportable(project)) {
       setShowConfirmModal(false);
       setAlertModal({
         title: '후원 진행 안내',
-        body: getFundingSupportUnavailableMessage(project.status),
+        body: getFundingProjectSupportUnavailableMessage(project),
         tone: 'warning',
       });
       return;
@@ -533,6 +539,63 @@ export default function FundingSupportScreen() {
     );
   }
 
+  if (!isFundingProjectSupportable(project) && !isOwnBreweryProject) {
+    const statusLabel = getFundingProjectStatusLabel(project);
+    const blockedNotice = (() => {
+      if (statusLabel === '펀딩 마감') {
+        return {
+          title: '펀딩이 마감되었습니다',
+          body: '마감일이 지나 더 이상 후원할 수 없습니다. 정산이 완료되면 펀딩 성공 또는 실패 상태로 표시됩니다.',
+        };
+      }
+      if (statusLabel === '펀딩 성공') {
+        return {
+          title: '펀딩 성공 프로젝트입니다',
+          body: '목표 금액을 달성해 후원 접수가 종료된 프로젝트입니다.',
+        };
+      }
+      if (statusLabel === '펀딩 실패') {
+        return {
+          title: '펀딩 실패 프로젝트입니다',
+          body: '목표 금액을 달성하지 못해 후원 접수가 종료된 프로젝트입니다.',
+        };
+      }
+      if (statusLabel === '취소된 펀딩') {
+        return {
+          title: '취소된 프로젝트입니다',
+          body: '운영 또는 진행 사유로 취소되어 후원할 수 없는 프로젝트입니다.',
+        };
+      }
+      if (statusLabel === '심사 중') {
+        return {
+          title: '심사 중인 프로젝트입니다',
+          body: '관리자 심사가 완료된 뒤 후원 가능 상태가 되면 참여할 수 있습니다.',
+        };
+      }
+      if (statusLabel === '대기 중' || statusLabel === '펀딩 예정') {
+        return {
+          title: '후원 준비중입니다',
+          body: '아직 후원을 받을 수 없는 프로젝트입니다. 프로젝트 상태가 진행 중으로 바뀐 뒤 참여할 수 있습니다.',
+        };
+      }
+      return {
+        title: '후원 진행 안내',
+        body: getFundingProjectSupportUnavailableMessage(project),
+      };
+    })();
+
+    return (
+      <AccessNotice
+        insetsTop={insets.top}
+        title={blockedNotice.title}
+        body={blockedNotice.body}
+        primaryLabel="진행 펀딩 보기"
+        onPrimaryPress={() => router.replace('/funding' as any)}
+        backHref={`/funding/${project.id}`}
+      />
+    );
+  }
+
   if (!user) {
     return (
       <AccessNotice
@@ -549,38 +612,57 @@ export default function FundingSupportScreen() {
   }
 
   if (isOwnBreweryProject) {
+    const canManageOwnProject = isFundingProjectManageable(project);
+    const ownerStatusLabel = getFundingProjectStatusLabel(project);
+    const ownerBlockedNotice = (() => {
+      if (ownerStatusLabel === '펀딩 마감') {
+        return '마감일이 지나 프로젝트 수정이 제한됩니다. 정산이 완료되면 성공 또는 실패 상태로 확인할 수 있습니다.';
+      }
+      if (ownerStatusLabel === '펀딩 성공') {
+        return '정산이 완료된 성공 프로젝트는 수정 제출할 수 없습니다. 상세 정보와 후원 현황만 확인할 수 있습니다.';
+      }
+      if (ownerStatusLabel === '펀딩 실패') {
+        return '정산이 완료된 실패 프로젝트는 수정 제출할 수 없습니다. 상세 정보와 진행 결과만 확인할 수 있습니다.';
+      }
+      if (ownerStatusLabel === '취소된 펀딩') {
+        return '취소 처리된 프로젝트는 수정하거나 다시 후원을 받을 수 없습니다.';
+      }
+      if (ownerStatusLabel === '심사 중') {
+        return '관리자 심사가 진행 중인 프로젝트입니다. 심사가 완료되기 전에는 수정 관리가 제한됩니다.';
+      }
+      if (ownerStatusLabel === '대기 중') {
+        return '아직 후원 진행 전 단계입니다. 프로젝트 상태가 진행 중으로 변경된 뒤 관리할 수 있습니다.';
+      }
+      return '현재 상태에서는 프로젝트 수정이 제한됩니다. 프로젝트 상태를 확인한 뒤 다시 시도해주세요.';
+    })();
+    const ownProjectNoticeBody =
+      user.isBreweryVerified && canManageOwnProject
+        ? '직접 만든 프로젝트는 후원할 수 없고 관리 화면에서 진행 현황을 확인할 수 있어요.'
+        : user.isBreweryVerified
+        ? ownerBlockedNotice
+        : '직접 만든 프로젝트를 관리하려면 양조장 인증을 먼저 진행해주세요.';
+    const ownProjectPrimaryLabel =
+      user.isBreweryVerified && canManageOwnProject
+        ? '프로젝트 관리하기'
+        : user.isBreweryVerified
+        ? '펀딩 상세로 돌아가기'
+        : '양조장 인증하기';
+    const ownProjectPrimaryHref =
+      user.isBreweryVerified && canManageOwnProject
+        ? `/brewery/project/create?mode=edit&projectId=${project.id}`
+        : user.isBreweryVerified
+        ? `/funding/${project.id}`
+        : '/brewery/verification';
+
     return (
       <AccessNotice
         insetsTop={insets.top}
         title="내 프로젝트입니다"
-        body={
-          user.isBreweryVerified
-            ? '직접 만든 프로젝트는 후원할 수 없고 관리 화면에서 진행 현황을 확인할 수 있어요.'
-            : '직접 만든 프로젝트를 관리하려면 양조장 인증을 먼저 진행해주세요.'
-        }
-        primaryLabel={user.isBreweryVerified ? '프로젝트 관리하기' : '양조장 인증하기'}
-        onPrimaryPress={() => router.replace(user.isBreweryVerified ? `/brewery/project/create?mode=edit&projectId=${project.id}` as any : '/brewery/verification' as any)}
+        body={ownProjectNoticeBody}
+        primaryLabel={ownProjectPrimaryLabel}
+        onPrimaryPress={() => router.replace(ownProjectPrimaryHref as any)}
         secondaryLabel="펀딩으로 돌아가기"
         onSecondaryPress={() => router.replace('/funding' as any)}
-        backHref={`/funding/${project.id}`}
-      />
-    );
-  }
-
-  if (!isSupportableFundingStatus(project.status)) {
-    const statusLabel = getFundingStatusLabel(project.status);
-    const isPreparingFunding = statusLabel === '심사 중' || statusLabel === '대기 중' || statusLabel === '펀딩 예정';
-    return (
-      <AccessNotice
-        insetsTop={insets.top}
-        title={isPreparingFunding ? '후원 준비중입니다' : '종료된 펀딩입니다'}
-        body={
-          isPreparingFunding
-            ? '아직 후원을 받을 수 없는 프로젝트입니다. 프로젝트 상세에서 진행 상태를 확인해주세요.'
-            : getFundingSupportUnavailableMessage(project.status)
-        }
-        primaryLabel="진행 펀딩 보기"
-        onPrimaryPress={() => router.replace('/funding' as any)}
         backHref={`/funding/${project.id}`}
       />
     );

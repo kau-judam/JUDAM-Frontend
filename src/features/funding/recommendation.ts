@@ -1,6 +1,7 @@
 import {
   isCompletedFundingStatus,
-  isSupportableFundingStatus,
+  isFundingProjectSupportable,
+  isSuccessfulFundingStatus,
 } from '@/constants/data';
 import type { FundingProject, ProjectStatus, TasteProfile } from '@/constants/data';
 
@@ -55,15 +56,22 @@ export function getTasteMatchScore(project: FundingProject, userTasteProfile: Ta
 }
 
 export function getRecommendationStatusPriority(status: ProjectStatus) {
-  if (isSupportableFundingStatus(status)) return 0;
+  if (status === "ACTIVE" || status === "진행 중") return 0;
   if (status === "펀딩 예정") return 1;
   if (isCompletedFundingStatus(status)) return 2;
   return 3;
 }
 
+function getRecommendationProjectStatusPriority(project: FundingProject) {
+  if (isFundingProjectSupportable(project)) return 0;
+  if (project.status === "펀딩 예정") return 1;
+  if (isCompletedFundingStatus(project.status)) return 2;
+  return 3;
+}
+
 export function matchesFundingStatusFilter(project: FundingProject, filter: FundingStatusFilter) {
-  if (filter === "진행중인 프로젝트") return isSupportableFundingStatus(project.status);
-  if (filter === "성사된 프로젝트") return isCompletedFundingStatus(project.status);
+  if (filter === "진행중인 프로젝트") return isFundingProjectSupportable(project);
+  if (filter === "성사된 프로젝트") return isSuccessfulFundingStatus(project.status);
   return true;
 }
 
@@ -100,7 +108,7 @@ export function sortFundingProjectsForDisplay(
 ) {
   if (sort === "추천순" && userTasteProfile) {
     return [...projects].sort((a, b) => {
-      const statusDiff = getRecommendationStatusPriority(a.status) - getRecommendationStatusPriority(b.status);
+      const statusDiff = getRecommendationProjectStatusPriority(a) - getRecommendationProjectStatusPriority(b);
       if (statusDiff !== 0) return statusDiff;
       const matchDiff = (getTasteMatchScore(b, userTasteProfile) ?? -1) - (getTasteMatchScore(a, userTasteProfile) ?? -1);
       if (matchDiff !== 0) return matchDiff;
@@ -109,7 +117,7 @@ export function sortFundingProjectsForDisplay(
   }
   if (sort === "마감임박") {
     return [...projects].sort((a, b) => {
-      const statusDiff = getRecommendationStatusPriority(a.status) - getRecommendationStatusPriority(b.status);
+      const statusDiff = getRecommendationProjectStatusPriority(a) - getRecommendationProjectStatusPriority(b);
       if (statusDiff !== 0) return statusDiff;
       return a.daysLeft - b.daysLeft;
     });
@@ -126,9 +134,9 @@ export function sortFundingProjectsForDisplay(
 
 export function getFundingListStats(projects: FundingProject[]) {
   return {
-    supportableCount: projects.filter((project) => isSupportableFundingStatus(project.status)).length,
+    supportableCount: projects.filter((project) => isFundingProjectSupportable(project)).length,
     totalBackers: projects.reduce((sum, project) => sum + project.backers, 0),
-    completedCount: projects.filter((project) => isCompletedFundingStatus(project.status)).length,
+    completedCount: projects.filter((project) => isSuccessfulFundingStatus(project.status)).length,
     totalRaised: projects.reduce((sum, project) => sum + project.currentAmount, 0),
   };
 }

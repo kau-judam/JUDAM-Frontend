@@ -799,8 +799,9 @@ export type FundingListStatus =
   | 'ENDED'
   | 'SUCCESS'
   | 'FAILED'
+  | 'CANCELED'
   | 'CANCELLED';
-export type FundingListSort = 'popular' | 'latest' | 'endingSoon' | 'recommended';
+export type FundingListSort = 'POPULAR' | 'LATEST' | 'DEADLINE' | 'RECOMMENDED';
 
 export type FundingListItem = {
   fundingId: number;
@@ -3179,7 +3180,7 @@ export async function getFundingList(params: {
   query.set('page', String(params.page ?? 0));
   query.set('size', String(params.size ?? 10));
   const suffix = query.toString();
-  const shouldIncludeAuth = Boolean(params.mine || params.sort === 'recommended');
+  const shouldIncludeAuth = Boolean(params.mine || params.sort === 'RECOMMENDED');
   const result = await requestFundingJson<FundingListApiResponse>(`/api/fundings${suffix ? `?${suffix}` : ''}`, {
     auth: params.mine,
     skipAuth: !shouldIncludeAuth,

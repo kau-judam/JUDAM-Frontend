@@ -27,21 +27,8 @@ function getDaysLeft(value?: string) {
   return Math.max(0, Math.ceil((end - startOfToday) / (1000 * 60 * 60 * 24)));
 }
 
-function hasFundingEnded(value?: string) {
-  if (!value) return false;
-  const endDate = new Date(value);
-  if (!Number.isFinite(endDate.getTime())) return false;
-  const today = new Date();
-  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()).getTime();
-  return end < startOfToday;
-}
-
-export function mapFundingStatus(status: string, currentAmount = 0, targetAmount = 0, endDate?: string): ProjectStatus {
+export function mapFundingStatus(status: string, _currentAmount = 0, _targetAmount = 0, _endDate?: string): ProjectStatus {
   const normalized = String(status || '').trim().toUpperCase();
-  if ((normalized === 'ONGOING' || normalized === 'ACTIVE') && hasFundingEnded(endDate)) {
-    return targetAmount > 0 && currentAmount >= targetAmount ? 'SUCCESS' : 'FAILED';
-  }
   if (normalized === 'READY') return '대기 중';
   if (normalized === 'REVIEWING') return '심사 중';
   if (normalized === 'UPCOMING') return '펀딩 예정';
@@ -49,7 +36,7 @@ export function mapFundingStatus(status: string, currentAmount = 0, targetAmount
   if (normalized === 'SUCCESS') return '펀딩 성공';
   if (normalized === 'FAILED') return '펀딩 실패';
   if (normalized === 'ENDED') return '종료';
-  if (normalized === 'CANCELLED') return '종료';
+  if (normalized === 'CANCELLED' || normalized === 'CANCELED') return '취소된 펀딩';
   return '진행 중';
 }
 

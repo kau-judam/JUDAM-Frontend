@@ -7,6 +7,7 @@ export type ProjectStatus =
   | "ENDED"
   | "SUCCESS"
   | "FAILED"
+  | "CANCELED"
   | "CANCELLED"
   | "작성 중"
   | "대기 중"
@@ -17,6 +18,7 @@ export type ProjectStatus =
   | "목표 달성"
   | "펀딩 성공"
   | "펀딩 실패"
+  | "취소된 펀딩"
   | "성공 종료"
   | "실패 종료"
   | "종료"
@@ -251,6 +253,7 @@ export const completedFundingStatuses: ProjectStatus[] = [
   "ENDED",
   "SUCCESS",
   "FAILED",
+  "취소된 펀딩",
 ];
 
 function normalizeFundingStatus(status: ProjectStatus | string) {
@@ -271,13 +274,55 @@ export function isSupportableFundingStatus(status: ProjectStatus) {
   return normalized === "ACTIVE" || getFundingStatusText(status) === "진행 중";
 }
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+function getKstDateString(date = new Date()) {
+  const kstDate = new Date(date.getTime() + KST_OFFSET_MS);
+  const year = kstDate.getUTCFullYear();
+  const month = String(kstDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(kstDate.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeFundingDateOnly(value?: string) {
+  if (!value) return '';
+  const trimmed = String(value).trim();
+  const dateMatch = trimmed.match(/(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})/);
+  if (dateMatch) {
+    const [, year, month, day] = dateMatch;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) return '';
+  return getKstDateString(date);
+}
+
+export function isFundingEndDateExpired(project: Pick<FundingProject, 'endDate'> | null | undefined) {
+  const endDate = normalizeFundingDateOnly(project?.endDate);
+  if (!endDate) return false;
+  return endDate < getKstDateString();
+}
+
+export function isFundingProjectSupportable(project: Pick<FundingProject, 'status' | 'endDate'> | null | undefined) {
+  return Boolean(project && isSupportableFundingStatus(project.status) && !isFundingEndDateExpired(project));
+}
+
+export function isFundingProjectManageable(project: Pick<FundingProject, 'status' | 'endDate'> | null | undefined) {
+  if (!project || isFundingEndDateExpired(project)) return false;
+  const normalized = normalizeFundingStatus(project.status);
+  const text = getFundingStatusText(project.status);
+  return normalized === "READY" || normalized === "REVIEWING" || normalized === "ACTIVE" || text === "펀딩 예정" || text === "진행 중";
+}
+
 export function isCompletedFundingStatus(status: ProjectStatus) {
   const normalized = normalizeFundingStatus(status);
   return (
     completedFundingStatuses.includes(status) ||
     normalized === "SUCCESS" ||
     normalized === "FAILED" ||
-    normalized === "ENDED"
+    normalized === "ENDED" ||
+    normalized === "CANCELLED" ||
+    normalized === "CANCELED"
   );
 }
 
@@ -297,10 +342,21 @@ export function getFundingStatusTone(status: ProjectStatus): FundingStatusTone {
   const normalized = normalizeFundingStatus(status);
   if (isSuccessfulFundingStatus(status)) return "success";
   if (isFailedFundingStatus(status)) return "failed";
-  if (normalized === "ENDED" || getFundingStatusText(status) === "종료") return "ended";
+  if (
+    normalized === "ENDED" ||
+    normalized === "CANCELLED" ||
+    normalized === "CANCELED" ||
+    getFundingStatusText(status) === "종료" ||
+    getFundingStatusText(status) === "취소된 펀딩"
+  ) return "ended";
   if (isSupportableFundingStatus(status)) return "active";
   if (normalized === "REVIEWING" || getFundingStatusText(status) === "심사 중") return "reviewing";
   return "neutral";
+}
+
+export function getFundingProjectStatusTone(project: Pick<FundingProject, 'status' | 'endDate'>): FundingStatusTone {
+  if (isSupportableFundingStatus(project.status) && isFundingEndDateExpired(project)) return "ended";
+  return getFundingStatusTone(project.status);
 }
 
 export function getFundingStatusLabel(status: ProjectStatus) {
@@ -311,11 +367,16 @@ export function getFundingStatusLabel(status: ProjectStatus) {
   if (normalized === "SUCCESS") return "펀딩 성공";
   if (normalized === "FAILED") return "펀딩 실패";
   if (normalized === "ENDED") return "종료";
-  if (normalized === "CANCELLED") return "종료";
+  if (normalized === "CANCELLED" || normalized === "CANCELED") return "취소된 펀딩";
   if (status === "목표 달성") return "목표 달성";
   if (status === "성공 종료") return "펀딩 성공";
   if (status === "실패 종료") return "펀딩 실패";
   return status;
+}
+
+export function getFundingProjectStatusLabel(project: Pick<FundingProject, 'status' | 'endDate'>) {
+  if (isSupportableFundingStatus(project.status) && isFundingEndDateExpired(project)) return "펀딩 마감";
+  return getFundingStatusLabel(project.status);
 }
 
 export function getFundingSupportUnavailableMessage(status: ProjectStatus) {
@@ -323,6 +384,13 @@ export function getFundingSupportUnavailableMessage(status: ProjectStatus) {
   if (isFailedFundingStatus(status)) return "목표 금액을 달성하지 못한 펀딩입니다.";
   if (isCompletedFundingStatus(status)) return "종료된 펀딩에는 후원할 수 없습니다.";
   return "진행 중인 펀딩만 후원할 수 있습니다.";
+}
+
+export function getFundingProjectSupportUnavailableMessage(project: Pick<FundingProject, 'status' | 'endDate'>) {
+  if (isSupportableFundingStatus(project.status) && isFundingEndDateExpired(project)) {
+    return "종료된 펀딩에는 후원할 수 없습니다.";
+  }
+  return getFundingSupportUnavailableMessage(project.status);
 }
 
 export function sortFundingProjectsByPopularity(projects: FundingProject[]) {

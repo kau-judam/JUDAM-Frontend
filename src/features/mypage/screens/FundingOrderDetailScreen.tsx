@@ -338,7 +338,7 @@ export default function FundingOrderDetailScreen() {
                   <Text style={[styles.timelineDate, step.done ? styles.timelineDateDone : styles.timelineDateTodo]}>{step.date}</Text>
                   {isLast && order.deliveryStatus === '완료' ? (
                     <Text style={styles.deliveryCompleteHelp}>
-                      배송이 완료되었습니다.{'\n'}문의사항이 있는 경우 '문의하기' 버튼을 통해 문의해주세요.
+                      배송이 완료되었습니다.{'\n'}문의사항이 있는 경우 문의하기 버튼을 통해 문의해주세요.
                     </Text>
                   ) : null}
                 </View>

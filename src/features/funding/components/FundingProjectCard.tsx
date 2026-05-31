@@ -5,9 +5,9 @@ import { Heart, Image as ImageIcon } from 'lucide-react-native';
 import { Progress } from '@/components/ui/progress';
 import {
   getFundingProjectImageSource,
-  getFundingStatusTone,
-  getFundingStatusLabel,
-  isSupportableFundingStatus,
+  getFundingProjectStatusTone,
+  getFundingProjectStatusLabel,
+  isFundingProjectSupportable,
 } from '@/constants/data';
 import type { FundingProject, TasteProfile } from '@/constants/data';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
@@ -34,8 +34,9 @@ function FundingProjectCard({
 }: FundingProjectCardProps) {
   const progressPercentage = project.goalAmount > 0 ? (project.currentAmount / project.goalAmount) * 100 : 0;
   const progressBarValue = Math.min(progressPercentage, 100);
-  const statusTone = getFundingStatusTone(project.status);
-  const isSupportable = isSupportableFundingStatus(project.status);
+  const statusTone = getFundingProjectStatusTone(project);
+  const statusLabel = getFundingProjectStatusLabel(project);
+  const isSupportable = isFundingProjectSupportable(project);
   const tasteMatchScore = getTasteMatchScore(project, tasteProfile);
   const showMatch = showTasteMatch && tasteMatchScore !== null;
   const favoriteCount = getDisplayFavoriteCount(project, favorite);
@@ -74,7 +75,7 @@ function FundingProjectCard({
               <Text style={styles.categoryTxt} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text>
             </View>
             <View style={[styles.statusBadge, getStatusBadgeStyle(statusTone)]}>
-              <Text style={[styles.statusTxt, getStatusTextStyle(statusTone)]}>{getFundingStatusLabel(project.status)}</Text>
+              <Text style={[styles.statusTxt, getStatusTextStyle(statusTone)]}>{statusLabel}</Text>
             </View>
           </View>
           {ownProject && (
@@ -93,7 +94,7 @@ function FundingProjectCard({
               <Text style={styles.progressPct}>{progressPercentage.toFixed(0)}%</Text>
               <Text style={styles.amountTxt}>{(project.currentAmount / 10000).toLocaleString()}만원</Text>
             </View>
-            <Text style={styles.daysLeft}>{isSupportable ? `${project.daysLeft}일 남음` : getFundingStatusLabel(project.status)}</Text>
+            <Text style={styles.daysLeft}>{isSupportable ? `${project.daysLeft}일 남음` : statusLabel}</Text>
           </View>
           <Progress value={progressBarValue} style={styles.progressBar} indicatorStyle={{ backgroundColor: '#111' }} />
           <Text style={styles.supporterText}>{Math.max(0, project.backers || 0).toLocaleString()}명 참여</Text>
@@ -116,7 +117,7 @@ function formatFavoriteCount(count: number) {
   return String(count);
 }
 
-function getStatusBadgeStyle(tone: ReturnType<typeof getFundingStatusTone>) {
+function getStatusBadgeStyle(tone: ReturnType<typeof getFundingProjectStatusTone>) {
   if (tone === 'success') return styles.statusBadgeSuccess;
   if (tone === 'failed') return styles.statusBadgeFailed;
   if (tone === 'ended') return styles.statusBadgeEnded;
@@ -125,7 +126,7 @@ function getStatusBadgeStyle(tone: ReturnType<typeof getFundingStatusTone>) {
   return styles.statusBadgeActive;
 }
 
-function getStatusTextStyle(tone: ReturnType<typeof getFundingStatusTone>) {
+function getStatusTextStyle(tone: ReturnType<typeof getFundingProjectStatusTone>) {
   if (tone === 'success') return styles.statusTxtSuccess;
   if (tone === 'failed') return styles.statusTxtFailed;
   if (tone === 'ended') return styles.statusTxtEnded;

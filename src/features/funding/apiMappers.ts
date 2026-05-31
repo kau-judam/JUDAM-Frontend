@@ -27,8 +27,21 @@ function getDaysLeft(value?: string) {
   return Math.max(0, Math.ceil((end - startOfToday) / (1000 * 60 * 60 * 24)));
 }
 
-export function mapFundingStatus(status: string, _currentAmount = 0, _targetAmount = 0): ProjectStatus {
+function hasFundingEnded(value?: string) {
+  if (!value) return false;
+  const endDate = new Date(value);
+  if (!Number.isFinite(endDate.getTime())) return false;
+  const today = new Date();
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  const end = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()).getTime();
+  return end < startOfToday;
+}
+
+export function mapFundingStatus(status: string, currentAmount = 0, targetAmount = 0, endDate?: string): ProjectStatus {
   const normalized = String(status || '').trim().toUpperCase();
+  if ((normalized === 'ONGOING' || normalized === 'ACTIVE') && hasFundingEnded(endDate)) {
+    return targetAmount > 0 && currentAmount >= targetAmount ? 'SUCCESS' : 'FAILED';
+  }
   if (normalized === 'READY') return '대기 중';
   if (normalized === 'REVIEWING') return '심사 중';
   if (normalized === 'UPCOMING') return '펀딩 예정';
@@ -74,8 +87,26 @@ function getFundingMatchScore(item: {
     ?? normalizeMatchScore(item.recommendationScore);
 }
 
+function isBrokenKoreanText(value: string) {
+  return /[\uFFFD\uF900-\uFAFF]/.test(value);
+}
+
+function sanitizeApiText(value: unknown) {
+  if (typeof value !== 'string') return '';
+  const text = value.trim();
+  if (!text || isBrokenKoreanText(text)) return '';
+  return text;
+}
+
+function sanitizeApiTextList(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(sanitizeApiText)
+    .filter(Boolean);
+}
+
 function getPlanText(value: unknown) {
-  return typeof value === 'string' ? value.trim() : '';
+  return sanitizeApiText(value);
 }
 
 function normalizeBudgetPlanItems(value: unknown): BudgetItem[] {
@@ -84,14 +115,10 @@ function normalizeBudgetPlanItems(value: unknown): BudgetItem[] {
     .map((item) => {
       if (!item || typeof item !== 'object') return null;
       const source = item as Partial<{ category: unknown; item: unknown; amount: unknown }>;
-      const label = typeof source.category === 'string'
-        ? source.category
-        : typeof source.item === 'string'
-          ? source.item
-          : '';
+      const label = sanitizeApiText(source.category) || sanitizeApiText(source.item);
       const amount = Number(source.amount);
-      if (!label.trim() || !Number.isFinite(amount)) return null;
-      return { item: label.trim(), amount };
+      if (!label || !Number.isFinite(amount)) return null;
+      return { item: label, amount };
     })
     .filter((item): item is BudgetItem => Boolean(item));
 }
@@ -102,53 +129,47 @@ function normalizeSchedulePlanItems(value: unknown): ScheduleItem[] {
     .map((item) => {
       if (!item || typeof item !== 'object') return null;
       const source = item as Partial<{ date: unknown; description: unknown; step: unknown }>;
-      const description = typeof source.description === 'string'
-        ? source.description
-        : typeof source.step === 'string'
-          ? source.step
-          : '';
-      const date = typeof source.date === 'string' ? source.date : '';
-      if (!description.trim()) return null;
-      return { date: date.trim(), description: description.trim() };
+      const description = sanitizeApiText(source.description) || sanitizeApiText(source.step);
+      const date = sanitizeApiText(source.date);
+      if (!description) return null;
+      return { date, description };
     })
     .filter((item): item is ScheduleItem => Boolean(item));
 }
 
 function joinTextList(value?: string[] | string | null) {
-  if (Array.isArray(value)) return value.map((item) => item.trim()).filter(Boolean).join(', ');
-  return typeof value === 'string' ? value.trim() : '';
+  if (Array.isArray(value)) return sanitizeApiTextList(value).join(', ');
+  return sanitizeApiText(value);
 }
 
 function normalizeIngredientName(value: unknown) {
-  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'string') return sanitizeApiText(value);
   if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
   const source = value as Record<string, unknown>;
   return (
-    typeof source.ingredient === 'string' ? source.ingredient :
-    typeof source.name === 'string' ? source.name :
-    typeof source.mainIngredient === 'string' ? source.mainIngredient :
-    typeof source.main_ingredient === 'string' ? source.main_ingredient :
-    typeof source.rawMaterial === 'string' ? source.rawMaterial :
-    typeof source.raw_material === 'string' ? source.raw_material :
-    typeof source.materialName === 'string' ? source.materialName :
-    typeof source.material_name === 'string' ? source.material_name :
-    ''
-  ).trim();
+    sanitizeApiText(source.ingredient) ||
+    sanitizeApiText(source.name) ||
+    sanitizeApiText(source.mainIngredient) ||
+    sanitizeApiText(source.main_ingredient) ||
+    sanitizeApiText(source.rawMaterial) ||
+    sanitizeApiText(source.raw_material) ||
+    sanitizeApiText(source.materialName) ||
+    sanitizeApiText(source.material_name)
+  );
 }
 
 function normalizeIngredientOrigin(value: unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
   const source = value as Record<string, unknown>;
   return (
-    typeof source.origin === 'string' ? source.origin :
-    typeof source.originName === 'string' ? source.originName :
-    typeof source.origin_name === 'string' ? source.origin_name :
-    typeof source.countryOfOrigin === 'string' ? source.countryOfOrigin :
-    typeof source.country_of_origin === 'string' ? source.country_of_origin :
-    typeof source.productionArea === 'string' ? source.productionArea :
-    typeof source.production_area === 'string' ? source.production_area :
-    ''
-  ).trim();
+    sanitizeApiText(source.origin) ||
+    sanitizeApiText(source.originName) ||
+    sanitizeApiText(source.origin_name) ||
+    sanitizeApiText(source.countryOfOrigin) ||
+    sanitizeApiText(source.country_of_origin) ||
+    sanitizeApiText(source.productionArea) ||
+    sanitizeApiText(source.production_area)
+  );
 }
 
 function normalizeProjectIngredients(value?: unknown[]) {
@@ -252,23 +273,23 @@ function isSameFundingText(current?: string, incoming?: string) {
 }
 
 export function mergeFundingListItem(existing: FundingProject | undefined, item: FundingListItem): FundingProject {
-  const status = mapFundingStatus(item.status, item.currentAmount, item.targetAmount);
+  const status = mapFundingStatus(item.status, item.currentAmount, item.targetAmount, item.endDate);
   const listImages = normalizeFundingImageUrls(
     item.allImageUrls?.length ? item.allImageUrls : item.imageUrls?.length ? item.imageUrls : item.images
   ).slice(0, 5);
   const thumbnailUrl = normalizeFundingImageUrl(item.thumbnailUrl) || listImages[0] || '';
   const matchScore = getFundingMatchScore(item);
-  const mainIngredient = item.mainIngredient || item.primaryIngredient;
-  const subIngredients = joinTextList(item.subIngredients) || item.subIngredient;
+  const mainIngredient = sanitizeApiText(item.mainIngredient) || sanitizeApiText(item.primaryIngredient);
+  const subIngredients = joinTextList(item.subIngredients) || sanitizeApiText(item.subIngredient);
   return {
     id: item.fundingId,
-    title: item.title || existing?.title || '',
-    brewery: item.breweryName || existing?.brewery || '',
+    title: sanitizeApiText(item.title) || existing?.title || '',
+    brewery: sanitizeApiText(item.breweryName) || existing?.brewery || '',
     breweryLogo: existing?.breweryLogo || '🍶',
     location: existing?.location || '',
     category: existing?.category || '',
-    shortTitle: existing?.shortTitle || item.title,
-    shortDescription: item.description || existing?.shortDescription || existing?.projectSummary || item.title,
+    shortTitle: existing?.shortTitle || sanitizeApiText(item.title),
+    shortDescription: sanitizeApiText(item.description) || existing?.shortDescription || existing?.projectSummary || sanitizeApiText(item.title),
     image: thumbnailUrl || existing?.image || '',
     images: listImages.length ? listImages : existing?.images,
     localImage: undefined,
@@ -287,7 +308,7 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     goalAmount: item.targetAmount || existing?.goalAmount || 1,
     currentAmount: item.currentAmount ?? existing?.currentAmount ?? 0,
     backers: normalizeSupporterCount(item.supporterCount, existing?.backers ?? 0),
-    daysLeft: getDaysLeft(item.endDate) || existing?.daysLeft || 0,
+    daysLeft: item.endDate ? getDaysLeft(item.endDate) : existing?.daysLeft || 0,
     status,
     startDate: existing?.startDate,
     endDate: formatDate(item.endDate) || existing?.endDate,
@@ -300,8 +321,8 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     estimatedDelivery: existing?.estimatedDelivery,
     rewardItems: existing?.rewardItems,
     shippingFee: existing?.shippingFee,
-    mainIngredientLabel: item.mainIngredientLabel || item.primaryIngredientLabel || existing?.mainIngredientLabel,
-    primaryIngredientLabel: item.primaryIngredientLabel || item.mainIngredientLabel || existing?.primaryIngredientLabel,
+    mainIngredientLabel: sanitizeApiText(item.mainIngredientLabel) || sanitizeApiText(item.primaryIngredientLabel) || existing?.mainIngredientLabel,
+    primaryIngredientLabel: sanitizeApiText(item.primaryIngredientLabel) || sanitizeApiText(item.mainIngredientLabel) || existing?.primaryIngredientLabel,
     mainIngredients: mainIngredient || existing?.mainIngredients,
     subIngredients: subIngredients || existing?.subIngredients,
     tags: existing?.tags,
@@ -344,49 +365,54 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     isSameFundingText(existing.title, detail.title) ||
     isSameFundingText(existing.shortTitle, detail.title);
   const matchScore = getFundingMatchScore(detail);
-  const businessAddress = detail.businessAddress || detail.breweryAddress || detail.breweryLocation || detail.breweryInfo?.businessAddress || detail.breweryInfo?.breweryAddress;
+  const businessAddress =
+    sanitizeApiText(detail.businessAddress) ||
+    sanitizeApiText(detail.breweryAddress) ||
+    sanitizeApiText(detail.breweryLocation) ||
+    sanitizeApiText(detail.breweryInfo?.businessAddress) ||
+    sanitizeApiText(detail.breweryInfo?.breweryAddress);
   const detailIngredients = getFundingDetailIngredients(detail);
   const mainIngredient =
-    detail.mainIngredient ||
-    detail.primaryIngredient ||
-    detail.legalInfo?.mainIngredient ||
-    detail.legalInfo?.primaryIngredient ||
+    sanitizeApiText(detail.mainIngredient) ||
+    sanitizeApiText(detail.primaryIngredient) ||
+    sanitizeApiText(detail.legalInfo?.mainIngredient) ||
+    sanitizeApiText(detail.legalInfo?.primaryIngredient) ||
     detailIngredients[0]?.ingredient;
   const subIngredients =
     joinTextList(detail.subIngredients) ||
-    detail.subIngredient ||
+    sanitizeApiText(detail.subIngredient) ||
     joinTextList(detail.legalInfo?.subIngredients) ||
-    detail.legalInfo?.subIngredient ||
+    sanitizeApiText(detail.legalInfo?.subIngredient) ||
     formatProjectIngredients(detailIngredients.slice(1));
   const budgetPlanText = getPlanText(detail.plan?.budgetPlan);
   const schedulePlanText = getPlanText(detail.plan?.schedulePlan);
   const budgetItems = normalizeBudgetPlanItems(detail.plan?.budgetPlan);
   const scheduleItems = normalizeSchedulePlanItems(detail.plan?.schedulePlan);
-  const projectPolicy = detail.plan?.policy || detail.notices?.policy || detail.notices?.refundPolicy;
+  const projectPolicy = sanitizeApiText(detail.plan?.policy) || sanitizeApiText(detail.notices?.policy) || sanitizeApiText(detail.notices?.refundPolicy);
   return {
     ...existing,
-    title: sameProject ? detail.title || existing.title : existing.title,
-    brewery: sameProject ? detail.breweryName || existing.brewery : existing.brewery,
+    title: sameProject ? sanitizeApiText(detail.title) || existing.title : existing.title,
+    brewery: sameProject ? sanitizeApiText(detail.breweryName) || existing.brewery : existing.brewery,
     location: sameProject ? businessAddress || existing.location : existing.location,
-    category: sameProject ? detail.category || existing.category : existing.category,
-    shortTitle: sameProject ? detail.shortTitle || existing.shortTitle : existing.shortTitle,
-    shortDescription: sameProject ? detail.description || detail.summary || existing.shortDescription : existing.shortDescription,
+    category: sameProject ? sanitizeApiText(detail.category) || existing.category : existing.category,
+    shortTitle: sameProject ? sanitizeApiText(detail.shortTitle) || existing.shortTitle : existing.shortTitle,
+    shortDescription: sameProject ? sanitizeApiText(detail.description) || sanitizeApiText(detail.summary) || existing.shortDescription : existing.shortDescription,
     currentAmount: sameProject ? detail.currentAmount ?? existing.currentAmount : existing.currentAmount,
     goalAmount: sameProject ? detail.targetAmount || existing.goalAmount : existing.goalAmount,
     backers: sameProject ? normalizeSupporterCount(detail.supporterCount, existing.backers) : existing.backers,
-    daysLeft: sameProject ? getDaysLeft(detail.endDate) || existing.daysLeft : existing.daysLeft,
-    status: sameProject ? mapFundingStatus(detail.status, detail.currentAmount, detail.targetAmount) : existing.status,
+    daysLeft: sameProject ? (detail.endDate ? getDaysLeft(detail.endDate) : existing.daysLeft) : existing.daysLeft,
+    status: sameProject ? mapFundingStatus(detail.status, detail.currentAmount, detail.targetAmount, detail.endDate) : existing.status,
     endDate: sameProject ? formatDate(detail.endDate) || existing.endDate : existing.endDate,
     startDate: sameProject ? formatDate(detail.startDate) || existing.startDate : existing.startDate,
     estimatedDelivery: sameProject ? formatDate(detail.expectedDeliveryDate) || existing.estimatedDelivery : existing.estimatedDelivery,
-    projectSummary: sameProject ? detail.summary || detail.description || existing.projectSummary : existing.projectSummary,
+    projectSummary: sameProject ? sanitizeApiText(detail.summary) || sanitizeApiText(detail.description) || existing.projectSummary : existing.projectSummary,
     image: sameProject ? thumbnailUrl || existing.image || '' : existing.image,
     images: sameProject ? (detailImages.length ? detailImages : existing.images) : existing.images,
     pricePerBottle: sameProject ? detail.pricePerBottle ?? supportOption?.price ?? existing.pricePerBottle : existing.pricePerBottle,
     totalQuantity: sameProject ? detail.totalQuantity ?? existing.totalQuantity : existing.totalQuantity,
     targetQuantity: sameProject ? detail.totalQuantity ?? existing.targetQuantity : existing.targetQuantity,
     shippingFee: sameProject ? detail.shippingFee ?? existing.shippingFee : existing.shippingFee,
-    rewardItems: sameProject && supportOption ? [supportOption.name] : existing.rewardItems,
+    rewardItems: sameProject && sanitizeApiText(supportOption?.name) ? [sanitizeApiText(supportOption?.name)] : existing.rewardItems,
     bottleSize: sameProject ? bottleSize || existing.bottleSize : existing.bottleSize,
     volume: sameProject ? bottleSize || existing.volume : existing.volume,
     alcoholContent: sameProject ? alcoholContent || existing.alcoholContent : existing.alcoholContent,
@@ -408,24 +434,24 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
           carbonation: normalizeTasteValue(detail.tasteProfile.carbonation),
         }
       : existing.tasteProfile,
-    tags: sameProject && detail.tasteProfile?.flavorNotes?.length
-      ? detail.tasteProfile.flavorNotes
-      : sameProject && detail.tasteProfile?.flavor?.length
-        ? detail.tasteProfile.flavor
+    tags: sameProject && sanitizeApiTextList(detail.tasteProfile?.flavorNotes).length
+      ? sanitizeApiTextList(detail.tasteProfile?.flavorNotes)
+      : sameProject && sanitizeApiTextList(detail.tasteProfile?.flavor).length
+        ? sanitizeApiTextList(detail.tasteProfile?.flavor)
         : existing.tags,
-    introduction: sameProject ? detail.plan?.introduction || existing.introduction : existing.introduction,
-    story: sameProject ? detail.plan?.introduction || existing.story : existing.story,
-    videoUrl: sameProject ? detail.plan?.videoUrl || existing.videoUrl : existing.videoUrl,
-    businessAddress: sameProject ? detail.businessAddress || detail.breweryInfo?.businessAddress || existing.businessAddress : existing.businessAddress,
-    breweryAddress: sameProject ? detail.breweryAddress || detail.breweryInfo?.breweryAddress || businessAddress || existing.breweryAddress : existing.breweryAddress,
-    mainIngredientLabel: sameProject ? detail.mainIngredientLabel || detail.primaryIngredientLabel || existing.mainIngredientLabel : existing.mainIngredientLabel,
-    primaryIngredientLabel: sameProject ? detail.primaryIngredientLabel || detail.mainIngredientLabel || existing.primaryIngredientLabel : existing.primaryIngredientLabel,
+    introduction: sameProject ? sanitizeApiText(detail.plan?.introduction) || existing.introduction : existing.introduction,
+    story: sameProject ? sanitizeApiText(detail.plan?.introduction) || existing.story : existing.story,
+    videoUrl: sameProject ? sanitizeApiText(detail.plan?.videoUrl) || existing.videoUrl : existing.videoUrl,
+    businessAddress: sameProject ? sanitizeApiText(detail.businessAddress) || sanitizeApiText(detail.breweryInfo?.businessAddress) || existing.businessAddress : existing.businessAddress,
+    breweryAddress: sameProject ? sanitizeApiText(detail.breweryAddress) || sanitizeApiText(detail.breweryInfo?.breweryAddress) || businessAddress || existing.breweryAddress : existing.breweryAddress,
+    mainIngredientLabel: sameProject ? sanitizeApiText(detail.mainIngredientLabel) || sanitizeApiText(detail.primaryIngredientLabel) || existing.mainIngredientLabel : existing.mainIngredientLabel,
+    primaryIngredientLabel: sameProject ? sanitizeApiText(detail.primaryIngredientLabel) || sanitizeApiText(detail.mainIngredientLabel) || existing.primaryIngredientLabel : existing.primaryIngredientLabel,
     mainIngredients: sameProject ? mainIngredient || existing.mainIngredients : existing.mainIngredients,
     subIngredients: sameProject ? subIngredients || existing.subIngredients : existing.subIngredients,
     projectPolicy: sameProject ? projectPolicy || existing.projectPolicy : existing.projectPolicy,
-    refundPolicy: sameProject ? detail.notices?.refundPolicy || existing.refundPolicy : existing.refundPolicy,
-    exchangePolicy: sameProject ? detail.notices?.exchangePolicy || existing.exchangePolicy : existing.exchangePolicy,
-    expectedDifficulties: sameProject ? detail.notices?.riskNotice || existing.expectedDifficulties : existing.expectedDifficulties,
+    refundPolicy: sameProject ? sanitizeApiText(detail.notices?.refundPolicy) || existing.refundPolicy : existing.refundPolicy,
+    exchangePolicy: sameProject ? sanitizeApiText(detail.notices?.exchangePolicy) || existing.exchangePolicy : existing.exchangePolicy,
+    expectedDifficulties: sameProject ? sanitizeApiText(detail.notices?.riskNotice) || existing.expectedDifficulties : existing.expectedDifficulties,
     budgetPlanText: sameProject ? budgetPlanText || existing.budgetPlanText : existing.budgetPlanText,
     schedulePlanText: sameProject ? schedulePlanText || existing.schedulePlanText : existing.schedulePlanText,
     budget: sameProject ? (budgetItems.length ? budgetItems : existing.budget) : existing.budget,
@@ -445,19 +471,19 @@ export function mergeFundingIntro(existing: FundingProject, intro: FundingIntroR
   const introImages = normalizeFundingImageUrls(
     intro.allImageUrls?.length ? intro.allImageUrls : intro.imageUrls?.length ? intro.imageUrls : intro.images
   );
-  const mainIngredient = intro.mainIngredient || intro.primaryIngredient;
-  const subIngredients = joinTextList(intro.subIngredients) || intro.subIngredient;
-  const budgetPlanText = intro.budgetPlan || intro.projectBudget || '';
-  const schedulePlanText = intro.schedulePlan || intro.projectSchedule || '';
-  const projectPolicy = intro.policy || intro.projectPolicy || '';
+  const mainIngredient = sanitizeApiText(intro.mainIngredient) || sanitizeApiText(intro.primaryIngredient);
+  const subIngredients = joinTextList(intro.subIngredients) || sanitizeApiText(intro.subIngredient);
+  const budgetPlanText = sanitizeApiText(intro.budgetPlan) || sanitizeApiText(intro.projectBudget);
+  const schedulePlanText = sanitizeApiText(intro.schedulePlan) || sanitizeApiText(intro.projectSchedule);
+  const projectPolicy = sanitizeApiText(intro.policy) || sanitizeApiText(intro.projectPolicy);
   return {
     ...existing,
-    projectSummary: existing.projectSummary || intro.introduction,
-    introduction: intro.introduction || existing.introduction,
-    story: intro.story || existing.story,
-    videoUrl: intro.videoUrl || existing.videoUrl,
-    mainIngredientLabel: intro.mainIngredientLabel || intro.primaryIngredientLabel || existing.mainIngredientLabel,
-    primaryIngredientLabel: intro.primaryIngredientLabel || intro.mainIngredientLabel || existing.primaryIngredientLabel,
+    projectSummary: existing.projectSummary || sanitizeApiText(intro.introduction),
+    introduction: sanitizeApiText(intro.introduction) || existing.introduction,
+    story: sanitizeApiText(intro.story) || existing.story,
+    videoUrl: sanitizeApiText(intro.videoUrl) || existing.videoUrl,
+    mainIngredientLabel: sanitizeApiText(intro.mainIngredientLabel) || sanitizeApiText(intro.primaryIngredientLabel) || existing.mainIngredientLabel,
+    primaryIngredientLabel: sanitizeApiText(intro.primaryIngredientLabel) || sanitizeApiText(intro.mainIngredientLabel) || existing.primaryIngredientLabel,
     mainIngredients: mainIngredient || existing.mainIngredients,
     subIngredients: subIngredients || existing.subIngredients,
     budgetPlanText: budgetPlanText || existing.budgetPlanText,
@@ -532,18 +558,18 @@ export function mergeSupportOption(existing: FundingProject, option: FundingSupp
   const alcoholContent = formatAlcoholSpec(option.alcohol) || formatAlcoholSpec(option.alcoholPercentage) || getAlcoholFromDescription(option.description);
   const optionIngredients = normalizeSupportOptionIngredients(option.ingredients);
   const optionIngredientText = formatProjectIngredients(optionIngredients);
-  const mainIngredient = option.mainIngredient || option.primaryIngredient || optionIngredientText;
-  const subIngredients = joinTextList(option.subIngredients) || option.subIngredient;
+  const mainIngredient = sanitizeApiText(option.mainIngredient) || sanitizeApiText(option.primaryIngredient) || optionIngredientText;
+  const subIngredients = joinTextList(option.subIngredients) || sanitizeApiText(option.subIngredient);
   return {
     ...existing,
     pricePerBottle: option.price,
-    rewardItems: [option.name],
+    rewardItems: sanitizeApiText(option.name) ? [sanitizeApiText(option.name)] : existing.rewardItems,
     bottleSize: bottleSize || existing.bottleSize,
     volume: bottleSize || existing.volume,
     alcoholContent: alcoholContent || existing.alcoholContent,
     estimatedDelivery: option.expectedDeliveryDate ? formatDate(option.expectedDeliveryDate) : existing.estimatedDelivery,
-    mainIngredientLabel: option.mainIngredientLabel || option.primaryIngredientLabel || existing.mainIngredientLabel,
-    primaryIngredientLabel: option.primaryIngredientLabel || option.mainIngredientLabel || existing.primaryIngredientLabel,
+    mainIngredientLabel: sanitizeApiText(option.mainIngredientLabel) || sanitizeApiText(option.primaryIngredientLabel) || existing.mainIngredientLabel,
+    primaryIngredientLabel: sanitizeApiText(option.primaryIngredientLabel) || sanitizeApiText(option.mainIngredientLabel) || existing.primaryIngredientLabel,
     mainIngredients: mainIngredient || existing.mainIngredients,
     subIngredients: subIngredients || existing.subIngredients,
     ingredients: optionIngredients.length ? optionIngredients : existing.ingredients,

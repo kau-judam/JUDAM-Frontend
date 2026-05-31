@@ -472,7 +472,7 @@ export default function FundingDetailScreen() {
         if (!mounted) return;
         setReviewPermission({ canWriteReview: false, canReview: false });
         if (isFundingReviewNotFoundError(error)) return;
-        console.warn(getFundingApiErrorMessage(error, '????꾧린瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??'));
+        console.warn(getFundingApiErrorMessage(error, '펀딩 후기를 불러오지 못했습니다.'));
       });
 
     return () => {
@@ -858,7 +858,7 @@ export default function FundingDetailScreen() {
   const selectedSupportOptionLimit = getSupportOptionLimit(selectedSupportOption);
   const optionTotalAmount = selectedSupportOptionPrice * selectedQuantity + shippingFee;
   const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
-  const mainIngredientLabel = project.mainIngredientLabel || project.primaryIngredientLabel || '메인 재료';
+  const mainIngredientLabel = getFundingMainIngredientLabel(project);
   const supportButtonLabel =
     isOwnBreweryProject
       ? user?.isBreweryVerified

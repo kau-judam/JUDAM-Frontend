@@ -123,6 +123,29 @@ export type MyPageArchive = {
   images: MyPageArchiveImage[];
 };
 
+export type MyPageParticipatedFunding = {
+  fundingId: number;
+  orderId: number;
+  projectName: string;
+  drinkName: string;
+  breweryName: string | null;
+  ingredients: string | null;
+  abv: number | null;
+  thumbnailUrl: string | null;
+  fundingStatus: string;
+  hasReview: boolean;
+  reviewId: number | null;
+};
+
+export type MyPageFundingArchiveReview = {
+  reviewId: number;
+  rating: number;
+  tastingNote: string;
+  mood: string | null;
+  pairing: string | null;
+  images: MyPageArchiveImage[];
+};
+
 export type CreateMyPageArchiveWithImagesPayload = {
   archiveType: 'NORMAL' | 'FUNDING';
   customName?: string;
@@ -135,6 +158,8 @@ export type CreateMyPageArchiveWithImagesPayload = {
   rating?: number | string;
   tastingNote?: string;
   recordDate?: string;
+  mood?: string;
+  pairing?: string;
   tagIds?: (number | string)[];
   customTags?: string[];
   images?: MyPageImageUploadFile[];
@@ -464,6 +489,8 @@ export async function createMyPageArchiveWithImages(payload: CreateMyPageArchive
   if (payload.rating !== undefined) formData.append('rating', String(payload.rating));
   if (payload.tastingNote) formData.append('tastingNote', payload.tastingNote);
   if (payload.recordDate) formData.append('recordDate', payload.recordDate);
+  if (payload.mood) formData.append('mood', payload.mood);
+  if (payload.pairing) formData.append('pairing', payload.pairing);
   formData.append('tagIds', JSON.stringify(payload.tagIds || []));
   formData.append('customTags', JSON.stringify(payload.customTags || []));
 
@@ -570,6 +597,20 @@ export async function deleteMyPageArchive(archiveId: string | number) {
 export async function getMyPageArchiveTags() {
   const response = await requestMyPageJson<MyPageApiEnvelope<MyPageArchiveTagGroup[]>>('/api/mypage/archives/tags');
   return unwrapMyPageData<MyPageArchiveTagGroup[]>(response);
+}
+
+export async function getMyPageParticipatedFundings() {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageParticipatedFunding[]>>(
+    '/api/mypage/fundings/participated'
+  );
+  return unwrapMyPageData<MyPageParticipatedFunding[]>(response);
+}
+
+export async function getMyPageFundingArchiveReview(fundingId: string | number) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageFundingArchiveReview | null>>(
+    `/api/mypage/fundings/${fundingId}/review`
+  );
+  return unwrapMyPageData<MyPageFundingArchiveReview | null>(response);
 }
 
 export async function getMyPageBadges() {

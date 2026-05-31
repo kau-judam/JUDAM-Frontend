@@ -13,22 +13,23 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import { AlertCircle, BookOpen, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Star, X } from 'lucide-react-native';
+import { AlertCircle, BookOpen, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Star, Wine, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFundingProjectImageSource } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
-import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
-import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
-import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
+import { reviewPresetTags } from '@/features/funding/reviews';
 import {
   createMyPageArchiveWithImages,
   getMyPageApiErrorMessage,
   getMyPageArchiveDetail,
   getMyPageArchiveTags,
+  getMyPageFundingArchiveReview,
+  getMyPageParticipatedFundings,
   updateMyPageArchiveWithImages,
+  type MyPageArchiveImage,
   type MyPageImageUploadFile,
+  type MyPageParticipatedFunding,
 } from '@/features/mypage/api';
 
 type ArchiveKind = 'normal' | 'funding';
@@ -40,33 +41,33 @@ type ArchiveAlert = {
   buttons?: FundingAlertButton[];
 };
 
-const NORMAL_ARCHIVE_PROJECT_ID = 0;
 const ARCHIVE_TAG_ID_BY_NAME: Record<string, number> = {
-  '달콤한': 21,
-  '깔끔한': 22,
-  '묵직한': 23,
-  '산미있는': 24,
-  '쓴맛': 25,
-  '고소한': 26,
-  '부드러운': 27,
-  '탄산있는': 28,
-  '구수한': 29,
-  '과일향': 30,
-  '혼술': 11,
-  '친구모임': 32,
-  '데이트': 33,
-  '특별한날': 34,
-  '식사중': 35,
-  '야외': 36,
-  '집들이': 37,
-  '기념일': 14,
-  '행복한': 39,
-  '설레는': 40,
-  '그리운': 41,
-  '편안한': 17,
-  '들뜬': 43,
-  '차분한': 44,
+  달콤한: 21,
+  깔끔한: 22,
+  묵직한: 23,
+  산미있는: 24,
+  쓴맛: 25,
+  고소한: 26,
+  부드러운: 27,
+  탄산있는: 28,
+  구수한: 29,
+  과일향: 30,
+  혼술: 11,
+  친구모임: 32,
+  데이트: 33,
+  특별한날: 34,
+  식사중: 35,
+  야외: 36,
+  집들이: 37,
+  기념일: 14,
+  행복한: 39,
+  설레는: 40,
+  그리운: 41,
+  편안한: 17,
+  들뜬: 43,
+  차분한: 44,
 };
+
 function getTodayArchiveDate() {
   const today = new Date();
   return `${today.getFullYear()}. ${String(today.getMonth() + 1).padStart(2, '0')}. ${String(today.getDate()).padStart(2, '0')}`;
@@ -75,10 +76,6 @@ function getTodayArchiveDate() {
 function parseArchiveDateParts(date: string) {
   const [year = '', month = '', day = ''] = date.match(/\d+/g) || [];
   return { year, month, day };
-}
-
-function formatArchiveDate(year: string, month: string, day: string) {
-  return `${year.trim()}. ${month.trim().padStart(2, '0')}. ${day.trim().padStart(2, '0')}`;
 }
 
 function formatArchiveApiDate(year: string, month: string, day: string) {
@@ -122,75 +119,53 @@ function RatingStars({ value, onChange }: { value: number; onChange: (value: num
   );
 }
 
+function normalizeReviewImages(images: MyPageArchiveImage[]) {
+  return images
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((image) => image.imageUrl)
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
 export default function ArchiveWriteScreen() {
   const insets = useSafeAreaInsets();
-  const { type, fundingId, editId } = useLocalSearchParams<{ type?: string; fundingId?: string; editId?: string }>();
+  const { type, fundingId, orderId, reviewId, editId } = useLocalSearchParams<{
+    type?: string;
+    fundingId?: string;
+    orderId?: string;
+    reviewId?: string;
+    editId?: string;
+  }>();
   const archiveKind: ArchiveKind = type === 'funding' ? 'funding' : 'normal';
   const projectId = Number(Array.isArray(fundingId) ? fundingId[0] : fundingId);
+  const routeOrderId = Number(Array.isArray(orderId) ? orderId[0] : orderId);
+  const routeReviewId = Number(Array.isArray(reviewId) ? reviewId[0] : reviewId);
   const targetEditId = Number(Array.isArray(editId) ? editId[0] : editId);
-  const { user } = useAuth();
-  const { projects, fundingReviews, addFundingReview, updateFundingReview } = useFunding();
-
-  const project = useMemo(
-    () =>
-      archiveKind === 'funding'
-        ? projects.find((item) => item.id === projectId)
-        : null,
-    [archiveKind, projectId, projects]
-  );
-  const ownExistingFundingReview = useMemo(
-    () =>
-      archiveKind === 'funding'
-        ? fundingReviews.find((item) => item.projectId === projectId && isFundingReviewOwnedByUser(item, user)) || null
-        : null,
-    [archiveKind, fundingReviews, projectId, user]
-  );
-  const editingArchive = useMemo(
-    () => (Number.isFinite(targetEditId) ? fundingReviews.find((item) => item.id === targetEditId) || null : null),
-    [fundingReviews, targetEditId]
-  );
-  const editingAlcohol = useMemo(
-    () => (editingArchive && archiveKind === 'normal' ? editingArchive.tags.find((tag) => /%/.test(tag)) || '' : ''),
-    [archiveKind, editingArchive]
-  );
-  const editingPresetTags = useMemo(
-    () =>
-      editingArchive
-        ? editingArchive.tags.filter((tag) => tag !== editingAlcohol && Object.values(reviewPresetTags).flat().includes(tag))
-        : [],
-    [editingAlcohol, editingArchive]
-  );
-  const editingCustomTags = useMemo(
-    () =>
-      editingArchive
-        ? editingArchive.tags.filter((tag) => tag !== editingAlcohol && !Object.values(reviewPresetTags).flat().includes(tag))
-        : [],
-    [editingAlcohol, editingArchive]
-  );
-
-  const [isSaving, setIsSaving] = useState(false);
-  const [drinkName, setDrinkName] = useState(editingArchive?.rewardName || '');
-  const [drinkAlcohol, setDrinkAlcohol] = useState(editingAlcohol);
-  const initialDateParts = useMemo(() => parseArchiveDateParts(getTodayArchiveDate()), []);
-  const editingDateParts = useMemo(() => parseArchiveDateParts(editingArchive?.date || ''), [editingArchive?.date]);
-  const [recordYear, setRecordYear] = useState(editingDateParts.year || initialDateParts.year);
-  const [recordMonth, setRecordMonth] = useState(editingDateParts.month || initialDateParts.month);
-  const [recordDay, setRecordDay] = useState(editingDateParts.day || initialDateParts.day);
-  const [rating, setRating] = useState(editingArchive?.rating || 0);
-  const [uploadedImages, setUploadedImages] = useState<string[]>(editingArchive?.images || []);
-  const [serverImageIdsByUrl, setServerImageIdsByUrl] = useState<Record<string, number>>({});
-  const [reviewText, setReviewText] = useState(editingArchive?.comment || '');
-  const [mood, setMood] = useState(editingArchive?.mood || '');
-  const [pairing, setPairing] = useState(editingArchive?.pairing || '');
-  const [selectedTags, setSelectedTags] = useState<string[]>(editingPresetTags);
-  const [customInput, setCustomInput] = useState('');
-  const [customTags, setCustomTags] = useState<string[]>(editingCustomTags);
-  const [tagIdByName, setTagIdByName] = useState<Record<string, number>>(ARCHIVE_TAG_ID_BY_NAME);
-  const [openTagSection, setOpenTagSection] = useState<string | null>(
-    Object.entries(reviewPresetTags).find(([, tags]) => tags.some((tag) => editingPresetTags.includes(tag)))?.[0] || '맛·향'
-  );
-  const [alertModal, setAlertModal] = useState<ArchiveAlert | null>(null);
   const isEditMode = Number.isFinite(targetEditId);
+  const { user } = useAuth();
+
+  const initialDateParts = useMemo(() => parseArchiveDateParts(getTodayArchiveDate()), []);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(false);
+  const [selectedFunding, setSelectedFunding] = useState<MyPageParticipatedFunding | null>(null);
+  const [drinkName, setDrinkName] = useState('');
+  const [drinkAlcohol, setDrinkAlcohol] = useState('');
+  const [recordYear, setRecordYear] = useState(initialDateParts.year);
+  const [recordMonth, setRecordMonth] = useState(initialDateParts.month);
+  const [recordDay, setRecordDay] = useState(initialDateParts.day);
+  const [rating, setRating] = useState(0);
+  const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [serverImageIdsByUrl, setServerImageIdsByUrl] = useState<Record<string, number>>({});
+  const [reviewText, setReviewText] = useState('');
+  const [mood, setMood] = useState('');
+  const [pairing, setPairing] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [customInput, setCustomInput] = useState('');
+  const [customTags, setCustomTags] = useState<string[]>([]);
+  const [tagIdByName, setTagIdByName] = useState<Record<string, number>>(ARCHIVE_TAG_ID_BY_NAME);
+  const [openTagSection, setOpenTagSection] = useState<string | null>('맛·향');
+  const [alertModal, setAlertModal] = useState<ArchiveAlert | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -215,8 +190,30 @@ export default function ArchiveWriteScreen() {
   }, []);
 
   useEffect(() => {
+    if (archiveKind !== 'funding' || !Number.isFinite(projectId)) return;
+    let mounted = true;
+    setIsInitialLoading(true);
+    getMyPageParticipatedFundings()
+      .then((items) => {
+        if (!mounted) return;
+        setSelectedFunding(items.find((item) => item.fundingId === projectId) || null);
+      })
+      .catch((error) => {
+        console.warn(getMyPageApiErrorMessage(error, '참여 펀딩 정보를 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (mounted) setIsInitialLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [archiveKind, projectId]);
+
+  useEffect(() => {
     if (!isEditMode || !Number.isFinite(targetEditId)) return;
     let mounted = true;
+    setIsInitialLoading(true);
     getMyPageArchiveDetail(targetEditId)
       .then((archive) => {
         if (!mounted) return;
@@ -228,6 +225,8 @@ export default function ArchiveWriteScreen() {
         setRecordDay(dateParts.day || initialDateParts.day);
         setRating(archive.rating || 0);
         setReviewText(archive.tastingNote || '');
+        setMood(archive.mood || '');
+        setPairing(archive.pairing || '');
         setUploadedImages(archive.images.map((image) => image.imageUrl));
         setServerImageIdsByUrl(
           archive.images.reduce<Record<string, number>>((map, image) => {
@@ -240,6 +239,9 @@ export default function ArchiveWriteScreen() {
       })
       .catch((error) => {
         console.warn(getMyPageApiErrorMessage(error, '아카이브 상세 정보를 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (mounted) setIsInitialLoading(false);
       });
 
     return () => {
@@ -248,11 +250,14 @@ export default function ArchiveWriteScreen() {
   }, [initialDateParts.day, initialDateParts.month, initialDateParts.year, isEditMode, targetEditId]);
 
   const allTags = [...selectedTags, ...customTags];
-  const recordDate = formatArchiveDate(recordYear, recordMonth, recordDay);
   const headerTitle = isEditMode ? '술 기록 수정' : archiveKind === 'funding' ? '펀딩 술 기록' : '일반 술 기록';
-  const rewardName = archiveKind === 'funding'
-    ? project?.rewardItems?.[0] || `${project?.bottleSize || '375ml'} 1병`
-    : drinkName.trim();
+  const fundingReviewId = Number.isFinite(routeReviewId) ? routeReviewId : selectedFunding?.reviewId || undefined;
+  const fundingOrderId = Number.isFinite(routeOrderId) ? routeOrderId : selectedFunding?.orderId;
+  const fundingAbv = selectedFunding?.abv ?? 0;
+  const fundingProjectName = selectedFunding?.projectName || '';
+  const fundingBreweryName = selectedFunding?.breweryName || '양조장';
+  const fundingIngredients = selectedFunding?.ingredients || '재료 정보 없음';
+  const rewardName = archiveKind === 'funding' ? selectedFunding?.drinkName || fundingProjectName : drinkName.trim();
 
   const showAlert = (title: string, body: string, tone: FundingAlertTone = 'info', buttons?: FundingAlertButton[]) => {
     setAlertModal({ title, body, tone, buttons });
@@ -289,28 +294,34 @@ export default function ArchiveWriteScreen() {
     setCustomInput('');
   };
 
-  const loadExistingFundingReview = () => {
-    if (!ownExistingFundingReview) {
-      showAlert('불러올 후기가 없어요', '이 펀딩에 작성한 후기가 아직 없습니다.', 'info');
+  const loadExistingFundingReview = async () => {
+    if (archiveKind !== 'funding' || !Number.isFinite(projectId)) {
+      showAlert('후기를 불러올 수 없어요', '선택한 펀딩 정보를 확인하지 못했습니다.', 'warning');
       return;
     }
 
-    const loadedDateParts = parseArchiveDateParts(ownExistingFundingReview.date || getTodayArchiveDate());
-    setRating(ownExistingFundingReview.rating);
-    setRecordYear(loadedDateParts.year);
-    setRecordMonth(loadedDateParts.month);
-    setRecordDay(loadedDateParts.day);
-    setUploadedImages(ownExistingFundingReview.images || []);
-    setReviewText(ownExistingFundingReview.comment || '');
-    setMood(ownExistingFundingReview.mood || '');
-    setPairing(ownExistingFundingReview.pairing || '');
-    setSelectedTags(ownExistingFundingReview.tags.filter((tag) => Object.values(reviewPresetTags).flat().includes(tag)));
-    setCustomTags(ownExistingFundingReview.tags.filter((tag) => !Object.values(reviewPresetTags).flat().includes(tag)));
-    const firstOpenSection = Object.entries(reviewPresetTags).find(([, tags]) =>
-      tags.some((tag) => ownExistingFundingReview.tags.includes(tag))
-    )?.[0];
-    setOpenTagSection(firstOpenSection || '留쎛룻뼢');
-    showAlert('후기를 불러왔어요', '작성해둔 펀딩 후기를 아카이브 기록에 채웠습니다.', 'success');
+    try {
+      const review = await getMyPageFundingArchiveReview(projectId);
+      if (!review) {
+        showAlert('불러올 후기가 없어요', '이 펀딩에 작성한 후기가 아직 없습니다.', 'info');
+        return;
+      }
+
+      setRating(review.rating || 0);
+      setReviewText(review.tastingNote || '');
+      setMood(review.mood || '');
+      setPairing(review.pairing || '');
+      setUploadedImages(normalizeReviewImages(review.images || []));
+      setServerImageIdsByUrl(
+        (review.images || []).reduce<Record<string, number>>((map, image) => {
+          map[image.imageUrl] = image.imageId;
+          return map;
+        }, {})
+      );
+      showAlert('후기를 불러왔어요', '작성해둔 펀딩 후기를 아카이브 기록에 채웠습니다.', 'success');
+    } catch (error) {
+      showAlert('후기 불러오기 실패', getMyPageApiErrorMessage(error, '후기를 불러오지 못했습니다.'), 'warning');
+    }
   };
 
   const handleSubmit = async () => {
@@ -321,8 +332,8 @@ export default function ArchiveWriteScreen() {
       ]);
       return;
     }
-    if (archiveKind === 'funding' && !project) {
-      showAlert('프로젝트를 찾을 수 없습니다', '선택한 펀딩 술 정보를 다시 확인해주세요.', 'warning');
+    if (archiveKind === 'funding' && !selectedFunding) {
+      showAlert('펀딩 정보를 찾을 수 없습니다', '선택한 펀딩 정보를 다시 확인해주세요.', 'warning');
       return;
     }
     if (archiveKind === 'normal' && !drinkName.trim()) {
@@ -342,7 +353,7 @@ export default function ArchiveWriteScreen() {
       return;
     }
     if (!reviewText.trim()) {
-      showAlert('상세 기록 입력', '마신 느낌을 기록해주세요.', 'warning');
+      showAlert('상세 기록 입력', '마신 경험을 기록해주세요.', 'warning');
       return;
     }
     if (!mood.trim() || !pairing.trim()) {
@@ -351,107 +362,73 @@ export default function ArchiveWriteScreen() {
     }
 
     setIsSaving(true);
-    const payload = {
-      projectId: archiveKind === 'funding' ? projectId : NORMAL_ARCHIVE_PROJECT_ID,
-      userId: user.id,
-      userName: user.name || '사용자',
-      date: recordDate.trim(),
-      rating,
-      comment: reviewText.trim(),
-      rewardName: rewardName || '나의 전통주 기록',
-      images: uploadedImages,
-      mood: mood.trim(),
-      pairing: pairing.trim(),
-      showRecordInReview: false,
-      tags: archiveKind === 'normal' ? [drinkAlcohol.trim(), ...allTags] : allTags,
-    };
-    let saved = null;
     try {
-      if (isEditMode && Number.isFinite(targetEditId)) {
-        const newImages = uploadedImages.filter(isLocalArchiveImage).map(getArchiveImageFile);
-        const deletedServerImageIds = Object.entries(serverImageIdsByUrl)
-          .filter(([imageUrl]) => !uploadedImages.includes(imageUrl))
-          .map(([, imageId]) => imageId);
-        const updatedArchive = await updateMyPageArchiveWithImages(targetEditId, {
-          archiveType: archiveKind === 'funding' ? 'FUNDING' : 'NORMAL',
-          customName: rewardName || undefined,
-          category: '탁주',
-          abv: archiveKind === 'normal' ? parseAbv(drinkAlcohol) : parseAbv(project?.alcoholContent || ''),
-          rating,
-          recordDate: formatArchiveApiDate(recordYear, recordMonth, recordDay),
-          tastingNote: reviewText.trim(),
-          mood: mood.trim(),
-          pairing: pairing.trim(),
-          tagIds: getArchiveTagIds(selectedTags, tagIdByName),
-          customTags,
-          deleteImageIds: deletedServerImageIds,
-          images: newImages,
-        });
-        saved = addFundingReview({
-          ...payload,
-          id: updatedArchive.archiveId || targetEditId,
-          images: updatedArchive.images.map((image) => image.imageUrl),
-          tags: [
-            ...(archiveKind === 'normal' && updatedArchive.abv ? [`${updatedArchive.abv}%`] : []),
-            ...updatedArchive.tags.map((tag) => tag.name),
-          ],
-        });
-      } else if (isEditMode && editingArchive) {
-        saved = updateFundingReview(editingArchive.id, payload);
-      } else {
-        const createdArchive = await createMyPageArchiveWithImages({
-          archiveType: archiveKind === 'funding' ? 'FUNDING' : 'NORMAL',
-          customName: rewardName || '?섏쓽 ?꾪넻二?湲곕줉',
-          category: '탁주',
-          abv: archiveKind === 'normal' ? parseAbv(drinkAlcohol) : parseAbv(project?.alcoholContent || ''),
-          rating,
-          tastingNote: reviewText.trim(),
-          recordDate: formatArchiveApiDate(recordYear, recordMonth, recordDay),
-          tagIds: getArchiveTagIds(selectedTags, tagIdByName),
-          customTags,
-          images: uploadedImages.map(getArchiveImageFile),
-        });
-        saved = addFundingReview({
-          ...payload,
-          id: createdArchive.archiveId,
-          images: createdArchive.images.map((image) => image.imageUrl),
-          tags: [
-            ...(archiveKind === 'normal' && createdArchive.abv ? [`${createdArchive.abv}%`] : []),
-            ...createdArchive.tags.map((tag) => tag.name),
-          ],
-        });
-      }
-    } catch (error) {
-      setIsSaving(false);
-      showAlert('????ㅽ뙣', getMyPageApiErrorMessage(error, '湲곕줉????ν븯吏 紐삵뻽?듬땲?? ?ㅼ떆 ?쒕룄?댁＜?몄슂.'), 'warning');
-      return;
-    }
-    setIsSaving(false);
+      const newImages = uploadedImages.filter(isLocalArchiveImage).map(getArchiveImageFile);
+      const deletedServerImageIds = Object.entries(serverImageIdsByUrl)
+        .filter(([imageUrl]) => !uploadedImages.includes(imageUrl))
+        .map(([, imageId]) => imageId);
+      const basePayload = {
+        archiveType: archiveKind === 'funding' ? ('FUNDING' as const) : ('NORMAL' as const),
+        customName: rewardName || undefined,
+        category: '전통주',
+        abv: archiveKind === 'normal' ? parseAbv(drinkAlcohol) : fundingAbv,
+        rating,
+        tastingNote: reviewText.trim(),
+        recordDate: formatArchiveApiDate(recordYear, recordMonth, recordDay),
+        mood: mood.trim(),
+        pairing: pairing.trim(),
+        tagIds: getArchiveTagIds(selectedTags, tagIdByName),
+        customTags,
+      };
 
-    if (!saved) {
-      showAlert('저장 실패', '기록을 저장하지 못했습니다. 다시 시도해주세요.', 'warning');
-      return;
-    }
-    showAlert(isEditMode ? '수정 완료' : '저장 완료', isEditMode ? '수정한 기록이 반영되었습니다.' : '내 아카이브에 기록이 저장되었습니다.', 'success', [
-      {
-        label: '확인',
-        onPress: () => {
-          if (isEditMode && saved?.id) {
-            router.replace(`/mypage/archive/detail/${saved.id}?kind=archive` as any);
-            return;
-          }
-          router.replace('/mypage/archive' as any);
+      const savedArchive = isEditMode
+        ? await updateMyPageArchiveWithImages(targetEditId, {
+            ...basePayload,
+            deleteImageIds: deletedServerImageIds,
+            images: newImages,
+          })
+        : await createMyPageArchiveWithImages({
+            ...basePayload,
+            fundingId: archiveKind === 'funding' ? projectId : undefined,
+            orderId: archiveKind === 'funding' ? fundingOrderId : undefined,
+            reviewId: archiveKind === 'funding' ? fundingReviewId : undefined,
+            images: newImages,
+          });
+
+      showAlert(isEditMode ? '수정 완료' : '저장 완료', '아카이브 기록이 저장되었습니다.', 'success', [
+        {
+          label: '확인',
+          onPress: () => {
+            if (savedArchive.archiveId) {
+              router.replace(`/mypage/archive/detail/${savedArchive.archiveId}?kind=archive` as any);
+              return;
+            }
+            router.replace('/mypage/archive' as any);
+          },
         },
-      },
-    ]);
+      ]);
+    } catch (error) {
+      showAlert('저장 실패', getMyPageApiErrorMessage(error, '기록을 저장하지 못했습니다. 다시 시도해주세요.'), 'warning');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  if (archiveKind === 'funding' && !project) {
+  if (archiveKind === 'funding' && isInitialLoading && !selectedFunding) {
+    return (
+      <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
+        <ActivityIndicator color="#111827" />
+        <Text style={styles.noticeTitle}>펀딩 정보를 불러오는 중</Text>
+      </View>
+    );
+  }
+
+  if (archiveKind === 'funding' && !selectedFunding) {
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
         <AlertCircle size={44} color="#F59E0B" />
-        <Text style={styles.noticeTitle}>프로젝트를 찾을 수 없습니다</Text>
-        <Text style={styles.noticeBody}>아카이브에 기록할 펀딩 술 정보가 없습니다.</Text>
+        <Text style={styles.noticeTitle}>펀딩 정보를 찾을 수 없습니다</Text>
+        <Text style={styles.noticeBody}>아카이브에 기록할 펀딩 정보가 없습니다.</Text>
         <TouchableOpacity style={styles.noticeButton} onPress={() => router.back()}>
           <Text style={styles.noticeButtonText}>돌아가기</Text>
         </TouchableOpacity>
@@ -471,13 +448,23 @@ export default function ArchiveWriteScreen() {
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 36 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.summaryCard}>
-          {archiveKind === 'funding' && project ? (
+          {archiveKind === 'funding' && selectedFunding ? (
             <>
-              <Image source={getFundingProjectImageSource(project)} style={styles.summaryImage} />
+              {selectedFunding.thumbnailUrl ? (
+                <Image source={{ uri: selectedFunding.thumbnailUrl }} style={styles.summaryImage} />
+              ) : (
+                <View style={styles.normalIconBox}>
+                  <Wine size={27} color="#FFFFFF" />
+                </View>
+              )}
               <View style={styles.summaryInfo}>
                 <Text style={styles.summaryBadge}>펀딩 술</Text>
-                <Text style={styles.summaryTitle} numberOfLines={2}>{project.title}</Text>
-                <Text style={styles.summarySub}>{project.brewery} · {getFundingMainIngredientLabel(project)}</Text>
+                <Text style={styles.summaryTitle} numberOfLines={2}>
+                  {fundingProjectName}
+                </Text>
+                <Text style={styles.summarySub} numberOfLines={1}>
+                  {fundingBreweryName} · {fundingIngredients}
+                </Text>
               </View>
               <TouchableOpacity style={styles.loadButton} onPress={loadExistingFundingReview}>
                 <Text style={styles.loadButtonText}>후기 불러오기</Text>
@@ -491,7 +478,7 @@ export default function ArchiveWriteScreen() {
               <View style={styles.summaryInfo}>
                 <Text style={styles.summaryBadge}>일반 술</Text>
                 <Text style={styles.summaryTitle}>새로운 술 기록</Text>
-                <Text style={styles.summarySub}>펀딩과 별개로 자유롭게 기록해요</Text>
+                <Text style={styles.summarySub}>펀딩과 별개로 자유롭게 기록해요.</Text>
               </View>
             </>
           )}
@@ -567,7 +554,7 @@ export default function ArchiveWriteScreen() {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>그날의 기록 *</Text>
           <Text style={styles.fieldLabel}>어떤 기분이었나요?</Text>
-          <TextInput style={styles.input} value={mood} onChangeText={setMood} placeholder="예: 오래 기다린 만큼 설렜어요" placeholderTextColor="#9CA3AF" />
+          <TextInput style={styles.input} value={mood} onChangeText={setMood} placeholder="예: 오래 기다린 만큼 설레요" placeholderTextColor="#9CA3AF" />
           <Text style={styles.fieldLabel}>함께한 안주</Text>
           <TextInput style={styles.input} value={pairing} onChangeText={setPairing} placeholder="예: 파전, 묵은지" placeholderTextColor="#9CA3AF" />
         </View>

@@ -72,6 +72,7 @@ export default function MyPageScreen() {
           email: profile.email || user.email,
           phone: profile.phoneNumber || undefined,
           profileImage: profile.profileImageUrl || undefined,
+          breweryProfileImage: profile.profileImageUrl || user.breweryProfileImage,
         };
         const changed = Object.entries(nextUser).some(([key, value]) => user[key as keyof typeof user] !== value);
         if (changed) {

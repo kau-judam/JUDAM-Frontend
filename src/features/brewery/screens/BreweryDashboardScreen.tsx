@@ -54,51 +54,37 @@ import {
   getBreweryFundingSummary,
   updateBreweryFundingDelivery,
   type BreweryDashboardBasicInfo,
+  type BreweryDashboardFundingItem,
   type BreweryDashboardNotification,
   type BreweryFundingSummary,
 } from '@/features/brewery/api';
-import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import type { AppNotification } from '@/features/notifications/data';
 
 const FUNDINGS_PER_PAGE = 3;
 
-// TODO: Remove after checking the real completed funding response.
-const TEMP_COMPLETED_FUNDING_FOR_DELIVERY_UI: FundingProject = {
-  id: 990001,
-  title: 'Delivery Test Makgeolli',
-  brewery: 'Coco Brewery',
-  breweryLogo: 'B',
-  location: 'Goyang-si, Gyeonggi-do',
-  category: 'Makgeolli',
-  shortDescription: 'Temporary completed funding for delivery UI testing.',
-  image: '',
-  localImage: require('../../../../newpicutre/funding2.jpg'),
-  isMine: true,
-  goalAmount: 3000000,
-  currentAmount: 3150000,
-  backers: 24,
-  daysLeft: 0,
-  status: 'completed' as ProjectStatus,
-  startDate: '2026. 04. 01',
-  endDate: '2026. 04. 30',
-  pricePerBottle: 12000,
-  bottleSize: '500ml',
-  alcoholContent: '6%',
-  rewardItems: ['Delivery test reward'],
+const getDashboardFundingItems = (response: {
+  content?: BreweryDashboardFundingItem[];
+  data?: BreweryDashboardFundingItem[];
+}) => {
+  if (Array.isArray(response.content) && response.content.length > 0) return response.content;
+  if (Array.isArray(response.data) && response.data.length > 0) return response.data;
+  return response.content || response.data || [];
 };
 
-const mapDashboardFundingToProject = (item: {
-  fundingId: number;
-  title: string;
-  breweryName: string;
-  thumbnailUrl: string | null;
-  currentAmount: number;
-  targetAmount: number;
-  achievementRate: number;
-  status: string;
-  remainingDays: number;
-  endDate: string;
-}): FundingProject => ({
+const normalizeDashboardProjectStatus = (status: string): ProjectStatus => {
+  const text = String(status || '').trim();
+  const normalized = text.toUpperCase();
+  if (normalized === 'ACTIVE' || text.includes('진행')) return 'ACTIVE';
+  if (normalized === 'SUCCESS' || normalized === 'SUCCESSFUL' || normalized === 'FUNDING_SUCCESS' || text.includes('성공')) return 'SUCCESS';
+  if (normalized === 'FAILED' || normalized === 'FAILURE' || text.includes('실패')) return 'FAILED';
+  if (normalized === 'CANCELED' || normalized === 'CANCELLED' || text.includes('취소')) return 'CANCELED';
+  if (normalized === 'ENDED' || normalized === 'COMPLETED' || normalized === 'DONE' || text.includes('종료') || text.includes('완료')) return 'ENDED';
+  if (normalized === 'REVIEWING') return 'REVIEWING';
+  if (normalized === 'READY' || normalized === 'SCHEDULED' || normalized === 'APPROVED') return 'READY';
+  return status as ProjectStatus;
+};
+
+const mapDashboardFundingToProject = (item: BreweryDashboardFundingItem): FundingProject => ({
   id: item.fundingId,
   title: item.title,
   brewery: item.breweryName,
@@ -111,7 +97,7 @@ const mapDashboardFundingToProject = (item: {
   currentAmount: item.currentAmount || 0,
   backers: 0,
   daysLeft: item.remainingDays || 0,
-  status: item.status as ProjectStatus,
+  status: normalizeDashboardProjectStatus(item.status),
   endDate: item.endDate,
 });
 
@@ -225,26 +211,12 @@ export default function BreweryDashboardScreen() {
     () => [...apiFundings.active, ...apiFundings.completed],
     [apiFundings.active, apiFundings.completed],
   );
-  const contextOwnProjects = useMemo(
-    () => projects.filter((project) => isFundingProjectOwnedByBrewery(user, project)),
-    [projects, user],
-  );
-  const dashboardProjects = apiDashboardProjects.length > 0
-    ? apiDashboardProjects
-    : contextOwnProjects;
-  const locallyFilteredFundings = useMemo(
-    () => fundingFilter === "active"
-      ? dashboardProjects.filter((project) => isSupportableFundingStatus(project.status) || project.status === "심사 중" || project.status === "펀딩 예정")
-      : dashboardProjects.filter((project) => isCompletedFundingStatus(project.status)),
-    [dashboardProjects, fundingFilter],
-  );
+  const dashboardProjects = apiDashboardProjects;
   const filteredFundings = useMemo(
     () => fundingFilter === "completed"
-      ? [...(apiFundings.completed.length > 0 ? apiFundings.completed : locallyFilteredFundings), TEMP_COMPLETED_FUNDING_FOR_DELIVERY_UI]
-      : apiFundings.active.length > 0
-        ? apiFundings.active
-        : locallyFilteredFundings,
-    [apiFundings.active, apiFundings.completed, fundingFilter, locallyFilteredFundings],
+      ? apiFundings.completed
+      : apiFundings.active,
+    [apiFundings.active, apiFundings.completed, fundingFilter],
   );
   const fundingPageCount = Math.max(1, Math.ceil(filteredFundings.length / FUNDINGS_PER_PAGE));
   const visibleFundings = useMemo(
@@ -300,11 +272,11 @@ export default function BreweryDashboardScreen() {
       if (activeFundingsResult.status === 'fulfilled' || completedFundingsResult.status === 'fulfilled') {
         const active =
           activeFundingsResult.status === 'fulfilled'
-            ? (activeFundingsResult.value.content || activeFundingsResult.value.data || []).map(mapDashboardFundingToProject)
+            ? getDashboardFundingItems(activeFundingsResult.value).map(mapDashboardFundingToProject)
             : [];
         const completed =
           completedFundingsResult.status === 'fulfilled'
-            ? (completedFundingsResult.value.content || completedFundingsResult.value.data || []).map(mapDashboardFundingToProject)
+            ? getDashboardFundingItems(completedFundingsResult.value).map(mapDashboardFundingToProject)
             : [];
         setApiFundings({ active, completed });
         mergeProjects([...active, ...completed]);
@@ -397,8 +369,6 @@ export default function BreweryDashboardScreen() {
     setIsDeliveryEditing(!savedInfo);
 
     setDeliveryMessage('');
-    if (project.id === TEMP_COMPLETED_FUNDING_FOR_DELIVERY_UI.id) return;
-
     setIsDeliveryLoading(true);
     try {
       const delivery = await getBreweryFundingDelivery(project.id);
@@ -450,15 +420,6 @@ export default function BreweryDashboardScreen() {
       courier: deliveryCourier.trim(),
       trackingNumber: deliveryTrackingNumber.trim(),
     };
-
-    if (selectedDeliveryProject.id === TEMP_COMPLETED_FUNDING_FOR_DELIVERY_UI.id) {
-      setDeliveryInfoByProjectId((prev) => ({
-        ...prev,
-        [selectedDeliveryProject.id]: nextInfo,
-      }));
-      setIsDeliveryEditing(false);
-      return;
-    }
 
     setIsDeliverySaving(true);
     setDeliveryMessage('');
@@ -615,7 +576,7 @@ export default function BreweryDashboardScreen() {
               const progressLabel = Math.round(progress);
               const status = getFundingStatusLabel(funding.status);
               const statusTone = getFundingStatusTone(funding.status);
-              const isDeliveryTarget = isCompletedFundingStatus(funding.status) || funding.id === TEMP_COMPLETED_FUNDING_FOR_DELIVERY_UI.id;
+              const isDeliveryTarget = isCompletedFundingStatus(funding.status);
 
               return (
                 <TouchableOpacity key={funding.id} style={styles.fundingItemCard} activeOpacity={0.8} onPress={() => router.push(`/funding/${funding.id}` as any)}>

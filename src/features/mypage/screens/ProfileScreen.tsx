@@ -55,6 +55,7 @@ export default function ProfileScreen() {
           email: profile.email || user.email,
           phone: profile.phoneNumber || undefined,
           profileImage: profile.profileImageUrl || undefined,
+          breweryProfileImage: profile.profileImageUrl || user.breweryProfileImage,
         };
         const changed = Object.entries(nextUser).some(([key, value]) => user[key as keyof typeof user] !== value);
         if (changed) updateUser(nextUser);
@@ -188,7 +189,10 @@ export default function ProfileScreen() {
         name: asset.fileName || asset.uri.split('/').pop() || `profile-${Date.now()}.jpg`,
         type: asset.mimeType || 'image/jpeg',
       });
-      await updateUser({ profileImage: response.profileImageUrl });
+      await updateUser({
+        profileImage: response.profileImageUrl,
+        breweryProfileImage: response.profileImageUrl,
+      });
       Alert.alert('저장 완료', '프로필 이미지가 변경되었습니다.');
     } catch (error) {
       Alert.alert('저장 실패', getMyPageApiErrorMessage(error, '프로필 이미지를 저장하지 못했습니다.'));

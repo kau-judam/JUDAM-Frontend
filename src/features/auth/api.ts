@@ -18,6 +18,8 @@ export type AuthApiUser = {
   provider?: string;
   role: AuthRole;
   profileImage?: string | null;
+  profileImageUrl?: string | null;
+  profile_image_url?: string | null;
   marketingAgreed?: boolean;
 };
 

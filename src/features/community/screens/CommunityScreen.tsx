@@ -61,7 +61,11 @@ export default function CommunityScreen() {
     fetchCommunityPosts({ sort: apiSort, page: 0, size: 20 })
       .then((response) => {
         if (!isActive) return;
-        setApiPosts(response.posts);
+        setApiPosts(
+          response.posts.map((post) =>
+            post.isMine && user?.profileImage ? { ...post, avatar: user.profileImage } : post
+          )
+        );
         setApiLoadFailed(false);
       })
       .catch((error) => {
@@ -78,7 +82,7 @@ export default function CommunityScreen() {
     return () => {
       isActive = false;
     };
-  }, [sortOption]);
+  }, [sortOption, user?.profileImage]);
 
   useFocusEffect(loadCommunityPosts);
 

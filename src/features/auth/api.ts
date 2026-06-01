@@ -101,14 +101,28 @@ export type AuthAvailabilityResponse = {
 };
 
 export type PasswordResetRequestResponse = {
-  email: string;
-  verificationCode?: string;
+  email?: string;
   expiresInMinutes?: number;
+  message?: string;
 };
 
 export type PasswordResetVerifyResponse = {
-  email: string;
-  verified: boolean;
+  email?: string;
+  verified?: boolean;
+  passwordResetToken: string;
+  expiresInMinutes?: number;
+  message?: string;
+};
+
+export type PasswordResetConfirmPayload = {
+  passwordResetToken: string;
+  newPassword: string;
+  newPasswordConfirm: string;
+};
+
+export type PasswordResetConfirmResponse = {
+  message?: string;
+  success?: boolean;
 };
 
 export type PhoneVerificationRequestResponse = {
@@ -465,19 +479,19 @@ export async function verifyPasswordResetCode(email: string, verificationCode: s
 }
 
 export async function resetPassword(payload: {
-  email: string;
-  verificationCode: string;
+  passwordResetToken: string;
   newPassword: string;
-  confirmPassword: string;
+  newPasswordConfirm: string;
 }) {
-  return requestAuthJson<AuthApiEnvelope<null>>('/api/auth/password/reset', {
-    method: 'PATCH',
-    body: JSON.stringify({
-      ...payload,
-      newPasswordConfirm: payload.confirmPassword,
-      passwordConfirm: payload.confirmPassword,
-    }),
+  return confirmPasswordReset(payload);
+}
+
+export async function confirmPasswordReset(payload: PasswordResetConfirmPayload) {
+  const response = await requestAuthJson<AuthApiEnvelope<PasswordResetConfirmResponse>>('/api/auth/password/reset/confirm', {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
+  return unwrapAuthData<PasswordResetConfirmResponse>(response);
 }
 
 export async function requestPhoneVerification(phoneNumber: string) {

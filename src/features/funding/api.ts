@@ -528,12 +528,7 @@ export type FundingReportReason =
   | 'INAPPROPRIATE_CONTENT'
   | 'COPYRIGHT'
   | 'FRAUD'
-  | 'ETC'
-  | '허위 정보'
-  | '부적절한 내용'
-  | '저작권 침해'
-  | '사기 의심'
-  | '기타';
+  | 'ETC';
 
 type CreateFundingReportPayload = {
   reason: FundingReportReason;
@@ -545,14 +540,6 @@ type CreateFundingReportResponse = {
   fundingId: number;
   reason: FundingReportReason | string;
   message: string;
-};
-
-const FUNDING_REPORT_REASON_LABELS: Record<string, string> = {
-  FALSE_INFORMATION: '허위 정보',
-  INAPPROPRIATE_CONTENT: '부적절한 내용',
-  COPYRIGHT: '저작권 침해',
-  FRAUD: '사기 의심',
-  ETC: '기타',
 };
 
 export type FundingReportStatus = 'PENDING' | 'REVIEWING' | 'RESOLVED' | 'REJECTED';
@@ -3290,7 +3277,6 @@ export async function createFundingReport(fundingId: number, payload: CreateFund
     auth: true,
     body: JSON.stringify({
       ...payload,
-      reason: FUNDING_REPORT_REASON_LABELS[payload.reason] || payload.reason,
     }),
   });
 }

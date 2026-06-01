@@ -253,11 +253,12 @@ export default function ArchiveWriteScreen() {
   const headerTitle = isEditMode ? '술 기록 수정' : archiveKind === 'funding' ? '펀딩 술 기록' : '일반 술 기록';
   const fundingReviewId = Number.isFinite(routeReviewId) ? routeReviewId : selectedFunding?.reviewId || undefined;
   const fundingOrderId = Number.isFinite(routeOrderId) ? routeOrderId : selectedFunding?.orderId;
-  const fundingAbv = selectedFunding?.abv ?? 0;
-  const fundingProjectName = selectedFunding?.projectName || '';
+  const fundingAbv = selectedFunding?.abv ?? parseAbv(drinkAlcohol);
+  const fundingProjectName = selectedFunding?.projectName || drinkName;
   const fundingBreweryName = selectedFunding?.breweryName || '양조장';
   const fundingIngredients = selectedFunding?.ingredients || '재료 정보 없음';
   const rewardName = archiveKind === 'funding' ? selectedFunding?.drinkName || fundingProjectName : drinkName.trim();
+  const canUseFundingArchive = archiveKind !== 'funding' || Boolean(selectedFunding) || isEditMode;
 
   const showAlert = (title: string, body: string, tone: FundingAlertTone = 'info', buttons?: FundingAlertButton[]) => {
     setAlertModal({ title, body, tone, buttons });
@@ -332,7 +333,7 @@ export default function ArchiveWriteScreen() {
       ]);
       return;
     }
-    if (archiveKind === 'funding' && !selectedFunding) {
+    if (!canUseFundingArchive) {
       showAlert('펀딩 정보를 찾을 수 없습니다', '선택한 펀딩 정보를 다시 확인해주세요.', 'warning');
       return;
     }
@@ -414,7 +415,7 @@ export default function ArchiveWriteScreen() {
     }
   };
 
-  if (archiveKind === 'funding' && isInitialLoading && !selectedFunding) {
+  if (archiveKind === 'funding' && isInitialLoading && !selectedFunding && !isEditMode) {
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
         <ActivityIndicator color="#111827" />
@@ -423,7 +424,7 @@ export default function ArchiveWriteScreen() {
     );
   }
 
-  if (archiveKind === 'funding' && !selectedFunding) {
+  if (archiveKind === 'funding' && !selectedFunding && !isEditMode) {
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
         <AlertCircle size={44} color="#F59E0B" />
@@ -448,9 +449,9 @@ export default function ArchiveWriteScreen() {
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 36 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.summaryCard}>
-          {archiveKind === 'funding' && selectedFunding ? (
+          {archiveKind === 'funding' ? (
             <>
-              {selectedFunding.thumbnailUrl ? (
+              {selectedFunding?.thumbnailUrl ? (
                 <Image source={{ uri: selectedFunding.thumbnailUrl }} style={styles.summaryImage} />
               ) : (
                 <View style={styles.normalIconBox}>

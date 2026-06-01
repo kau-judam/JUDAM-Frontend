@@ -210,7 +210,7 @@ function getFundingProjectOwnerIds(project: FundingProject | null | undefined) {
 }
 
 function isProjectOwnerBreweryWriter(
-  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery' | 'writerIsBrewery' | 'writerRole' | 'isProjectOwner'>,
+  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery' | 'writerIsBrewery' | 'writerRole' | 'showBreweryBadge' | 'isProjectOwner'>,
   project: FundingProject | null | undefined,
   currentUser?: User | null
 ) {
@@ -234,7 +234,7 @@ function isProjectOwnerBreweryWriter(
 }
 
 function resolveBreweryLogWriter(
-  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery' | 'writerIsBrewery' | 'writerRole' | 'isProjectOwner'>,
+  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery' | 'writerIsBrewery' | 'writerRole' | 'showBreweryBadge' | 'isProjectOwner'>,
   currentUser: User | null | undefined,
   project: FundingProject | null | undefined
 ) {
@@ -845,6 +845,8 @@ export default function FundingDetailScreen() {
   const isProjectSupportable = isFundingProjectSupportable(project);
   const isProjectExpiredByEndDate = isFundingEndDateExpired(project);
   const projectStatusLabel = getFundingProjectStatusLabel(project);
+  const isProjectPreparing = projectStatusLabel === "준비 중" || projectStatusLabel === "대기 중" || projectStatusLabel === "펀딩 예정";
+  const isProjectRejected = projectStatusLabel === "펀딩 반려";
   const supportUnavailableMessage = getFundingProjectSupportUnavailableMessage(project);
   const unitPrice = getProjectUnitPrice(project);
   const shippingFee = getProjectShippingFee(project);
@@ -863,9 +865,10 @@ export default function FundingDetailScreen() {
     if (projectStatusLabel === "펀딩 성공") return "성공한 프로젝트";
     if (projectStatusLabel === "펀딩 실패") return "실패한 프로젝트";
     if (projectStatusLabel === "취소된 펀딩") return "취소된 프로젝트";
+    if (isProjectRejected) return "펀딩 반려";
     if (isProjectExpiredByEndDate || projectStatusLabel === "펀딩 마감") return "마감된 프로젝트";
     if (projectStatusLabel === "심사 중") return "심사 중인 프로젝트";
-    if (projectStatusLabel === "대기 중") return "대기 중인 프로젝트";
+    if (isProjectPreparing) return "준비 중인 프로젝트";
     return "프로젝트 상태 확인";
   })();
   const supportButtonLabel =
@@ -876,7 +879,7 @@ export default function FundingDetailScreen() {
           : ownerClosedProjectLabel
         : "양조장 인증하기"
       : !isProjectSupportable
-      ? projectStatusLabel === "심사 중" || projectStatusLabel === "대기 중" || projectStatusLabel === "펀딩 예정"
+      ? projectStatusLabel === "심사 중" || isProjectPreparing
         ? "후원 준비중"
         : projectStatusLabel
       : "프로젝트 후원하기";
@@ -908,13 +911,19 @@ export default function FundingDetailScreen() {
         body: "운영 또는 진행 사유로 취소되어 후원할 수 없는 프로젝트입니다.",
       };
     }
+    if (isProjectRejected) {
+      return {
+        title: "펀딩 반려된 프로젝트입니다",
+        body: "관리자 심사에서 반려되어 후원할 수 없는 프로젝트입니다.",
+      };
+    }
     if (projectStatusLabel === "심사 중") {
       return {
         title: "심사 중인 프로젝트입니다",
         body: "관리자 심사가 완료된 뒤 후원 가능 상태가 되면 참여할 수 있습니다.",
       };
     }
-    if (projectStatusLabel === "대기 중" || projectStatusLabel === "펀딩 예정") {
+    if (isProjectPreparing) {
       return {
         title: "후원 준비중입니다",
         body: "아직 후원을 받을 수 없는 프로젝트입니다. 프로젝트 상태가 진행 중으로 바뀐 뒤 참여할 수 있습니다.",
@@ -950,15 +959,21 @@ export default function FundingDetailScreen() {
         body: "취소 처리된 프로젝트는 수정하거나 다시 후원을 받을 수 없습니다.",
       };
     }
+    if (isProjectRejected) {
+      return {
+        title: "펀딩 반려된 프로젝트입니다",
+        body: "심사에서 반려된 프로젝트입니다. 제출 내용을 보완한 뒤 다시 진행해주세요.",
+      };
+    }
     if (projectStatusLabel === "심사 중") {
       return {
         title: "심사 중인 프로젝트입니다",
         body: "관리자 심사가 진행 중인 프로젝트입니다. 심사가 완료되기 전에는 수정 관리가 제한됩니다.",
       };
     }
-    if (projectStatusLabel === "대기 중") {
+    if (isProjectPreparing) {
       return {
-        title: "대기 중인 프로젝트입니다",
+        title: "준비 중인 프로젝트입니다",
         body: "아직 후원 진행 전 단계입니다. 프로젝트 상태가 진행 중으로 변경된 뒤 관리할 수 있습니다.",
       };
     }

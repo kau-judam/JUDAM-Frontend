@@ -14,9 +14,8 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Heart, MessageCircle, Package, Send, ChevronLeft, Pencil, Trash2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAuth, type User } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
-import type { FundingProject } from '@/constants/data';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import FundingStarRating from '@/features/funding/components/FundingStarRating';
 import {
@@ -54,52 +53,12 @@ function formatReviewCommentTime(value: string) {
   return date.toISOString().slice(0, 10).replace(/-/g, '. ');
 }
 
-function normalizeOwnerId(value: string | number | null | undefined) {
-  if (value === null || value === undefined) return null;
-  const normalized = String(value).trim();
-  return normalized || null;
-}
-
-function getProjectOwnerIds(project: FundingProject | null | undefined) {
-  if (!project) return [];
-  return [project.breweryUserId, project.ownerUserId, project.creatorId, project.breweryId]
-    .map(normalizeOwnerId)
-    .filter((id): id is string => Boolean(id));
-}
-
-function isProjectOwnerCommentWriter(
-  item: FundingReviewCommentItem,
-  project: FundingProject | null | undefined,
-  currentUser: User | null | undefined
-) {
-  if (!project) return false;
-  const writerId = normalizeOwnerId(item.writerId);
-  const ownerIds = getProjectOwnerIds(project);
-  if (writerId && ownerIds.length > 0) return ownerIds.includes(writerId);
-
-  const currentUserIds = currentUser
-    ? [currentUser.id, currentUser.uid].map(normalizeOwnerId).filter((id): id is string => Boolean(id))
-    : [];
-  if (writerId && currentUserIds.includes(writerId)) {
-    return currentUser?.type === 'brewery' && ownerIds.includes(writerId);
-  }
-
-  if (ownerIds.length === 0 && (item.isBrewery || item.writerRole?.toUpperCase().includes('BREWERY'))) {
-    const writerName = item.writerNickname?.trim();
-    return Boolean(writerName && project.brewery && writerName === project.brewery.trim());
-  }
-
-  return false;
-}
-
 function mapReviewComment(
   item: FundingReviewCommentItem,
   fallbackProjectId: number,
-  fallbackReviewId: number,
-  currentUser: User | null | undefined,
-  project: FundingProject | null | undefined
+  fallbackReviewId: number
 ): FundingReviewComment {
-  const isBrewery = shouldShowFundingBreweryBadge(item) || isProjectOwnerCommentWriter(item, project, currentUser);
+  const isBrewery = shouldShowFundingBreweryBadge(item);
   return {
     id: item.commentId,
     projectId: item.fundingId || fallbackProjectId,
@@ -109,6 +68,7 @@ function mapReviewComment(
     writerRole: item.writerRole,
     isBrewery: item.isBrewery,
     writerIsBrewery: item.writerIsBrewery,
+    showBreweryBadge: item.showBreweryBadge,
     isProjectOwner: item.isProjectOwner,
     content: item.content,
     timestamp: formatReviewCommentTime(item.createdAt),
@@ -141,6 +101,7 @@ export default function FundingReviewDetailScreen() {
   const [alertModal, setAlertModal] = useState<ReviewDetailAlert | null>(null);
   const [isReviewLoading, setIsReviewLoading] = useState(false);
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
+  const [isDeleteCompleted, setIsDeleteCompleted] = useState(false);
   const canManageReview = Boolean(review && isFundingReviewOwnedByUser(review, user));
 
   const showLoginRequired = (message: string) => {
@@ -190,7 +151,7 @@ export default function FundingReviewDetailScreen() {
     getFundingReviewComments(projectId, targetReviewId)
       .then((response) => {
         if (!isMounted) return;
-        setComments(response.content.map((item) => mapReviewComment(item, projectId, targetReviewId, user, project)));
+        setComments(response.content.map((item) => mapReviewComment(item, projectId, targetReviewId)));
       })
       .catch((error) => {
         if (isFundingReviewNotFoundError(error)) return;
@@ -254,7 +215,7 @@ export default function FundingReviewDetailScreen() {
     setIsCommentSubmitting(true);
     try {
       const savedComment = await createFundingReviewComment(projectId, targetReviewId, content);
-      setComments((prev) => [...prev, mapReviewComment(savedComment, projectId, targetReviewId, user, project)]);
+      setComments((prev) => [...prev, mapReviewComment(savedComment, projectId, targetReviewId)]);
       setCommentInput('');
     } catch (error) {
       setAlertModal({
@@ -305,6 +266,7 @@ export default function FundingReviewDetailScreen() {
     try {
       await deleteFundingReviewApi(project.id, review.id);
       deleteFundingReview(review.id);
+      setIsDeleteCompleted(true);
       setAlertModal({
         title: '후기가 삭제되었습니다',
         body: '펀딩 후기 목록으로 돌아갑니다.',
@@ -333,6 +295,21 @@ export default function FundingReviewDetailScreen() {
       ],
     });
   };
+
+  if (isDeleteCompleted && project) {
+    return (
+      <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
+        <FundingAlertModal
+          visible={Boolean(alertModal)}
+          title={alertModal?.title || ''}
+          body={alertModal?.body || ''}
+          tone={alertModal?.tone}
+          buttons={alertModal?.buttons}
+          onClose={() => setAlertModal(null)}
+        />
+      </View>
+    );
+  }
 
   if (!project || (!review && !isReviewLoading)) {
     return (

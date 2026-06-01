@@ -29,15 +29,16 @@ function getDaysLeft(value?: string) {
 
 export function mapFundingStatus(status: string, _currentAmount = 0, _targetAmount = 0, _endDate?: string): ProjectStatus {
   const normalized = String(status || '').trim().toUpperCase();
-  if (normalized === 'READY') return '대기 중';
+  if (normalized === 'READY') return '준비 중';
   if (normalized === 'REVIEWING') return '심사 중';
+  if (normalized === 'REJECTED' || normalized === 'REJECT' || normalized === 'DENIED') return '펀딩 반려';
   if (normalized === 'UPCOMING') return '펀딩 예정';
   if (normalized === 'ONGOING' || normalized === 'ACTIVE') return '진행 중';
   if (normalized === 'SUCCESS') return '펀딩 성공';
   if (normalized === 'FAILED') return '펀딩 실패';
   if (normalized === 'ENDED') return '종료';
-  if (normalized === 'CANCELLED' || normalized === 'CANCELED') return '취소된 펀딩';
-  return '진행 중';
+  if (normalized === 'CANCELED' || normalized === 'CANCELLED') return '취소된 펀딩';
+  return '대기 중';
 }
 
 function normalizeSupporterCount(value: unknown, fallback = 0) {
@@ -523,6 +524,7 @@ export function mapFundingReview(projectId: number, item: FundingReviewItem): Fu
     writerRole: item.writerRole,
     isBrewery: item.isBrewery,
     writerIsBrewery: item.writerIsBrewery,
+    showBreweryBadge: item.showBreweryBadge,
     isProjectOwner: item.isProjectOwner,
     rating: item.rating,
     date: formatDate(item.createdAt),

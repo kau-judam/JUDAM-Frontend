@@ -158,7 +158,7 @@ type JournalEntryState = {
 const statusOptions: ProjectStatus[] = [
   "작성 중",
   "심사 중",
-  "심사 반려",
+  "펀딩 반려",
   "펀딩 예정",
   "진행 중",
   "목표 달성",

@@ -541,6 +541,7 @@ export default function FundingSupportScreen() {
 
   if (!isFundingProjectSupportable(project) && !isOwnBreweryProject) {
     const statusLabel = getFundingProjectStatusLabel(project);
+    const isPreparingStatus = statusLabel === '준비 중' || statusLabel === '대기 중' || statusLabel === '펀딩 예정';
     const blockedNotice = (() => {
       if (statusLabel === '펀딩 마감') {
         return {
@@ -566,13 +567,19 @@ export default function FundingSupportScreen() {
           body: '운영 또는 진행 사유로 취소되어 후원할 수 없는 프로젝트입니다.',
         };
       }
+      if (statusLabel === '펀딩 반려') {
+        return {
+          title: '펀딩 반려된 프로젝트입니다',
+          body: '관리자 심사에서 반려되어 후원할 수 없는 프로젝트입니다.',
+        };
+      }
       if (statusLabel === '심사 중') {
         return {
           title: '심사 중인 프로젝트입니다',
           body: '관리자 심사가 완료된 뒤 후원 가능 상태가 되면 참여할 수 있습니다.',
         };
       }
-      if (statusLabel === '대기 중' || statusLabel === '펀딩 예정') {
+      if (isPreparingStatus) {
         return {
           title: '후원 준비중입니다',
           body: '아직 후원을 받을 수 없는 프로젝트입니다. 프로젝트 상태가 진행 중으로 바뀐 뒤 참여할 수 있습니다.',
@@ -614,6 +621,7 @@ export default function FundingSupportScreen() {
   if (isOwnBreweryProject) {
     const canManageOwnProject = isFundingProjectManageable(project);
     const ownerStatusLabel = getFundingProjectStatusLabel(project);
+    const isOwnerPreparingStatus = ownerStatusLabel === '준비 중' || ownerStatusLabel === '대기 중' || ownerStatusLabel === '펀딩 예정';
     const ownerBlockedNotice = (() => {
       if (ownerStatusLabel === '펀딩 마감') {
         return '마감일이 지나 프로젝트 수정이 제한됩니다. 정산이 완료되면 성공 또는 실패 상태로 확인할 수 있습니다.';
@@ -627,10 +635,13 @@ export default function FundingSupportScreen() {
       if (ownerStatusLabel === '취소된 펀딩') {
         return '취소 처리된 프로젝트는 수정하거나 다시 후원을 받을 수 없습니다.';
       }
+      if (ownerStatusLabel === '펀딩 반려') {
+        return '심사에서 반려된 프로젝트입니다. 제출 내용을 보완한 뒤 다시 진행해주세요.';
+      }
       if (ownerStatusLabel === '심사 중') {
         return '관리자 심사가 진행 중인 프로젝트입니다. 심사가 완료되기 전에는 수정 관리가 제한됩니다.';
       }
-      if (ownerStatusLabel === '대기 중') {
+      if (isOwnerPreparingStatus) {
         return '아직 후원 진행 전 단계입니다. 프로젝트 상태가 진행 중으로 변경된 뒤 관리할 수 있습니다.';
       }
       return '현재 상태에서는 프로젝트 수정이 제한됩니다. 프로젝트 상태를 확인한 뒤 다시 시도해주세요.';

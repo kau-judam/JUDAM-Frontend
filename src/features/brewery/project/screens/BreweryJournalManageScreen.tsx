@@ -446,6 +446,9 @@ export default function BreweryJournalManageScreen() {
         transparent
         visible={Boolean(pendingDeleteEntry)}
         animationType="fade"
+        statusBarTranslucent
+        navigationBarTranslucent
+        hardwareAccelerated
         onRequestClose={() => {
           if (deletingEntryId === null) setPendingDeleteEntry(null);
         }}
@@ -476,7 +479,7 @@ export default function BreweryJournalManageScreen() {
         </View>
       </Modal>
 
-      <Modal transparent visible={Boolean(message)} animationType="fade">
+      <Modal transparent visible={Boolean(message)} animationType="fade" statusBarTranslucent navigationBarTranslucent hardwareAccelerated>
         <View style={styles.modalBackdrop}>
           <View style={styles.messageCard}>
             <Text style={styles.messageTitle}>알림</Text>

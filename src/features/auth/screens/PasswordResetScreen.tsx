@@ -59,6 +59,7 @@ export default function PasswordResetScreen() {
   const [step, setStep] = useState<ResetStep>('email');
   const [email, setEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
+  const [passwordResetToken, setPasswordResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -107,8 +108,9 @@ export default function PasswordResetScreen() {
       const result = await requestPasswordReset(normalizedEmail);
       setEmail(result.email || normalizedEmail);
       setVerificationCode('');
+      setPasswordResetToken('');
       setIsResetCodeVerified(false);
-      showNotice(result.verificationCode ? `인증번호가 발급되었습니다. 인증번호: ${result.verificationCode}` : '인증번호가 발송되었습니다.');
+      showNotice('인증번호가 발송되었습니다.');
       setStep('verify');
     } catch (error) {
       showNotice(error instanceof Error ? error.message : '인증번호 요청에 실패했습니다.');
@@ -125,7 +127,11 @@ export default function PasswordResetScreen() {
 
     setIsLoading(true);
     try {
-      await verifyPasswordResetCode(email, verificationCode.trim());
+      const result = await verifyPasswordResetCode(email, verificationCode.trim());
+      if (!result.passwordResetToken) {
+        throw new Error('비밀번호 재설정 토큰을 받지 못했습니다. 인증번호를 다시 확인해주세요.');
+      }
+      setPasswordResetToken(result.passwordResetToken);
       setIsResetCodeVerified(true);
       showNotice('인증이 완료되었습니다.');
       setStep('newPassword');
@@ -154,14 +160,19 @@ export default function PasswordResetScreen() {
       setStep('verify');
       return;
     }
+    if (!passwordResetToken) {
+      showNotice('비밀번호 재설정 인증이 만료되었습니다. 인증번호를 다시 확인해주세요.');
+      setIsResetCodeVerified(false);
+      setStep('verify');
+      return;
+    }
 
     setIsLoading(true);
     try {
       await resetPassword({
-        email,
-        verificationCode: verificationCode.trim(),
+        passwordResetToken,
         newPassword,
-        confirmPassword,
+        newPasswordConfirm: confirmPassword,
       });
       showNotice('비밀번호가 재설정되었습니다.');
     } catch (error) {

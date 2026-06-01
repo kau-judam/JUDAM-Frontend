@@ -163,6 +163,16 @@ function getSupportOptionStockLabel(option: FundingSupportOption) {
   return '';
 }
 
+function isGarbledKoreanMessage(message: string) {
+  return /�|[瑜吏紐삵뻽덈땲媛]|[?][가-힣]|[가-힣][?]/.test(message);
+}
+
+function getReportSubmitErrorMessage(error: unknown) {
+  const fallback = '신고 등록 중 문제가 발생했습니다. 다시 시도해주세요.';
+  const message = getFundingApiErrorMessage(error, fallback);
+  return isGarbledKoreanMessage(message) ? fallback : message;
+}
+
 function createFundingProjectFromDetail(detail: FundingDetailResponse): FundingProject {
   return mergeFundingDetail(
     {
@@ -1748,7 +1758,7 @@ export default function FundingDetailScreen() {
     } catch (error) {
       setFeedbackModal({
         title: '신고 등록 실패',
-        body: getFundingApiErrorMessage(error, '신고 등록 중 문제가 발생했습니다.'),
+        body: getReportSubmitErrorMessage(error),
       });
     }
   };

@@ -11,6 +11,21 @@ type FundingApiEnvelope<T> = FundingApiErrorBody & {
   data?: T;
 };
 
+export class FundingApiError extends Error {
+  readonly status: number;
+  readonly path: string;
+  readonly data: unknown;
+
+  constructor(message: string, status: number, path: string, data: unknown) {
+    super(message);
+    this.name = 'FundingApiError';
+    this.status = status;
+    this.path = path;
+    this.data = data;
+    Object.setPrototypeOf(this, FundingApiError.prototype);
+  }
+}
+
 type FundingRawMaterialResponse = {
   name?: string;
   ingredient?: string;
@@ -2507,7 +2522,7 @@ async function requestFundingJson<T>(path: string, options: RequestInit & { auth
 
   if (!response.ok) {
     const message = (data as FundingApiErrorBody | null)?.message || `HTTP ${response.status}`;
-    throw new Error(message);
+    throw new FundingApiError(message, response.status, path, data);
   }
 
   return data as T;
@@ -2604,7 +2619,7 @@ async function requestFundingForm<T>(path: string, formData: FormData, options: 
 
   if (!response.ok) {
     const message = (data as FundingApiErrorBody | null)?.message || `HTTP ${response.status}`;
-    throw new Error(message);
+    throw new FundingApiError(message, response.status, path, data);
   }
 
   return data as T;
@@ -2632,7 +2647,36 @@ export function getFundingApiErrorMessage(error: unknown, fallback = '요청을 
   return fallback;
 }
 
+function getFundingApiErrorStatus(error: unknown) {
+  if (error instanceof FundingApiError) return error.status;
+  if (error && typeof error === 'object') {
+    const status = (error as { status?: unknown }).status;
+    return typeof status === 'number' ? status : undefined;
+  }
+  return undefined;
+}
+
+function getFundingApiErrorPath(error: unknown) {
+  if (error instanceof FundingApiError) return error.path;
+  if (error && typeof error === 'object') {
+    const path = (error as { path?: unknown }).path;
+    return typeof path === 'string' ? path : '';
+  }
+  return '';
+}
+
+function isFundingReviewApiPath(path: string) {
+  return /^\/api\/fundings\/[^/]+\/reviews(?:[/?]|$)/.test(path);
+}
+
 export function isFundingReviewNotFoundError(error: unknown) {
+  const status = getFundingApiErrorStatus(error);
+  const path = getFundingApiErrorPath(error);
+  if (status === 404 && isFundingReviewApiPath(path)) return true;
+
+  const message = getFundingApiErrorMessage(error, '');
+  if (message.includes('\uD6C4\uAE30\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4')) return true;
+
   return getFundingApiErrorMessage(error, '').includes('후기를 찾을 수 없습니다');
 }
 

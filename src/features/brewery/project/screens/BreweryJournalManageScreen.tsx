@@ -118,6 +118,8 @@ export default function BreweryJournalManageScreen() {
   const [serverJournals, setServerJournals] = useState<JournalEntry[] | null>(null);
   const [message, setMessage] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [pendingDeleteEntry, setPendingDeleteEntry] = useState<JournalEntry | null>(null);
+  const [deletingEntryId, setDeletingEntryId] = useState<number | null>(null);
 
   const journals = serverJournals ?? project?.journals ?? [];
   const canManage = Boolean(user?.isBreweryVerified && isFundingProjectOwnedByBrewery(user, project));
@@ -267,15 +269,20 @@ export default function BreweryJournalManageScreen() {
   };
 
   const deleteJournal = async (targetEntry: JournalEntry) => {
-    if (!project) return;
+    if (!project || deletingEntryId !== null) return;
+    setDeletingEntryId(targetEntry.id);
     try {
-      const response = await deleteBreweryLog(project.id, targetEntry.id);
+      await deleteBreweryLog(project.id, targetEntry.id);
       const nextJournals = removeSingleJournalEntry(journals, targetEntry);
       setServerJournals(nextJournals);
       updateProjectJournals(project.id, nextJournals);
-      setMessage(response.message || '양조일지가 삭제되었습니다.');
+      setPendingDeleteEntry(null);
+      setMessage('양조일지가 삭제되었습니다.');
     } catch (error) {
+      setPendingDeleteEntry(null);
       setMessage(getFundingApiErrorMessage(error, '양조일지를 삭제하지 못했습니다.'));
+    } finally {
+      setDeletingEntryId(null);
     }
   };
 
@@ -346,7 +353,7 @@ export default function BreweryJournalManageScreen() {
                       <TouchableOpacity style={styles.entryAction} onPress={() => openEditor(stage.id, entry)}>
                         <Text style={styles.entryActionText}>수정</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={styles.entryDelete} onPress={() => deleteJournal(entry)}>
+                      <TouchableOpacity style={styles.entryDelete} onPress={() => setPendingDeleteEntry(entry)}>
                         <Trash2 size={16} color="#DC2626" />
                       </TouchableOpacity>
                     </View>
@@ -435,6 +442,40 @@ export default function BreweryJournalManageScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      <Modal
+        transparent
+        visible={Boolean(pendingDeleteEntry)}
+        animationType="fade"
+        onRequestClose={() => {
+          if (deletingEntryId === null) setPendingDeleteEntry(null);
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.messageCard}>
+            <Text style={styles.messageTitle}>양조일지를 삭제할까요?</Text>
+            <Text style={styles.messageBody}>삭제한 양조일지는 다시 복구할 수 없습니다.</Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={[styles.confirmButton, styles.confirmCancelButton]}
+                onPress={() => setPendingDeleteEntry(null)}
+                disabled={deletingEntryId !== null}
+              >
+                <Text style={styles.confirmCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmButton, styles.confirmDeleteButton, deletingEntryId !== null && styles.disabledButton]}
+                onPress={() => {
+                  if (pendingDeleteEntry) void deleteJournal(pendingDeleteEntry);
+                }}
+                disabled={deletingEntryId !== null}
+              >
+                <Text style={styles.confirmDeleteText}>{deletingEntryId !== null ? '삭제 중...' : '삭제'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal transparent visible={Boolean(message)} animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={styles.messageCard}>
@@ -516,4 +557,11 @@ const styles = StyleSheet.create({
   messageCard: { width: '100%', maxWidth: 340, backgroundColor: '#FFF', borderRadius: 20, padding: 22, alignItems: 'center' },
   messageTitle: { fontSize: 18, fontWeight: '900', color: '#111', marginBottom: 8 },
   messageBody: { fontSize: 14, fontWeight: '700', color: '#4B5563', lineHeight: 20, textAlign: 'center', marginBottom: 20 },
+  confirmActions: { width: '100%', flexDirection: 'row', gap: 10 },
+  confirmButton: { flex: 1, minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  confirmCancelButton: { backgroundColor: '#F3F4F6' },
+  confirmDeleteButton: { backgroundColor: '#DC2626' },
+  confirmCancelText: { fontSize: 14, fontWeight: '900', color: '#111' },
+  confirmDeleteText: { fontSize: 14, fontWeight: '900', color: '#FFF' },
+  disabledButton: { opacity: 0.6 },
 });

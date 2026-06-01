@@ -28,6 +28,7 @@ import {
 } from 'lucide-react-native';
 
 import { Button } from '@/components/ui/button';
+import { getFundingStatusLabel } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   approveAdminFundingDraft,
@@ -75,24 +76,47 @@ export default function AdminFundingReviewScreen() {
   const [actionState, setActionState] = useState<ActionState>(null);
   const [rejectTarget, setRejectTarget] = useState<AdminFundingDraft | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [processedDraftIds, setProcessedDraftIds] = useState<Set<number>>(new Set());
 
   const pendingCount = drafts.length;
 
-  const loadDrafts = useCallback(async (refresh = false) => {
+  const loadDrafts = useCallback(async (refresh = false, hiddenDraftIds = processedDraftIds) => {
     if (!isAdmin) return;
     if (refresh) setIsRefreshing(true);
     else setIsLoading(true);
     setErrorMessage('');
     try {
-      const response = await getAdminFundingDrafts();
-      setDrafts(response.drafts.filter((draft) => isReviewableDraftStatus(draft.status)));
+      const responses = await Promise.all([
+        getAdminFundingDrafts('SUBMITTED'),
+        getAdminFundingDrafts('REVIEWING'),
+      ]);
+      const draftMap = new Map<number, AdminFundingDraft>();
+      responses
+        .flatMap((response) => response.drafts)
+        .forEach((draft) => {
+          if (!draftMap.has(draft.draftId)) draftMap.set(draft.draftId, draft);
+        });
+      setDrafts(
+        Array.from(draftMap.values()).filter(
+          (draft) => isReviewableDraftStatus(draft.status) && !hiddenDraftIds.has(draft.draftId),
+        ),
+      );
     } catch (error) {
       setErrorMessage(getFundingApiErrorMessage(error, '심사 대기 펀딩을 불러오지 못했습니다.'));
     } finally {
       if (refresh) setIsRefreshing(false);
       else setIsLoading(false);
     }
-  }, [isAdmin]);
+  }, [isAdmin, processedDraftIds]);
+
+  const hideProcessedDraft = useCallback((draftId: number) => {
+    setProcessedDraftIds((prev) => {
+      const next = new Set(prev);
+      next.add(draftId);
+      return next;
+    });
+    setDrafts((prev) => prev.filter((draft) => draft.draftId !== draftId));
+  }, []);
 
   useEffect(() => {
     if (!isAuthReady || !isAdmin) return;
@@ -124,8 +148,11 @@ export default function AdminFundingReviewScreen() {
             setActionState({ type: 'approve', draftId: draft.draftId });
             try {
               await approveAdminFundingDraft(draft.draftId);
+              const hiddenDraftIds = new Set(processedDraftIds);
+              hiddenDraftIds.add(draft.draftId);
+              hideProcessedDraft(draft.draftId);
               Alert.alert('승인 완료', '펀딩 프로젝트가 승인되었습니다.');
-              await loadDrafts(true);
+              await loadDrafts(true, hiddenDraftIds);
             } catch (error) {
               Alert.alert('승인 실패', getFundingApiErrorMessage(error, '펀딩 승인을 처리하지 못했습니다.'));
             } finally {
@@ -159,10 +186,13 @@ export default function AdminFundingReviewScreen() {
     setActionState({ type: 'reject', draftId: target.draftId });
     try {
       await rejectAdminFundingDraft(target.draftId, reason);
+      const hiddenDraftIds = new Set(processedDraftIds);
+      hiddenDraftIds.add(target.draftId);
+      hideProcessedDraft(target.draftId);
       setRejectTarget(null);
       setRejectReason('');
       Alert.alert('거절 완료', '펀딩 프로젝트가 거절되었습니다.');
-      await loadDrafts(true);
+      await loadDrafts(true, hiddenDraftIds);
     } catch (error) {
       Alert.alert('거절 실패', getFundingApiErrorMessage(error, '펀딩 거절을 처리하지 못했습니다.'));
     } finally {
@@ -262,7 +292,7 @@ export default function AdminFundingReviewScreen() {
                     <Text style={styles.cardTitle} numberOfLines={2}>{draft.title}</Text>
                   </View>
                   <View style={styles.statusPill}>
-                    <Text style={styles.statusText}>{draft.status || 'UNKNOWN'}</Text>
+                    <Text style={styles.statusText}>{getFundingStatusLabel(draft.status || '')}</Text>
                   </View>
                 </View>
 

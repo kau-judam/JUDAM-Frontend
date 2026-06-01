@@ -9,10 +9,15 @@ export type ProjectStatus =
   | "FAILED"
   | "CANCELED"
   | "CANCELLED"
+  | "REJECTED"
+  | "REJECT"
+  | "DENIED"
   | "작성 중"
   | "대기 중"
+  | "준비 중"
   | "심사 중"
   | "심사 반려"
+  | "펀딩 반려"
   | "펀딩 예정"
   | "진행 중"
   | "목표 달성"
@@ -246,6 +251,7 @@ export const activeFundingStatuses: ProjectStatus[] = ["펀딩 예정", "진행 
 export const completedFundingStatuses: ProjectStatus[] = [
   "펀딩 성공",
   "펀딩 실패",
+  "취소된 펀딩",
   "종료",
   "제작 중",
   "배송 중",
@@ -253,7 +259,8 @@ export const completedFundingStatuses: ProjectStatus[] = [
   "ENDED",
   "SUCCESS",
   "FAILED",
-  "취소된 펀딩",
+  "CANCELED",
+  "CANCELLED",
 ];
 
 function normalizeFundingStatus(status: ProjectStatus | string) {
@@ -359,19 +366,25 @@ export function getFundingProjectStatusTone(project: Pick<FundingProject, 'statu
   return getFundingStatusTone(project.status);
 }
 
-export function getFundingStatusLabel(status: ProjectStatus) {
+export function getFundingStatusLabel(status: ProjectStatus | string) {
   const normalized = normalizeFundingStatus(status);
-  if (normalized === "READY") return "대기 중";
+  const text = getFundingStatusText(status);
+  if (normalized === "READY") return "준비 중";
   if (normalized === "REVIEWING") return "심사 중";
+  if (normalized === "REJECTED" || normalized === "REJECT" || normalized === "DENIED") return "펀딩 반려";
   if (normalized === "ACTIVE") return "진행 중";
   if (normalized === "SUCCESS") return "펀딩 성공";
   if (normalized === "FAILED") return "펀딩 실패";
   if (normalized === "ENDED") return "종료";
   if (normalized === "CANCELLED" || normalized === "CANCELED") return "취소된 펀딩";
-  if (status === "목표 달성") return "목표 달성";
-  if (status === "성공 종료") return "펀딩 성공";
-  if (status === "실패 종료") return "펀딩 실패";
-  return status;
+  if (text === "준비 중") return "준비 중";
+  if (text === "심사 중") return "심사 중";
+  if (text === "심사 반려" || text === "펀딩 반려") return "펀딩 반려";
+  if (text === "목표 달성") return "목표 달성";
+  if (text === "성공 종료") return "펀딩 성공";
+  if (text === "실패 종료") return "펀딩 실패";
+  if (text === "펀딩 예정" || text === "진행 중" || text === "펀딩 성공" || text === "펀딩 실패" || text === "취소된 펀딩" || text === "종료") return text;
+  return "대기 중";
 }
 
 export function getFundingProjectStatusLabel(project: Pick<FundingProject, 'status' | 'endDate'>) {
@@ -380,6 +393,10 @@ export function getFundingProjectStatusLabel(project: Pick<FundingProject, 'stat
 }
 
 export function getFundingSupportUnavailableMessage(status: ProjectStatus) {
+  const normalized = normalizeFundingStatus(status);
+  const text = getFundingStatusText(status);
+  if (normalized === "REJECTED" || normalized === "REJECT" || normalized === "DENIED" || text === "심사 반려" || text === "펀딩 반려") return "펀딩 반려된 프로젝트입니다.";
+  if (normalized === "CANCELED" || normalized === "CANCELLED" || text === "취소된 펀딩") return "취소된 펀딩에는 후원할 수 없습니다.";
   if (isSuccessfulFundingStatus(status)) return "목표 금액을 달성한 펀딩입니다.";
   if (isFailedFundingStatus(status)) return "목표 금액을 달성하지 못한 펀딩입니다.";
   if (isCompletedFundingStatus(status)) return "종료된 펀딩에는 후원할 수 없습니다.";

@@ -6,6 +6,7 @@ export interface FundingReview {
   writerRole?: string;
   isBrewery?: boolean;
   writerIsBrewery?: boolean;
+  showBreweryBadge?: boolean | null;
   isProjectOwner?: boolean | null;
   rating: number;
   date: string;
@@ -40,6 +41,7 @@ export interface FundingReviewComment {
   writerRole?: string;
   isBrewery?: boolean;
   writerIsBrewery?: boolean;
+  showBreweryBadge?: boolean | null;
   isProjectOwner?: boolean | null;
   content: string;
   timestamp: string;
@@ -48,6 +50,7 @@ export interface FundingReviewComment {
 }
 
 export type FundingBreweryBadgeSource = {
+  showBreweryBadge?: boolean | null;
   isProjectOwner?: boolean | null;
   isBrewery?: boolean | null;
   writerIsBrewery?: boolean | null;
@@ -56,12 +59,7 @@ export type FundingBreweryBadgeSource = {
 
 export function shouldShowFundingBreweryBadge(source: FundingBreweryBadgeSource | null | undefined) {
   if (!source) return false;
-  return (
-    source.isProjectOwner === true ||
-    source.isBrewery === true ||
-    source.writerIsBrewery === true ||
-    source.writerRole?.trim().toUpperCase() === 'BREWERY'
-  );
+  return source.showBreweryBadge === true || source.isProjectOwner === true;
 }
 
 export const fundingReviews: FundingReview[] = [

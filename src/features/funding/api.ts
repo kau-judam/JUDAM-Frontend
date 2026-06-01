@@ -396,7 +396,7 @@ type UpdateFundingProjectPayload = {
   endDate?: string;
   pricePerBottle?: number;
   shippingFee?: number;
-  status?: 'ONGOING' | 'ACTIVE' | 'ENDED' | 'CANCELLED';
+  status?: 'READY' | 'REVIEWING' | 'ONGOING' | 'ACTIVE' | 'ENDED' | 'SUCCESS' | 'FAILED' | 'CANCELED' | 'CANCELLED' | 'REJECTED' | 'REJECT' | 'DENIED';
 };
 
 type UpdateFundingProjectResponse = {
@@ -668,7 +668,7 @@ type CompleteFundingPaymentResponse = {
   message: string;
 };
 
-type AdminFundingDraftStatus = 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+type AdminFundingDraftStatus = 'SUBMITTED' | 'REVIEWING' | 'APPROVED' | 'REJECTED';
 
 type AdminFundingDraftListResponse = {
   drafts: AdminFundingDraft[];
@@ -800,7 +800,10 @@ export type FundingListStatus =
   | 'SUCCESS'
   | 'FAILED'
   | 'CANCELED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'REJECTED'
+  | 'REJECT'
+  | 'DENIED';
 export type FundingListSort = 'POPULAR' | 'LATEST' | 'DEADLINE' | 'RECOMMENDED';
 
 export type FundingListItem = {
@@ -979,6 +982,7 @@ export type FundingBreweryLogReplyItem = {
   writerRole?: string;
   isBrewery?: boolean;
   writerIsBrewery?: boolean;
+  showBreweryBadge?: boolean | null;
   isProjectOwner?: boolean | null;
   content: string;
   createdAt: string;
@@ -994,6 +998,7 @@ export type FundingBreweryLogCommentItem = {
   writerRole?: string;
   isBrewery?: boolean;
   writerIsBrewery?: boolean;
+  showBreweryBadge?: boolean | null;
   isProjectOwner?: boolean | null;
   content: string;
   createdAt: string;
@@ -1014,6 +1019,7 @@ export type FundingQuestionItem = {
   writerRole?: string;
   isBrewery?: boolean;
   writerIsBrewery?: boolean;
+  showBreweryBadge?: boolean | null;
   isProjectOwner?: boolean | null;
   title: string;
   content: string;
@@ -1032,6 +1038,7 @@ export type FundingQuestionReplyItem = {
   writerRole?: string;
   isBrewery?: boolean;
   writerIsBrewery?: boolean;
+  showBreweryBadge?: boolean | null;
   isProjectOwner?: boolean | null;
   content: string;
   createdAt: string;
@@ -1078,6 +1085,7 @@ export type FundingReviewItem = {
   writerRole?: string;
   isBrewery?: boolean;
   writerIsBrewery?: boolean;
+  showBreweryBadge?: boolean | null;
   isProjectOwner?: boolean | null;
   rating: number;
   content: string;
@@ -1104,6 +1112,7 @@ export type FundingReviewCommentItem = {
   writerRole?: string;
   isBrewery?: boolean;
   writerIsBrewery?: boolean;
+  showBreweryBadge?: boolean | null;
   isProjectOwner?: boolean | null;
   content: string;
   likeCount: number;
@@ -1377,6 +1386,7 @@ function readFundingWriterBadgeFields(source: Record<string, unknown>) {
     writerRole: writerRole || undefined,
     isBrewery,
     writerIsBrewery,
+    showBreweryBadge: readFundingApiBoolean(source, ['showBreweryBadge', 'show_brewery_badge']),
     isProjectOwner: readFundingApiBoolean(source, ['isProjectOwner', 'is_project_owner']),
   };
 }
@@ -2010,6 +2020,12 @@ function normalizeDeleteFundingReviewResponse(response: unknown): DeleteFundingR
   };
 }
 
+function normalizeFundingStatsUnit(value: string) {
+  const unit = value.trim();
+  if (!unit || /[\uFFFD\uF900-\uFAFF]/.test(unit)) return '천만원';
+  return unit;
+}
+
 function normalizeFundingStatsResponse(response: unknown): FundingStatsResponse {
   const data = getFundingApiObject(response);
   const totalRaisedAmount = readFundingApiNumber(data, ['totalRaisedAmount', 'total_raised_amount']);
@@ -2029,7 +2045,9 @@ function normalizeFundingStatsResponse(response: unknown): FundingStatsResponse 
       totalRaisedAmount / 100000000
     ),
     totalRaisedTenMillion,
-    totalRaisedTenMillionUnit: readFundingApiString(data, ['totalRaisedTenMillionUnit', 'total_raised_ten_million_unit'], '천만원'),
+    totalRaisedTenMillionUnit: normalizeFundingStatsUnit(
+      readFundingApiString(data, ['totalRaisedTenMillionUnit', 'total_raised_ten_million_unit'], '천만원')
+    ),
     message: readFundingApiString(data, ['message']),
   };
 }

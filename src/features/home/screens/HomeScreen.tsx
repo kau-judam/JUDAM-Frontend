@@ -28,7 +28,7 @@ import { RecipeCard } from '@/components/recipe-card';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useFunding } from '@/contexts/FundingContext';
-import { getFundingProjectImageSource, getPopularRecipes, isCompletedFundingStatus, sortFundingProjectsByPopularity } from '@/constants/data';
+import { getFundingProjectImageSource, getFundingProjectStatusLabel, getPopularRecipes, isFundingProjectSupportable, sortFundingProjectsByPopularity } from '@/constants/data';
 import type { Recipe } from '@/constants/data';
 import { fetchPopularRecipes } from '@/features/recipe/api';
 import { getFundingApiErrorMessage, getFundingStats, type FundingStatsResponse } from '@/features/funding/api';
@@ -252,7 +252,7 @@ export default function HomeScreen() {
                       <View style={styles.fundingProgressRow}>
                         <Text style={styles.progressPct}>{Math.round(progress)}%</Text>
                         <Text style={styles.fundingAmount}>{(project.currentAmount / 10000).toLocaleString()}만원</Text>
-                        <Text style={styles.daysLeft}>{isCompletedFundingStatus(project.status) ? '펀딩 종료' : `${project.daysLeft}일 남음`}</Text>
+                        <Text style={styles.daysLeft}>{isFundingProjectSupportable(project) ? `${project.daysLeft}일 남음` : getFundingProjectStatusLabel(project)}</Text>
                       </View>
                       <Progress value={progress} style={styles.progressBar} />
                     </View>

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -168,6 +168,7 @@ export default function FundingReviewWriteScreen() {
   const { fundingId, reviewId, archiveMode } = useLocalSearchParams<{ fundingId?: string; reviewId?: string; archiveMode?: string }>();
   const { user } = useAuth();
   const { projects, fundingReviews, addFundingReview, updateFundingReview } = useFunding();
+  const updateFundingReviewRef = useRef(updateFundingReview);
   const projectId = Number(Array.isArray(fundingId) ? fundingId[0] : fundingId);
   const rawArchiveMode = Array.isArray(archiveMode) ? archiveMode[0] : archiveMode;
   const isArchiveMode = rawArchiveMode === 'funding' || rawArchiveMode === 'normal' || rawArchiveMode === '1' || rawArchiveMode === 'true';
@@ -188,6 +189,17 @@ export default function FundingReviewWriteScreen() {
     [fundingReviews, projectId, user]
   );
   const editableReview = hasReviewIdParam ? requestedReview : ownExistingReview;
+  const editableReviewForRefresh = useMemo(
+    () => editableReview
+      ? {
+          id: editableReview.id,
+          rating: editableReview.rating,
+          comment: editableReview.comment,
+          userName: editableReview.userName,
+        }
+      : null,
+    [editableReview]
+  );
   const isEditMode = Boolean(editableReview && isFundingReviewOwnedByUser(editableReview, user));
   const reviewParamBlocked = hasReviewIdParam && (!requestedReview || !isFundingReviewOwnedByUser(requestedReview, user));
   const canCreateReviewFromServer = Boolean(reviewPermission && (reviewPermission.canWriteReview || reviewPermission.canReview));
@@ -220,6 +232,10 @@ export default function FundingReviewWriteScreen() {
 
   const allTags = [...selectedTags, ...customTags];
   const rewardName = project?.rewardItems?.[0] || `${project?.bottleSize || '375ml'} 1병`;
+
+  useEffect(() => {
+    updateFundingReviewRef.current = updateFundingReview;
+  }, [updateFundingReview]);
 
   const showReviewAlert = (title: string, body: string, tone: FundingAlertTone = 'info', buttons?: FundingAlertButton[]) => {
     const nextAlert = { title, body, tone, buttons };
@@ -314,10 +330,10 @@ export default function FundingReviewWriteScreen() {
   }, [editableReview, isEditMode, presetTagValues]);
 
   useEffect(() => {
-    if (isArchiveMode || !editableReview || !isEditMode || !Number.isFinite(projectId) || projectId <= 0) return;
+    if (isArchiveMode || !editableReviewForRefresh || !isEditMode || !Number.isFinite(projectId) || projectId <= 0) return;
 
     let mounted = true;
-    getFundingReviewDetail(projectId, editableReview.id)
+    getFundingReviewDetail(projectId, editableReviewForRefresh.id)
       .then((latestReview) => {
         if (!mounted) return;
 
@@ -329,25 +345,25 @@ export default function FundingReviewWriteScreen() {
           tags.some((tag) => presetTags.includes(tag))
         )?.[0];
 
-        setRating(latestReview.rating || editableReview.rating);
-        setReviewText(latestReview.content || editableReview.comment || '');
+        setRating(latestReview.rating || editableReviewForRefresh.rating);
+        setReviewText(latestReview.content || editableReviewForRefresh.comment || '');
         setMood(latestReview.mood || '');
         setPairing(latestReview.pairing || '');
         setSelectedTags(presetTags);
         setCustomTags(extraTags);
         setCustomInput('');
-        setOpenSection(firstOpenSection || '留쎛룻뼢');
+        setOpenSection(firstOpenSection || '맛·향');
         setShowRecordInReview(Boolean(latestReview.showRecord ?? latestReview.recordVisibility));
         setUploadedImages(serverImageUrls);
         setImageFilesByUri({});
 
-        updateFundingReview(editableReview.id, {
-          id: latestReview.reviewId || editableReview.id,
+        updateFundingReviewRef.current(editableReviewForRefresh.id, {
+          id: latestReview.reviewId || editableReviewForRefresh.id,
           projectId,
           userId: user?.id,
-          userName: latestReview.writerNickname || editableReview.userName,
-          rating: latestReview.rating || editableReview.rating,
-          comment: latestReview.content || editableReview.comment,
+          userName: latestReview.writerNickname || editableReviewForRefresh.userName,
+          rating: latestReview.rating || editableReviewForRefresh.rating,
+          comment: latestReview.content || editableReviewForRefresh.comment,
           rewardName,
           imageUrls: serverImageUrls,
           images: serverImageUrls,
@@ -365,7 +381,7 @@ export default function FundingReviewWriteScreen() {
     return () => {
       mounted = false;
     };
-  }, [editableReview?.id, isArchiveMode, isEditMode, presetTagValues, projectId]);
+  }, [editableReviewForRefresh, isArchiveMode, isEditMode, presetTagValues, projectId, rewardName, user?.id]);
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((item) => item !== tag) : [...prev, tag]));

@@ -9,7 +9,7 @@ export const KAKAO_APP_CALLBACK_URL = 'judamfrontend://kakao/callback';
 const KAKAO_AUTH_TIMEOUT_MS = 45000;
 const KAKAO_AUTH_REQUEST_KEY = 'judam_kakao_auth_request';
 const KAKAO_AUTH_TIMEOUT_MESSAGE =
-  '카카오 로그인 응답을 받지 못했습니다. Expo Go에서는 앱 딥링크가 닫히지 않을 수 있어 개발 빌드에서 다시 시도해주세요.';
+  '카카오 로그인 응답을 받지 못했습니다. 앱 딥링크 또는 카카오 개발자 콘솔 설정을 확인해주세요.';
 
 WebBrowser.maybeCompleteAuthSession();
 

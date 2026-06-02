@@ -163,6 +163,21 @@ export interface FundingProject {
   team?: string;
   breweryBio?: string;
   breweryProfileImage?: string;
+  breweryInfo?: {
+    breweryUserId?: string;
+    breweryName?: string;
+    mainName?: string;
+    shortIntroduction?: string;
+    brandStory?: string;
+    establishedYear?: string;
+    businessRegistrationNumber?: string;
+    businessAddress?: string;
+    businessAddressDetail?: string;
+    representativeName?: string;
+    profileImageUrl?: string;
+    businessRegistrationFileUrl?: string;
+    missingFields?: string[];
+  };
   productType?: string;
   ingredients?: { id: number; ingredient: string; origin: string }[];
   journals?: JournalEntry[];

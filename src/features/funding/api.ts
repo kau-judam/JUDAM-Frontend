@@ -223,7 +223,9 @@ export type FundingDraftPreviewResponse = {
     policy?: string;
   };
   breweryInfo?: {
+    breweryUserId?: number | string;
     breweryName?: string;
+    mainName?: string;
     creatorName?: string;
     profileImageUrl?: string;
     creatorIntroduction?: string;
@@ -231,6 +233,7 @@ export type FundingDraftPreviewResponse = {
     oneLineIntroduction?: string;
     shortIntroduction?: string;
     brandStory?: string;
+    establishedYear?: number | string;
     history?: string;
     representativeName?: string;
   businessRegistrationNumber?: string;
@@ -834,6 +837,35 @@ export type FundingListStatus =
   | 'DENIED';
 export type FundingListSort = 'POPULAR' | 'LATEST' | 'DEADLINE' | 'RECOMMENDED';
 
+export type FundingOfficialBreweryInfo = {
+  breweryUserId?: number | string;
+  brewery_user_id?: number | string;
+  breweryName?: string;
+  brewery_name?: string;
+  mainName?: string;
+  main_name?: string;
+  shortIntroduction?: string;
+  short_introduction?: string;
+  brandStory?: string;
+  brand_story?: string;
+  establishedYear?: number | string;
+  established_year?: number | string;
+  businessRegistrationNumber?: string;
+  business_registration_number?: string;
+  businessAddress?: string;
+  business_address?: string;
+  businessAddressDetail?: string;
+  business_address_detail?: string;
+  representativeName?: string;
+  representative_name?: string;
+  profileImageUrl?: string;
+  profile_image_url?: string;
+  businessRegistrationFileUrl?: string;
+  business_registration_file_url?: string;
+  missingFields?: string[];
+  missing_fields?: string[];
+};
+
 export type FundingListItem = {
   fundingId: number;
   title: string;
@@ -871,6 +903,10 @@ export type FundingListItem = {
   matchRate?: number | null;
   matchPercent?: number | null;
   recommendationScore?: number | null;
+  breweryInfo?: FundingOfficialBreweryInfo;
+  brewery_info?: FundingOfficialBreweryInfo;
+  breweryProfile?: FundingOfficialBreweryInfo;
+  brewery_profile?: FundingOfficialBreweryInfo;
 };
 
 export type FundingListResponse = {
@@ -940,7 +976,10 @@ export type FundingDetailResponse = {
   matchRate?: number | null;
   legalInfo?: FundingDraftPreviewResponse['legalInfo'];
   plan?: FundingDraftPreviewResponse['plan'];
-  breweryInfo?: FundingDraftPreviewResponse['breweryInfo'];
+  breweryInfo?: FundingDraftPreviewResponse['breweryInfo'] & FundingOfficialBreweryInfo;
+  brewery_info?: FundingDraftPreviewResponse['breweryInfo'] & FundingOfficialBreweryInfo;
+  breweryProfile?: FundingOfficialBreweryInfo;
+  brewery_profile?: FundingOfficialBreweryInfo;
   notices?: FundingDraftPreviewResponse['notices'];
   documents?: FundingDraftPreviewResponse['documents'];
   ingredients?: unknown[];
@@ -982,6 +1021,10 @@ export type FundingIntroResponse = {
   imageUrls?: string[];
   allImageUrls?: string[];
   images?: unknown;
+  breweryInfo?: FundingDraftPreviewResponse['breweryInfo'] & FundingOfficialBreweryInfo;
+  brewery_info?: FundingDraftPreviewResponse['breweryInfo'] & FundingOfficialBreweryInfo;
+  breweryProfile?: FundingOfficialBreweryInfo;
+  brewery_profile?: FundingOfficialBreweryInfo;
 };
 
 export type FundingBreweryLogItem = {
@@ -1816,7 +1859,7 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
   const legalInfo = getFundingPreviewNestedObject(data, responseData, ['legalInfo', 'legal_info']);
   const tasteProfile = getFundingPreviewNestedObject(data, responseData, ['tasteProfile', 'taste_profile']);
   const plan = getFundingPreviewNestedObject(data, responseData, ['plan']);
-  const breweryInfo = getFundingPreviewNestedObject(data, responseData, ['breweryInfo', 'brewery_info']);
+  const breweryInfo = getFundingPreviewNestedObject(data, responseData, ['breweryInfo', 'brewery_info', 'breweryProfile', 'brewery_profile']);
   const notices = getFundingPreviewNestedObject(data, responseData, ['notices']);
   const dataPreviewImages = readFundingApiUrlArray(
     data,
@@ -1928,9 +1971,14 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       policy: readFundingApiString(plan, ['policyRaw', 'policy_raw', 'policyText', 'policy_text', 'policy', 'projectPolicy', 'project_policy']),
     },
     breweryInfo: {
+      breweryUserId: readFundingApiString(breweryInfo, ['breweryUserId', 'brewery_user_id']) || readFundingApiNumber(breweryInfo, ['breweryUserId', 'brewery_user_id']) || undefined,
       breweryName: readFundingApiString(breweryInfo, ['breweryName', 'brewery_name']),
+      mainName: readFundingApiString(breweryInfo, ['mainName', 'main_name']),
       creatorName: readFundingApiString(breweryInfo, ['creatorName', 'creator_name']),
       profileImageUrl: readFundingApiString(breweryInfo, ['profileImageUrl', 'profile_image_url', 'profileImage', 'profile_image']),
+      shortIntroduction: readFundingApiString(breweryInfo, ['shortIntroduction', 'short_introduction']),
+      brandStory: readFundingApiString(breweryInfo, ['brandStory', 'brand_story']),
+      establishedYear: readFundingApiString(breweryInfo, ['establishedYear', 'established_year']) || readFundingApiNumber(breweryInfo, ['establishedYear', 'established_year']) || undefined,
       creatorIntroduction: readFundingApiString(breweryInfo, ['creatorIntroduction', 'creator_introduction', 'creatorBio', 'creator_bio', 'breweryBio', 'brewery_bio', 'introduction', 'bio', 'description']),
       representativeName: readFundingApiString(breweryInfo, ['representativeName', 'representative_name']),
       businessRegistrationNumber: readFundingApiString(breweryInfo, ['businessRegistrationNumber', 'business_registration_number']),

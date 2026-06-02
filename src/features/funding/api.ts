@@ -266,6 +266,7 @@ type FundingDraftDeleteResponse = {
 };
 
 type FundingBasicInfoPayload = {
+  fundingId?: number;
   title?: string;
   shortTitle?: string;
   category?: string;
@@ -279,6 +280,7 @@ type FundingBasicInfoPayload = {
 };
 
 export type FundingDraftAiImagePayload = {
+  fundingId?: number;
   name?: string;
   description?: string;
   flavorTags?: string[];
@@ -296,6 +298,7 @@ export type FundingDraftAiImageResponse = {
 };
 
 type FundingSchedulePayload = {
+  fundingId?: number;
   pricePerBottle: number;
   totalQuantity: number;
   fundingStartDate: string;
@@ -305,6 +308,7 @@ type FundingSchedulePayload = {
 };
 
 type FundingLegalInfoPayload = {
+  fundingId?: number;
   productType: string;
   volume: number;
   alcoholPercentage: number;
@@ -312,6 +316,7 @@ type FundingLegalInfoPayload = {
 };
 
 type FundingTasteProfilePayload = {
+  fundingId?: number;
   sweetness: number;
   acidity: number;
   body: number;
@@ -324,6 +329,7 @@ type FundingTasteProfilePayload = {
 };
 
 type FundingPlanPayload = {
+  fundingId?: number;
   introduction: string;
   videoUrl?: string;
   budgetPlan?: { category: string; amount: number }[] | string | null;
@@ -332,6 +338,7 @@ type FundingPlanPayload = {
 };
 
 type FundingBreweryInfoPayload = {
+  fundingId?: number;
   breweryName: string;
   representativeName: string;
   businessRegistrationNumber: string;
@@ -366,6 +373,7 @@ type VerifyBreweryAccountResponse = {
 };
 
 type FundingNoticesPayload = {
+  fundingId?: number;
   policy?: string;
   refundPolicy: string;
   exchangePolicy: string;
@@ -2893,6 +2901,8 @@ export async function saveFundingBreweryInfo(draftId: number, payload: FundingBr
     payload,
     compactPayload,
     {
+      fundingId: payload.fundingId,
+      funding_id: payload.fundingId,
       brewery_name: payload.breweryName,
       representative_name: payload.representativeName,
       business_registration_number: payload.businessRegistrationNumber,
@@ -2912,6 +2922,7 @@ export async function saveFundingBreweryInfo(draftId: number, payload: FundingBr
       account_verified: payload.accountVerified,
     },
     {
+      fundingId: payload.fundingId,
       breweryName: payload.breweryName,
       creatorName: payload.breweryName,
       representativeName: payload.representativeName,

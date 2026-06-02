@@ -156,8 +156,8 @@ function RatingStars({ value, onChange }: { value: number; onChange: (value: num
           );
         })}
       </View>
-      <Text style={value > 0 ? styles.ratingValue : styles.ratingPlaceholder}>
-        {value > 0 ? value.toFixed(1) : '별점을 선택해주세요'}
+      <Text style={styles.ratingValue}>
+        {value.toFixed(1)}
       </Text>
     </View>
   );
@@ -329,7 +329,7 @@ export default function FundingReviewWriteScreen() {
           tags.some((tag) => presetTags.includes(tag))
         )?.[0];
 
-        setRating(latestReview.rating || editableReview.rating);
+        setRating(latestReview.rating ?? editableReview.rating);
         setReviewText(latestReview.content || editableReview.comment || '');
         setMood(latestReview.mood || '');
         setPairing(latestReview.pairing || '');
@@ -346,7 +346,7 @@ export default function FundingReviewWriteScreen() {
           projectId,
           userId: user?.id,
           userName: latestReview.writerNickname || editableReview.userName,
-          rating: latestReview.rating || editableReview.rating,
+          rating: latestReview.rating ?? editableReview.rating,
           comment: latestReview.content || editableReview.comment,
           rewardName,
           imageUrls: serverImageUrls,
@@ -471,10 +471,6 @@ export default function FundingReviewWriteScreen() {
       showReviewAlert('후기 작성 불가', '후원 완료 후 후기를 작성할 수 있습니다.', 'warning');
       return;
     }
-    if (rating === 0) {
-      showReviewAlert('별점 입력', '별점을 입력해주세요.', 'warning');
-      return;
-    }
     if (isNormalArchiveMode && !normalDrinkName.trim()) {
       showReviewAlert('술 이름 입력', '기록할 술 이름을 입력해주세요.', 'warning');
       return;
@@ -547,7 +543,7 @@ export default function FundingReviewWriteScreen() {
         projectId,
         userId: user.id,
         userName: user.name || '사용자',
-        rating: response?.rating || rating,
+        rating: response?.rating ?? rating,
         comment: reviewText.trim(),
         rewardName: isNormalArchiveMode ? normalDrinkName.trim() : rewardName,
         imageUrls: savedImageUrls,
@@ -610,7 +606,7 @@ export default function FundingReviewWriteScreen() {
               projectId,
               userId: user.id,
               userName: user.name || '사용자',
-              rating: latestReview.rating || rating,
+              rating: latestReview.rating ?? rating,
               comment: latestReview.content || reviewText.trim(),
               rewardName,
               imageUrls: fallbackImageUrls,

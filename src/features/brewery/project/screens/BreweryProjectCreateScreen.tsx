@@ -796,6 +796,8 @@ export default function BreweryProjectCreateScreen() {
   const [tagDraft, setTagDraft] = useState('');
   const [isImageReordering, setIsImageReordering] = useState(false);
   const [isAiImageGenerating, setIsAiImageGenerating] = useState(false);
+  const [currentDraftId, setCurrentDraftId] = useState<number | null>(null);
+  const [currentDraftFundingId, setCurrentDraftFundingId] = useState<number | null>(null);
   const [basicInfo, setBasicInfo] = useState({
     category: '막걸리',
     title: '',
@@ -866,6 +868,11 @@ export default function BreweryProjectCreateScreen() {
   }), [user?.breweryBrandStory, user?.breweryBrandStoryLong, user?.breweryDescription, user?.breweryName, user?.breweryProfileImage]);
 
   useEffect(() => {
+    setCurrentDraftId(null);
+    setCurrentDraftFundingId(null);
+  }, [editProjectId, isEditMode]);
+
+  useEffect(() => {
     if (!editProject || !editProjectId || !canEditProject) return;
     const editProjectKey = `${editProject.id}:${editProject.updatedAt || editProject.createdAt || ''}`;
     if (appliedEditProjectKeyRef.current === editProjectKey) return;
@@ -893,6 +900,15 @@ export default function BreweryProjectCreateScreen() {
     getFundingDraftByFundingId(editProjectId)
       .then((preview) => {
         if (!isMounted) return;
+        setCurrentDraftId(preview.draftId || null);
+        setCurrentDraftFundingId(preview.fundingId || editProjectId || null);
+        console.log('[FundingCreate][DraftPair]', {
+          scope: 'edit-entry:by-funding',
+          fundingId: editProjectId,
+          draftFundingId: preview.fundingId || editProjectId,
+          draftId: preview.draftId,
+          isEditMode,
+        });
         applyEditDraft(createProjectDraftFromServerPreview(preview, user));
         appliedEditProjectKeyRef.current = editProjectKey;
       })
@@ -904,7 +920,7 @@ export default function BreweryProjectCreateScreen() {
     return () => {
       isMounted = false;
     };
-  }, [canEditProject, editProject, editProjectId, user]);
+  }, [canEditProject, editProject, editProjectId, isEditMode, user]);
 
   useEffect(() => {
     if (phoneTimer <= 0) return;
@@ -918,6 +934,15 @@ export default function BreweryProjectCreateScreen() {
       if (!saved && isEditMode && editProjectId) {
         try {
           const preview = await getFundingDraftByFundingId(editProjectId);
+          setCurrentDraftId(preview.draftId || null);
+          setCurrentDraftFundingId(preview.fundingId || editProjectId || null);
+          console.log('[FundingCreate][DraftPair]', {
+            scope: 'temp-meta:by-funding',
+            fundingId: editProjectId,
+            draftFundingId: preview.fundingId || editProjectId,
+            draftId: preview.draftId,
+            isEditMode,
+          });
           const timestamp = preview.documents?.[0]?.createdAt || new Date().toISOString();
           await SafeStorage.setItem(tempSaveKey, JSON.stringify({
             timestamp,
@@ -1103,6 +1128,31 @@ export default function BreweryProjectCreateScreen() {
     setAlertMessage(message);
     setAlertIcon(icon);
     setShowAlertModal(true);
+  };
+
+  const getCurrentFundingIdForDraft = () => (isEditMode && editProjectId ? editProjectId : undefined);
+
+  const withCurrentFundingId = <T extends object>(payload: T): T & { fundingId?: number } => {
+    const fundingId = getCurrentFundingIdForDraft();
+    return fundingId ? { ...payload, fundingId } : payload;
+  };
+
+  const rememberCurrentDraft = (draftId?: number | null, fundingId?: number | null) => {
+    setCurrentDraftId(draftId || null);
+    setCurrentDraftFundingId(fundingId || getCurrentFundingIdForDraft() || null);
+  };
+
+  const logCurrentDraftPair = (scope: string, draftId?: number | null, draftFundingId?: number | null) => {
+    const fundingId = getCurrentFundingIdForDraft();
+    const effectiveDraftFundingId = draftFundingId ?? currentDraftFundingId;
+    console.log('[FundingCreate][DraftPair]', {
+      scope,
+      fundingId,
+      draftFundingId: effectiveDraftFundingId,
+      draftId: draftId ?? currentDraftId,
+      isMatched: !fundingId || !effectiveDraftFundingId || fundingId === effectiveDraftFundingId,
+      isEditMode,
+    });
   };
 
   const hasUnsavedChanges = () => {
@@ -1448,12 +1498,18 @@ export default function BreweryProjectCreateScreen() {
 
   const ensureServerDraft = async () => {
     const savedDraft = await getSavedDraft();
-    let draftId = isEditMode ? null : getDraftId(savedDraft) || (initialDraftId && Number.isFinite(initialDraftId) && initialDraftId > 0 ? initialDraftId : null);
+    const scopedDraftId = currentDraftFundingId === editProjectId ? currentDraftId : null;
+    let draftId = isEditMode ? scopedDraftId : getDraftId(savedDraft) || (initialDraftId && Number.isFinite(initialDraftId) && initialDraftId > 0 ? initialDraftId : null);
     if (isEditMode && editProjectId) {
+      logCurrentDraftPair('ensure:by-funding:request', draftId);
       const preview = await getFundingDraftByFundingId(editProjectId);
       draftId = preview.draftId;
+      rememberCurrentDraft(draftId, preview.fundingId || editProjectId);
+      logCurrentDraftPair('ensure:by-funding:response', draftId, preview.fundingId || editProjectId);
     }
     const serverDraft = await syncServerDraft(draftId);
+    const serverDraftFundingId = 'fundingId' in serverDraft ? serverDraft.fundingId : undefined;
+    if (serverDraft.draftId) rememberCurrentDraft(serverDraft.draftId, serverDraftFundingId || editProjectId);
     const draft = {
       ...createDraftPayload(),
       serverDraft,
@@ -1465,6 +1521,7 @@ export default function BreweryProjectCreateScreen() {
     if (!nextDraftId) {
       throw new Error('서버 임시저장 ID를 확인하지 못했습니다.');
     }
+    logCurrentDraftPair('ensure:ready', nextDraftId, serverDraftFundingId || editProjectId);
     return nextDraftId;
   };
 
@@ -1559,7 +1616,7 @@ export default function BreweryProjectCreateScreen() {
         images: serverImageUrls,
         tags: getReadyTags(),
       });
-      await saveFundingBasicInfo(draftId, {
+      await saveFundingBasicInfo(draftId, withCurrentFundingId({
         title: basicInfo.title.trim(),
         shortTitle: basicInfo.shortTitle.trim() || undefined,
         category: basicInfo.category.trim() || '막걸리',
@@ -1570,51 +1627,51 @@ export default function BreweryProjectCreateScreen() {
         thumbnailUrl: serverImageUrls[0] || undefined,
         imageUrls: serverImageUrls,
         tags: getReadyTags(),
-      });
+      }));
     }
 
     if (fundingInfo.pricePerBottle && fundingInfo.bottleQuantity && fundingInfo.startDate && fundingInfo.duration && fundingInfo.expectedDeliveryDate) {
-      await saveFundingSchedule(draftId, {
+      await saveFundingSchedule(draftId, withCurrentFundingId({
         pricePerBottle: Number(fundingInfo.pricePerBottle),
         totalQuantity: Number(fundingInfo.bottleQuantity),
         fundingStartDate: fundingInfo.startDate,
         fundingPeriodDays: Number(fundingInfo.duration),
         expectedDeliveryDate: fundingInfo.expectedDeliveryDate,
-      });
+      }));
     }
 
     const readyRawMaterials = getRawMaterialsForApi();
     const hasCompleteRawMaterials = readyRawMaterials.length > 0 && readyRawMaterials.every((item) => item.name && item.origin);
     if (productInfo.volume && productInfo.alcoholContent && hasCompleteRawMaterials) {
-      await saveFundingLegalInfo(draftId, getLegalInfoForApi());
+      await saveFundingLegalInfo(draftId, withCurrentFundingId(getLegalInfoForApi()));
     }
 
-    await saveFundingTasteProfile(draftId, getTasteProfileForApi());
+    await saveFundingTasteProfile(draftId, withCurrentFundingId(getTasteProfileForApi()));
 
     if (projectPlan.introduction.trim()) {
-      await saveFundingPlan(draftId, {
+      await saveFundingPlan(draftId, withCurrentFundingId({
         introduction: projectPlan.introduction.trim(),
         videoUrl: projectPlan.videoUrl.trim() || undefined,
         budgetPlan: projectPlan.budget.trim() || getBudgetPlanForApi(),
         schedulePlan: projectPlan.schedule.trim() || getSchedulePlanForApi(),
         policy: trustInfo.projectPolicy.trim() || undefined,
-      });
+      }));
     }
 
     try {
-      await saveFundingBreweryInfo(draftId, getBreweryInfoForApi());
+      await saveFundingBreweryInfo(draftId, withCurrentFundingId(getBreweryInfoForApi()));
     } catch (error) {
       if (progress >= 100) throw error;
     }
 
     if (trustInfo.projectPolicy.trim() && trustInfo.expectedDifficulties.trim()) {
-      await saveFundingNotices(draftId, {
+      await saveFundingNotices(draftId, withCurrentFundingId({
         policy: trustInfo.projectPolicy.trim(),
         refundPolicy: trustInfo.projectPolicy.trim(),
         exchangePolicy: trustInfo.projectPolicy.trim(),
         adultVerificationNotice: '본 프로젝트는 성인인증을 완료한 후원자만 참여할 수 있습니다.',
         riskNotice: trustInfo.expectedDifficulties.trim(),
-      });
+      }));
     }
 
     return uploadReadyProjectFilesToApi(draftId);
@@ -1628,7 +1685,7 @@ export default function BreweryProjectCreateScreen() {
       ...draftPayload,
       imagesDebug: summarizeFundingCreateImages(serverImageUrls),
     });
-    await updateFundingDraft(draftId, draftPayload);
+    await updateFundingDraft(draftId, withCurrentFundingId(draftPayload));
 
     logFundingCreatePayload('SUBMIT', 'basicInfo payload', {
       draftId,
@@ -1644,7 +1701,7 @@ export default function BreweryProjectCreateScreen() {
       images: serverImageUrls,
       tags: getReadyTags(),
     });
-    await saveFundingBasicInfo(draftId, {
+    await saveFundingBasicInfo(draftId, withCurrentFundingId({
       title: basicInfo.title.trim(),
       shortTitle: basicInfo.shortTitle.trim() || undefined,
       category: basicInfo.category.trim() || '막걸리',
@@ -1655,31 +1712,31 @@ export default function BreweryProjectCreateScreen() {
       thumbnailUrl: serverImageUrls[0] || undefined,
       imageUrls: serverImageUrls,
       tags: getReadyTags(),
-    });
-    await saveFundingSchedule(draftId, {
+    }));
+    await saveFundingSchedule(draftId, withCurrentFundingId({
       pricePerBottle: Number(fundingInfo.pricePerBottle),
       totalQuantity: Number(fundingInfo.bottleQuantity),
       fundingStartDate: fundingInfo.startDate,
       fundingPeriodDays: Number(fundingInfo.duration),
       expectedDeliveryDate: fundingInfo.expectedDeliveryDate,
-    });
-    await saveFundingLegalInfo(draftId, getLegalInfoForApi());
-    await saveFundingTasteProfile(draftId, getTasteProfileForApi());
-    await saveFundingPlan(draftId, {
+    }));
+    await saveFundingLegalInfo(draftId, withCurrentFundingId(getLegalInfoForApi()));
+    await saveFundingTasteProfile(draftId, withCurrentFundingId(getTasteProfileForApi()));
+    await saveFundingPlan(draftId, withCurrentFundingId({
       introduction: projectPlan.introduction.trim(),
       videoUrl: projectPlan.videoUrl.trim() || undefined,
       budgetPlan: projectPlan.budget.trim() || getBudgetPlanForApi(),
       schedulePlan: projectPlan.schedule.trim() || getSchedulePlanForApi(),
       policy: trustInfo.projectPolicy.trim() || undefined,
-    });
-    await saveFundingBreweryInfo(draftId, getBreweryInfoForApi());
-    await saveFundingNotices(draftId, {
+    }));
+    await saveFundingBreweryInfo(draftId, withCurrentFundingId(getBreweryInfoForApi()));
+    await saveFundingNotices(draftId, withCurrentFundingId({
       policy: trustInfo.projectPolicy.trim(),
       refundPolicy: trustInfo.projectPolicy.trim(),
       exchangePolicy: trustInfo.projectPolicy.trim(),
       adultVerificationNotice: '본 프로젝트는 성인인증을 완료한 후원자만 참여할 수 있습니다.',
       riskNotice: trustInfo.expectedDifficulties.trim(),
-    });
+    }));
     return serverImageUrls;
   };
 
@@ -1760,6 +1817,7 @@ export default function BreweryProjectCreateScreen() {
 
       try {
         const draftId = await ensureServerDraft();
+        logCurrentDraftPair('saveDraft:server-draft', draftId);
         const serverImageUrls = await uploadProjectImagesToApi(draftId);
         const draftPayload = getDraftUpdatePayloadForApi(serverImageUrls);
         logFundingCreatePayload('SAVE', 'updateFundingDraft payload', {
@@ -1767,7 +1825,7 @@ export default function BreweryProjectCreateScreen() {
           ...draftPayload,
           imagesDebug: summarizeFundingCreateImages(serverImageUrls),
         });
-        await updateFundingDraft(draftId, draftPayload);
+        await updateFundingDraft(draftId, withCurrentFundingId(draftPayload));
         const syncedUploadedFiles = await syncReadyProjectSectionsToApi(draftId, serverImageUrls);
         const savedDraft = await getSavedDraft();
         const nextTimestamp = savedDraft?.timestamp || localTimestamp;
@@ -1818,6 +1876,8 @@ export default function BreweryProjectCreateScreen() {
       try {
         const localDraft = await getSavedDraft();
         const preview = await getFundingDraftByFundingId(editProjectId);
+        rememberCurrentDraft(preview.draftId, preview.fundingId || editProjectId);
+        logCurrentDraftPair('loadSavedDraft:by-funding', preview.draftId, preview.fundingId || editProjectId);
         const serverDraft = mergeProjectDraftFileFallback(createProjectDraftFromServerPreview(preview, user), localDraft);
         await SafeStorage.setItem(tempSaveKey, JSON.stringify(serverDraft));
         applyDraftPayload(serverDraft);
@@ -1836,6 +1896,8 @@ export default function BreweryProjectCreateScreen() {
     if (!draft && isEditMode && editProjectId) {
       try {
         const preview = await getFundingDraftByFundingId(editProjectId);
+        rememberCurrentDraft(preview.draftId, preview.fundingId || editProjectId);
+        logCurrentDraftPair('loadSavedDraft:fallback-by-funding', preview.draftId, preview.fundingId || editProjectId);
         const serverDraft = createProjectDraftFromServerPreview(preview, user);
         await SafeStorage.setItem(tempSaveKey, JSON.stringify(serverDraft));
         draft = serverDraft;
@@ -1861,6 +1923,7 @@ export default function BreweryProjectCreateScreen() {
     }
     try {
       const preview = await getFundingDraftPreview(draftId);
+      logCurrentDraftPair('loadSavedDraft:preview', preview.draftId || draftId);
       const serverDraft = mergeProjectDraftFileFallback(createProjectDraftFromServerPreview(preview, user), draft);
       await SafeStorage.setItem(tempSaveKey, JSON.stringify(serverDraft));
       applyDraftPayload(serverDraft);
@@ -2040,6 +2103,8 @@ export default function BreweryProjectCreateScreen() {
     if (isEditMode && editProjectId) {
       try {
         const preview = await getFundingDraftByFundingId(editProjectId);
+        rememberCurrentDraft(preview.draftId, preview.fundingId || editProjectId);
+          logCurrentDraftPair('loadBreweryInfo:by-funding', preview.draftId, preview.fundingId || editProjectId);
         let loadedInfo: Partial<LoadedBreweryInfo> = { ...(preview.breweryInfo || {}) };
         try {
           const serverInfo = await loadFundingBreweryInfo(preview.draftId);
@@ -2164,7 +2229,7 @@ export default function BreweryProjectCreateScreen() {
     try {
       const draftId = await ensureServerDraft();
       const preparedImageUrls = await uploadProjectImagesToApi(draftId);
-      await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(preparedImageUrls));
+      await updateFundingDraft(draftId, withCurrentFundingId(getDraftUpdatePayloadForApi(preparedImageUrls)));
 
       const aiImagePayload = {
         name: basicInfo.title.trim(),
@@ -2179,7 +2244,7 @@ export default function BreweryProjectCreateScreen() {
         ...summarizeFundingCreateImages(preparedImageUrls),
       });
       logFundingCreatePayload('AI_IMAGE', 'payload', { draftId, ...aiImagePayload });
-      const result = await generateFundingDraftAiImage(draftId, aiImagePayload);
+      const result = await generateFundingDraftAiImage(draftId, withCurrentFundingId(aiImagePayload));
       logFundingCreateDebug('[FundingCreate][AI_IMAGE] result', {
         draftId,
         status: result.status,
@@ -2375,14 +2440,21 @@ export default function BreweryProjectCreateScreen() {
         accountNumber: verifiedAccountNumber,
       };
 
-      await updateFundingDraft(draftId, {
+      await updateFundingDraft(draftId, withCurrentFundingId({
         breweryInfo: {
           bankName: verifiedBankName,
           accountNumber: verifiedAccountNumber,
           accountHolder: verifiedAccountHolder,
           accountVerified: true,
         },
-      });
+      }));
+      await saveFundingBreweryInfo(draftId, withCurrentFundingId(createBreweryInfoForApi({
+        bankName: verifiedBankName,
+        accountNumber: verifiedAccountNumber,
+        accountHolder: verifiedAccountHolder,
+        accountVerified: true,
+      })));
+      logCurrentDraftPair('account-verify:brewery-info-saved', draftId);
       await SafeStorage.setItem(tempSaveKey, JSON.stringify({
         ...createDraftPayload(),
         creatorInfo: verifiedCreatorInfo,
@@ -2535,10 +2607,13 @@ export default function BreweryProjectCreateScreen() {
       setIsPreviewLoading(true);
       try {
         const draftId = await ensureServerDraft();
+        logCurrentDraftPair('preview:server-draft', draftId);
         const serverImageUrls = await uploadProjectImagesToApi(draftId);
-        await updateFundingDraft(draftId, getDraftUpdatePayloadForApi(serverImageUrls));
+        await updateFundingDraft(draftId, withCurrentFundingId(getDraftUpdatePayloadForApi(serverImageUrls)));
         await syncReadyProjectSectionsToApi(draftId, serverImageUrls);
         const preview = await getFundingDraftPreview(draftId);
+        if (preview.draftId) rememberCurrentDraft(preview.draftId, preview.fundingId || editProjectId);
+        logCurrentDraftPair('preview:loaded', preview.draftId || draftId, preview.fundingId || editProjectId);
         const serverDraft = createProjectDraftFromServerPreview(preview, user);
         applyDraftPayload(serverDraft);
         setTempSaveTimestamp(serverDraft.timestamp || '');
@@ -2569,6 +2644,7 @@ export default function BreweryProjectCreateScreen() {
       if (!isEditMode) {
         try {
           const draftId = await ensureServerDraft();
+          logCurrentDraftPair('submit:create-draft', draftId);
           logFundingCreateDebug('[FundingCreate][SUBMIT] draft ready', {
             draftId,
             ...summarizeFundingCreateImages(basicInfo.images),
@@ -2592,6 +2668,7 @@ export default function BreweryProjectCreateScreen() {
       }
       if (isEditMode && editProjectId) {
         const draftId = await ensureServerDraft();
+        logCurrentDraftPair('submit:edit-draft', draftId);
         logFundingCreateDebug('[FundingCreate][SUBMIT] edit draft ready', {
           draftId,
           editProjectId,
@@ -2615,7 +2692,7 @@ export default function BreweryProjectCreateScreen() {
           pricePerBottle: Number(fundingInfo.pricePerBottle),
           shippingFee: FIXED_PROJECT_SHIPPING_FEE,
         });
-        await saveFundingLegalInfo(draftId, getLegalInfoForApi());
+        await saveFundingLegalInfo(draftId, withCurrentFundingId(getLegalInfoForApi()));
       }
       const payload = buildProjectPayload(isEditMode ? 'edit' : 'create', submittedImageUrls);
       if (isEditMode && editProjectId) {

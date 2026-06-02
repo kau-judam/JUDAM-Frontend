@@ -143,6 +143,14 @@ export type AdminFundingDraft = {
   totalQuantity?: number;
   thumbnailUrl?: string | null;
   imageUrls?: string[];
+  basicInfo?: FundingDraftPreviewResponse['basicInfo'];
+  schedule?: FundingDraftPreviewResponse['schedule'];
+  legalInfo?: FundingDraftPreviewResponse['legalInfo'];
+  plan?: FundingDraftPreviewResponse['plan'];
+  breweryInfo?: FundingDraftPreviewResponse['breweryInfo'];
+  notices?: FundingDraftPreviewResponse['notices'];
+  documents?: FundingDraftPreviewResponse['documents'];
+  images?: string[];
   raw?: Record<string, unknown>;
 };
 
@@ -1501,7 +1509,10 @@ function normalizeAdminFundingDraftItem(value: unknown): AdminFundingDraft | nul
   const source = value as Record<string, unknown>;
   const basicInfo = getFundingApiNestedObject(source, ['basicInfo', 'basic_info']);
   const schedule = getFundingApiNestedObject(source, ['schedule']);
+  const legalInfo = getFundingApiNestedObject(source, ['legalInfo', 'legal_info']);
+  const plan = getFundingApiNestedObject(source, ['plan', 'projectPlan', 'project_plan']);
   const breweryInfo = getFundingApiNestedObject(source, ['breweryInfo', 'brewery_info']);
+  const notices = getFundingApiNestedObject(source, ['notices']);
   const draftId = readFundingApiNumber(source, ['draftId', 'draft_id', 'id'], 0);
   if (!draftId) return null;
 
@@ -1512,6 +1523,15 @@ function normalizeAdminFundingDraftItem(value: unknown): AdminFundingDraft | nul
     readFundingApiArray<string>(source, ['imageUrls', 'image_urls', 'images'])
       .concat(readFundingApiArray<string>(basicInfo, ['imageUrls', 'image_urls', 'images']))
   ).slice(0, 5);
+  const documents = readFundingApiArray<Record<string, unknown>>(source, ['documents'])
+    .map((document) => ({
+      documentId: readFundingApiNumber(document, ['documentId', 'document_id', 'id']),
+      draftId: readFundingApiNumber(document, ['draftId', 'draft_id'], draftId),
+      documentType: readFundingApiString(document, ['documentType', 'document_type', 'type']),
+      fileName: readFundingApiString(document, ['fileName', 'file_name', 'name']),
+      fileUrl: readFundingApiString(document, ['fileUrl', 'file_url', 'url']),
+      createdAt: readFundingApiString(document, ['createdAt', 'created_at']),
+    }));
 
   return {
     draftId,
@@ -1551,6 +1571,79 @@ function normalizeAdminFundingDraftItem(value: unknown): AdminFundingDraft | nul
       imageUrls[0] ||
       null,
     imageUrls,
+    basicInfo: Object.keys(basicInfo).length ? {
+      title,
+      shortTitle: readFundingApiString(basicInfo, ['shortTitle', 'short_title']),
+      category: readFundingApiString(basicInfo, ['category']) || undefined,
+      mainIngredient: readFundingApiString(basicInfo, ['mainIngredient', 'primaryIngredient', 'main_ingredient', 'primary_ingredient']) || undefined,
+      subIngredients: readFundingApiStringArray(basicInfo, ['subIngredients', 'sub_ingredients']),
+      alcoholPercentage: readFundingApiOptionalNumber(basicInfo, ['alcoholPercentage', 'alcohol_percentage']),
+      summary: readFundingApiString(basicInfo, ['summary', 'description']) || undefined,
+      thumbnailUrl: normalizeFundingApiImageUrl(readFundingApiString(basicInfo, ['thumbnailUrl', 'thumbnail_url'])) || undefined,
+      imageUrls,
+      allImageUrls: imageUrls,
+      images: imageUrls,
+      tags: readFundingApiStringArray(basicInfo, ['tags']),
+    } : undefined,
+    schedule: Object.keys(schedule).length ? {
+      pricePerBottle: readFundingApiOptionalNumber(schedule, ['pricePerBottle', 'price_per_bottle']),
+      totalQuantity: readFundingApiOptionalNumber(schedule, ['totalQuantity', 'total_quantity']),
+      targetAmount: readFundingApiOptionalNumber(schedule, ['targetAmount', 'target_amount']),
+      fundingStartDate: readFundingApiString(schedule, ['fundingStartDate', 'funding_start_date', 'startDate', 'start_date']),
+      fundingPeriodDays: readFundingApiOptionalNumber(schedule, ['fundingPeriodDays', 'funding_period_days', 'periodDays', 'period_days']),
+      fundingEndDate: readFundingApiString(schedule, ['fundingEndDate', 'funding_end_date', 'endDate', 'end_date']),
+      expectedDeliveryDate: readFundingApiString(schedule, ['expectedDeliveryDate', 'expected_delivery_date']),
+    } : undefined,
+    legalInfo: Object.keys(legalInfo).length ? {
+      productType: readFundingApiString(legalInfo, ['productType', 'product_type']),
+      volume: readFundingApiOptionalNumber(legalInfo, ['volume']),
+      alcoholPercentage: readFundingApiOptionalNumber(legalInfo, ['alcoholPercentage', 'alcohol_percentage']),
+      mainIngredient: readFundingApiString(legalInfo, ['mainIngredient', 'main_ingredient']),
+      primaryIngredient: readFundingApiString(legalInfo, ['primaryIngredient', 'primary_ingredient']),
+      subIngredient: readFundingApiString(legalInfo, ['subIngredient', 'sub_ingredient']),
+      subIngredients: readFundingApiStringArray(legalInfo, ['subIngredients', 'sub_ingredients']),
+      rawMaterials: readFundingApiArray<Record<string, unknown>>(legalInfo, ['rawMaterials', 'raw_materials'])
+        .map((item) => ({
+          name: readFundingApiString(item, ['name', 'ingredientName', 'ingredient_name']),
+          origin: readFundingApiString(item, ['origin', 'countryOfOrigin', 'country_of_origin']),
+        }))
+        .filter((item) => item.name || item.origin),
+    } : undefined,
+    plan: Object.keys(plan).length ? {
+      introduction: readFundingApiString(plan, ['introduction', 'description']),
+      videoUrl: readFundingApiString(plan, ['videoUrl', 'video_url']),
+      budgetPlan: readFundingApiString(plan, ['budgetPlan', 'budget_plan', 'projectBudget', 'project_budget']),
+      schedulePlan: readFundingApiString(plan, ['schedulePlan', 'schedule_plan', 'projectSchedule', 'project_schedule']),
+      projectBudget: readFundingApiString(plan, ['projectBudget', 'project_budget']),
+      projectSchedule: readFundingApiString(plan, ['projectSchedule', 'project_schedule']),
+      budgetPlanGuide: readFundingApiString(plan, ['budgetPlanGuide', 'budget_plan_guide']),
+      schedulePlanGuide: readFundingApiString(plan, ['schedulePlanGuide', 'schedule_plan_guide']),
+      policy: readFundingApiString(plan, ['policy', 'projectPolicy', 'project_policy']),
+    } : undefined,
+    breweryInfo: Object.keys(breweryInfo).length ? {
+      breweryName: readFundingApiString(breweryInfo, ['breweryName', 'brewery_name']),
+      creatorName: readFundingApiString(breweryInfo, ['creatorName', 'creator_name']),
+      profileImageUrl: readFundingApiString(breweryInfo, ['profileImageUrl', 'profile_image_url']),
+      creatorIntroduction: readFundingApiString(breweryInfo, ['creatorIntroduction', 'creator_introduction']),
+      representativeName: readFundingApiString(breweryInfo, ['representativeName', 'representative_name']),
+      businessRegistrationNumber: readFundingApiString(breweryInfo, ['businessRegistrationNumber', 'business_registration_number']),
+      businessAddress: readFundingApiString(breweryInfo, ['businessAddress', 'business_address']),
+      businessAddressDetail: readFundingApiString(breweryInfo, ['businessAddressDetail', 'business_address_detail']),
+      contactEmail: readFundingApiString(breweryInfo, ['contactEmail', 'contact_email']),
+      contactPhone: readFundingApiString(breweryInfo, ['contactPhone', 'contact_phone']),
+      bankName: readFundingApiString(breweryInfo, ['bankName', 'bank_name']),
+      accountNumber: readFundingApiString(breweryInfo, ['accountNumber', 'account_number']),
+      accountHolder: readFundingApiString(breweryInfo, ['accountHolder', 'account_holder']),
+    } : undefined,
+    notices: Object.keys(notices).length ? {
+      policy: readFundingApiString(notices, ['policy', 'projectPolicy', 'project_policy']),
+      refundPolicy: readFundingApiString(notices, ['refundPolicy', 'refund_policy']),
+      exchangePolicy: readFundingApiString(notices, ['exchangePolicy', 'exchange_policy']),
+      adultVerificationNotice: readFundingApiString(notices, ['adultVerificationNotice', 'adult_verification_notice']),
+      riskNotice: readFundingApiString(notices, ['riskNotice', 'risk_notice']),
+    } : undefined,
+    documents,
+    images: imageUrls,
     raw: source,
   };
 }
@@ -3743,9 +3836,11 @@ export async function getMyFundingOrders(params: {
   });
 }
 
-export async function getAdminFundingDrafts(status: AdminFundingDraftStatus = 'SUBMITTED') {
-  const query = new URLSearchParams({ status });
-  const result = await requestFundingJson<unknown>(`/api/admin/fundings/drafts?${query.toString()}`, {
+export async function getAdminFundingDrafts(status?: AdminFundingDraftStatus) {
+  const query = new URLSearchParams();
+  if (status) query.set('status', status);
+  const path = query.toString() ? `/api/admin/fundings/drafts?${query.toString()}` : '/api/admin/fundings/drafts';
+  const result = await requestFundingJson<unknown>(path, {
     auth: true,
   });
   const raw = getFundingApiRawObject(result);

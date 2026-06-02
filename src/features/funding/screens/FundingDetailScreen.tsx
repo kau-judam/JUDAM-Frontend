@@ -131,6 +131,8 @@ type FundingQuestionComment = {
   likes: number;
   liked?: boolean;
   isBrewery: boolean;
+  showBreweryBadge?: boolean | null;
+  isProjectOwner?: boolean | null;
   replies: {
     id: number;
     userName: string;
@@ -139,6 +141,8 @@ type FundingQuestionComment = {
     likes: number;
     liked?: boolean;
     isBrewery: boolean;
+    showBreweryBadge?: boolean | null;
+    isProjectOwner?: boolean | null;
   }[];
 };
 
@@ -206,52 +210,22 @@ function formatApiDate(value?: string) {
   return `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function normalizeFundingOwnerId(value: string | number | null | undefined) {
-  if (value === null || value === undefined) return null;
-  const normalized = String(value).trim();
-  return normalized || null;
-}
-
-function getFundingProjectOwnerIds(project: FundingProject | null | undefined) {
-  if (!project) return [];
-  return [project.breweryUserId, project.ownerUserId, project.creatorId, project.breweryId]
-    .map(normalizeFundingOwnerId)
-    .filter((id): id is string => Boolean(id));
-}
-
 function isProjectOwnerBreweryWriter(
-  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery' | 'writerIsBrewery' | 'writerRole' | 'showBreweryBadge' | 'isProjectOwner'>,
-  project: FundingProject | null | undefined,
-  currentUser?: User | null
+  writer: Pick<FundingBreweryLogCommentItem, 'showBreweryBadge' | 'isProjectOwner'>
 ) {
-  if (shouldShowFundingBreweryBadge(writer)) return true;
-  if (!project) return false;
-  const writerId = normalizeFundingOwnerId(writer.writerId);
-  const ownerIds = getFundingProjectOwnerIds(project);
-  if (writerId && ownerIds.length > 0) return ownerIds.includes(writerId);
-
-  const currentUserIds = currentUser
-    ? [currentUser.id, currentUser.uid].map(normalizeFundingOwnerId).filter((id): id is string => Boolean(id))
-    : [];
-  if (writerId && currentUserIds.includes(writerId)) return isFundingProjectOwnedByBrewery(currentUser, project);
-
-  if (ownerIds.length === 0 && writer.isBrewery) {
-    const writerName = writer.writerNickname?.trim();
-    return Boolean(writerName && project.brewery && writerName === project.brewery.trim());
-  }
-
-  return false;
+  return shouldShowFundingBreweryBadge(writer);
 }
 
 function resolveBreweryLogWriter(
-  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'isBrewery' | 'writerIsBrewery' | 'writerRole' | 'showBreweryBadge' | 'isProjectOwner'>,
-  currentUser: User | null | undefined,
-  project: FundingProject | null | undefined
+  writer: Pick<FundingBreweryLogCommentItem, 'writerId' | 'writerNickname' | 'showBreweryBadge' | 'isProjectOwner'>,
+  currentUser: User | null | undefined
 ) {
   const isMine = writer.writerId !== undefined && currentUser?.id !== undefined && String(writer.writerId) === String(currentUser.id);
   return {
     userName: isMine ? currentUser?.name || '사용자' : writer.writerNickname || '사용자',
-    isBrewery: isProjectOwnerBreweryWriter(writer, project, currentUser),
+    isBrewery: isProjectOwnerBreweryWriter(writer),
+    showBreweryBadge: writer.showBreweryBadge,
+    isProjectOwner: writer.isProjectOwner,
   };
 }
 
@@ -264,7 +238,7 @@ function mapBreweryLogComments(
   return comments.map((comment) => ({
     id: comment.commentId,
     journalId,
-    ...resolveBreweryLogWriter(comment, currentUser, project),
+    ...resolveBreweryLogWriter(comment, currentUser),
     content: comment.content,
     date: formatApiDate(comment.createdAt),
     likes: Math.max(comment.likeCount || 0, comment.liked ? 1 : 0),
@@ -272,7 +246,7 @@ function mapBreweryLogComments(
     replies: (comment.replies || []).map((reply) => ({
       id: reply.replyId,
       commentId: comment.commentId,
-      ...resolveBreweryLogWriter(reply, currentUser, project),
+      ...resolveBreweryLogWriter(reply, currentUser),
       content: reply.content,
       date: formatApiDate(reply.createdAt),
       likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
@@ -658,7 +632,9 @@ export default function FundingDetailScreen() {
             date: new Date(item.createdAt).toLocaleDateString("ko-KR"),
             likes: Math.max(item.likeCount || 0, item.liked ? 1 : 0),
             liked: Boolean(item.liked),
-            isBrewery: isProjectOwnerBreweryWriter(item, currentProject, user),
+            isBrewery: isProjectOwnerBreweryWriter(item),
+            showBreweryBadge: item.showBreweryBadge,
+            isProjectOwner: item.isProjectOwner,
             replies: (item.replies || []).map((reply) => {
               const isMyReply = reply.writerId !== undefined && user?.id !== undefined && String(reply.writerId) === String(user.id);
               return {
@@ -668,7 +644,9 @@ export default function FundingDetailScreen() {
                 date: new Date(reply.createdAt).toLocaleDateString("ko-KR"),
                 likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
                 liked: Boolean(reply.liked),
-                isBrewery: isProjectOwnerBreweryWriter(reply, currentProject, user),
+                isBrewery: isProjectOwnerBreweryWriter(reply),
+                showBreweryBadge: reply.showBreweryBadge,
+                isProjectOwner: reply.isProjectOwner,
               };
             }),
           };
@@ -1075,6 +1053,7 @@ export default function FundingDetailScreen() {
       const serverQuestionId = response.questionId > 0 ? response.questionId : undefined;
       const usedCommentIds = new Set(comments.map((comment) => comment.id));
       const localCommentId = getUniqueLocalQnaCommentId(usedCommentIds, comments.length + 1);
+      const showCommentBreweryBadge = shouldShowFundingBreweryBadge(response);
       const comment: FundingQuestionComment = {
         id: localCommentId,
         serverQuestionId,
@@ -1082,7 +1061,9 @@ export default function FundingDetailScreen() {
         content,
         date: new Date().toLocaleDateString("ko-KR"),
         likes: 0,
-        isBrewery: canManageOwnBreweryProject,
+        isBrewery: showCommentBreweryBadge,
+        showBreweryBadge: response.showBreweryBadge,
+        isProjectOwner: response.isProjectOwner,
         replies: [],
       };
       setComments((prev) => withUniqueQnaCommentIds([comment, ...prev]));
@@ -1114,6 +1095,7 @@ export default function FundingDetailScreen() {
       const response = await createFundingReply(project.id, serverQuestionId, { content });
       const usedReplyIds = new Set(comments.flatMap((comment) => comment.replies.map((reply) => reply.id)));
       const localReplyId = getUniqueLocalId(usedReplyIds, QNA_LOCAL_ID_OFFSET);
+      const showReplyBreweryBadge = shouldShowFundingBreweryBadge(response);
       const newReply = {
         id: response.replyId > 0 && !usedReplyIds.has(response.replyId) ? response.replyId : localReplyId,
         userName: user?.name || "나",
@@ -1121,7 +1103,9 @@ export default function FundingDetailScreen() {
         date: new Date().toLocaleDateString("ko-KR"),
         likes: 0,
         liked: false,
-        isBrewery: canManageOwnBreweryProject,
+        isBrewery: showReplyBreweryBadge,
+        showBreweryBadge: response.showBreweryBadge,
+        isProjectOwner: response.isProjectOwner,
       };
       setComments((prev) => prev.map(c => c.id === commentId ? { ...c, replies: [...c.replies, newReply] } : c));
       const replyLikeKey = getQnaReplyLikeKey(commentId, newReply.id);
@@ -1366,6 +1350,8 @@ export default function FundingDetailScreen() {
       journalId: targetJournal.id,
       userName: user.name || "사용자",
       isBrewery: canManageOwnBreweryProject,
+      showBreweryBadge: canManageOwnBreweryProject,
+      isProjectOwner: canManageOwnBreweryProject,
       content,
       date: todayText(),
       likes: 0,
@@ -1397,7 +1383,7 @@ export default function FundingDetailScreen() {
     });
     try {
       const response = await createBreweryLogComment(project.id, targetJournal.id, content);
-      const responseWriter = resolveBreweryLogWriter(response, user, project);
+      const responseWriter = resolveBreweryLogWriter(response, user);
       updateProjectJournals(
         project.id,
         (projectRef.current?.journals || []).map((entry) => {
@@ -1411,6 +1397,8 @@ export default function FundingDetailScreen() {
                     id: response.commentId || comment.id,
                     userName: responseWriter.userName || comment.userName,
                     isBrewery: responseWriter.isBrewery,
+                    showBreweryBadge: responseWriter.showBreweryBadge,
+                    isProjectOwner: responseWriter.isProjectOwner,
                     date: formatApiDate(response.createdAt),
                   }
                 : comment
@@ -1531,6 +1519,8 @@ export default function FundingDetailScreen() {
       commentId,
       userName: user.name || "사용자",
       isBrewery: canManageOwnBreweryProject,
+      showBreweryBadge: canManageOwnBreweryProject,
+      isProjectOwner: canManageOwnBreweryProject,
       content,
       date: todayText(),
       likes: 0,
@@ -1567,7 +1557,7 @@ export default function FundingDetailScreen() {
     setExpandedJournalReplies((prev) => new Set([...prev, replyKey]));
     try {
       const response = await createBreweryLogCommentReply(project.id, targetJournal.id, commentId, content);
-      const responseWriter = resolveBreweryLogWriter(response, user, project);
+      const responseWriter = resolveBreweryLogWriter(response, user);
       updateProjectJournals(
         project.id,
         (projectRef.current?.journals || []).map((entry) => {
@@ -1585,6 +1575,8 @@ export default function FundingDetailScreen() {
                         id: response.replyId || reply.id,
                         userName: responseWriter.userName || reply.userName,
                         isBrewery: responseWriter.isBrewery,
+                        showBreweryBadge: responseWriter.showBreweryBadge,
+                        isProjectOwner: responseWriter.isProjectOwner,
                         date: formatApiDate(response.createdAt),
                       }
                     : reply
@@ -2298,7 +2290,7 @@ export default function FundingDetailScreen() {
                                                       <View key={comment.id} style={styles.journalCommentCard}>
                                                         <View style={styles.journalCommentMeta}>
                                                           <Text style={styles.commentUser}>{comment.userName}</Text>
-                                                          {comment.isBrewery && <View style={styles.brewBadge}><Text style={styles.brewBadgeTxt}>양조장</Text></View>}
+                                                          {shouldShowFundingBreweryBadge(comment) && <View style={styles.brewBadge}><Text style={styles.brewBadgeTxt}>양조장</Text></View>}
                                                           <Text style={styles.commentDate}>{comment.date}</Text>
                                                         </View>
                                                         <Text style={styles.journalCommentText}>{comment.content}</Text>
@@ -2338,7 +2330,7 @@ export default function FundingDetailScreen() {
                                                                 <View key={reply.id} style={styles.journalReplyCard}>
                                                                   <View style={styles.journalCommentMeta}>
                                                                     <Text style={styles.commentUser}>{reply.userName}</Text>
-                                                                    {reply.isBrewery && <View style={styles.brewBadge}><Text style={styles.brewBadgeTxt}>양조장</Text></View>}
+                                                                    {shouldShowFundingBreweryBadge(reply) && <View style={styles.brewBadge}><Text style={styles.brewBadgeTxt}>양조장</Text></View>}
                                                                     <Text style={styles.commentDate}>{reply.date}</Text>
                                                                   </View>
                                                                   <Text style={styles.journalCommentText}>{reply.content}</Text>
@@ -2447,7 +2439,7 @@ export default function FundingDetailScreen() {
                               <View style={{ flex: 1 }}>
                                  <View style={styles.commentMeta}>
                                     <Text style={styles.commentUser}>{c.userName}</Text>
-                                    {c.isBrewery && <View style={styles.brewBadge}><Text style={styles.brewBadgeTxt}>양조장</Text></View>}
+                                    {shouldShowFundingBreweryBadge(c) && <View style={styles.brewBadge}><Text style={styles.brewBadgeTxt}>양조장</Text></View>}
                                     <Text style={styles.commentDate}>{c.date}</Text>
                                  </View>
                                  <Text style={styles.commentTxt}>{c.content}</Text>
@@ -2481,7 +2473,7 @@ export default function FundingDetailScreen() {
                                     <View style={{ flex: 1 }}>
                                        <View style={styles.commentMeta}>
                                           <Text style={styles.commentUser}>{r.userName}</Text>
-                                          {r.isBrewery && <View style={styles.brewBadge}><Text style={styles.brewBadgeTxt}>양조장</Text></View>}
+                                          {shouldShowFundingBreweryBadge(r) && <View style={styles.brewBadge}><Text style={styles.brewBadgeTxt}>양조장</Text></View>}
                                           <Text style={styles.commentDate}>{r.date}</Text>
                                        </View>
                                        <Text style={styles.commentTxt}>{r.content}</Text>

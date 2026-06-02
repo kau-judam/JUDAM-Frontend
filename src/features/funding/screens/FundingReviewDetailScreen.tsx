@@ -66,7 +66,7 @@ function mapReviewComment(
     author: item.writerNickname || '사용자',
     authorType: isBrewery ? 'brewery' : 'user',
     writerRole: item.writerRole,
-    isBrewery: item.isBrewery,
+    isBrewery,
     writerIsBrewery: item.writerIsBrewery,
     showBreweryBadge: item.showBreweryBadge,
     isProjectOwner: item.isProjectOwner,
@@ -454,7 +454,7 @@ export default function FundingReviewDetailScreen() {
                   <View style={styles.commentBubble}>
                     <View style={styles.commentMeta}>
                       <Text style={styles.commentAuthor}>{comment.author}</Text>
-                      {comment.authorType === 'brewery' && (
+                      {shouldShowFundingBreweryBadge(comment) && (
                         <View style={styles.breweryBadge}>
                           <Text style={styles.breweryBadgeText}>양조장</Text>
                         </View>

@@ -1083,6 +1083,8 @@ type CreateFundingQuestionPayload = {
 type CreateFundingQuestionResponse = {
   fundingId: number;
   questionId: number;
+  showBreweryBadge?: boolean | null;
+  isProjectOwner?: boolean | null;
   message: string;
 };
 
@@ -1094,6 +1096,8 @@ type CreateFundingReplyResponse = {
   fundingId: number;
   questionId: number;
   replyId: number;
+  showBreweryBadge?: boolean | null;
+  isProjectOwner?: boolean | null;
   message: string;
 };
 
@@ -1398,13 +1402,9 @@ function readFundingReviewPermission(...sources: Record<string, unknown>[]): Fun
 function readFundingWriterBadgeFields(source: Record<string, unknown>) {
   const writerRole = readFundingApiString(source, ['writerRole', 'writer_role', 'userRole', 'user_role', 'role']);
   const writerIsBrewery = readFundingApiBoolean(source, ['writerIsBrewery', 'writer_is_brewery']);
-  const isBrewery =
-    readFundingApiBoolean(source, ['isBrewery', 'is_brewery']) ||
-    writerIsBrewery ||
-    writerRole.toUpperCase().includes('BREWERY');
   return {
     writerRole: writerRole || undefined,
-    isBrewery,
+    isBrewery: readFundingApiBoolean(source, ['isBrewery', 'is_brewery']),
     writerIsBrewery,
     showBreweryBadge: readFundingApiBoolean(source, ['showBreweryBadge', 'show_brewery_badge']),
     isProjectOwner: readFundingApiBoolean(source, ['isProjectOwner', 'is_project_owner']),

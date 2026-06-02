@@ -64,6 +64,8 @@ export interface JournalReply {
   commentId: number;
   userName: string;
   isBrewery?: boolean;
+  showBreweryBadge?: boolean | null;
+  isProjectOwner?: boolean | null;
   content: string;
   date: string;
   likes: number;
@@ -75,6 +77,8 @@ export interface JournalComment {
   journalId: number;
   userName: string;
   isBrewery?: boolean;
+  showBreweryBadge?: boolean | null;
+  isProjectOwner?: boolean | null;
   content: string;
   date: string;
   likes: number;

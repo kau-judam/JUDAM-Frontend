@@ -207,7 +207,7 @@ export default function CommunityDetailScreen() {
     fetchCommunityPost(numericId)
       .then((response) => {
         if (cancelled) return;
-        setApiPost(response.post);
+        setApiPost(response.post.isMine && user?.profileImage ? { ...response.post, avatar: user.profileImage } : response.post);
         setLiked(response.post.liked);
         setLikeCount(response.post.likes);
         setApiPostLoadFailed(false);
@@ -231,7 +231,7 @@ export default function CommunityDetailScreen() {
         if (cancelled) return;
         setComments((prev) =>
           response.comments.map((comment) => ({
-            ...comment,
+            ...(comment.isMine && user?.profileImage ? { ...comment, avatar: user.profileImage } : comment),
             replies: prev.find((item) => item.id === comment.id)?.replies || [],
             replyCount: comment.replyCount,
           }))

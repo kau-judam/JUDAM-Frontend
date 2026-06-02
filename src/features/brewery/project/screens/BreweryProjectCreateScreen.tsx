@@ -31,6 +31,7 @@ import {
   Eye,
   FileCheck,
   Image as ImageIcon,
+  Info,
   Plus,
   Tag,
   Upload,
@@ -88,6 +89,7 @@ type UploadedFileValue = string | {
 };
 type DatePickerTarget = 'startDate' | 'expectedDeliveryDate';
 type TempSaveMode = 'saved' | 'existing' | 'exitExisting';
+type SimpleModalIcon = 'alert' | 'success' | 'info';
 type PreviewBudgetPlan = NonNullable<FundingDraftPreviewResponse['plan']>['budgetPlan'];
 type PreviewSchedulePlan = NonNullable<FundingDraftPreviewResponse['plan']>['schedulePlan'];
 type ProjectPlanDraft = {
@@ -133,6 +135,35 @@ const projectTabs: { id: TabId; label: string }[] = [
   { id: 'trust', label: '안내 사항' },
   { id: 'verification', label: '인증 서류' },
 ];
+
+const loadedBreweryMissingFieldLabels: Record<string, string> = {
+  representativeName: '대표자 성명',
+  representative_name: '대표자 성명',
+  bankName: '은행',
+  bank_name: '은행',
+  accountNumber: '계좌번호',
+  account_number: '계좌번호',
+  accountHolder: '예금주',
+  account_holder: '예금주',
+  businessType: '사업자 유형',
+  business_type: '사업자 유형',
+  businessCategory: '업태',
+  business_category: '업태',
+  businessItem: '종목',
+  business_item: '종목',
+  creatorIntroduction: '양조장 소개',
+  creator_introduction: '양조장 소개',
+  phoneVerified: '휴대폰 인증',
+  phone_verified: '휴대폰 인증',
+  accountVerified: '입금 계좌 인증',
+  account_verified: '입금 계좌 인증',
+};
+
+const formatLoadedBreweryMissingField = (field: string) => {
+  const trimmedField = field.trim();
+  if (!trimmedField) return '';
+  return loadedBreweryMissingFieldLabels[trimmedField] || trimmedField;
+};
 
 const BANK_OPTIONS = ['KB국민', '신한', '우리', '하나', '농협은행', 'IBK기업', '카카오뱅크', '토스뱅크', '케이뱅크', 'SC제일', '부산', '대구', '광주', '전북', '경남', '수협', '새마을금고', '신협'];
 const TEMP_SAVE_KEY = 'judam_project_temp_save';
@@ -287,7 +318,18 @@ function summarizeFundingCreateImages(images?: string[]) {
 }
 
 function logFundingCreatePayload(scope: 'SAVE' | 'SUBMIT' | 'AI_IMAGE', label: string, payload: unknown) {
+  if (!__DEV__) return;
   console.log(`[FundingCreate][${scope}] ${label}`, JSON.stringify(sanitizeFundingCreateDebugValue(payload), null, 2));
+}
+
+function logFundingCreateDebug(...args: unknown[]) {
+  if (!__DEV__) return;
+  console.log(...args);
+}
+
+function warnFundingCreateDebug(...args: unknown[]) {
+  if (!__DEV__) return;
+  console.warn(...args);
 }
 
 function parseTextLines(value: string) {
@@ -738,6 +780,7 @@ export default function BreweryProjectCreateScreen() {
   const [hasTempSave, setHasTempSave] = useState(false);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
+  const [alertIcon, setAlertIcon] = useState<SimpleModalIcon>('alert');
   const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
   const [showAddressModal, setShowAddressModal] = useState(false);
   const [showBankModal, setShowBankModal] = useState(false);
@@ -917,7 +960,7 @@ export default function BreweryProjectCreateScreen() {
           setTempSaveTimestamp(timestamp);
           setHasTempSave(true);
         } catch (error) {
-          console.warn(getFundingApiErrorMessage(error, '서버 관리하기 임시저장을 불러오지 못했습니다.'));
+          warnFundingCreateDebug(getFundingApiErrorMessage(error, '서버 관리하기 임시저장을 불러오지 못했습니다.'));
         }
         return;
       }
@@ -945,7 +988,7 @@ export default function BreweryProjectCreateScreen() {
           setTempSaveTimestamp(timestamp);
           setHasTempSave(true);
         } catch (error) {
-          console.warn(getFundingApiErrorMessage(error, '서버 임시저장 목록을 불러오지 못했습니다.'));
+          warnFundingCreateDebug(getFundingApiErrorMessage(error, '서버 임시저장 목록을 불러오지 못했습니다.'));
         }
         return;
       }
@@ -1081,8 +1124,9 @@ export default function BreweryProjectCreateScreen() {
     router.replace(exitRoute as any);
   };
 
-  const showAlert = (message: string) => {
+  const showAlert = (message: string, icon: SimpleModalIcon = 'alert') => {
     setAlertMessage(message);
+    setAlertIcon(icon);
     setShowAlertModal(true);
   };
 
@@ -1508,7 +1552,7 @@ export default function BreweryProjectCreateScreen() {
   const uploadProjectImagesToApi = async (draftId: number) => {
     const projectImages = normalizeProjectImageUrls(basicInfo.images);
     const nextImages: string[] = [];
-    console.log('[FundingCreate][Images]', {
+    logFundingCreateDebug('[FundingCreate][Images]', {
       step: 'uploadProjectImagesToApi:start',
       draftId,
       ...summarizeFundingCreateImages(projectImages),
@@ -1520,7 +1564,7 @@ export default function BreweryProjectCreateScreen() {
         continue;
       }
 
-      console.log('[FundingCreate][Images]', {
+      logFundingCreateDebug('[FundingCreate][Images]', {
         step: 'uploadProjectImagesToApi:upload-local',
         draftId,
         index,
@@ -1538,7 +1582,7 @@ export default function BreweryProjectCreateScreen() {
       setBasicInfo((prev) => ({ ...prev, images: serverImageUrls }));
     }
 
-    console.log('[FundingCreate][Images]', {
+    logFundingCreateDebug('[FundingCreate][Images]', {
       step: 'uploadProjectImagesToApi:done',
       draftId,
       ...summarizeFundingCreateImages(serverImageUrls),
@@ -1549,32 +1593,42 @@ export default function BreweryProjectCreateScreen() {
   const syncReadyProjectSectionsToApi = async (draftId: number, preparedImageUrls?: string[]) => {
     const alcoholPercentage = Number(basicInfo.alcoholContent);
     const serverImageUrls = preparedImageUrls ?? await uploadProjectImagesToApi(draftId);
-    logFundingCreatePayload('SAVE', 'basicInfo payload', {
-      draftId,
-      title: basicInfo.title.trim(),
-      shortTitle: basicInfo.shortTitle.trim() || undefined,
-      category: basicInfo.category.trim() || '막걸리',
-      mainIngredient: basicInfo.mainIngredient.trim(),
-      subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
-      alcoholPercentage: Number(basicInfo.alcoholContent),
-      summary: basicInfo.summary.trim(),
-      thumbnailUrl: serverImageUrls[0] || undefined,
-      imageUrls: serverImageUrls,
-      images: serverImageUrls,
-      tags: getReadyTags(),
-    });
-    await saveFundingBasicInfo(draftId, withCurrentFundingId({
-      title: basicInfo.title.trim() || undefined,
-      shortTitle: basicInfo.shortTitle.trim() || undefined,
-      category: basicInfo.category.trim() || '막걸리',
-      mainIngredient: basicInfo.mainIngredient.trim() || undefined,
-      subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
-      alcoholPercentage: Number.isFinite(alcoholPercentage) && basicInfo.alcoholContent.trim() ? alcoholPercentage : undefined,
-      summary: basicInfo.summary.trim() || undefined,
-      thumbnailUrl: serverImageUrls[0] || undefined,
-      imageUrls: serverImageUrls,
-      tags: getReadyTags(),
-    }));
+    const hasCompleteBasicInfo = Boolean(
+      basicInfo.title.trim() &&
+      basicInfo.mainIngredient.trim() &&
+      basicInfo.alcoholContent.trim() &&
+      Number.isFinite(alcoholPercentage) &&
+      basicInfo.summary.trim()
+    );
+
+    if (hasCompleteBasicInfo) {
+      logFundingCreatePayload('SAVE', 'basicInfo payload', {
+        draftId,
+        title: basicInfo.title.trim(),
+        shortTitle: basicInfo.shortTitle.trim() || undefined,
+        category: basicInfo.category.trim() || '막걸리',
+        mainIngredient: basicInfo.mainIngredient.trim(),
+        subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
+        alcoholPercentage: Number(basicInfo.alcoholContent),
+        summary: basicInfo.summary.trim(),
+        thumbnailUrl: serverImageUrls[0] || undefined,
+        imageUrls: serverImageUrls,
+        images: serverImageUrls,
+        tags: getReadyTags(),
+      });
+      await saveFundingBasicInfo(draftId, withCurrentFundingId({
+        title: basicInfo.title.trim(),
+        shortTitle: basicInfo.shortTitle.trim() || undefined,
+        category: basicInfo.category.trim() || '막걸리',
+        mainIngredient: basicInfo.mainIngredient.trim(),
+        subIngredients: basicInfo.subIngredient.trim() ? [basicInfo.subIngredient.trim()] : [],
+        alcoholPercentage,
+        summary: basicInfo.summary.trim(),
+        thumbnailUrl: serverImageUrls[0] || undefined,
+        imageUrls: serverImageUrls,
+        tags: getReadyTags(),
+      }));
+    }
 
     if (fundingInfo.pricePerBottle && fundingInfo.bottleQuantity && fundingInfo.startDate && fundingInfo.duration && fundingInfo.expectedDeliveryDate) {
       await saveFundingSchedule(draftId, withCurrentFundingId({
@@ -1744,7 +1798,7 @@ export default function BreweryProjectCreateScreen() {
   const saveDraft = async ({ showSavedModal = true, exitAfter = false }: { showSavedModal?: boolean; exitAfter?: boolean } = {}) => {
     setIsSaving(true);
     try {
-      console.log('[FundingCreate][SAVE] start', {
+      logFundingCreateDebug('[FundingCreate][SAVE] start', {
         isEditMode,
         editProjectId,
         showSavedModal,
@@ -1790,7 +1844,7 @@ export default function BreweryProjectCreateScreen() {
         }));
         setTempSaveTimestamp(nextTimestamp);
       } catch (syncError) {
-        console.log('[FundingCreate][ERROR]', {
+        logFundingCreateDebug('[FundingCreate][ERROR]', {
           scope: 'SAVE',
           phase: 'server-sync',
           error: syncError,
@@ -1799,7 +1853,7 @@ export default function BreweryProjectCreateScreen() {
         if (!isNetworkRequestFailure(syncError)) {
           throw syncError;
         }
-        console.warn('[BreweryProjectCreate] temp save server sync failed', getFundingApiErrorMessage(syncError, 'Network request failed'));
+        warnFundingCreateDebug('[BreweryProjectCreate] temp save server sync failed', getFundingApiErrorMessage(syncError, 'Network request failed'));
       }
 
       if (exitAfter) {
@@ -1916,16 +1970,9 @@ export default function BreweryProjectCreateScreen() {
     setFundingInfo(next);
   };
 
-  const handleExit = async () => {
-    if (hasUnsavedChanges()) {
-      const savedDraft = await getSavedDraft();
-      if (savedDraft) {
-        setTempSaveTimestamp(savedDraft.timestamp || tempSaveTimestamp);
-        setHasTempSave(true);
-        setTempSaveMode('exitExisting');
-        setShowTempSaveModal(true);
-        return;
-      }
+  const handleExit = () => {
+    if (hasUnsavedChanges() || hasTempSave) {
+      setShowTempSaveModal(false);
       setShowExitConfirm(true);
       return;
     }
@@ -1954,22 +2001,37 @@ export default function BreweryProjectCreateScreen() {
     await saveDraft({ showSavedModal: false, exitAfter: true });
   };
 
-  const handleExitWithoutSave = () => {
+  const handleExitWithoutSave = async () => {
     setShowExitConfirm(false);
+    setShowTempSaveModal(false);
+    if (!isEditMode) {
+      await SafeStorage.removeItem(tempSaveKey);
+      setHasTempSave(false);
+      setTempSaveTimestamp('');
+    }
+    navigateToExitRoute();
+  };
+
+  const handleExitWithoutLoadingSavedDraft = () => {
     setShowTempSaveModal(false);
     navigateToExitRoute();
   };
 
   const getLoadedBreweryMissingFields = (info: Partial<LoadedBreweryInfo>) =>
-    Array.isArray(info.missingFields) ? info.missingFields.map((field) => field.trim()).filter(Boolean) : [];
+    Array.isArray(info.missingFields)
+      ? Array.from(new Set(info.missingFields.map(formatLoadedBreweryMissingField).filter(Boolean)))
+      : [];
 
   const showLoadedBreweryInfoResult = (info: Partial<LoadedBreweryInfo>) => {
     const missingFields = getLoadedBreweryMissingFields(info);
     if (missingFields.length > 0) {
-      showAlert(`불러온 양조장 정보 중 ${missingFields.join(', ')} 정보가 비어 있습니다.`);
+      showAlert(
+        '양조장 기본 정보를 불러왔습니다.\n\n기타 정보는 직접 입력하거나 인증해주세요.',
+        'info'
+      );
       return;
     }
-    showAlert('서버에 저장된 양조장 정보를 불러왔습니다.');
+    showAlert('서버에 저장된 양조장 정보를 불러왔습니다.', 'success');
   };
 
   const hasLoadedBreweryInfoValue = (info: Partial<LoadedBreweryInfo>) =>
@@ -2175,7 +2237,7 @@ export default function BreweryProjectCreateScreen() {
         flavorTags: getReadyTags(),
         region: taxInfo.address.trim() || user?.breweryLocation || '',
       };
-      console.log('[FundingCreate][Images]', {
+      logFundingCreateDebug('[FundingCreate][Images]', {
         step: 'ai-generate:before',
         draftId,
         generatedImageUrl: undefined,
@@ -2183,7 +2245,7 @@ export default function BreweryProjectCreateScreen() {
       });
       logFundingCreatePayload('AI_IMAGE', 'payload', { draftId, ...aiImagePayload });
       const result = await generateFundingDraftAiImage(draftId, withCurrentFundingId(aiImagePayload));
-      console.log('[FundingCreate][AI_IMAGE] result', {
+      logFundingCreateDebug('[FundingCreate][AI_IMAGE] result', {
         draftId,
         status: result.status,
         imageUrl: result.imageUrl,
@@ -2238,7 +2300,7 @@ export default function BreweryProjectCreateScreen() {
       setHasTempSave(true);
       showAlert('AI 이미지가 생성되었습니다.');
     } catch (error) {
-      console.log('[FundingCreate][ERROR]', {
+      logFundingCreateDebug('[FundingCreate][ERROR]', {
         scope: 'AI_IMAGE',
         phase: 'handleGenerateAiImage',
         error,
@@ -2559,7 +2621,7 @@ export default function BreweryProjectCreateScreen() {
         setShowPreview(true);
       } catch (error) {
         showAlert(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버에서 불러오지 못했습니다.'));
-        console.warn(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버와 동기화하지 못했습니다.'));
+        warnFundingCreateDebug(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버와 동기화하지 못했습니다.'));
       } finally {
         setIsPreviewLoading(false);
       }
@@ -2571,7 +2633,7 @@ export default function BreweryProjectCreateScreen() {
     setIsSubmitting(true);
     setSubmitSyncWarning('');
     try {
-      console.log('[FundingCreate][SUBMIT] start', {
+      logFundingCreateDebug('[FundingCreate][SUBMIT] start', {
         isEditMode,
         editProjectId,
         canSubmit,
@@ -2583,19 +2645,19 @@ export default function BreweryProjectCreateScreen() {
         try {
           const draftId = await ensureServerDraft();
           logCurrentDraftPair('submit:create-draft', draftId);
-          console.log('[FundingCreate][SUBMIT] draft ready', {
+          logFundingCreateDebug('[FundingCreate][SUBMIT] draft ready', {
             draftId,
             ...summarizeFundingCreateImages(basicInfo.images),
           });
           submittedImageUrls = await saveProjectSectionsToApi(draftId);
-          console.log('[FundingCreate][SUBMIT] images prepared', {
+          logFundingCreateDebug('[FundingCreate][SUBMIT] images prepared', {
             draftId,
             ...summarizeFundingCreateImages(submittedImageUrls),
           });
           await uploadProjectDocumentsToApi(draftId);
-          console.log('[FundingCreate][SUBMIT] submitFundingDraft request', { draftId });
+          logFundingCreateDebug('[FundingCreate][SUBMIT] submitFundingDraft request', { draftId });
           const submittedDraft = await submitFundingDraft(draftId);
-          console.log('[FundingCreate][SUBMIT] submitFundingDraft response', submittedDraft);
+          logFundingCreateDebug('[FundingCreate][SUBMIT] submitFundingDraft response', submittedDraft);
           submittedFundingId = submittedDraft.fundingId || null;
         } catch (error) {
           const serverSyncError = getFundingApiErrorMessage(error, '서버 동기화 중 문제가 발생했습니다.')
@@ -2607,14 +2669,14 @@ export default function BreweryProjectCreateScreen() {
       if (isEditMode && editProjectId) {
         const draftId = await ensureServerDraft();
         logCurrentDraftPair('submit:edit-draft', draftId);
-        console.log('[FundingCreate][SUBMIT] edit draft ready', {
+        logFundingCreateDebug('[FundingCreate][SUBMIT] edit draft ready', {
           draftId,
           editProjectId,
           ...summarizeFundingCreateImages(basicInfo.images),
         });
         const serverImageUrls = await saveProjectSectionsToApi(draftId);
         submittedImageUrls = serverImageUrls;
-        console.log('[FundingCreate][SUBMIT] edit images prepared', {
+        logFundingCreateDebug('[FundingCreate][SUBMIT] edit images prepared', {
           draftId,
           editProjectId,
           ...summarizeFundingCreateImages(serverImageUrls),
@@ -3441,7 +3503,7 @@ export default function BreweryProjectCreateScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-      <SimpleModal visible={showAlertModal} icon="alert" title="알림" body={alertMessage} primaryLabel="확인" onPrimary={() => setShowAlertModal(false)} />
+      <SimpleModal visible={showAlertModal} icon={alertIcon} title="알림" body={alertMessage} primaryLabel="확인" onPrimary={() => setShowAlertModal(false)} />
       <ConfirmModal
         visible={showBreweryProfileConfirm}
         title="양조장 대시보드를 수정하시겠습니까?"
@@ -3459,7 +3521,7 @@ export default function BreweryProjectCreateScreen() {
         onLoad={() => { void loadSavedDraft(); }}
         onDelete={() => { void deleteSavedDraft(); }}
         onOverwrite={() => { void overwriteSavedDraft(); }}
-        onExitWithoutLoad={handleExitWithoutSave}
+        onExitWithoutLoad={handleExitWithoutLoadingSavedDraft}
       />
       <ExitConfirmModal visible={showExitConfirm} onSave={handleSaveAndExit} onExit={handleExitWithoutSave} onContinue={() => setShowExitConfirm(false)} />
       <FundingGuideModal visible={showFundingGuideModal} onClose={() => setShowFundingGuideModal(false)} />
@@ -3992,13 +4054,21 @@ function GuardNotice({ insetsTop, title, description, primaryLabel, onPrimaryPre
   );
 }
 
-function SimpleModal({ visible, icon, title, body, primaryLabel, onPrimary }: { visible: boolean; icon: 'alert' | 'success'; title: string; body: string; primaryLabel: string; onPrimary: () => void }) {
+function SimpleModal({ visible, icon, title, body, primaryLabel, onPrimary }: { visible: boolean; icon: SimpleModalIcon; title: string; body: string; primaryLabel: string; onPrimary: () => void }) {
+  const iconStyle = icon === 'success' ? styles.successCircle : icon === 'info' ? styles.blueCircle : styles.alertCircle;
+
   return (
     <Modal transparent visible={visible} animationType="fade">
       <View style={styles.modalBackdrop}>
         <View style={styles.centerModal}>
-          <View style={[styles.modalIconCircle, icon === 'success' ? styles.successCircle : styles.alertCircle]}>
-            {icon === 'success' ? <Check size={32} color="#16A34A" /> : <AlertCircle size={32} color="#DC2626" />}
+          <View style={[styles.modalIconCircle, iconStyle]}>
+            {icon === 'success' ? (
+              <Check size={32} color="#16A34A" />
+            ) : icon === 'info' ? (
+              <Info size={32} color="#2563EB" />
+            ) : (
+              <AlertCircle size={32} color="#DC2626" />
+            )}
           </View>
           <Text style={styles.modalTitle}>{title}</Text>
           <Text style={styles.modalBody}>{body}</Text>
@@ -4151,13 +4221,13 @@ function ExitConfirmModal({ visible, onSave, onExit, onContinue }: { visible: bo
           <View style={styles.grayIconCircle}>
             <AlertCircle size={24} color="#374151" />
           </View>
-          <Text style={styles.confirmTitle}>임시 저장을 하지 않으셨습니다</Text>
-          <Text style={styles.modalBody}>작성 중인 내용을 임시 저장하시겠습니까?</Text>
+          <Text style={styles.confirmTitle}>작성 중인 내용을 어떻게 할까요?</Text>
+          <Text style={styles.modalBody}>나가기 전에 현재 내용을 임시저장할 수 있습니다.</Text>
           <TouchableOpacity style={styles.modalPrimary} onPress={onSave}>
-            <Text style={styles.modalPrimaryText}>네, 저장하고 나가기</Text>
+            <Text style={styles.modalPrimaryText}>임시저장하고 나가기</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.modalSecondaryWide} onPress={onExit}>
-            <Text style={styles.modalSecondaryText}>아니오, 저장 안함</Text>
+            <Text style={styles.modalSecondaryText}>저장하지 않고 나가기</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.modalPlain} onPress={onContinue}>
             <Text style={styles.modalPlainText}>계속 작성하기</Text>

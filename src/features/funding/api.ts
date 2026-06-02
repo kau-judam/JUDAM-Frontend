@@ -208,6 +208,8 @@ export type FundingDraftPreviewResponse = {
     videoUrl?: string;
     budgetPlan?: { category: string; amount: number }[] | string;
     schedulePlan?: { step: string; description: string; date: string }[] | string;
+    projectBudget?: string;
+    projectSchedule?: string;
     budgetPlanGuide?: string;
     schedulePlanGuide?: string;
     policy?: string;
@@ -217,6 +219,11 @@ export type FundingDraftPreviewResponse = {
     creatorName?: string;
     profileImageUrl?: string;
     creatorIntroduction?: string;
+    breweryBio?: string;
+    oneLineIntroduction?: string;
+    shortIntroduction?: string;
+    brandStory?: string;
+    history?: string;
     representativeName?: string;
   businessRegistrationNumber?: string;
   businessAddress?: string;
@@ -632,6 +639,8 @@ type RequestPaymentPayload = {
   amount: number;
   orderName?: string;
   customerName?: string;
+  customerEmail?: string;
+  customerMobilePhone?: string;
   successUrl?: string;
   failUrl?: string;
 };
@@ -641,6 +650,7 @@ type RequestPaymentResponse = {
   paymentId: number;
   paymentStatus: string;
   paymentUrl?: string;
+  rawResponse?: unknown;
   message: string;
 };
 
@@ -1796,8 +1806,30 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
     plan: {
       introduction: readFundingApiString(plan, ['introduction']),
       videoUrl: readFundingApiString(plan, ['videoUrl', 'video_url']),
-      budgetPlan: readFundingApiArrayOrString<{ category: string; amount: number }>(plan, ['budgetPlanRaw', 'budget_plan_raw', 'budgetPlanInput', 'budget_plan_input', 'budgetPlanText', 'budget_plan_text', 'budgetPlan', 'budget_plan']),
-      schedulePlan: readFundingApiArrayOrString<{ step: string; description: string; date: string }>(plan, ['schedulePlanRaw', 'schedule_plan_raw', 'schedulePlanInput', 'schedule_plan_input', 'schedulePlanText', 'schedule_plan_text', 'schedulePlan', 'schedule_plan']),
+      budgetPlan: readFundingApiArrayOrString<{ category: string; amount: number }>(plan, [
+        'budgetPlanRaw',
+        'budget_plan_raw',
+        'budgetPlanInput',
+        'budget_plan_input',
+        'budgetPlanText',
+        'budget_plan_text',
+        'projectBudget',
+        'project_budget',
+        'budgetPlan',
+        'budget_plan',
+      ]),
+      schedulePlan: readFundingApiArrayOrString<{ step: string; description: string; date: string }>(plan, [
+        'schedulePlanRaw',
+        'schedule_plan_raw',
+        'schedulePlanInput',
+        'schedule_plan_input',
+        'schedulePlanText',
+        'schedule_plan_text',
+        'projectSchedule',
+        'project_schedule',
+        'schedulePlan',
+        'schedule_plan',
+      ]),
       budgetPlanGuide: readFundingApiString(plan, ['budgetPlanGuide', 'budget_plan_guide']),
       schedulePlanGuide: readFundingApiString(plan, ['schedulePlanGuide', 'schedule_plan_guide']),
       policy: readFundingApiString(plan, ['policyRaw', 'policy_raw', 'policyText', 'policy_text', 'policy', 'projectPolicy', 'project_policy']),
@@ -2135,13 +2167,59 @@ function normalizeFundingOrderResponse(response: unknown): CreateFundingOrderRes
   };
 }
 
+const FUNDING_PAYMENT_URL_KEYS = [
+  'paymentUrl',
+  'payment_url',
+  'checkoutUrl',
+  'checkout_url',
+  'redirectUrl',
+  'redirect_url',
+  'checkoutPageUrl',
+  'checkout_page_url',
+  'payUrl',
+  'pay_url',
+  'url',
+];
+
+function readFundingPaymentString(sources: Record<string, unknown>[], keys: string[]) {
+  for (const source of sources) {
+    const value = readFundingApiString(source, keys);
+    if (value) return value;
+  }
+  return '';
+}
+
+function readFundingPaymentNumber(sources: Record<string, unknown>[], keys: string[]) {
+  for (const source of sources) {
+    const value = readFundingApiNumber(source, keys, Number.NaN);
+    if (Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
+function readFundingPaymentUrl(sources: Record<string, unknown>[]) {
+  for (const source of sources) {
+    const value = readFundingApiString(source, FUNDING_PAYMENT_URL_KEYS).trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
 function normalizeFundingPaymentResponse(response: unknown): RequestPaymentResponse {
+  const raw = getFundingApiRawObject(response);
   const data = getFundingApiObject(response);
+  const payment = getFundingNestedObject(data, 'payment');
+  const paymentInfo = getFundingApiNestedObject(data, ['paymentInfo', 'payment_info', 'paymentData', 'payment_data']);
+  const checkout = getFundingApiNestedObject(data, ['checkout', 'checkoutInfo', 'checkout_info']);
+  const nestedSources = [data, payment, paymentInfo, checkout, raw];
+  const paymentUrl = readFundingPaymentUrl(nestedSources);
+
   return {
-    orderId: readFundingApiString(data, ['orderId', 'order_id']),
-    paymentId: readFundingApiNumber(data, ['paymentId', 'payment_id']),
-    paymentStatus: readFundingApiString(data, ['paymentStatus', 'payment_status']),
-    paymentUrl: readFundingApiString(data, ['paymentUrl', 'payment_url', 'checkoutUrl', 'checkout_url', 'redirectUrl', 'redirect_url']) || undefined,
+    orderId: readFundingPaymentString(nestedSources, ['orderId', 'order_id']),
+    paymentId: readFundingPaymentNumber(nestedSources, ['paymentId', 'payment_id']),
+    paymentStatus: readFundingPaymentString(nestedSources, ['paymentStatus', 'payment_status']),
+    paymentUrl,
+    rawResponse: response,
     message: readFundingApiString(data, ['message']),
   };
 }
@@ -2369,7 +2447,7 @@ function normalizeBreweryId(value: unknown) {
 }
 
 function shouldLogFundingCreateApi(path: string) {
-  return path.startsWith('/api/fundings/drafts');
+  return __DEV__ && path.startsWith('/api/fundings/drafts');
 }
 
 function getFundingCreateLogScope(path: string, method?: string) {
@@ -2637,9 +2715,16 @@ function appendFundingFormFiles(formData: FormData, fieldName: string, files?: F
 export function getFundingApiErrorMessage(error: unknown, fallback = '요청을 처리하지 못했습니다.') {
   if (error instanceof Error) {
     if (error.message === 'NEEDS_ACCESS_TOKEN') return '로그인 정보가 필요합니다. 다시 로그인해주세요.';
+    if (isLikelyGarbledFundingApiMessage(error.message)) return fallback;
     return error.message || fallback;
   }
   return fallback;
+}
+
+function isLikelyGarbledFundingApiMessage(message: string) {
+  const questionMarkCount = (message.match(/\?/g) || []).length;
+  const hasNonAscii = /[^\x00-\x7F]/.test(message);
+  return message.includes('�') || /[ìíîïðñòóôõö÷øùúûüýþÿ留吏理]/.test(message) || (questionMarkCount >= 2 && hasNonAscii);
 }
 
 function getFundingApiErrorStatus(error: unknown) {
@@ -3191,7 +3276,14 @@ export async function requestFundingPayment(orderId: number | string, payload: R
     auth: true,
     body: JSON.stringify(payload),
   });
-  return normalizeFundingPaymentResponse(result);
+  const payment = normalizeFundingPaymentResponse(result);
+  if (!payment.paymentUrl) {
+    console.warn('[FundingPayment] payment URL missing from backend response', {
+      orderId,
+      payment,
+    });
+  }
+  return payment;
 }
 
 export async function confirmTossPayment(payload: ConfirmTossPaymentPayload) {

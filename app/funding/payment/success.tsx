@@ -8,6 +8,7 @@ import { useFunding } from '@/contexts/FundingContext';
 import type { FundingProject } from '@/constants/data';
 import { confirmTossPayment, getFundingApiErrorMessage, getFundingDetail, getFundingOrderDetail, type FundingDetailResponse } from '@/features/funding/api';
 import { mapFundingStatus, mergeFundingDetail } from '@/features/funding/apiMappers';
+import { clearPendingExternalPayment } from '@/utils/externalFlow';
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -111,12 +112,14 @@ export default function TossPaymentSuccessScreen() {
       hasConfirmedRef.current = true;
 
       if (!paymentInfo.paymentKey || !paymentInfo.orderId || !paymentInfo.amount) {
+        await clearPendingExternalPayment();
         setStatus('error');
         setMessage('토스 결제 승인 정보가 올바르지 않습니다.');
         return;
       }
 
       if (paymentInfo.returnedAmount && paymentInfo.returnedAmount !== paymentInfo.amount) {
+        await clearPendingExternalPayment();
         setStatus('error');
         setMessage('결제 금액이 주문 금액과 다릅니다. 결제를 다시 시도해주세요.');
         return;
@@ -215,6 +218,8 @@ export default function TossPaymentSuccessScreen() {
         if (!mounted) return;
         setStatus('error');
         setMessage(errorMessage);
+      } finally {
+        await clearPendingExternalPayment();
       }
     };
 

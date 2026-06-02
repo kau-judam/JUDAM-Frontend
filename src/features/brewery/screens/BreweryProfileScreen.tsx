@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -62,6 +62,7 @@ export default function BreweryProfileScreen() {
   const insets = useSafeAreaInsets();
   const { id, edit } = useLocalSearchParams();
   const { user, updateUser } = useAuth();
+  const updateUserRef = useRef(updateUser);
   const { projects } = useFunding();
   const breweryId = Array.isArray(id) ? id[0] : id;
   const editParam = Array.isArray(edit) ? edit[0] : edit;
@@ -90,26 +91,42 @@ export default function BreweryProfileScreen() {
   const [isEditing, setIsEditing] = useState(isOwnProfile && editParam === '1');
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<BreweryProfileForm>(profileValues);
+  const profileUserFallback = useMemo(
+    () => user
+      ? {
+          breweryLocation: user.breweryLocation,
+          breweryName: user.breweryName,
+          businessNumber: user.businessNumber,
+          id: user.id,
+          phone: user.phone,
+        }
+      : null,
+    [user]
+  );
 
   useEffect(() => {
-    if (!isOwnProfile || !user) return;
+    updateUserRef.current = updateUser;
+  }, [updateUser]);
+
+  useEffect(() => {
+    if (!isOwnProfile || !profileUserFallback) return;
 
     let mounted = true;
     getBreweryProfile()
       .then((profile) => {
         if (!mounted) return;
         setServerProfile(profile);
-        void updateUser({
-          breweryName: profile.breweryName || user.breweryName,
-          breweryLocation: profile.address || user.breweryLocation,
+        void updateUserRef.current({
+          breweryName: profile.breweryName || profileUserFallback.breweryName,
+          breweryLocation: profile.address || profileUserFallback.breweryLocation,
           breweryBrandStory: profile.oneLineIntroduction || undefined,
           breweryDescription: profile.shortIntroduction || undefined,
           breweryBrandStoryLong: profile.brandStory || undefined,
           breweryHistory: profile.history || undefined,
           breweryEstablished: profile.establishedYear ? String(profile.establishedYear) : undefined,
           breweryProfileImage: profile.profileImageUrl || undefined,
-          businessNumber: profile.businessRegistrationNumber || user.businessNumber,
-          phone: profile.phoneNumber || user.phone,
+          businessNumber: profile.businessRegistrationNumber || profileUserFallback.businessNumber,
+          phone: profile.phoneNumber || profileUserFallback.phone,
           breweryContactEmail: profile.email || undefined,
         });
       })
@@ -120,7 +137,10 @@ export default function BreweryProfileScreen() {
     return () => {
       mounted = false;
     };
-  }, [isOwnProfile, user?.id]);
+  }, [
+    isOwnProfile,
+    profileUserFallback,
+  ]);
 
   useEffect(() => {
     if (!isEditing) setForm(profileValues);

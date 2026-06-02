@@ -340,10 +340,13 @@ export default function FundingListScreen() {
               <Search size={20} color="#9CA3AF" />
               <TextInput
                 style={styles.searchInput}
-                placeholder="프로젝트 또는 양조장 검색..."
+                placeholder="프로젝트·양조장 검색"
                 placeholderTextColor="#9CA3AF"
                 value={searchTerm}
                 onChangeText={setSearchTerm}
+                multiline={false}
+                numberOfLines={1}
+                returnKeyType="search"
               />
             </View>
             <TouchableOpacity 
@@ -536,7 +539,7 @@ const styles = StyleSheet.create({
   searchSection: { paddingHorizontal: 20, marginTop: -45, zIndex: 20 },
   searchCard: { backgroundColor: '#FFF', borderRadius: 28, padding: 12, flexDirection: 'row', gap: 10, elevation: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 25, borderWidth: 1, borderColor: '#F3F4F6', zIndex: 30 },
   searchBar: { flex: 1, height: 56, backgroundColor: '#F9FAFB', borderRadius: 20, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
-  searchInput: { flex: 1, marginLeft: 12, fontSize: 15, fontWeight: '600', color: '#000' },
+  searchInput: { flex: 1, minWidth: 0, height: '100%', marginLeft: 12, paddingVertical: 0, fontSize: 15, fontWeight: '600', color: '#000', textAlignVertical: 'center' },
   filterBtn: { height: 56, paddingHorizontal: 16, backgroundColor: '#F9FAFB', borderRadius: 20, borderWidth: 2, borderColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 6 },
   filterTxt: { fontSize: 14, fontWeight: '700', color: '#111' },
   dropdown: { position: 'absolute', top: 75, right: 12, backgroundColor: '#FFF', borderRadius: 20, width: 200, elevation: 25, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 15, paddingVertical: 8, borderWidth: 1, borderColor: '#F3F4F6' },

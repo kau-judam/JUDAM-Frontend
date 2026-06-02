@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AlertCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { clearPendingExternalPayment } from '@/utils/externalFlow';
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -16,6 +17,10 @@ export default function TossPaymentFailScreen() {
   const orderId = getParam(params.orderId);
   const fundingId = getParam(params.fundingId);
   const orderName = getParam(params.orderName);
+
+  useEffect(() => {
+    void clearPendingExternalPayment();
+  }, []);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}>

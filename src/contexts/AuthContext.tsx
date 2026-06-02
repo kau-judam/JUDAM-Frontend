@@ -20,7 +20,9 @@ import {
   type SelectableAuthRole,
 } from "@/features/auth/api";
 import { digitsOnly } from "@/utils/validation";
+import { clearPendingExternalPayment, hasRecentPendingExternalPayment } from "@/utils/externalFlow";
 import type { BtiTasteAxisValues } from "@/features/bti/data";
+import { getMyPageProfile } from "@/features/mypage/api";
 import {
   beginKakaoCallbackHandling,
   clearPendingKakaoAuthRequest,
@@ -137,6 +139,7 @@ function isVerifiedBreweryRole(role?: AuthRole) {
 
 function mapAuthApiUser(apiUser: AuthApiUser, fallbackType: UserType = "user"): User {
   const type = apiUser.role ? mapAuthRoleToUserType(apiUser.role) : fallbackType;
+  const profileImage = apiUser.profileImage || apiUser.profileImageUrl || apiUser.profile_image_url || undefined;
   return {
     id: String(apiUser.userId),
     uid: generateUID(type === "brewery" ? "JD-BREW" : "JD-USER"),
@@ -144,10 +147,30 @@ function mapAuthApiUser(apiUser: AuthApiUser, fallbackType: UserType = "user"): 
     email: apiUser.email,
     role: apiUser.role,
     phone: apiUser.phoneNumber || undefined,
-    profileImage: apiUser.profileImage || undefined,
+    profileImage,
     type,
     isBreweryVerified: type === "brewery" ? isVerifiedBreweryRole(apiUser.role) : undefined,
   };
+}
+
+async function mergeMyPageProfileIntoUser(user: User): Promise<User> {
+  try {
+    const profile = await getMyPageProfile();
+    const profileImage = profile.profileImageUrl || user.profileImage;
+    return {
+      ...user,
+      id: profile.userId || user.id,
+      uid: profile.userId || user.uid,
+      name: profile.nickname || user.name,
+      email: profile.email || user.email,
+      phone: profile.phoneNumber || user.phone,
+      profileImage,
+      breweryProfileImage: profileImage || user.breweryProfileImage,
+    };
+  } catch (error) {
+    console.warn("Failed to sync mypage profile into auth user.", error);
+    return user;
+  }
 }
 
 function getKakaoProfileEmail(profile?: KakaoLoginResponse["kakaoProfile"]) {
@@ -215,7 +238,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const keepLoggedIn = await SafeStorage.getItem(KEEP_LOGIN_KEY);
         const savedUser = await SafeStorage.getItem("judam_user");
-        if (keepLoggedIn !== "true") {
+        const hasPendingExternalPayment = await hasRecentPendingExternalPayment();
+        if (keepLoggedIn !== "true" && !hasPendingExternalPayment) {
           await SafeStorage.removeItem("judam_user");
           await clearAuthTokens();
           return;
@@ -229,8 +253,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
           const parsedUser = normalizeTemporaryUser(JSON.parse(savedUser) as User);
-          await SafeStorage.setItem("judam_user", JSON.stringify(parsedUser));
-          setUser(parsedUser);
+          const syncedUser = await mergeMyPageProfileIntoUser(parsedUser);
+          await SafeStorage.setItem("judam_user", JSON.stringify(syncedUser));
+          setUser(syncedUser);
         }
       } catch (e) {
         console.error("Failed to load user from SafeStorage", e);
@@ -244,9 +269,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string, type: UserType, keepLoggedIn = false) => {
     const session = await loginWithEmail(email.trim().toLowerCase(), password);
     assertAuthSessionToken(session);
-    const nextUser = mapAuthApiUser(session.user, type);
+    let nextUser = mapAuthApiUser(session.user, type);
     try {
       await saveAuthTokens(getAuthSessionAccessToken(session), getAuthSessionRefreshToken(session));
+      nextUser = await mergeMyPageProfileIntoUser(nextUser);
       await SafeStorage.setItem(KEEP_LOGIN_KEY, keepLoggedIn ? "true" : "false");
       await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
     } catch (e) {
@@ -269,9 +295,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return getKakaoSignupPayload(session);
     }
     assertAuthSessionToken(session);
-    const nextUser = mapAuthApiUser(apiUser);
+    let nextUser = mapAuthApiUser(apiUser);
     try {
       await saveAuthTokens(getAuthSessionAccessToken(session), getAuthSessionRefreshToken(session));
+      nextUser = await mergeMyPageProfileIntoUser(nextUser);
       await SafeStorage.setItem(KEEP_LOGIN_KEY, keepLoggedIn ? "true" : "false");
       await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
     } catch (e) {
@@ -343,6 +370,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await SafeStorage.removeItem("judam_user");
       await SafeStorage.removeItem(KEEP_LOGIN_KEY);
       await SafeStorage.removeItem("judam_onboarded");
+      await clearPendingExternalPayment();
       await clearAuthTokens();
     } catch (e) {
       console.error("Failed to remove user from SafeStorage", e);
@@ -374,10 +402,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error("회원가입 응답에서 사용자 정보를 받지 못했습니다.");
     }
     assertAuthSessionToken(session);
-    const nextUser = mapAuthApiUser(session.user, data.type);
+    let nextUser = mapAuthApiUser(session.user, data.type);
 
     try {
       await saveAuthTokens(getAuthSessionAccessToken(session), getAuthSessionRefreshToken(session));
+      nextUser = await mergeMyPageProfileIntoUser(nextUser);
       await SafeStorage.setItem(KEEP_LOGIN_KEY, "false");
       await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
     } catch (e) {
@@ -432,7 +461,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateUserRole = async (role: SelectableAuthRole) => {
     const response = await updateMyRole(role);
-    const nextUser = mapAuthApiUser(response.user, role === "BREWERY_PENDING" ? "brewery" : "user");
+    const nextUser = await mergeMyPageProfileIntoUser(mapAuthApiUser(response.user, role === "BREWERY_PENDING" ? "brewery" : "user"));
     setUser(nextUser);
     try {
       await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));

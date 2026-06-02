@@ -377,10 +377,17 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
   const budgetItems = normalizeBudgetPlanItems(detail.plan?.budgetPlan);
   const scheduleItems = normalizeSchedulePlanItems(detail.plan?.schedulePlan);
   const projectPolicy = sanitizeApiText(detail.plan?.policy) || sanitizeApiText(detail.notices?.policy) || sanitizeApiText(detail.notices?.refundPolicy);
+  const breweryProfileImage = normalizeFundingImageUrl(detail.breweryInfo?.profileImageUrl);
+  const breweryBio =
+    sanitizeApiText(detail.breweryInfo?.creatorIntroduction) ||
+    sanitizeApiText(detail.breweryInfo?.breweryBio) ||
+    sanitizeApiText(detail.breweryInfo?.shortIntroduction) ||
+    sanitizeApiText(detail.breweryInfo?.brandStory) ||
+    sanitizeApiText(detail.breweryInfo?.history);
   return {
     ...existing,
     title: sameProject ? sanitizeApiText(detail.title) || existing.title : existing.title,
-    brewery: sameProject ? sanitizeApiText(detail.breweryName) || existing.brewery : existing.brewery,
+    brewery: sameProject ? sanitizeApiText(detail.breweryInfo?.breweryName) || sanitizeApiText(detail.breweryName) || existing.brewery : existing.brewery,
     location: sameProject ? businessAddress || existing.location : existing.location,
     category: sameProject ? sanitizeApiText(detail.category) || existing.category : existing.category,
     shortTitle: sameProject ? sanitizeApiText(detail.shortTitle) || existing.shortTitle : existing.shortTitle,
@@ -444,8 +451,8 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     schedulePlanText: sameProject ? schedulePlanText || existing.schedulePlanText : existing.schedulePlanText,
     budget: sameProject ? (budgetItems.length ? budgetItems : existing.budget) : existing.budget,
     schedule: sameProject ? (scheduleItems.length ? scheduleItems : existing.schedule) : existing.schedule,
-    breweryBio: existing.breweryBio || '',
-    breweryProfileImage: existing.breweryProfileImage || '',
+    breweryBio: sameProject ? breweryBio || existing.breweryBio || '' : existing.breweryBio,
+    breweryProfileImage: sameProject ? breweryProfileImage || existing.breweryProfileImage || '' : existing.breweryProfileImage,
     ingredients: sameProject && detailIngredients.length
       ? detailIngredients
       : existing.ingredients,

@@ -849,7 +849,34 @@ export default function FundingDetailScreen() {
   const optionTotalAmount = selectedSupportOptionPrice * selectedQuantity + shippingFee;
   const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
   const mainIngredientLabel = getFundingMainIngredientLabel(project);
-  const hasBreweryPublicProfile = Boolean((project.breweryBio || '').trim());
+  const officialBreweryInfo = project.breweryInfo;
+  const officialBreweryName =
+    officialBreweryInfo?.mainName ||
+    officialBreweryInfo?.breweryName ||
+    project.brewery ||
+    '정보 없음';
+  const officialBreweryIntro = officialBreweryInfo?.shortIntroduction || project.breweryBio || '';
+  const officialBreweryBrandStory = officialBreweryInfo?.brandStory || '';
+  const officialBreweryProfileImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl) || project.breweryProfileImage || '';
+  const officialBreweryAddress = [
+    officialBreweryInfo?.businessAddress || project.location,
+    officialBreweryInfo?.businessAddressDetail,
+  ].filter(Boolean).join(' ');
+  const officialBreweryEstablishedYear = officialBreweryInfo?.establishedYear ? `${officialBreweryInfo.establishedYear}년 설립` : '';
+  const officialBreweryBusinessNumber = officialBreweryInfo?.businessRegistrationNumber || '';
+  const officialBreweryRepresentative = officialBreweryInfo?.representativeName || '';
+  const officialBreweryMetaItems = [
+    officialBreweryEstablishedYear,
+    officialBreweryRepresentative ? `대표 ${officialBreweryRepresentative}` : '',
+    officialBreweryBusinessNumber ? `사업자 ${officialBreweryBusinessNumber}` : '',
+  ].filter(Boolean);
+  const hasBreweryPublicProfile = Boolean([
+    officialBreweryIntro,
+    officialBreweryBrandStory,
+    officialBreweryProfileImage,
+    officialBreweryEstablishedYear,
+    officialBreweryBusinessNumber,
+  ].some(Boolean));
   const ownerClosedProjectLabel = (() => {
     if (projectStatusLabel === "펀딩 성공") return "성공한 프로젝트";
     if (projectStatusLabel === "펀딩 실패") return "실패한 프로젝트";
@@ -1900,15 +1927,26 @@ export default function FundingDetailScreen() {
         <Animated.View entering={FadeInUp.delay(200)} style={{ paddingHorizontal: 16, marginBottom: 24 }}>
           <TouchableOpacity style={styles.breweryCard} activeOpacity={0.8} onPress={handleBreweryProfilePress}>
              <View style={styles.breweryLogo}>
-               {project.breweryProfileImage ? (
-                 <Image source={{ uri: project.breweryProfileImage }} style={styles.breweryLogoImage} />
+               {officialBreweryProfileImage ? (
+                 <Image source={{ uri: officialBreweryProfileImage }} style={styles.breweryLogoImage} />
                ) : (
                  <Text style={{ fontSize: 24 }}>{project.breweryLogo}</Text>
                )}
              </View>
-             <View style={{ flex: 1 }}>
-                <Text style={styles.breweryName}>{project.brewery}</Text>
-                <Text style={styles.breweryLoc}>{project.location}</Text>
+             <View style={styles.breweryContent}>
+                <Text style={styles.breweryName} numberOfLines={1}>{officialBreweryName}</Text>
+                {officialBreweryIntro ? <Text style={styles.breweryIntro} numberOfLines={2}>{officialBreweryIntro}</Text> : null}
+                {officialBreweryAddress ? <Text style={styles.breweryLoc} numberOfLines={1}>{officialBreweryAddress}</Text> : null}
+                {officialBreweryMetaItems.length ? (
+                  <View style={styles.breweryMetaRow}>
+                    {officialBreweryMetaItems.map((item) => (
+                      <View key={item} style={styles.breweryMetaChip}>
+                        <Text style={styles.breweryMetaText} numberOfLines={1}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                {officialBreweryBrandStory ? <Text style={styles.breweryStory} numberOfLines={2}>{officialBreweryBrandStory}</Text> : null}
              </View>
              <View style={styles.catBadge}><Text style={styles.catTxt} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text></View>
           </TouchableOpacity>
@@ -3030,8 +3068,14 @@ const styles = StyleSheet.create({
   breweryCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, backgroundColor: '#FFF', borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB' },
   breweryLogo: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
   breweryLogoImage: { width: '100%', height: '100%', resizeMode: 'cover' },
+  breweryContent: { flex: 1, minWidth: 0, gap: 4 },
   breweryName: { fontSize: 16, fontWeight: '700', color: '#111' },
+  breweryIntro: { fontSize: 13, color: '#374151', lineHeight: 18 },
   breweryLoc: { fontSize: 12, color: '#6B7280' },
+  breweryMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  breweryMetaChip: { maxWidth: '100%', paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#F9FAFB', borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB' },
+  breweryMetaText: { fontSize: 11, fontWeight: '700', color: '#6B7280' },
+  breweryStory: { marginTop: 2, fontSize: 12, color: '#4B5563', lineHeight: 18 },
   catBadge: { maxWidth: 112, paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#F3F4F6', borderRadius: 16, marginLeft: 'auto' },
   catTxt: { fontSize: 12, fontWeight: '700', color: '#4B5563' },
   ownerJournalActionWrap: { paddingHorizontal: 16, marginBottom: 24 },

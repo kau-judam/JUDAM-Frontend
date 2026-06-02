@@ -2,6 +2,7 @@ import type { BrewingStage, BudgetItem, FundingProject, JournalEntry, ProjectSta
 import type {
   FundingBreweryLogItem,
   FundingDetailResponse,
+  FundingOfficialBreweryInfo,
   FundingIntroResponse,
   FundingListItem,
   FundingReviewItem,
@@ -91,6 +92,93 @@ function sanitizeApiTextList(value: unknown) {
   return value
     .map(sanitizeApiText)
     .filter(Boolean);
+}
+
+function sanitizeApiId(value: unknown) {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text || undefined;
+}
+
+function readOfficialBreweryText(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const text = sanitizeApiText(source[key]);
+    if (text) return text;
+  }
+  return '';
+}
+
+function readOfficialBreweryId(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const id = sanitizeApiId(source[key]);
+    if (id) return id;
+  }
+  return undefined;
+}
+
+function hasOfficialBreweryInfo(value?: FundingOfficialBreweryInfo | null) {
+  if (!value || typeof value !== 'object') return false;
+  const source = value as Record<string, unknown>;
+  return [
+    'breweryUserId',
+    'brewery_user_id',
+    'breweryName',
+    'brewery_name',
+    'mainName',
+    'main_name',
+    'shortIntroduction',
+    'short_introduction',
+    'brandStory',
+    'brand_story',
+    'establishedYear',
+    'established_year',
+    'businessRegistrationNumber',
+    'business_registration_number',
+    'businessAddress',
+    'business_address',
+    'businessAddressDetail',
+    'business_address_detail',
+    'representativeName',
+    'representative_name',
+    'profileImageUrl',
+    'profile_image_url',
+    'businessRegistrationFileUrl',
+    'business_registration_file_url',
+  ].some((key) => Boolean(source[key]));
+}
+
+function normalizeOfficialBreweryInfo(
+  breweryInfo?: FundingOfficialBreweryInfo | null,
+  breweryProfile?: FundingOfficialBreweryInfo | null,
+  fallback?: FundingProject['breweryInfo']
+): FundingProject['breweryInfo'] | undefined {
+  const source = hasOfficialBreweryInfo(breweryInfo) ? breweryInfo : breweryProfile;
+  if (!source) return fallback;
+  const sourceRecord = source as Record<string, unknown>;
+  const next: FundingProject['breweryInfo'] = {
+    breweryUserId: readOfficialBreweryId(sourceRecord, ['breweryUserId', 'brewery_user_id']) || fallback?.breweryUserId,
+    breweryName: readOfficialBreweryText(sourceRecord, ['breweryName', 'brewery_name']) || fallback?.breweryName,
+    mainName: readOfficialBreweryText(sourceRecord, ['mainName', 'main_name']) || fallback?.mainName,
+    shortIntroduction: readOfficialBreweryText(sourceRecord, ['shortIntroduction', 'short_introduction']) || fallback?.shortIntroduction,
+    brandStory: readOfficialBreweryText(sourceRecord, ['brandStory', 'brand_story']) || fallback?.brandStory,
+    establishedYear: readOfficialBreweryId(sourceRecord, ['establishedYear', 'established_year']) || fallback?.establishedYear,
+    businessRegistrationNumber: readOfficialBreweryText(sourceRecord, ['businessRegistrationNumber', 'business_registration_number']) || fallback?.businessRegistrationNumber,
+    businessAddress: readOfficialBreweryText(sourceRecord, ['businessAddress', 'business_address']) || fallback?.businessAddress,
+    businessAddressDetail: readOfficialBreweryText(sourceRecord, ['businessAddressDetail', 'business_address_detail']) || fallback?.businessAddressDetail,
+    representativeName: readOfficialBreweryText(sourceRecord, ['representativeName', 'representative_name']) || fallback?.representativeName,
+    profileImageUrl: normalizeFundingImageUrl(source.profileImageUrl || source.profile_image_url) || fallback?.profileImageUrl,
+    businessRegistrationFileUrl: normalizeFundingImageUrl(source.businessRegistrationFileUrl || source.business_registration_file_url) || fallback?.businessRegistrationFileUrl,
+    missingFields: Array.isArray(source.missingFields) ? source.missingFields.filter(Boolean) : Array.isArray(source.missing_fields) ? source.missing_fields.filter(Boolean) : fallback?.missingFields,
+  };
+  return Object.values(next).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(value)) ? next : fallback;
+}
+
+function getOfficialBreweryDisplayName(info?: FundingProject['breweryInfo']) {
+  return sanitizeApiText(info?.mainName) || sanitizeApiText(info?.breweryName);
+}
+
+function getOfficialBreweryIntro(info?: FundingProject['breweryInfo']) {
+  return sanitizeApiText(info?.shortIntroduction);
 }
 
 function getPlanText(value: unknown) {
@@ -269,12 +357,17 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
   const matchScore = getFundingMatchScore(item);
   const mainIngredient = sanitizeApiText(item.mainIngredient) || sanitizeApiText(item.primaryIngredient);
   const subIngredients = joinTextList(item.subIngredients) || sanitizeApiText(item.subIngredient);
+  const officialBreweryInfo = normalizeOfficialBreweryInfo(item.breweryInfo || item.brewery_info, item.breweryProfile || item.brewery_profile, existing?.breweryInfo);
+  const officialBreweryName = getOfficialBreweryDisplayName(officialBreweryInfo);
+  const officialBreweryIntro = getOfficialBreweryIntro(officialBreweryInfo);
+  const officialBreweryImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl);
+  const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.businessAddress);
   return {
     id: item.fundingId,
     title: sanitizeApiText(item.title) || existing?.title || '',
-    brewery: sanitizeApiText(item.breweryName) || existing?.brewery || '',
+    brewery: officialBreweryName || sanitizeApiText(item.breweryName) || existing?.brewery || '',
     breweryLogo: existing?.breweryLogo || '🍶',
-    location: existing?.location || '',
+    location: officialBusinessAddress || existing?.location || '',
     category: existing?.category || '',
     shortTitle: existing?.shortTitle || sanitizeApiText(item.title),
     shortDescription: sanitizeApiText(item.description) || existing?.shortDescription || existing?.projectSummary || sanitizeApiText(item.title),
@@ -283,7 +376,7 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     localImage: undefined,
     popularRank: existing?.popularRank,
     isMine: getFundingIsMine(item) ?? existing?.isMine,
-    breweryUserId: getFundingBreweryUserId(item) ?? existing?.breweryUserId,
+    breweryUserId: sanitizeApiId(officialBreweryInfo?.breweryUserId) ?? getFundingBreweryUserId(item) ?? existing?.breweryUserId,
     ownerUserId: getFundingOwnerUserId(item) ?? existing?.ownerUserId,
     creatorId: existing?.creatorId,
     breweryId: existing?.breweryId,
@@ -324,8 +417,9 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     schedule: existing?.schedule,
     tasteProfile: existing?.tasteProfile,
     team: existing?.team,
-    breweryBio: '',
-    breweryProfileImage: '',
+    breweryBio: officialBreweryIntro || existing?.breweryBio || '',
+    breweryProfileImage: officialBreweryImage || existing?.breweryProfileImage || '',
+    breweryInfo: officialBreweryInfo,
     productType: existing?.productType,
     ingredients: existing?.ingredients,
     journals: existing?.journals || [],
@@ -353,7 +447,13 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     isSameFundingText(existing.title, detail.title) ||
     isSameFundingText(existing.shortTitle, detail.title);
   const matchScore = getFundingMatchScore(detail);
+  const officialBreweryInfo = normalizeOfficialBreweryInfo(detail.breweryInfo || detail.brewery_info, detail.breweryProfile || detail.brewery_profile, existing.breweryInfo);
+  const officialBreweryName = getOfficialBreweryDisplayName(officialBreweryInfo);
+  const officialBreweryIntro = getOfficialBreweryIntro(officialBreweryInfo);
+  const officialBreweryImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl);
+  const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.businessAddress);
   const businessAddress =
+    officialBusinessAddress ||
     sanitizeApiText(detail.businessAddress) ||
     sanitizeApiText(detail.breweryAddress) ||
     sanitizeApiText(detail.breweryLocation) ||
@@ -379,15 +479,16 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
   const projectPolicy = sanitizeApiText(detail.plan?.policy) || sanitizeApiText(detail.notices?.policy) || sanitizeApiText(detail.notices?.refundPolicy);
   const breweryProfileImage = normalizeFundingImageUrl(detail.breweryInfo?.profileImageUrl);
   const breweryBio =
+    officialBreweryIntro ||
+    sanitizeApiText(detail.breweryInfo?.shortIntroduction) ||
+    existing.breweryBio ||
     sanitizeApiText(detail.breweryInfo?.creatorIntroduction) ||
     sanitizeApiText(detail.breweryInfo?.breweryBio) ||
-    sanitizeApiText(detail.breweryInfo?.shortIntroduction) ||
-    sanitizeApiText(detail.breweryInfo?.brandStory) ||
     sanitizeApiText(detail.breweryInfo?.history);
   return {
     ...existing,
     title: sameProject ? sanitizeApiText(detail.title) || existing.title : existing.title,
-    brewery: sameProject ? sanitizeApiText(detail.breweryInfo?.breweryName) || sanitizeApiText(detail.breweryName) || existing.brewery : existing.brewery,
+    brewery: sameProject ? officialBreweryName || sanitizeApiText(detail.breweryInfo?.breweryName) || sanitizeApiText(detail.breweryName) || existing.brewery : existing.brewery,
     location: sameProject ? businessAddress || existing.location : existing.location,
     category: sameProject ? sanitizeApiText(detail.category) || existing.category : existing.category,
     shortTitle: sameProject ? sanitizeApiText(detail.shortTitle) || existing.shortTitle : existing.shortTitle,
@@ -412,7 +513,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     volume: sameProject ? bottleSize || existing.volume : existing.volume,
     alcoholContent: sameProject ? alcoholContent || existing.alcoholContent : existing.alcoholContent,
     isMine: sameProject ? getFundingIsMine(detail) ?? existing.isMine : existing.isMine,
-    breweryUserId: sameProject ? getFundingBreweryUserId(detail) ?? existing.breweryUserId : existing.breweryUserId,
+    breweryUserId: sameProject ? sanitizeApiId(officialBreweryInfo?.breweryUserId) ?? getFundingBreweryUserId(detail) ?? existing.breweryUserId : existing.breweryUserId,
     ownerUserId: sameProject ? getFundingOwnerUserId(detail) ?? existing.ownerUserId : existing.ownerUserId,
     liked: sameProject ? detail.liked ?? existing.liked : existing.liked,
     favoriteCount: sameProject ? detail.likeCount ?? existing.favoriteCount : existing.favoriteCount,
@@ -437,7 +538,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     introduction: sameProject ? sanitizeApiText(detail.plan?.introduction) || existing.introduction : existing.introduction,
     story: sameProject ? sanitizeApiText(detail.plan?.introduction) || existing.story : existing.story,
     videoUrl: sameProject ? sanitizeApiText(detail.plan?.videoUrl) || existing.videoUrl : existing.videoUrl,
-    businessAddress: sameProject ? sanitizeApiText(detail.businessAddress) || sanitizeApiText(detail.breweryInfo?.businessAddress) || existing.businessAddress : existing.businessAddress,
+    businessAddress: sameProject ? businessAddress || existing.businessAddress : existing.businessAddress,
     breweryAddress: sameProject ? sanitizeApiText(detail.breweryAddress) || sanitizeApiText(detail.breweryInfo?.breweryAddress) || businessAddress || existing.breweryAddress : existing.breweryAddress,
     mainIngredientLabel: sameProject ? sanitizeApiText(detail.mainIngredientLabel) || sanitizeApiText(detail.primaryIngredientLabel) || existing.mainIngredientLabel : existing.mainIngredientLabel,
     primaryIngredientLabel: sameProject ? sanitizeApiText(detail.primaryIngredientLabel) || sanitizeApiText(detail.mainIngredientLabel) || existing.primaryIngredientLabel : existing.primaryIngredientLabel,
@@ -452,7 +553,8 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     budget: sameProject ? (budgetItems.length ? budgetItems : existing.budget) : existing.budget,
     schedule: sameProject ? (scheduleItems.length ? scheduleItems : existing.schedule) : existing.schedule,
     breweryBio: sameProject ? breweryBio || existing.breweryBio || '' : existing.breweryBio,
-    breweryProfileImage: sameProject ? breweryProfileImage || existing.breweryProfileImage || '' : existing.breweryProfileImage,
+    breweryProfileImage: sameProject ? officialBreweryImage || breweryProfileImage || existing.breweryProfileImage || '' : existing.breweryProfileImage,
+    breweryInfo: sameProject ? officialBreweryInfo || existing.breweryInfo : existing.breweryInfo,
     ingredients: sameProject && detailIngredients.length
       ? detailIngredients
       : existing.ingredients,
@@ -471,6 +573,11 @@ export function mergeFundingIntro(existing: FundingProject, intro: FundingIntroR
   const budgetPlanText = sanitizeApiText(intro.budgetPlan) || sanitizeApiText(intro.projectBudget);
   const schedulePlanText = sanitizeApiText(intro.schedulePlan) || sanitizeApiText(intro.projectSchedule);
   const projectPolicy = sanitizeApiText(intro.policy) || sanitizeApiText(intro.projectPolicy);
+  const officialBreweryInfo = normalizeOfficialBreweryInfo(intro.breweryInfo || intro.brewery_info, intro.breweryProfile || intro.brewery_profile, existing.breweryInfo);
+  const officialBreweryName = getOfficialBreweryDisplayName(officialBreweryInfo);
+  const officialBreweryIntro = getOfficialBreweryIntro(officialBreweryInfo);
+  const officialBreweryImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl);
+  const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.businessAddress);
   return {
     ...existing,
     projectSummary: existing.projectSummary || sanitizeApiText(intro.introduction),
@@ -485,6 +592,12 @@ export function mergeFundingIntro(existing: FundingProject, intro: FundingIntroR
     schedulePlanText: schedulePlanText || existing.schedulePlanText,
     projectPolicy: projectPolicy || existing.projectPolicy,
     images: introImages.length ? introImages : existing.images,
+    brewery: officialBreweryName || existing.brewery,
+    location: officialBusinessAddress || existing.location,
+    breweryBio: officialBreweryIntro || existing.breweryBio,
+    breweryProfileImage: officialBreweryImage || existing.breweryProfileImage,
+    breweryUserId: sanitizeApiId(officialBreweryInfo?.breweryUserId) || existing.breweryUserId,
+    breweryInfo: officialBreweryInfo || existing.breweryInfo,
     updatedAt: new Date().toISOString(),
   };
 }

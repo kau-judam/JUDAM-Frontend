@@ -208,6 +208,8 @@ export type FundingDraftPreviewResponse = {
     videoUrl?: string;
     budgetPlan?: { category: string; amount: number }[] | string;
     schedulePlan?: { step: string; description: string; date: string }[] | string;
+    projectBudget?: string;
+    projectSchedule?: string;
     budgetPlanGuide?: string;
     schedulePlanGuide?: string;
     policy?: string;
@@ -217,6 +219,11 @@ export type FundingDraftPreviewResponse = {
     creatorName?: string;
     profileImageUrl?: string;
     creatorIntroduction?: string;
+    breweryBio?: string;
+    oneLineIntroduction?: string;
+    shortIntroduction?: string;
+    brandStory?: string;
+    history?: string;
     representativeName?: string;
   businessRegistrationNumber?: string;
   businessAddress?: string;
@@ -1791,8 +1798,30 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
     plan: {
       introduction: readFundingApiString(plan, ['introduction']),
       videoUrl: readFundingApiString(plan, ['videoUrl', 'video_url']),
-      budgetPlan: readFundingApiArrayOrString<{ category: string; amount: number }>(plan, ['budgetPlanRaw', 'budget_plan_raw', 'budgetPlanInput', 'budget_plan_input', 'budgetPlanText', 'budget_plan_text', 'budgetPlan', 'budget_plan']),
-      schedulePlan: readFundingApiArrayOrString<{ step: string; description: string; date: string }>(plan, ['schedulePlanRaw', 'schedule_plan_raw', 'schedulePlanInput', 'schedule_plan_input', 'schedulePlanText', 'schedule_plan_text', 'schedulePlan', 'schedule_plan']),
+      budgetPlan: readFundingApiArrayOrString<{ category: string; amount: number }>(plan, [
+        'budgetPlanRaw',
+        'budget_plan_raw',
+        'budgetPlanInput',
+        'budget_plan_input',
+        'budgetPlanText',
+        'budget_plan_text',
+        'projectBudget',
+        'project_budget',
+        'budgetPlan',
+        'budget_plan',
+      ]),
+      schedulePlan: readFundingApiArrayOrString<{ step: string; description: string; date: string }>(plan, [
+        'schedulePlanRaw',
+        'schedule_plan_raw',
+        'schedulePlanInput',
+        'schedule_plan_input',
+        'schedulePlanText',
+        'schedule_plan_text',
+        'projectSchedule',
+        'project_schedule',
+        'schedulePlan',
+        'schedule_plan',
+      ]),
       budgetPlanGuide: readFundingApiString(plan, ['budgetPlanGuide', 'budget_plan_guide']),
       schedulePlanGuide: readFundingApiString(plan, ['schedulePlanGuide', 'schedule_plan_guide']),
       policy: readFundingApiString(plan, ['policyRaw', 'policy_raw', 'policyText', 'policy_text', 'policy', 'projectPolicy', 'project_policy']),
@@ -2410,7 +2439,7 @@ function normalizeBreweryId(value: unknown) {
 }
 
 function shouldLogFundingCreateApi(path: string) {
-  return path.startsWith('/api/fundings/drafts');
+  return __DEV__ && path.startsWith('/api/fundings/drafts');
 }
 
 function getFundingCreateLogScope(path: string, method?: string) {

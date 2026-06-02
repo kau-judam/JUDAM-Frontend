@@ -8,6 +8,20 @@ type AuthApiEnvelope<T> = {
   data?: T;
 };
 
+export class AuthApiError extends Error {
+  status: number;
+  path: string;
+  data: unknown;
+
+  constructor(message: string, status: number, path: string, data: unknown) {
+    super(message);
+    this.name = 'AuthApiError';
+    this.status = status;
+    this.path = path;
+    this.data = data;
+  }
+}
+
 export type AuthRole = 'USER' | 'BREWERY_PENDING' | 'BREWERY' | string;
 
 export type AuthApiUser = {
@@ -231,7 +245,7 @@ async function requestAuthJson<T>(path: string, options: RequestInit = {}) {
 
   if (!response.ok) {
     const message = (data as AuthApiEnvelope<unknown> | null)?.message || `HTTP ${response.status}`;
-    throw new Error(message);
+    throw new AuthApiError(message, response.status, path, data);
   }
 
   return data as T;
@@ -251,7 +265,7 @@ async function requestAuthForm<T>(path: string, formData: FormData, options: Req
 
   if (!response.ok) {
     const message = (data as AuthApiEnvelope<unknown> | null)?.message || `HTTP ${response.status}`;
-    throw new Error(message);
+    throw new AuthApiError(message, response.status, path, data);
   }
 
   return data as T;

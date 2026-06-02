@@ -35,7 +35,7 @@ import Animated, {
 import { StatusBar } from 'expo-status-bar';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { getKakaoLoginUrl } from '@/features/auth/api';
+import { AuthApiError, getKakaoLoginUrl } from '@/features/auth/api';
 import {
   createKakaoAppRedirectUrl,
   getKakaoAuthUrl,
@@ -58,6 +58,58 @@ const SPRING_CONFIG = {
   restDisplacementThreshold: 0.1,
   restSpeedThreshold: 0.1,
 };
+
+function getLoginErrorMessage(error: unknown) {
+  const rawMessage = error instanceof Error ? error.message.trim() : '';
+  const message = rawMessage.replace(/^HTTP\s+\d+\s*:?\s*/i, '').trim();
+  const status = error instanceof AuthApiError ? error.status : undefined;
+
+  if (!message) return '이메일 또는 비밀번호를 다시 확인해주세요.';
+  if (status === 401 || status === 403) {
+    return '이메일 또는 비밀번호가 일치하지 않습니다. 다시 확인해주세요.';
+  }
+  if (status === 404) {
+    return '가입된 계정을 찾을 수 없습니다. 이메일을 다시 확인해주세요.';
+  }
+  if (status && status >= 500) {
+    return '서버에서 로그인 처리가 지연되고 있습니다. 잠시 후 다시 시도해주세요.';
+  }
+  if (isLikelyGarbledMessage(message)) {
+    return '로그인 처리 중 문제가 발생했습니다. 이메일과 비밀번호를 다시 확인해주세요.';
+  }
+  if (/network request failed|failed to fetch|networkerror/i.test(message)) {
+    return '서버에 연결할 수 없습니다. 네트워크 상태를 확인한 뒤 다시 시도해주세요.';
+  }
+  if (/timeout|timed out/i.test(message)) {
+    return '서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해주세요.';
+  }
+  if (/unauthorized|invalid token|expired token|token/i.test(message)) {
+    return '로그인 정보가 유효하지 않습니다. 이메일과 비밀번호를 다시 확인해주세요.';
+  }
+  if (/not found|존재하지|찾을 수 없|없습니다/i.test(message)) {
+    return '가입된 계정을 찾을 수 없습니다. 이메일을 다시 확인해주세요.';
+  }
+  if (/password|비밀번호|비밀 번호|불일치|incorrect|wrong/i.test(message)) {
+    return '비밀번호가 일치하지 않습니다. 다시 입력해주세요.';
+  }
+  if (/kakao|provider|소셜|카카오/i.test(message)) {
+    return '카카오로 가입한 계정입니다. 카카오 로그인으로 다시 시도해주세요.';
+  }
+  if (/인증|verify|verification/i.test(message)) {
+    return '계정 인증 상태를 확인할 수 없습니다. 인증을 완료한 뒤 다시 시도해주세요.';
+  }
+  if (/^\d{3}$/.test(message)) {
+    return '로그인 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.';
+  }
+
+  return message;
+}
+
+function isLikelyGarbledMessage(message: string) {
+  const questionMarkCount = (message.match(/\?/g) || []).length;
+  const hasNonAscii = /[^\x00-\x7F]/.test(message);
+  return message.includes('�') || /[ìíîïðñòóôõö÷øùúûüýþÿ留吏理]/.test(message) || (questionMarkCount >= 2 && hasNonAscii);
+}
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
@@ -125,9 +177,9 @@ export default function LoginScreen() {
       setIsLoading(false);
       RNStatusBar.setHidden(false, 'fade');
       router.replace('/(tabs)');
-    } catch {
+    } catch (error) {
       setIsLoading(false);
-      setNotice("로그인에 실패했습니다.");
+      setNotice(getLoginErrorMessage(error));
     }
   };
 

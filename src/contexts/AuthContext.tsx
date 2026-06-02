@@ -20,6 +20,7 @@ import {
   type SelectableAuthRole,
 } from "@/features/auth/api";
 import { digitsOnly } from "@/utils/validation";
+import { clearPendingExternalPayment, hasRecentPendingExternalPayment } from "@/utils/externalFlow";
 import type { BtiTasteAxisValues } from "@/features/bti/data";
 import { getMyPageProfile } from "@/features/mypage/api";
 import {
@@ -237,7 +238,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const keepLoggedIn = await SafeStorage.getItem(KEEP_LOGIN_KEY);
         const savedUser = await SafeStorage.getItem("judam_user");
-        if (keepLoggedIn !== "true") {
+        const hasPendingExternalPayment = await hasRecentPendingExternalPayment();
+        if (keepLoggedIn !== "true" && !hasPendingExternalPayment) {
           await SafeStorage.removeItem("judam_user");
           await clearAuthTokens();
           return;
@@ -368,6 +370,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await SafeStorage.removeItem("judam_user");
       await SafeStorage.removeItem(KEEP_LOGIN_KEY);
       await SafeStorage.removeItem("judam_onboarded");
+      await clearPendingExternalPayment();
       await clearAuthTokens();
     } catch (e) {
       console.error("Failed to remove user from SafeStorage", e);

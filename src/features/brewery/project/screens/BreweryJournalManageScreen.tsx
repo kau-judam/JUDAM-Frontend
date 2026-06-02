@@ -125,15 +125,15 @@ export default function BreweryJournalManageScreen() {
   const canManage = Boolean(user?.isBreweryVerified && isFundingProjectOwnedByBrewery(user, project));
 
   useEffect(() => {
-    if (!project || !canManage) return;
+    if (!projectId || !canManage) return;
 
     let mounted = true;
-    getFundingBreweryLogs(project.id)
+    getFundingBreweryLogs(projectId)
       .then((response) => {
         if (!mounted) return;
         const nextJournals = mapBreweryLogs(response.logs);
         setServerJournals(nextJournals);
-        updateProjectJournals(project.id, nextJournals);
+        updateProjectJournals(projectId, nextJournals);
       })
       .catch((error) => {
         if (!mounted) return;
@@ -143,7 +143,7 @@ export default function BreweryJournalManageScreen() {
     return () => {
       mounted = false;
     };
-  }, [canManage, project?.id, updateProjectJournals]);
+  }, [canManage, projectId, updateProjectJournals]);
 
   const resetForm = () => {
     setEditingEntry(null);

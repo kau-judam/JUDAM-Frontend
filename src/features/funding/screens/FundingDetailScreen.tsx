@@ -871,6 +871,7 @@ export default function FundingDetailScreen() {
   const optionTotalAmount = selectedSupportOptionPrice * selectedQuantity + shippingFee;
   const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
   const mainIngredientLabel = getFundingMainIngredientLabel(project);
+  const hasBreweryPublicProfile = Boolean((project.breweryBio || '').trim());
   const ownerClosedProjectLabel = (() => {
     if (projectStatusLabel === "펀딩 성공") return "성공한 프로젝트";
     if (projectStatusLabel === "펀딩 실패") return "실패한 프로젝트";
@@ -994,6 +995,17 @@ export default function FundingDetailScreen() {
   };
 
   const journals = project.journals || [];
+
+  const handleBreweryProfilePress = () => {
+    if (!hasBreweryPublicProfile) {
+      setFeedbackModal({
+        title: '양조장 프로필이 없습니다',
+        body: '양조장이 아직 프로필을 만들지 않았습니다. 프로필을 작성한 뒤 확인할 수 있어요.',
+      });
+      return;
+    }
+    router.push(`/brewery/${project.id}` as any);
+  };
 
   const handleSupportClick = () => {
     if (!isOwnBreweryProject && !isProjectSupportable) {
@@ -1894,7 +1906,7 @@ export default function FundingDetailScreen() {
 
         {/* 4. Brewery Info */}
         <Animated.View entering={FadeInUp.delay(200)} style={{ paddingHorizontal: 16, marginBottom: 24 }}>
-          <TouchableOpacity style={styles.breweryCard} activeOpacity={0.8} onPress={() => router.push(`/brewery/${project.id}` as any)}>
+          <TouchableOpacity style={styles.breweryCard} activeOpacity={0.8} onPress={handleBreweryProfilePress}>
              <View style={styles.breweryLogo}>
                {project.breweryProfileImage ? (
                  <Image source={{ uri: project.breweryProfileImage }} style={styles.breweryLogoImage} />

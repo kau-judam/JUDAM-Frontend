@@ -3,6 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AlertCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getFundingApiSafeMessage } from '@/features/funding/api';
 import { clearPendingExternalPayment } from '@/utils/externalFlow';
 
 function getParam(value: string | string[] | undefined) {
@@ -12,7 +13,7 @@ function getParam(value: string | string[] | undefined) {
 export default function TossPaymentFailScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ code?: string; message?: string; orderId?: string; fundingId?: string; orderName?: string }>();
-  const message = getParam(params.message) || '토스 결제가 완료되지 않았습니다.';
+  const message = getFundingApiSafeMessage(getParam(params.message), '토스 결제가 완료되지 않았습니다.');
   const code = getParam(params.code);
   const orderId = getParam(params.orderId);
   const fundingId = getParam(params.fundingId);

@@ -5,6 +5,7 @@ import { X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import FundingAlertModal from '@/features/funding/components/FundingAlertModal';
+import { getFundingApiSafeMessage } from '@/features/funding/api';
 
 const TOSS_CLIENT_KEY = process.env.EXPO_PUBLIC_TOSS_CLIENT_KEY;
 const TOSS_RETURN_ORIGIN = 'https://judam.app';
@@ -377,13 +378,13 @@ export default function FundingTossPaymentScreen() {
         javaScriptCanOpenWindowsAutomatically
         setSupportMultipleWindows={false}
         onLoadEnd={() => setWebViewReady(true)}
-        onError={(event) => setWebError(event.nativeEvent.description)}
+        onError={(event) => setWebError(getFundingApiSafeMessage(event.nativeEvent.description, '결제창을 불러오지 못했습니다.'))}
         onMessage={(event) => {
           try {
             const data = JSON.parse(event.nativeEvent.data) as { type?: string; message?: string };
-            if (data.type === 'error' && data.message) setWebError(data.message);
+            if (data.type === 'error' && data.message) setWebError(getFundingApiSafeMessage(data.message, '결제창을 열 수 없습니다.'));
           } catch {
-            setWebError(event.nativeEvent.data);
+            setWebError(getFundingApiSafeMessage(event.nativeEvent.data, '결제창을 열 수 없습니다.'));
           }
         }}
         onShouldStartLoadWithRequest={(request) => {

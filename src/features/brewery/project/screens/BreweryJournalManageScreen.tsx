@@ -23,6 +23,7 @@ import {
   createBreweryLog,
   deleteBreweryLog,
   getFundingApiErrorMessage,
+  getFundingApiSafeMessage,
   getFundingBreweryLogs,
   updateBreweryLog,
   type FundingBreweryLogStage,
@@ -260,7 +261,7 @@ export default function BreweryJournalManageScreen() {
       updateProjectJournals(project.id, nextJournals);
       resetForm();
       setSelectedStage(null);
-      setMessage(response.message || (editingEntry ? '양조일지가 수정되었습니다.' : '양조일지가 저장되었습니다.'));
+      setMessage(getFundingApiSafeMessage(response.message, editingEntry ? '양조일지가 수정되었습니다.' : '양조일지가 저장되었습니다.'));
     } catch (error) {
       setMessage(getFundingApiErrorMessage(error, '양조일지를 저장하지 못했습니다.'));
     } finally {

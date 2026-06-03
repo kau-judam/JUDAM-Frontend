@@ -52,6 +52,7 @@ import {
   deleteFundingDraft,
   generateFundingDraftAiImage,
   getFundingApiErrorMessage,
+  getFundingApiSafeMessage,
   getFundingDraftByFundingId,
   getFundingDraftList,
   getFundingDraftPreview,
@@ -2256,7 +2257,7 @@ export default function BreweryProjectCreateScreen() {
       });
 
       if (result.status === 'prompt_only') {
-        showAlert(result.message || '이미지 생성에 실패했습니다. 프롬프트만 생성되었습니다.');
+        showAlert(getFundingApiSafeMessage(result.message, '이미지 생성에 실패했습니다. 프롬프트만 생성되었습니다.'));
         return;
       }
 
@@ -2266,7 +2267,7 @@ export default function BreweryProjectCreateScreen() {
         : normalizeFundingImageUrls([result.imageUrl, result.thumbnailUrl]);
 
       if (!generatedImageUrls.length) {
-        showAlert(result.message || '생성된 이미지 URL을 확인할 수 없습니다.');
+        showAlert(getFundingApiSafeMessage(result.message, '생성된 이미지 URL을 확인할 수 없습니다.'));
         return;
       }
 
@@ -2427,7 +2428,7 @@ export default function BreweryProjectCreateScreen() {
     try {
       const result = await verifyBreweryAccount({ bankName, accountNumber, accountHolder });
       if (!result.verified) {
-        throw new Error(result.message || '계좌 인증에 실패했습니다.');
+        throw new Error(getFundingApiSafeMessage(result.message, '계좌 인증에 실패했습니다.'));
       }
       const verifiedBankName = result.bankName || bankName;
       const verifiedAccountNumber = result.accountNumber || accountNumber;
@@ -2468,7 +2469,7 @@ export default function BreweryProjectCreateScreen() {
         accountNumber: verifiedAccountNumber,
       }));
       setAccountVerified(true);
-      showAlert(result.message || '인증완료!');
+      showAlert(getFundingApiSafeMessage(result.message, '인증완료!'));
     } catch (error) {
       setAccountVerified(false);
       showAlert(getFundingApiErrorMessage(error, '계좌 인증에 실패했습니다.'));

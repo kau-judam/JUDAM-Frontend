@@ -910,10 +910,6 @@ export default function FundingDetailScreen() {
     normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl) ||
     project.breweryProfileImage ||
     '';
-  const officialBreweryAddress = [
-    dashboardBreweryProfile?.address || officialBreweryInfo?.businessAddress || project.location,
-    dashboardBreweryProfile ? '' : officialBreweryInfo?.businessAddressDetail,
-  ].filter(Boolean).join(' ');
   const officialBreweryEstablishedYear =
     dashboardBreweryEstablishedYear
       ? `${dashboardBreweryEstablishedYear}년 설립`
@@ -924,15 +920,6 @@ export default function FundingDetailScreen() {
     dashboardBreweryProfile?.businessRegistrationNumber ||
     officialBreweryInfo?.businessRegistrationNumber ||
     '';
-  const officialBreweryRepresentative =
-    dashboardBreweryProfile?.representativeName ||
-    officialBreweryInfo?.representativeName ||
-    '';
-  const officialBreweryMetaItems = [
-    officialBreweryEstablishedYear,
-    officialBreweryRepresentative ? `대표 ${officialBreweryRepresentative}` : '',
-    officialBreweryBusinessNumber ? `사업자 ${officialBreweryBusinessNumber}` : '',
-  ].filter(Boolean);
   const dashboardHasBreweryPublicProfile = Boolean(dashboardBreweryProfile && [
     dashboardBreweryProfile.profileImageUrl,
     dashboardBreweryProfile.oneLineIntroduction,

@@ -34,7 +34,8 @@ export function mapFundingStatus(status: string, _currentAmount = 0, _targetAmou
   if (normalized === 'REVIEWING') return '심사 중';
   if (normalized === 'REJECTED' || normalized === 'REJECT' || normalized === 'DENIED') return '펀딩 반려';
   if (normalized === 'UPCOMING') return '펀딩 예정';
-  if (normalized === 'ONGOING' || normalized === 'ACTIVE') return '진행 중';
+  if (normalized === 'ACTIVE') return 'ACTIVE';
+  if (normalized === 'ONGOING') return 'ONGOING';
   if (normalized === 'SUCCESS') return '펀딩 성공';
   if (normalized === 'FAILED') return '펀딩 실패';
   if (normalized === 'ENDED') return '종료';

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -31,7 +31,8 @@ import { useFunding } from '@/contexts/FundingContext';
 import { getFundingProjectImageSource, getFundingProjectStatusLabel, getPopularRecipes, isFundingProjectSupportable, sortFundingProjectsByPopularity } from '@/constants/data';
 import type { Recipe } from '@/constants/data';
 import { fetchPopularRecipes } from '@/features/recipe/api';
-import { getFundingApiErrorMessage, getFundingStats, type FundingStatsResponse } from '@/features/funding/api';
+import { getFundingApiErrorMessage, getFundingList, getFundingStats, type FundingStatsResponse } from '@/features/funding/api';
+import { mergeFundingListItem } from '@/features/funding/apiMappers';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -76,7 +77,8 @@ function pushTabToTop(pathname: '/recipe' | '/funding') {
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
-  const { projects } = useFunding();
+  const { projects, mergeProjects } = useFunding();
+  const projectsRef = useRef(projects);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [popularRecipes, setPopularRecipes] = useState<Recipe[]>(() => getPopularRecipes(3));
   const [serverFundingStats, setServerFundingStats] = useState<FundingStatsResponse | null>(null);
@@ -97,7 +99,24 @@ export default function HomeScreen() {
   const totalRaisedAmountText = `${Math.round((fundingStats.totalRaisedAmount || 0) / 10000).toLocaleString()}만원`;
 
   useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  useEffect(() => {
     let mounted = true;
+
+    const loadPopularFundingProjects = async () => {
+      try {
+        const response = await getFundingList({ sort: 'POPULAR', page: 0, size: 3 });
+        if (!mounted) return;
+        const nextProjects = response.data.map((item) =>
+          mergeFundingListItem(projectsRef.current.find((project) => project.id === item.fundingId), item)
+        );
+        mergeProjects(nextProjects);
+      } catch (error) {
+        console.warn(getFundingApiErrorMessage(error, 'Failed to load popular funding projects from API'));
+      }
+    };
 
     const loadPopularRecipes = async () => {
       try {
@@ -110,11 +129,12 @@ export default function HomeScreen() {
       }
     };
 
+    loadPopularFundingProjects();
     loadPopularRecipes();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [mergeProjects]);
 
   useEffect(() => {
     let mounted = true;

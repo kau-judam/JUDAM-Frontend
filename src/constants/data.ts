@@ -3,6 +3,7 @@ import type { ImageSourcePropType } from 'react-native';
 export type ProjectStatus =
   | "READY"
   | "REVIEWING"
+  | "ONGOING"
   | "ACTIVE"
   | "ENDED"
   | "SUCCESS"
@@ -265,7 +266,7 @@ export function getFundingProjectImageSource(project: FundingProject) {
 
 export type FundingStatusTone = "active" | "reviewing" | "success" | "failed" | "ended" | "neutral";
 
-export const activeFundingStatuses: ProjectStatus[] = ["펀딩 예정", "진행 중", "목표 달성", "READY", "ACTIVE"];
+export const activeFundingStatuses: ProjectStatus[] = ["ACTIVE"];
 
 export const completedFundingStatuses: ProjectStatus[] = [
   "펀딩 성공",
@@ -292,12 +293,12 @@ function getFundingStatusText(status: ProjectStatus | string) {
 
 export function isActiveFundingStatus(status: ProjectStatus) {
   const normalized = normalizeFundingStatus(status);
-  return activeFundingStatuses.includes(status) || normalized === "READY" || normalized === "ACTIVE";
+  return activeFundingStatuses.includes(status) || normalized === "ACTIVE";
 }
 
 export function isSupportableFundingStatus(status: ProjectStatus) {
   const normalized = normalizeFundingStatus(status);
-  return normalized === "ACTIVE" || getFundingStatusText(status) === "진행 중";
+  return normalized === "ACTIVE";
 }
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -392,6 +393,7 @@ export function getFundingStatusLabel(status: ProjectStatus | string) {
   if (normalized === "REVIEWING") return "심사 중";
   if (normalized === "REJECTED" || normalized === "REJECT" || normalized === "DENIED") return "펀딩 반려";
   if (normalized === "ACTIVE") return "진행 중";
+  if (normalized === "ONGOING") return "진행 중";
   if (normalized === "SUCCESS") return "펀딩 성공";
   if (normalized === "FAILED") return "펀딩 실패";
   if (normalized === "ENDED") return "종료";

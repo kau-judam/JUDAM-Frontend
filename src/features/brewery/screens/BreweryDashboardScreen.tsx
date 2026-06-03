@@ -62,10 +62,15 @@ import type { AppNotification } from '@/features/notifications/data';
 
 const FUNDINGS_PER_PAGE = 3;
 
+type DashboardFundingProject = FundingProject & {
+  statusLabel?: string;
+};
+
 const getDashboardFundingItems = (response: {
   content?: BreweryDashboardFundingItem[];
   data?: BreweryDashboardFundingItem[];
-}) => {
+} | BreweryDashboardFundingItem[]) => {
+  if (Array.isArray(response)) return response;
   if (Array.isArray(response.content) && response.content.length > 0) return response.content;
   if (Array.isArray(response.data) && response.data.length > 0) return response.data;
   return response.content || response.data || [];
@@ -74,7 +79,7 @@ const getDashboardFundingItems = (response: {
 const normalizeDashboardProjectStatus = (status: string): ProjectStatus => {
   const text = String(status || '').trim();
   const normalized = text.toUpperCase();
-  if (normalized === 'ACTIVE' || text.includes('진행')) return 'ACTIVE';
+  if (normalized === 'ACTIVE' || normalized === 'ONGOING' || text.includes('진행')) return 'ACTIVE';
   if (normalized === 'SUCCESS' || normalized === 'SUCCESSFUL' || normalized === 'FUNDING_SUCCESS' || text.includes('성공')) return 'SUCCESS';
   if (normalized === 'FAILED' || normalized === 'FAILURE' || text.includes('실패')) return 'FAILED';
   if (normalized === 'CANCELED' || normalized === 'CANCELLED' || text.includes('취소')) return 'CANCELED';
@@ -84,7 +89,7 @@ const normalizeDashboardProjectStatus = (status: string): ProjectStatus => {
   return status as ProjectStatus;
 };
 
-const mapDashboardFundingToProject = (item: BreweryDashboardFundingItem): FundingProject => ({
+const mapDashboardFundingToProject = (item: BreweryDashboardFundingItem): DashboardFundingProject => ({
   id: item.fundingId,
   title: item.title,
   brewery: item.breweryName,
@@ -98,6 +103,7 @@ const mapDashboardFundingToProject = (item: BreweryDashboardFundingItem): Fundin
   backers: 0,
   daysLeft: item.remainingDays || 0,
   status: normalizeDashboardProjectStatus(item.status),
+  statusLabel: item.statusLabel,
   endDate: item.endDate,
 });
 
@@ -107,6 +113,8 @@ const mapDashboardNotificationType = (type: string): AppNotification['type'] => 
       return 'funding_success';
     case 'FUNDING_ENDED':
       return 'funding_end';
+    case 'SETTLEMENT_COMPLETED':
+      return 'settlement_completed';
     case 'FUNDING_CREATED':
       return 'funding_new';
     case 'FUNDING_PROGRESS':
@@ -193,7 +201,7 @@ export default function BreweryDashboardScreen() {
   const [isInsightPaymentVisible, setIsInsightPaymentVisible] = useState(false);
   const [dashboardBasicInfo, setDashboardBasicInfo] = useState<BreweryDashboardBasicInfo | null>(null);
   const [fundingSummary, setFundingSummary] = useState<BreweryFundingSummary | null>(null);
-  const [apiFundings, setApiFundings] = useState<Record<'active' | 'completed', FundingProject[]>>({ active: [], completed: [] });
+  const [apiFundings, setApiFundings] = useState<Record<'active' | 'completed', DashboardFundingProject[]>>({ active: [], completed: [] });
   const [dashboardNotifications, setDashboardNotifications] = useState<AppNotification[]>([]);
   const [selectedJournalStage, setSelectedJournalStage] = useState(manufacturingStages[0]);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -574,7 +582,7 @@ export default function BreweryDashboardScreen() {
               const progress = funding.goalAmount > 0 ? (funding.currentAmount / funding.goalAmount) * 100 : 0;
               const progressBarValue = Math.min(progress, 100);
               const progressLabel = Math.round(progress);
-              const status = getFundingStatusLabel(funding.status);
+              const status = funding.statusLabel || getFundingStatusLabel(funding.status);
               const statusTone = getFundingStatusTone(funding.status);
               const isDeliveryTarget = isCompletedFundingStatus(funding.status);
 

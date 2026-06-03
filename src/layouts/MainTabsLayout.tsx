@@ -13,10 +13,13 @@ import { Platform, StatusBar as RNStatusBar } from 'react-native';
 import { HapticTab } from '@/components/haptic-tab';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 16);
 
   useEffect(() => {
     RNStatusBar.setHidden(false, 'fade');
@@ -35,8 +38,8 @@ export default function TabLayout() {
             backgroundColor: colors.background,
             borderTopWidth: 1,
             borderTopColor: colors.border,
-            height: Platform.OS === 'ios' ? 88 : 68,
-            paddingBottom: Platform.OS === 'ios' ? 30 : 12,
+            height: 56 + bottomInset,
+            paddingBottom: bottomInset,
             paddingTop: 12,
           },
           tabBarLabelStyle: {

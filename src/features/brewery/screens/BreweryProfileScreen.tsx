@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import {
   getBreweryApiErrorMessage,
   getBreweryProfile,
@@ -72,22 +73,52 @@ export default function BreweryProfileScreen() {
     () => (!Number.isNaN(projectId) ? projects.find((item) => item.id === projectId) || null : null),
     [projectId, projects],
   );
+  const isOwnProjectProfile = useMemo(
+    () => Boolean(!isOwnProfile && project && isFundingProjectOwnedByBrewery(user, project)),
+    [isOwnProfile, project, user],
+  );
+  const usesDashboardProfile = isOwnProfile || isOwnProjectProfile;
   const [serverProfile, setServerProfile] = useState<BreweryProfile | null>(null);
-  const profileValues = useMemo<BreweryProfileForm>(() => ({
-    ...DEFAULT_PROFILE,
-    profileImage: isOwnProfile ? serverProfile?.profileImageUrl || user?.breweryProfileImage || '' : project?.breweryProfileImage || '',
-    breweryName: isOwnProfile ? serverProfile?.breweryName || user?.breweryName || '' : project?.brewery || '',
-    brandStory: isOwnProfile ? serverProfile?.oneLineIntroduction || user?.breweryBrandStory || '' : '',
-    description: isOwnProfile ? serverProfile?.shortIntroduction || user?.breweryDescription || '' : project?.breweryBio || '',
-    brandStoryLong: isOwnProfile ? serverProfile?.brandStory || user?.breweryBrandStoryLong || '' : '',
-    history: isOwnProfile ? serverProfile?.history || user?.breweryHistory || '' : project?.breweryBio || '',
-    address: isOwnProfile ? serverProfile?.address || user?.breweryLocation || '' : project?.location || '',
-    businessNumber: isOwnProfile ? serverProfile?.businessRegistrationNumber || user?.businessNumber || '' : '',
-    representative: isOwnProfile ? serverProfile?.representativeName || user?.name || '' : user?.name || '',
-    phone: isOwnProfile ? serverProfile?.phoneNumber || user?.phone || '' : user?.phone || '',
-    email: isOwnProfile ? serverProfile?.email || user?.breweryContactEmail || user?.email || '' : user?.email || '',
-    established: isOwnProfile ? String(serverProfile?.establishedYear || user?.breweryEstablished || '') : '',
-  }), [isOwnProfile, project?.brewery, project?.breweryBio, project?.breweryProfileImage, project?.location, serverProfile, user]);
+  const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const profileValues = useMemo<BreweryProfileForm>(() => {
+    const projectBreweryInfo = project?.breweryInfo;
+
+    if (usesDashboardProfile) {
+      return {
+        ...DEFAULT_PROFILE,
+        profileImage: serverProfile?.profileImageUrl || user?.breweryProfileImage || '',
+        breweryName: serverProfile?.breweryName || user?.breweryName || '',
+        brandStory: serverProfile?.oneLineIntroduction || user?.breweryBrandStory || '',
+        description: serverProfile?.shortIntroduction || user?.breweryDescription || '',
+        brandStoryLong: serverProfile?.brandStory || user?.breweryBrandStoryLong || '',
+        history: serverProfile?.history || user?.breweryHistory || '',
+        address: serverProfile?.address || user?.breweryLocation || '',
+        businessNumber: serverProfile?.businessRegistrationNumber || user?.businessNumber || '',
+        representative: serverProfile?.representativeName || user?.name || '',
+        phone: serverProfile?.phoneNumber || user?.phone || '',
+        email: serverProfile?.email || user?.breweryContactEmail || user?.email || '',
+        established: String(serverProfile?.establishedYear || user?.breweryEstablished || ''),
+      };
+    }
+
+    return {
+      ...DEFAULT_PROFILE,
+      profileImage: projectBreweryInfo?.profileImageUrl || project?.breweryProfileImage || '',
+      breweryName: projectBreweryInfo?.mainName || projectBreweryInfo?.breweryName || project?.brewery || '',
+      brandStory: projectBreweryInfo?.shortIntroduction || '',
+      description: projectBreweryInfo?.shortIntroduction || project?.breweryBio || '',
+      brandStoryLong: projectBreweryInfo?.brandStory || '',
+      history: projectBreweryInfo?.brandStory || project?.breweryBio || '',
+      address: [projectBreweryInfo?.businessAddress || project?.location, projectBreweryInfo?.businessAddressDetail]
+        .filter(Boolean)
+        .join(' '),
+      businessNumber: projectBreweryInfo?.businessRegistrationNumber || '',
+      representative: projectBreweryInfo?.representativeName || '',
+      phone: '',
+      email: '',
+      established: String(projectBreweryInfo?.establishedYear || ''),
+    };
+  }, [project, serverProfile, user, usesDashboardProfile]);
   const [isEditing, setIsEditing] = useState(isOwnProfile && editParam === '1');
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<BreweryProfileForm>(profileValues);
@@ -109,9 +140,14 @@ export default function BreweryProfileScreen() {
   }, [updateUser]);
 
   useEffect(() => {
-    if (!isOwnProfile || !profileUserFallback) return;
+    if (!usesDashboardProfile || !profileUserFallback) {
+      setServerProfile(null);
+      setIsProfileLoading(false);
+      return;
+    }
 
     let mounted = true;
+    setIsProfileLoading(true);
     getBreweryProfile()
       .then((profile) => {
         if (!mounted) return;
@@ -132,14 +168,17 @@ export default function BreweryProfileScreen() {
       })
       .catch((error) => {
         console.warn(getBreweryApiErrorMessage(error, '양조장 프로필을 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (mounted) setIsProfileLoading(false);
       });
 
     return () => {
       mounted = false;
     };
   }, [
-    isOwnProfile,
     profileUserFallback,
+    usesDashboardProfile,
   ]);
 
   useEffect(() => {
@@ -158,7 +197,14 @@ export default function BreweryProfileScreen() {
     );
   }
 
-  const isPublicProfileIncomplete = !isOwnProfile && !profileValues.description.trim() && !profileValues.history.trim();
+  const isPublicProfileIncomplete = !isOwnProfile && !isProfileLoading && ![
+    profileValues.profileImage,
+    profileValues.brandStory,
+    profileValues.description,
+    profileValues.brandStoryLong,
+    profileValues.history,
+    profileValues.established,
+  ].some((value) => String(value || '').trim());
 
   if (isPublicProfileIncomplete) {
     return (

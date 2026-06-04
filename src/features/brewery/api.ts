@@ -9,6 +9,7 @@ type BreweryApiEnvelope<T> = {
 };
 
 export type BreweryProfile = {
+  breweryUserId?: number | string | null;
   profileImageUrl: string | null;
   breweryName: string;
   oneLineIntroduction: string | null;
@@ -140,6 +141,95 @@ function unwrapBreweryData<T>(response: T | BreweryApiEnvelope<T>) {
   return response as T;
 }
 
+function readBreweryText(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return '';
+}
+
+function readBreweryNullableText(source: Record<string, unknown>, keys: string[]) {
+  const value = readBreweryText(source, keys);
+  return value || null;
+}
+
+function readBreweryProfileYear(source: Record<string, unknown>) {
+  const value = source.establishedYear ?? source.established_year;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return null;
+}
+
+function readBreweryBoolean(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return value > 0;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+      if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+    }
+  }
+  return false;
+}
+
+function normalizeBreweryProfile(profile: BreweryProfile | Record<string, unknown>): BreweryProfile {
+  const source = profile as Record<string, unknown>;
+  return {
+    breweryUserId: source.breweryUserId !== undefined
+      ? source.breweryUserId as BreweryProfile['breweryUserId']
+      : source.brewery_user_id !== undefined
+        ? source.brewery_user_id as BreweryProfile['breweryUserId']
+        : null,
+    profileImageUrl: readBreweryNullableText(source, ['profileImageUrl', 'profile_image_url', 'profileImage', 'profile_image', 'imageUrl', 'image_url']),
+    breweryName: readBreweryText(source, ['breweryName', 'brewery_name', 'mainName', 'main_name']),
+    oneLineIntroduction: readBreweryNullableText(source, ['oneLineIntroduction', 'one_line_introduction']),
+    shortIntroduction: readBreweryNullableText(source, [
+      'shortIntroduction',
+      'short_introduction',
+      'creatorIntroduction',
+      'creator_introduction',
+      'breweryBio',
+      'brewery_bio',
+      'introduction',
+      'bio',
+      'description',
+    ]),
+    brandStory: readBreweryNullableText(source, ['brandStory', 'brand_story']),
+    history: readBreweryNullableText(source, ['history']),
+    establishedYear: readBreweryProfileYear(source),
+    representativeName: readBreweryNullableText(source, ['representativeName', 'representative_name']),
+    address: readBreweryText(source, ['address', 'businessAddress', 'business_address', 'breweryAddress', 'brewery_address']),
+    businessRegistrationNumber: readBreweryNullableText(source, ['businessRegistrationNumber', 'business_registration_number']),
+    phoneNumber: readBreweryNullableText(source, ['phoneNumber', 'phone_number', 'contactPhone', 'contact_phone']),
+    email: readBreweryNullableText(source, ['email', 'contactEmail', 'contact_email']),
+    isVerified: readBreweryBoolean(source, ['isVerified', 'is_verified', 'verified']),
+  };
+}
+
+async function requestPublicBreweryJson<T>(path: string, options: RequestInit = {}) {
+  const { headers, ...requestOptions } = options;
+  const response = await fetch(`${JUDAM_BREWERY_API_BASE_URL}${path}`, {
+    ...requestOptions,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(headers as Record<string, string> | undefined),
+    },
+  });
+  const text = await response.text();
+  const data = parseBreweryResponseBody(path, response, text);
+
+  if (!response.ok) {
+    const message = (data as BreweryApiEnvelope<unknown> | null)?.message || `HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
 async function requestBreweryJson<T>(path: string, options: RequestInit = {}) {
   const { headers, ...requestOptions } = options;
   const token = await getAuthAccessToken();
@@ -221,7 +311,14 @@ async function requestBreweryForm<T>(path: string, formData: FormData, options: 
 
 export async function getBreweryProfile() {
   const response = await requestBreweryJson<BreweryApiEnvelope<BreweryProfile> | BreweryProfile>('/api/breweries/me/profile');
-  return unwrapBreweryData<BreweryProfile>(response);
+  return normalizeBreweryProfile(unwrapBreweryData<BreweryProfile>(response));
+}
+
+export async function getPublicBreweryProfile(breweryUserId: number | string) {
+  const response = await requestPublicBreweryJson<BreweryApiEnvelope<BreweryProfile> | BreweryProfile>(
+    `/api/breweries/${encodeURIComponent(String(breweryUserId))}/profile`,
+  );
+  return normalizeBreweryProfile(unwrapBreweryData<BreweryProfile>(response));
 }
 
 export async function updateBreweryProfile(payload: UpdateBreweryProfilePayload) {
@@ -229,7 +326,7 @@ export async function updateBreweryProfile(payload: UpdateBreweryProfilePayload)
     method: 'PATCH',
     body: JSON.stringify(payload),
   });
-  return unwrapBreweryData<BreweryProfile>(response);
+  return normalizeBreweryProfile(unwrapBreweryData<BreweryProfile>(response));
 }
 
 export async function uploadBreweryProfileImage(image: BreweryProfileImageFile) {

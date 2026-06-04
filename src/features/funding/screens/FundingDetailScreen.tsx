@@ -855,27 +855,14 @@ export default function FundingDetailScreen() {
     officialBreweryInfo?.breweryName ||
     project.brewery ||
     '정보 없음';
-  const officialBreweryIntro = officialBreweryInfo?.shortIntroduction || project.breweryBio || '';
-  const officialBreweryBrandStory = officialBreweryInfo?.brandStory || '';
+  const officialBreweryIntro = officialBreweryInfo?.oneLineIntroduction || officialBreweryInfo?.shortIntroduction || project.breweryBio || '';
   const officialBreweryProfileImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl) || project.breweryProfileImage || '';
-  const officialBreweryAddress = [
-    officialBreweryInfo?.businessAddress || project.location,
-    officialBreweryInfo?.businessAddressDetail,
-  ].filter(Boolean).join(' ');
-  const officialBreweryEstablishedYear = officialBreweryInfo?.establishedYear ? `${officialBreweryInfo.establishedYear}년 설립` : '';
-  const officialBreweryBusinessNumber = officialBreweryInfo?.businessRegistrationNumber || '';
-  const officialBreweryRepresentative = officialBreweryInfo?.representativeName || '';
-  const officialBreweryMetaItems = [
-    officialBreweryEstablishedYear,
-    officialBreweryRepresentative ? `대표 ${officialBreweryRepresentative}` : '',
-    officialBreweryBusinessNumber ? `사업자 ${officialBreweryBusinessNumber}` : '',
-  ].filter(Boolean);
+  const officialBreweryUserId = officialBreweryInfo?.breweryUserId || project.breweryUserId || '';
   const hasBreweryPublicProfile = Boolean([
+    officialBreweryUserId,
+    officialBreweryName,
     officialBreweryIntro,
-    officialBreweryBrandStory,
     officialBreweryProfileImage,
-    officialBreweryEstablishedYear,
-    officialBreweryBusinessNumber,
   ].some(Boolean));
   const ownerClosedProjectLabel = (() => {
     if (projectStatusLabel === "펀딩 성공") return "성공한 프로젝트";
@@ -1009,7 +996,7 @@ export default function FundingDetailScreen() {
       });
       return;
     }
-    router.push(`/brewery/${project.id}` as any);
+    router.push(`/brewery/${officialBreweryUserId || project.id}?fundingId=${project.id}` as any);
   };
 
   const handleSupportClick = () => {
@@ -1936,17 +1923,6 @@ export default function FundingDetailScreen() {
              <View style={styles.breweryContent}>
                 <Text style={styles.breweryName} numberOfLines={1}>{officialBreweryName}</Text>
                 {officialBreweryIntro ? <Text style={styles.breweryIntro} numberOfLines={2}>{officialBreweryIntro}</Text> : null}
-                {officialBreweryAddress ? <Text style={styles.breweryLoc} numberOfLines={1}>{officialBreweryAddress}</Text> : null}
-                {officialBreweryMetaItems.length ? (
-                  <View style={styles.breweryMetaRow}>
-                    {officialBreweryMetaItems.map((item) => (
-                      <View key={item} style={styles.breweryMetaChip}>
-                        <Text style={styles.breweryMetaText} numberOfLines={1}>{item}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-                {officialBreweryBrandStory ? <Text style={styles.breweryStory} numberOfLines={2}>{officialBreweryBrandStory}</Text> : null}
              </View>
              <View style={styles.catBadge}><Text style={styles.catTxt} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text></View>
           </TouchableOpacity>

@@ -10,6 +10,7 @@ import { useFunding } from '@/contexts/FundingContext';
 import {
   getBreweryApiErrorMessage,
   getBreweryProfile,
+  getPublicBreweryProfile,
   updateBreweryProfile,
   uploadBreweryProfileImage,
   type BreweryProfile,
@@ -60,34 +61,74 @@ const PROFILE_PLACEHOLDERS: BreweryProfileForm = {
 
 export default function BreweryProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { id, edit } = useLocalSearchParams();
+  const { id, edit, fundingId } = useLocalSearchParams();
   const { user, updateUser } = useAuth();
   const updateUserRef = useRef(updateUser);
   const { projects } = useFunding();
   const breweryId = Array.isArray(id) ? id[0] : id;
   const editParam = Array.isArray(edit) ? edit[0] : edit;
+  const fundingIdParam = Array.isArray(fundingId) ? fundingId[0] : fundingId;
   const isOwnProfile = breweryId === 'profile';
-  const projectId = Number(breweryId);
+  const projectId = Number(fundingIdParam || breweryId);
   const project = useMemo(
-    () => (!Number.isNaN(projectId) ? projects.find((item) => item.id === projectId) || null : null),
-    [projectId, projects],
+    () => {
+      if (!Number.isNaN(projectId)) {
+        const foundByFundingId = projects.find((item) => item.id === projectId);
+        if (foundByFundingId) return foundByFundingId;
+      }
+      if (breweryId && breweryId !== 'profile') {
+        return projects.find((item) => String(item.breweryUserId || item.breweryInfo?.breweryUserId || '') === String(breweryId)) || null;
+      }
+      return null;
+    },
+    [breweryId, projectId, projects],
   );
   const [serverProfile, setServerProfile] = useState<BreweryProfile | null>(null);
+  const [publicProfile, setPublicProfile] = useState<BreweryProfile | null>(null);
+  const [isPublicProfileLoading, setIsPublicProfileLoading] = useState(false);
+  const publicBreweryUserId = !isOwnProfile
+    ? project?.breweryInfo?.breweryUserId || project?.breweryUserId || breweryId || ''
+    : '';
+  const projectBreweryInfo = project?.breweryInfo;
+  const projectBreweryAddress = [
+    projectBreweryInfo?.address || projectBreweryInfo?.businessAddress || project?.location,
+    projectBreweryInfo?.businessAddressDetail,
+  ].filter(Boolean).join(' ');
   const profileValues = useMemo<BreweryProfileForm>(() => ({
     ...DEFAULT_PROFILE,
-    profileImage: isOwnProfile ? serverProfile?.profileImageUrl || user?.breweryProfileImage || '' : project?.breweryProfileImage || '',
-    breweryName: isOwnProfile ? serverProfile?.breweryName || user?.breweryName || '' : project?.brewery || '',
-    brandStory: isOwnProfile ? serverProfile?.oneLineIntroduction || user?.breweryBrandStory || '' : '',
-    description: isOwnProfile ? serverProfile?.shortIntroduction || user?.breweryDescription || '' : project?.breweryBio || '',
-    brandStoryLong: isOwnProfile ? serverProfile?.brandStory || user?.breweryBrandStoryLong || '' : '',
-    history: isOwnProfile ? serverProfile?.history || user?.breweryHistory || '' : project?.breweryBio || '',
-    address: isOwnProfile ? serverProfile?.address || user?.breweryLocation || '' : project?.location || '',
-    businessNumber: isOwnProfile ? serverProfile?.businessRegistrationNumber || user?.businessNumber || '' : '',
-    representative: isOwnProfile ? serverProfile?.representativeName || user?.name || '' : user?.name || '',
-    phone: isOwnProfile ? serverProfile?.phoneNumber || user?.phone || '' : user?.phone || '',
-    email: isOwnProfile ? serverProfile?.email || user?.breweryContactEmail || user?.email || '' : user?.email || '',
-    established: isOwnProfile ? String(serverProfile?.establishedYear || user?.breweryEstablished || '') : '',
-  }), [isOwnProfile, project?.brewery, project?.breweryBio, project?.breweryProfileImage, project?.location, serverProfile, user]);
+    profileImage: isOwnProfile
+      ? serverProfile?.profileImageUrl || user?.breweryProfileImage || ''
+      : publicProfile?.profileImageUrl || projectBreweryInfo?.profileImageUrl || project?.breweryProfileImage || '',
+    breweryName: isOwnProfile
+      ? serverProfile?.breweryName || user?.breweryName || ''
+      : publicProfile?.breweryName || projectBreweryInfo?.mainName || projectBreweryInfo?.breweryName || project?.brewery || '',
+    brandStory: isOwnProfile
+      ? serverProfile?.oneLineIntroduction || user?.breweryBrandStory || ''
+      : publicProfile?.oneLineIntroduction || projectBreweryInfo?.oneLineIntroduction || projectBreweryInfo?.shortIntroduction || '',
+    description: isOwnProfile
+      ? serverProfile?.shortIntroduction || user?.breweryDescription || ''
+      : publicProfile?.shortIntroduction || projectBreweryInfo?.shortIntroduction || project?.breweryBio || '',
+    brandStoryLong: isOwnProfile
+      ? serverProfile?.brandStory || user?.breweryBrandStoryLong || ''
+      : publicProfile?.brandStory || projectBreweryInfo?.brandStory || '',
+    history: isOwnProfile
+      ? serverProfile?.history || user?.breweryHistory || ''
+      : publicProfile?.history || projectBreweryInfo?.history || project?.breweryBio || '',
+    address: isOwnProfile
+      ? serverProfile?.address || user?.breweryLocation || ''
+      : publicProfile?.address || projectBreweryAddress || '',
+    businessNumber: isOwnProfile
+      ? serverProfile?.businessRegistrationNumber || user?.businessNumber || ''
+      : publicProfile?.businessRegistrationNumber || projectBreweryInfo?.businessRegistrationNumber || '',
+    representative: isOwnProfile
+      ? serverProfile?.representativeName || user?.name || ''
+      : publicProfile?.representativeName || projectBreweryInfo?.representativeName || '',
+    phone: isOwnProfile ? serverProfile?.phoneNumber || user?.phone || '' : '',
+    email: isOwnProfile ? serverProfile?.email || user?.breweryContactEmail || user?.email || '' : '',
+    established: isOwnProfile
+      ? String(serverProfile?.establishedYear || user?.breweryEstablished || '')
+      : String(publicProfile?.establishedYear || projectBreweryInfo?.establishedYear || ''),
+  }), [isOwnProfile, project?.brewery, project?.breweryBio, project?.breweryProfileImage, projectBreweryAddress, projectBreweryInfo, publicProfile, serverProfile, user]);
   const [isEditing, setIsEditing] = useState(isOwnProfile && editParam === '1');
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<BreweryProfileForm>(profileValues);
@@ -143,6 +184,34 @@ export default function BreweryProfileScreen() {
   ]);
 
   useEffect(() => {
+    if (isOwnProfile || !publicBreweryUserId) {
+      setPublicProfile(null);
+      setIsPublicProfileLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setIsPublicProfileLoading(true);
+    getPublicBreweryProfile(publicBreweryUserId)
+      .then((profile) => {
+        if (!mounted) return;
+        setPublicProfile(profile);
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setPublicProfile(null);
+        console.warn(getBreweryApiErrorMessage(error, '양조장 공개 프로필을 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (mounted) setIsPublicProfileLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isOwnProfile, publicBreweryUserId]);
+
+  useEffect(() => {
     if (!isEditing) setForm(profileValues);
   }, [isEditing, profileValues]);
 
@@ -158,7 +227,13 @@ export default function BreweryProfileScreen() {
     );
   }
 
-  const isPublicProfileIncomplete = !isOwnProfile && !profileValues.description.trim() && !profileValues.history.trim();
+  const isPublicProfileIncomplete =
+    !isOwnProfile &&
+    !isPublicProfileLoading &&
+    !profileValues.breweryName.trim() &&
+    !profileValues.brandStory.trim() &&
+    !profileValues.description.trim() &&
+    !profileValues.history.trim();
 
   if (isPublicProfileIncomplete) {
     return (
@@ -425,6 +500,7 @@ export default function BreweryProfileScreen() {
           </TouchableOpacity>
         </View>
 
+        {(isOwnProfile || form.phone || form.email) && (
         <View style={styles.section}>
           <Text style={styles.sectionEyebrow}>문의하기</Text>
           <View style={styles.contactGrid}>
@@ -457,6 +533,7 @@ export default function BreweryProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        )}
       </ScrollView>
     </View>
   );

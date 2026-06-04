@@ -4,7 +4,7 @@ import { fundingProjects, getFundingProjectImageSource, getImageSource, recipesD
 
 export interface AppNotification {
   id: number;
-  type: "funding_new" | "funding_progress" | "funding_end" | "funding_success" | "recipe_popular";
+  type: "funding_new" | "funding_progress" | "funding_end" | "funding_success" | "settlement_completed" | "recipe_popular";
   title: string;
   content: string;
   timestamp: string;

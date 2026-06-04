@@ -2222,8 +2222,14 @@ function normalizeDeleteFundingReviewResponse(response: unknown): DeleteFundingR
 
 function normalizeFundingStatsUnit(value: string) {
   const unit = value.trim();
-  if (!unit || /[\uFFFD\uF900-\uFAFF]/.test(unit)) return '천만원';
-  return unit;
+  if (!unit) return '천만원';
+
+  const normalizedUnit = unit.replace(/\s/g, '');
+  if (normalizedUnit.includes('천만원')) return '천만원';
+
+  // totalRaisedTenMillionUnit is a ten-million KRW label. If the server
+  // response is mojibake/placeholder text on Android builds, keep the UI sane.
+  return '천만원';
 }
 
 function normalizeFundingStatsResponse(response: unknown): FundingStatsResponse {
@@ -2879,10 +2885,32 @@ export function getFundingApiErrorMessage(error: unknown, fallback = '요청을 
   return fallback;
 }
 
+export function getFundingApiSafeMessage(message: unknown, fallback = '요청을 처리했습니다.') {
+  if (typeof message !== 'string') return fallback;
+  const normalizedMessage = message.trim();
+  if (!normalizedMessage || isLikelyGarbledFundingApiMessage(normalizedMessage)) return fallback;
+  return normalizedMessage;
+}
+
 function isLikelyGarbledFundingApiMessage(message: string) {
+  const trimmedMessage = message.trim();
+  if (!trimmedMessage) return false;
+
   const questionMarkCount = (message.match(/\?/g) || []).length;
+  const compactMessage = trimmedMessage.replace(/\s/g, '');
   const hasNonAscii = /[^\x00-\x7F]/.test(message);
-  return message.includes('�') || /[ìíîïðñòóôõö÷øùúûüýþÿ留吏理]/.test(message) || (questionMarkCount >= 2 && hasNonAscii);
+  const isQuestionPlaceholder = questionMarkCount >= 2 && (
+    /^[?.!,;:'"`~()[\]{}_\-\s]+$/.test(trimmedMessage) ||
+    questionMarkCount / Math.max(compactMessage.length, 1) >= 0.3
+  );
+
+  return (
+    message.includes('�') ||
+    /[ÃÂìíîïðñòóôõö÷øùúûüýþÿ留吏理瑜吏紐삵뻽덈땲媛]/.test(message) ||
+    /\?묒|\?깃|\?ㅺ|\?뺣/.test(message) ||
+    (questionMarkCount >= 2 && hasNonAscii) ||
+    isQuestionPlaceholder
+  );
 }
 
 function getFundingApiErrorStatus(error: unknown) {

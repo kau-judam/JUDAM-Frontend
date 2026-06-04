@@ -76,6 +76,7 @@ export type BreweryDashboardFundingItem = {
   targetAmount: number;
   achievementRate: number;
   status: string;
+  statusLabel?: string;
   remainingDays: number;
   endDate: string;
 };
@@ -88,6 +89,11 @@ export type BreweryDashboardFundingList = {
   totalElements: number;
   totalPages: number;
 };
+
+type BreweryDashboardFundingListResponse =
+  | BreweryDashboardFundingList
+  | BreweryDashboardFundingItem[]
+  | BreweryApiEnvelope<BreweryDashboardFundingList | BreweryDashboardFundingItem[]>;
 
 export type BreweryFundingDeliveryInfo = {
   fundingId: number;
@@ -103,7 +109,14 @@ export type UpdateBreweryFundingDeliveryPayload = {
 
 export type BreweryDashboardNotification = {
   notificationId: number;
-  type: 'FUNDING_CREATED' | 'FUNDING_PROGRESS' | 'FUNDING_ENDED' | 'FUNDING_SUCCESS' | 'RECIPE_POPULAR' | string;
+  type:
+    | 'FUNDING_CREATED'
+    | 'FUNDING_PROGRESS'
+    | 'FUNDING_ENDED'
+    | 'FUNDING_SUCCESS'
+    | 'SETTLEMENT_COMPLETED'
+    | 'RECIPE_POPULAR'
+    | string;
   title: string;
   content: string;
   createdAt: string;
@@ -372,10 +385,43 @@ export async function getBreweryDashboardFundings(params: {
     page: String(params.page ?? 0),
     size: String(params.size ?? 3),
   });
-  const response = await requestBreweryJson<BreweryApiEnvelope<BreweryDashboardFundingList> | BreweryDashboardFundingList>(
+  const response = await requestBreweryJson<BreweryDashboardFundingListResponse>(
     `/api/breweries/me/dashboard/fundings?${query.toString()}`,
   );
-  return unwrapBreweryData<BreweryDashboardFundingList>(response);
+
+  if (Array.isArray(response)) {
+    return {
+      content: response,
+      data: response,
+      page: params.page ?? 0,
+      size: params.size ?? response.length,
+      totalElements: response.length,
+      totalPages: 1,
+    };
+  }
+
+  if (response && typeof response === 'object') {
+    if ('content' in response || 'totalElements' in response || 'page' in response) {
+      return response as BreweryDashboardFundingList;
+    }
+
+    const envelopeData = (response as BreweryApiEnvelope<BreweryDashboardFundingList | BreweryDashboardFundingItem[]>).data;
+    if (Array.isArray(envelopeData)) {
+      return {
+        content: envelopeData,
+        data: envelopeData,
+        page: params.page ?? 0,
+        size: params.size ?? envelopeData.length,
+        totalElements: envelopeData.length,
+        totalPages: 1,
+      };
+    }
+    if (envelopeData && typeof envelopeData === 'object') {
+      return envelopeData as BreweryDashboardFundingList;
+    }
+  }
+
+  return unwrapBreweryData<BreweryDashboardFundingList>(response as BreweryApiEnvelope<BreweryDashboardFundingList> | BreweryDashboardFundingList);
 }
 
 export async function getBreweryFundingDelivery(fundingId: number) {

@@ -34,7 +34,8 @@ export function mapFundingStatus(status: string, _currentAmount = 0, _targetAmou
   if (normalized === 'REVIEWING') return '심사 중';
   if (normalized === 'REJECTED' || normalized === 'REJECT' || normalized === 'DENIED') return '펀딩 반려';
   if (normalized === 'UPCOMING') return '펀딩 예정';
-  if (normalized === 'ONGOING' || normalized === 'ACTIVE') return '진행 중';
+  if (normalized === 'ACTIVE') return 'ACTIVE';
+  if (normalized === 'ONGOING') return 'ONGOING';
   if (normalized === 'SUCCESS') return '펀딩 성공';
   if (normalized === 'FAILED') return '펀딩 실패';
   if (normalized === 'ENDED') return '종료';
@@ -196,7 +197,14 @@ function normalizeOfficialBreweryInfo(
     businessAddress: readOfficialBreweryText(sourceRecord, ['businessAddress', 'business_address', 'address', 'breweryAddress', 'brewery_address']) || fallback?.businessAddress,
     businessAddressDetail: readOfficialBreweryText(sourceRecord, ['businessAddressDetail', 'business_address_detail']) || fallback?.businessAddressDetail,
     representativeName: readOfficialBreweryText(sourceRecord, ['representativeName', 'representative_name']) || fallback?.representativeName,
-    profileImageUrl: normalizeFundingImageUrl(source.profileImageUrl || source.profile_image_url || source.profileImage || source.profile_image || source.imageUrl || source.image_url) || fallback?.profileImageUrl,
+    profileImageUrl: normalizeFundingImageUrl(readOfficialBreweryText(sourceRecord, [
+      'profileImageUrl',
+      'profile_image_url',
+      'profileImage',
+      'profile_image',
+      'imageUrl',
+      'image_url',
+    ])) || fallback?.profileImageUrl,
     businessRegistrationFileUrl: normalizeFundingImageUrl(source.businessRegistrationFileUrl || source.business_registration_file_url) || fallback?.businessRegistrationFileUrl,
     missingFields: Array.isArray(source.missingFields) ? source.missingFields.filter(Boolean) : Array.isArray(source.missing_fields) ? source.missing_fields.filter(Boolean) : fallback?.missingFields,
   };

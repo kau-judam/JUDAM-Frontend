@@ -45,6 +45,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth, type User } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { getBreweryProfile, type BreweryProfile } from '@/features/brewery/api';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
@@ -168,7 +169,7 @@ function getSupportOptionStockLabel(option: FundingSupportOption) {
 }
 
 function isGarbledKoreanMessage(message: string) {
-  return /�|[瑜吏紐삵뻽덈땲媛]|[?][가-힣]|[가-힣][?]/.test(message);
+  return /�|[ÃÂìíëêæ]|[瑜吏紐삵뻽덈땲媛]|[?][가-힣]|[가-힣][?]|\?묒|\?깃|\?ㅺ|\?뺣/.test(message);
 }
 
 function getReportSubmitErrorMessage(error: unknown) {
@@ -407,6 +408,12 @@ export default function FundingDetailScreen() {
   const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [reviewPermission, setReviewPermission] = useState<{ canWriteReview: boolean; canReview: boolean } | null>(null);
+  const [ownBreweryProfile, setOwnBreweryProfile] = useState<BreweryProfile | null>(null);
+  const [isOwnBreweryProfileLoading, setIsOwnBreweryProfileLoading] = useState(false);
+  const isOwnBreweryProject = useMemo(
+    () => Boolean(project && isFundingProjectOwnedByBrewery(user, project)),
+    [project, user],
+  );
 
   const showLoginRequired = (message: string) => {
     setFeedbackModal({
@@ -471,6 +478,34 @@ export default function FundingDetailScreen() {
   useEffect(() => {
     projectRef.current = project;
   }, [project]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (!isOwnBreweryProject) {
+      setOwnBreweryProfile(null);
+      setIsOwnBreweryProfileLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    setIsOwnBreweryProfileLoading(true);
+    getBreweryProfile()
+      .then((profile) => {
+        if (mounted) setOwnBreweryProfile(profile);
+      })
+      .catch(() => {
+        if (mounted) setOwnBreweryProfile(null);
+      })
+      .finally(() => {
+        if (mounted) setIsOwnBreweryProfileLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isOwnBreweryProject, projectId, user?.id, user?.uid]);
 
   useFocusEffect(
     useCallback(() => {
@@ -828,7 +863,6 @@ export default function FundingDetailScreen() {
   const progressPercentage = project.goalAmount > 0 ? (project.currentAmount / project.goalAmount) * 100 : 0;
   const progressBarValue = Math.min(progressPercentage, 100);
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified;
-  const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
   const canManageOwnBreweryProject = Boolean(isBrewery && isOwnBreweryProject && isFundingProjectManageable(project));
   const isProjectSupportable = isFundingProjectSupportable(project);
   const isProjectExpiredByEndDate = isFundingEndDateExpired(project);
@@ -850,20 +884,40 @@ export default function FundingDetailScreen() {
   const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
   const mainIngredientLabel = getFundingMainIngredientLabel(project);
   const officialBreweryInfo = project.breweryInfo;
+  const dashboardBreweryProfile = isOwnBreweryProject ? ownBreweryProfile : null;
   const officialBreweryName =
+    dashboardBreweryProfile?.breweryName ||
     officialBreweryInfo?.mainName ||
     officialBreweryInfo?.breweryName ||
     project.brewery ||
     '정보 없음';
-  const officialBreweryIntro = officialBreweryInfo?.oneLineIntroduction || officialBreweryInfo?.shortIntroduction || project.breweryBio || '';
-  const officialBreweryProfileImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl) || project.breweryProfileImage || '';
+  const officialBreweryIntro =
+    dashboardBreweryProfile?.oneLineIntroduction ||
+    dashboardBreweryProfile?.shortIntroduction ||
+    officialBreweryInfo?.oneLineIntroduction ||
+    officialBreweryInfo?.shortIntroduction ||
+    project.breweryBio ||
+    '';
+  const officialBreweryProfileImage =
+    normalizeFundingImageUrl(dashboardBreweryProfile?.profileImageUrl) ||
+    normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl) ||
+    project.breweryProfileImage ||
+    '';
   const officialBreweryUserId = officialBreweryInfo?.breweryUserId || project.breweryUserId || '';
-  const hasBreweryPublicProfile = Boolean([
+  const dashboardHasBreweryPublicProfile = Boolean(dashboardBreweryProfile && [
+    dashboardBreweryProfile.profileImageUrl,
+    dashboardBreweryProfile.oneLineIntroduction,
+    dashboardBreweryProfile.shortIntroduction,
+  ].some((value) => String(value || '').trim()));
+  const projectHasBreweryPublicProfile = Boolean([
     officialBreweryUserId,
     officialBreweryName,
     officialBreweryIntro,
     officialBreweryProfileImage,
-  ].some(Boolean));
+  ].some((value) => String(value || '').trim()));
+  const hasBreweryPublicProfile = isOwnBreweryProject
+    ? dashboardHasBreweryPublicProfile
+    : projectHasBreweryPublicProfile;
   const ownerClosedProjectLabel = (() => {
     if (projectStatusLabel === "펀딩 성공") return "성공한 프로젝트";
     if (projectStatusLabel === "펀딩 실패") return "실패한 프로젝트";
@@ -989,10 +1043,17 @@ export default function FundingDetailScreen() {
   const journals = project.journals || [];
 
   const handleBreweryProfilePress = () => {
+    if (isOwnBreweryProject && isOwnBreweryProfileLoading) {
+      setFeedbackModal({
+        title: '양조장 프로필 확인 중',
+        body: '양조장 대시보드 프로필을 불러오는 중입니다. 잠시 후 다시 눌러주세요.',
+      });
+      return;
+    }
     if (!hasBreweryPublicProfile) {
       setFeedbackModal({
         title: '양조장 프로필이 없습니다',
-        body: '양조장이 아직 프로필을 만들지 않았습니다. 프로필을 작성한 뒤 확인할 수 있어요.',
+        body: '양조장이 프로필을 작성하면 확인할 수 있어요.',
       });
       return;
     }
@@ -1917,14 +1978,13 @@ export default function FundingDetailScreen() {
                {officialBreweryProfileImage ? (
                  <Image source={{ uri: officialBreweryProfileImage }} style={styles.breweryLogoImage} />
                ) : (
-                 <Text style={{ fontSize: 24 }}>{project.breweryLogo}</Text>
+                 <Text style={{ fontSize: 24 }}>🍶</Text>
                )}
              </View>
              <View style={styles.breweryContent}>
                 <Text style={styles.breweryName} numberOfLines={1}>{officialBreweryName}</Text>
                 {officialBreweryIntro ? <Text style={styles.breweryIntro} numberOfLines={2}>{officialBreweryIntro}</Text> : null}
              </View>
-             <View style={styles.catBadge}><Text style={styles.catTxt} numberOfLines={1}>{getFundingMainIngredientLabel(project)}</Text></View>
           </TouchableOpacity>
         </Animated.View>
 

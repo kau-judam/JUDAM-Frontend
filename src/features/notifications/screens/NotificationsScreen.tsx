@@ -38,6 +38,8 @@ const mapDashboardNotificationType = (type: string): AppNotification['type'] => 
       return 'funding_success';
     case 'FUNDING_ENDED':
       return 'funding_end';
+    case 'SETTLEMENT_COMPLETED':
+      return 'settlement_completed';
     case 'FUNDING_CREATED':
       return 'funding_new';
     case 'FUNDING_PROGRESS':
@@ -89,7 +91,8 @@ export default function NotificationScreen() {
   const getIcon = (type: Notification["type"]) => {
     switch (type) {
       case "funding_success": return <PartyPopper size={20} color="#059669" />;
-      case "funding_end": return <AlertCircle size={20} color="#6B7280" />;
+      case "funding_end": return <AlertCircle size={20} color="#DC2626" />;
+      case "settlement_completed": return <CheckCheck size={20} color="#059669" />;
       case "funding_new": return <Wine size={20} color="#4B5563" />;
       case "funding_progress": return <TrendingUp size={20} color="#2563EB" />;
       case "recipe_popular": return <BookOpen size={20} color="#9333EA" />;

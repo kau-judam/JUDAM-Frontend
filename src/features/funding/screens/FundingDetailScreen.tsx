@@ -885,9 +885,6 @@ export default function FundingDetailScreen() {
   const mainIngredientLabel = getFundingMainIngredientLabel(project);
   const officialBreweryInfo = project.breweryInfo;
   const dashboardBreweryProfile = isOwnBreweryProject ? ownBreweryProfile : null;
-  const dashboardBreweryEstablishedYear = dashboardBreweryProfile?.establishedYear
-    ? String(dashboardBreweryProfile.establishedYear)
-    : '';
   const officialBreweryName =
     dashboardBreweryProfile?.breweryName ||
     officialBreweryInfo?.mainName ||
@@ -895,44 +892,28 @@ export default function FundingDetailScreen() {
     project.brewery ||
     '정보 없음';
   const officialBreweryIntro =
-    dashboardBreweryProfile?.shortIntroduction ||
     dashboardBreweryProfile?.oneLineIntroduction ||
+    dashboardBreweryProfile?.shortIntroduction ||
+    officialBreweryInfo?.oneLineIntroduction ||
     officialBreweryInfo?.shortIntroduction ||
     project.breweryBio ||
-    '';
-  const officialBreweryBrandStory =
-    dashboardBreweryProfile?.brandStory ||
-    dashboardBreweryProfile?.history ||
-    officialBreweryInfo?.brandStory ||
     '';
   const officialBreweryProfileImage =
     normalizeFundingImageUrl(dashboardBreweryProfile?.profileImageUrl) ||
     normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl) ||
     project.breweryProfileImage ||
     '';
-  const officialBreweryEstablishedYear =
-    dashboardBreweryEstablishedYear
-      ? `${dashboardBreweryEstablishedYear}년 설립`
-      : officialBreweryInfo?.establishedYear
-        ? `${officialBreweryInfo.establishedYear}년 설립`
-        : '';
-  const officialBreweryBusinessNumber =
-    dashboardBreweryProfile?.businessRegistrationNumber ||
-    officialBreweryInfo?.businessRegistrationNumber ||
-    '';
+  const officialBreweryUserId = officialBreweryInfo?.breweryUserId || project.breweryUserId || '';
   const dashboardHasBreweryPublicProfile = Boolean(dashboardBreweryProfile && [
     dashboardBreweryProfile.profileImageUrl,
     dashboardBreweryProfile.oneLineIntroduction,
     dashboardBreweryProfile.shortIntroduction,
-    dashboardBreweryProfile.brandStory,
-    dashboardBreweryProfile.history,
   ].some((value) => String(value || '').trim()));
   const projectHasBreweryPublicProfile = Boolean([
+    officialBreweryUserId,
+    officialBreweryName,
     officialBreweryIntro,
-    officialBreweryBrandStory,
     officialBreweryProfileImage,
-    officialBreweryEstablishedYear,
-    officialBreweryBusinessNumber,
   ].some((value) => String(value || '').trim()));
   const hasBreweryPublicProfile = isOwnBreweryProject
     ? dashboardHasBreweryPublicProfile
@@ -1076,7 +1057,7 @@ export default function FundingDetailScreen() {
       });
       return;
     }
-    router.push(`/brewery/${project.id}` as any);
+    router.push(`/brewery/${officialBreweryUserId || project.id}?fundingId=${project.id}` as any);
   };
 
   const handleSupportClick = () => {

@@ -11,6 +11,7 @@ import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import {
   getBreweryApiErrorMessage,
   getBreweryProfile,
+  getPublicBreweryProfile,
   updateBreweryProfile,
   uploadBreweryProfileImage,
   type BreweryProfile,
@@ -61,17 +62,27 @@ const PROFILE_PLACEHOLDERS: BreweryProfileForm = {
 
 export default function BreweryProfileScreen() {
   const insets = useSafeAreaInsets();
-  const { id, edit } = useLocalSearchParams();
+  const { id, edit, fundingId } = useLocalSearchParams();
   const { user, updateUser } = useAuth();
   const updateUserRef = useRef(updateUser);
   const { projects } = useFunding();
   const breweryId = Array.isArray(id) ? id[0] : id;
   const editParam = Array.isArray(edit) ? edit[0] : edit;
+  const fundingIdParam = Array.isArray(fundingId) ? fundingId[0] : fundingId;
   const isOwnProfile = breweryId === 'profile';
-  const projectId = Number(breweryId);
+  const projectId = Number(fundingIdParam || breweryId);
   const project = useMemo(
-    () => (!Number.isNaN(projectId) ? projects.find((item) => item.id === projectId) || null : null),
-    [projectId, projects],
+    () => {
+      if (!Number.isNaN(projectId)) {
+        const foundByFundingId = projects.find((item) => item.id === projectId);
+        if (foundByFundingId) return foundByFundingId;
+      }
+      if (breweryId && breweryId !== 'profile') {
+        return projects.find((item) => String(item.breweryUserId || item.breweryInfo?.breweryUserId || '') === String(breweryId)) || null;
+      }
+      return null;
+    },
+    [breweryId, projectId, projects],
   );
   const isOwnProjectProfile = useMemo(
     () => Boolean(!isOwnProfile && project && isFundingProjectOwnedByBrewery(user, project)),
@@ -79,10 +90,18 @@ export default function BreweryProfileScreen() {
   );
   const usesDashboardProfile = isOwnProfile || isOwnProjectProfile;
   const [serverProfile, setServerProfile] = useState<BreweryProfile | null>(null);
+  const [publicProfile, setPublicProfile] = useState<BreweryProfile | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [isPublicProfileLoading, setIsPublicProfileLoading] = useState(false);
+  const publicBreweryUserId = !usesDashboardProfile
+    ? project?.breweryInfo?.breweryUserId || project?.breweryUserId || breweryId || ''
+    : '';
+  const projectBreweryInfo = project?.breweryInfo;
+  const projectBreweryAddress = [
+    projectBreweryInfo?.address || projectBreweryInfo?.businessAddress || project?.location,
+    projectBreweryInfo?.businessAddressDetail,
+  ].filter(Boolean).join(' ');
   const profileValues = useMemo<BreweryProfileForm>(() => {
-    const projectBreweryInfo = project?.breweryInfo;
-
     if (usesDashboardProfile) {
       return {
         ...DEFAULT_PROFILE,
@@ -103,22 +122,20 @@ export default function BreweryProfileScreen() {
 
     return {
       ...DEFAULT_PROFILE,
-      profileImage: projectBreweryInfo?.profileImageUrl || project?.breweryProfileImage || '',
-      breweryName: projectBreweryInfo?.mainName || projectBreweryInfo?.breweryName || project?.brewery || '',
-      brandStory: projectBreweryInfo?.shortIntroduction || '',
-      description: projectBreweryInfo?.shortIntroduction || project?.breweryBio || '',
-      brandStoryLong: projectBreweryInfo?.brandStory || '',
-      history: projectBreweryInfo?.brandStory || project?.breweryBio || '',
-      address: [projectBreweryInfo?.businessAddress || project?.location, projectBreweryInfo?.businessAddressDetail]
-        .filter(Boolean)
-        .join(' '),
-      businessNumber: projectBreweryInfo?.businessRegistrationNumber || '',
-      representative: projectBreweryInfo?.representativeName || '',
+      profileImage: publicProfile?.profileImageUrl || projectBreweryInfo?.profileImageUrl || project?.breweryProfileImage || '',
+      breweryName: publicProfile?.breweryName || projectBreweryInfo?.mainName || projectBreweryInfo?.breweryName || project?.brewery || '',
+      brandStory: publicProfile?.oneLineIntroduction || projectBreweryInfo?.oneLineIntroduction || projectBreweryInfo?.shortIntroduction || '',
+      description: publicProfile?.shortIntroduction || projectBreweryInfo?.shortIntroduction || project?.breweryBio || '',
+      brandStoryLong: publicProfile?.brandStory || projectBreweryInfo?.brandStory || '',
+      history: publicProfile?.history || projectBreweryInfo?.history || project?.breweryBio || '',
+      address: publicProfile?.address || projectBreweryAddress || '',
+      businessNumber: publicProfile?.businessRegistrationNumber || projectBreweryInfo?.businessRegistrationNumber || '',
+      representative: publicProfile?.representativeName || projectBreweryInfo?.representativeName || '',
       phone: '',
       email: '',
-      established: String(projectBreweryInfo?.establishedYear || ''),
+      established: String(publicProfile?.establishedYear || projectBreweryInfo?.establishedYear || ''),
     };
-  }, [project, serverProfile, user, usesDashboardProfile]);
+  }, [project?.brewery, project?.breweryBio, project?.breweryProfileImage, projectBreweryAddress, projectBreweryInfo, publicProfile, serverProfile, user, usesDashboardProfile]);
   const [isEditing, setIsEditing] = useState(isOwnProfile && editParam === '1');
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<BreweryProfileForm>(profileValues);
@@ -182,6 +199,34 @@ export default function BreweryProfileScreen() {
   ]);
 
   useEffect(() => {
+    if (isOwnProfile || !publicBreweryUserId) {
+      setPublicProfile(null);
+      setIsPublicProfileLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setIsPublicProfileLoading(true);
+    getPublicBreweryProfile(publicBreweryUserId)
+      .then((profile) => {
+        if (!mounted) return;
+        setPublicProfile(profile);
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setPublicProfile(null);
+        console.warn(getBreweryApiErrorMessage(error, '양조장 공개 프로필을 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (mounted) setIsPublicProfileLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isOwnProfile, publicBreweryUserId]);
+
+  useEffect(() => {
     if (!isEditing) setForm(profileValues);
   }, [isEditing, profileValues]);
 
@@ -197,7 +242,12 @@ export default function BreweryProfileScreen() {
     );
   }
 
-  const isPublicProfileIncomplete = !isOwnProfile && !isProfileLoading && ![
+  const isPublicProfileIncomplete =
+    !isOwnProfile &&
+    !isProfileLoading &&
+    !isPublicProfileLoading &&
+    ![
+    profileValues.breweryName,
     profileValues.profileImage,
     profileValues.brandStory,
     profileValues.description,
@@ -471,6 +521,7 @@ export default function BreweryProfileScreen() {
           </TouchableOpacity>
         </View>
 
+        {(isOwnProfile || form.phone || form.email) && (
         <View style={styles.section}>
           <Text style={styles.sectionEyebrow}>문의하기</Text>
           <View style={styles.contactGrid}>
@@ -503,6 +554,7 @@ export default function BreweryProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        )}
       </ScrollView>
     </View>
   );

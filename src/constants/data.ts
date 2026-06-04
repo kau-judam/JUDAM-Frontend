@@ -168,10 +168,13 @@ export interface FundingProject {
     breweryUserId?: string;
     breweryName?: string;
     mainName?: string;
+    oneLineIntroduction?: string;
     shortIntroduction?: string;
     brandStory?: string;
+    history?: string;
     establishedYear?: string;
     businessRegistrationNumber?: string;
+    address?: string;
     businessAddress?: string;
     businessAddressDetail?: string;
     representativeName?: string;

@@ -844,10 +844,10 @@ export type FundingOfficialBreweryInfo = {
   brewery_name?: string;
   mainName?: string;
   main_name?: string;
-  shortIntroduction?: string;
-  short_introduction?: string;
   oneLineIntroduction?: string;
   one_line_introduction?: string;
+  shortIntroduction?: string;
+  short_introduction?: string;
   creatorIntroduction?: string;
   creator_introduction?: string;
   breweryBio?: string;
@@ -862,10 +862,13 @@ export type FundingOfficialBreweryInfo = {
   established_year?: number | string;
   businessRegistrationNumber?: string;
   business_registration_number?: string;
+  address?: string;
   businessAddress?: string;
   business_address?: string;
   businessAddressDetail?: string;
   business_address_detail?: string;
+  breweryAddress?: string;
+  brewery_address?: string;
   representativeName?: string;
   representative_name?: string;
   profileImageUrl?: string;

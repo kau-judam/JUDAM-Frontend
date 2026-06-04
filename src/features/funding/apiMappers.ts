@@ -127,10 +127,10 @@ function hasOfficialBreweryInfo(value?: FundingOfficialBreweryInfo | null) {
     'brewery_name',
     'mainName',
     'main_name',
-    'shortIntroduction',
-    'short_introduction',
     'oneLineIntroduction',
     'one_line_introduction',
+    'shortIntroduction',
+    'short_introduction',
     'creatorIntroduction',
     'creator_introduction',
     'breweryBio',
@@ -145,10 +145,13 @@ function hasOfficialBreweryInfo(value?: FundingOfficialBreweryInfo | null) {
     'established_year',
     'businessRegistrationNumber',
     'business_registration_number',
+    'address',
     'businessAddress',
     'business_address',
     'businessAddressDetail',
     'business_address_detail',
+    'breweryAddress',
+    'brewery_address',
     'representativeName',
     'representative_name',
     'profileImageUrl',
@@ -174,11 +177,10 @@ function normalizeOfficialBreweryInfo(
     breweryUserId: readOfficialBreweryId(sourceRecord, ['breweryUserId', 'brewery_user_id']) || fallback?.breweryUserId,
     breweryName: readOfficialBreweryText(sourceRecord, ['breweryName', 'brewery_name']) || fallback?.breweryName,
     mainName: readOfficialBreweryText(sourceRecord, ['mainName', 'main_name']) || fallback?.mainName,
+    oneLineIntroduction: readOfficialBreweryText(sourceRecord, ['oneLineIntroduction', 'one_line_introduction']) || fallback?.oneLineIntroduction,
     shortIntroduction: readOfficialBreweryText(sourceRecord, [
       'shortIntroduction',
       'short_introduction',
-      'oneLineIntroduction',
-      'one_line_introduction',
       'creatorIntroduction',
       'creator_introduction',
       'breweryBio',
@@ -187,10 +189,12 @@ function normalizeOfficialBreweryInfo(
       'bio',
       'description',
     ]) || fallback?.shortIntroduction,
-    brandStory: readOfficialBreweryText(sourceRecord, ['brandStory', 'brand_story', 'history']) || fallback?.brandStory,
+    brandStory: readOfficialBreweryText(sourceRecord, ['brandStory', 'brand_story']) || fallback?.brandStory,
+    history: readOfficialBreweryText(sourceRecord, ['history']) || fallback?.history,
     establishedYear: readOfficialBreweryId(sourceRecord, ['establishedYear', 'established_year']) || fallback?.establishedYear,
     businessRegistrationNumber: readOfficialBreweryText(sourceRecord, ['businessRegistrationNumber', 'business_registration_number']) || fallback?.businessRegistrationNumber,
-    businessAddress: readOfficialBreweryText(sourceRecord, ['businessAddress', 'business_address']) || fallback?.businessAddress,
+    address: readOfficialBreweryText(sourceRecord, ['address', 'businessAddress', 'business_address', 'breweryAddress', 'brewery_address']) || fallback?.address,
+    businessAddress: readOfficialBreweryText(sourceRecord, ['businessAddress', 'business_address', 'address', 'breweryAddress', 'brewery_address']) || fallback?.businessAddress,
     businessAddressDetail: readOfficialBreweryText(sourceRecord, ['businessAddressDetail', 'business_address_detail']) || fallback?.businessAddressDetail,
     representativeName: readOfficialBreweryText(sourceRecord, ['representativeName', 'representative_name']) || fallback?.representativeName,
     profileImageUrl: normalizeFundingImageUrl(readOfficialBreweryText(sourceRecord, [
@@ -212,7 +216,7 @@ function getOfficialBreweryDisplayName(info?: FundingProject['breweryInfo']) {
 }
 
 function getOfficialBreweryIntro(info?: FundingProject['breweryInfo']) {
-  return sanitizeApiText(info?.shortIntroduction);
+  return sanitizeApiText(info?.oneLineIntroduction) || sanitizeApiText(info?.shortIntroduction);
 }
 
 function getPlanText(value: unknown) {
@@ -395,7 +399,7 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
   const officialBreweryName = getOfficialBreweryDisplayName(officialBreweryInfo);
   const officialBreweryIntro = getOfficialBreweryIntro(officialBreweryInfo);
   const officialBreweryImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl);
-  const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.businessAddress);
+  const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.address) || sanitizeApiText(officialBreweryInfo?.businessAddress);
   return {
     id: item.fundingId,
     title: sanitizeApiText(item.title) || existing?.title || '',
@@ -485,7 +489,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
   const officialBreweryName = getOfficialBreweryDisplayName(officialBreweryInfo);
   const officialBreweryIntro = getOfficialBreweryIntro(officialBreweryInfo);
   const officialBreweryImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl);
-  const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.businessAddress);
+  const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.address) || sanitizeApiText(officialBreweryInfo?.businessAddress);
   const businessAddress =
     officialBusinessAddress ||
     sanitizeApiText(detail.businessAddress) ||
@@ -611,7 +615,7 @@ export function mergeFundingIntro(existing: FundingProject, intro: FundingIntroR
   const officialBreweryName = getOfficialBreweryDisplayName(officialBreweryInfo);
   const officialBreweryIntro = getOfficialBreweryIntro(officialBreweryInfo);
   const officialBreweryImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl);
-  const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.businessAddress);
+  const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.address) || sanitizeApiText(officialBreweryInfo?.businessAddress);
   return {
     ...existing,
     projectSummary: existing.projectSummary || sanitizeApiText(intro.introduction),

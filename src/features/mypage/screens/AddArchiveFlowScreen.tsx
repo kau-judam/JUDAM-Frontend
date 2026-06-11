@@ -36,7 +36,7 @@ export default function AddArchiveFlowScreen() {
       setIsFundingLoading(true);
       setFundingError('');
 
-      getMyPageParticipatedFundings()
+    getMyPageParticipatedFundings({ excludeArchived: true })
         .then((items) => {
           if (!active) return;
           setFundingOptions(items);

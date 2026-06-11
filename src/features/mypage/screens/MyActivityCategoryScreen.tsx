@@ -12,6 +12,7 @@ import {
   getMyPageApiErrorMessage,
   getMyPageActivityInterests,
   getMyPageActivityQna,
+  getMyPageFundingJournalComments,
   getMyPageInterestedRecipes,
   getMyPageLikedPosts,
   getMyPageMyPosts,
@@ -20,6 +21,7 @@ import {
   getMyPageRecipeComments,
   type MyPageActivityInterestsResult,
   type MyPageActivityQnaResult,
+  type MyPageFundingJournalCommentsResult,
   type MyPageCommunityPostActivityDto,
   type MyPagePostCommentActivityDto,
   type MyPageRecipeActivityDto,
@@ -408,6 +410,21 @@ function mapMyPageFundingQna(item: MyPageActivityQnaResult['qna'][number]): Acti
   };
 }
 
+function mapMyPageFundingJournalComment(item: MyPageFundingJournalCommentsResult['comments'][number]): ActivityItem {
+  return {
+    id: `funding-journal-comment-${item.commentId}`,
+    eyebrow: '양조일지 댓글',
+    title: item.fundingTitle,
+    description: item.breweryLogTitle,
+    meta: formatActivityDate(item.createdAt),
+    statLabel: '양조일지',
+    statValue: formatActivityDate(item.breweryLogCreatedAt),
+    kind: 'comment',
+    comment: item.content,
+    route: `/funding/${item.fundingId}?tab=journal&logId=${item.breweryLogId}`,
+  };
+}
+
 export function RecipeActivityScreen() {
   const [written, setWritten] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
   const [liked, setLiked] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
@@ -508,7 +525,7 @@ export function RecipeActivityScreen() {
 
 export function FundingActivityScreen() {
   const [liked, setLiked] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
-  const [commented] = useState<LoadState<ActivityItem[]>>({ loading: false, error: null, data: [] });
+  const [commented, setCommented] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
   const [qna, setQna] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
 
   useFocusEffect(
@@ -517,10 +534,12 @@ export function FundingActivityScreen() {
 
       const load = async () => {
         setLiked((prev) => ({ ...prev, loading: true, error: null }));
+        setCommented((prev) => ({ ...prev, loading: true, error: null }));
         setQna((prev) => ({ ...prev, loading: true, error: null }));
 
-        const [interestsResult, qnaResult] = await Promise.allSettled([
+        const [interestsResult, commentsResult, qnaResult] = await Promise.allSettled([
           getMyPageActivityInterests({ type: 'FUNDING' }),
+          getMyPageFundingJournalComments(),
           getMyPageActivityQna(),
         ]);
 
@@ -532,6 +551,16 @@ export function FundingActivityScreen() {
           setLiked({
             loading: false,
             error: getMyPageApiErrorMessage(interestsResult.reason, '관심 펀딩 목록을 불러오지 못했습니다.'),
+            data: [],
+          });
+        }
+
+        if (commentsResult.status === 'fulfilled') {
+          setCommented({ loading: false, error: null, data: (commentsResult.value.comments ?? []).map(mapMyPageFundingJournalComment) });
+        } else {
+          setCommented({
+            loading: false,
+            error: getMyPageApiErrorMessage(commentsResult.reason, '양조일지 댓글 목록을 불러오지 못했습니다.'),
             data: [],
           });
         }

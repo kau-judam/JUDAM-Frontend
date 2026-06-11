@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   StatusBar,
   TextInput,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { 
   TrendingUp, 
   Users, 
@@ -247,9 +247,27 @@ export default function BreweryDashboardScreen() {
     ? deliveryInfoByProjectId[selectedDeliveryProject.id]
     : null;
 
+  const loadDashboardNotifications = useCallback(async () => {
+    if (!currentUserId || currentUserType !== 'brewery') return;
+
+    try {
+      const response = await getBreweryDashboardNotifications();
+      const notifications = response.notifications || response.content || [];
+      setDashboardNotifications(notifications.map(mapDashboardNotification).filter((notification) => !notification.read));
+    } catch (error) {
+      console.warn(getBreweryApiErrorMessage(error, '알림 목록을 불러오지 못했습니다.'));
+    }
+  }, [currentUserId, currentUserType]);
+
   useEffect(() => {
     projectsRef.current = projects;
   }, [projects]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadDashboardNotifications();
+    }, [loadDashboardNotifications]),
+  );
 
   useEffect(() => {
     if (!currentUserId || currentUserType !== 'brewery') return;
@@ -261,8 +279,7 @@ export default function BreweryDashboardScreen() {
       getBreweryFundingSummary(),
       getBreweryDashboardFundings({ status: 'active', page: 0, size: 50 }),
       getBreweryDashboardFundings({ status: 'completed', page: 0, size: 50 }),
-      getBreweryDashboardNotifications(),
-    ]).then(([basicInfoResult, summaryResult, activeFundingsResult, completedFundingsResult, notificationsResult]) => {
+    ]).then(([basicInfoResult, summaryResult, activeFundingsResult, completedFundingsResult]) => {
       if (!mounted) return;
 
       if (basicInfoResult.status === 'fulfilled') {
@@ -290,12 +307,6 @@ export default function BreweryDashboardScreen() {
         mergeProjects([...active, ...completed]);
       }
 
-      if (notificationsResult.status === 'fulfilled') {
-        const notifications = notificationsResult.value.notifications || notificationsResult.value.content || [];
-        setDashboardNotifications(notifications.map(mapDashboardNotification).filter((notification) => !notification.read));
-      } else {
-        console.warn(getBreweryApiErrorMessage(notificationsResult.reason, '알림 목록을 불러오지 못했습니다.'));
-      }
     });
 
     return () => {

@@ -269,6 +269,24 @@ export type MyPageActivityCommentsResult = {
   size: number;
 };
 
+export type MyPageFundingJournalCommentsResult = {
+  comments: {
+    commentId: number;
+    fundingId: number;
+    fundingTitle: string;
+    breweryLogId: number;
+    breweryLogTitle: string;
+    breweryLogCreatedAt: string;
+    content: string;
+    createdAt: string;
+    updatedAt: string | null;
+  }[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  size?: number;
+};
+
 export type MyPageActivityQnaResult = {
   qna: {
     questionId: number;
@@ -850,6 +868,24 @@ export async function getMyPageActivityComments(params: {
   };
 }
 
+export async function getMyPageFundingJournalComments(params: {
+  page?: number;
+  size?: number;
+} = {}) {
+  const query = new URLSearchParams({
+    page: String(params.page ?? 0),
+    size: String(params.size ?? 20),
+  });
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageFundingJournalCommentsResult> | MyPageFundingJournalCommentsResult>(
+    `/api/mypage/activity/funding-journal-comments?${query.toString()}`
+  );
+  const data = unwrapMyPageData<MyPageFundingJournalCommentsResult>(response);
+  return {
+    ...data,
+    comments: data.comments ?? [],
+  };
+}
+
 function normalizeMyPageActivityQnaItem(item: MyPageActivityQnaRawItem): MyPageActivityQnaResult['qna'][number] {
   const hasAnswer = readMyPageBoolean(item, ['hasAnswer', 'has_answer', 'answered'], Boolean(item.answerContent || item.answer_content || item.answer));
   return {
@@ -869,7 +905,7 @@ function normalizeMyPageActivityQnaItem(item: MyPageActivityQnaRawItem): MyPageA
 function normalizeMyPageActivityQnaResult(response: MyPageActivityQnaResult | MyPageApiEnvelope<MyPageActivityQnaResult> | unknown): MyPageActivityQnaResult {
   const data = unwrapMyPageData<unknown>(response);
   const container = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {};
-  const qna = readMyPageObjectArray(data, ['qna', 'questions', 'content', 'items', 'list']).map(normalizeMyPageActivityQnaItem);
+  const qna = readMyPageObjectArray(data, ['qnas', 'qna', 'questions', 'content', 'items', 'list']).map(normalizeMyPageActivityQnaItem);
   return {
     qna,
     totalElements: readMyPageNumber(container, ['totalElements', 'total_elements', 'total'], qna.length),

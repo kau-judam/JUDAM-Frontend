@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -38,6 +38,7 @@ import {
   getFundingStatusLabel,
   isCompletedFundingStatus,
 } from '@/constants/data';
+import { getMyPageApiErrorMessage, getMyPageFundingOrderDeliveryDetail, type MyPageFundingOrderDeliveryDetail } from '@/features/mypage/api';
 
 type DeliveryStatus = '예정' | '준비중' | '발송' | '완료';
 
@@ -213,6 +214,69 @@ function deriveOrder(project: FundingProject, participationAmount: number, parti
   return { ...merged, timeline: buildTimeline(merged) };
 }
 
+function mapServerDeliveryStatus(status?: string | null): DeliveryStatus {
+  const normalized = String(status || '').toUpperCase();
+  if (normalized === 'DELIVERED') return '완료';
+  if (normalized === 'SHIPPED' || normalized === 'SHIPPING') return '발송';
+  if (normalized === 'PREPARING' || normalized === 'READY') return '준비중';
+  return '예정';
+}
+
+function formatServerOrderDate(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function buildOrderFromServer(detail: MyPageFundingOrderDeliveryDetail): DerivedOrder {
+  const deliveryStatus = mapServerDeliveryStatus(detail.deliveryStatus || (detail.trackingNumber ? 'SHIPPED' : null));
+  const participatedAt = formatServerOrderDate(detail.orderedAt);
+  const estimatedDate = formatServerOrderDate(detail.deliveredAt || detail.shippedAt || detail.orderedAt);
+  const project: FundingProject = {
+    id: detail.fundingId,
+    title: detail.projectName,
+    brewery: detail.breweryName || '',
+    location: '',
+    category: '',
+    shortTitle: detail.projectName,
+    shortDescription: detail.rewardName || '',
+    image: '',
+    goalAmount: 1,
+    currentAmount: 1,
+    backers: 0,
+    daysLeft: 0,
+    status: 'SUCCESS' as FundingProject['status'],
+  };
+
+  const order: DerivedOrder = {
+    orderId: String(detail.orderId),
+    fundingId: detail.fundingId,
+    drinkName: detail.projectName,
+    brewery: detail.breweryName || '',
+    breweryPhone: '',
+    option: detail.rewardName || '-',
+    quantity: 1,
+    unitPrice: detail.paidAmount,
+    shippingFee: detail.shippingFee,
+    participatedAt,
+    paidAt: participatedAt,
+    paymentMethod: detail.paymentStatus,
+    deliveryStatus,
+    estimatedDate,
+    deliveredAt: detail.deliveredAt ? formatServerOrderDate(detail.deliveredAt) : null,
+    trackingNumber: detail.trackingNumber,
+    courier: detail.courierName,
+    recipient: detail.receiverName || '',
+    address: detail.receiverAddress || '',
+    hasReview: false,
+    timeline: [],
+    project,
+  };
+
+  return { ...order, timeline: buildTimeline(order) };
+}
+
 export default function FundingOrderDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -222,8 +286,24 @@ export default function FundingOrderDetailScreen() {
   const [inquiryTitle, setInquiryTitle] = useState('');
   const [inquiryEmail, setInquiryEmail] = useState(user?.email || '');
   const [inquiryContent, setInquiryContent] = useState('');
+  const [serverDetail, setServerDetail] = useState<MyPageFundingOrderDeliveryDetail | null>(null);
 
   const projectId = Number(Array.isArray(id) ? id[0] : id);
+  useEffect(() => {
+    if (!Number.isFinite(projectId)) return;
+    let active = true;
+    getMyPageFundingOrderDeliveryDetail(projectId)
+      .then((detail) => {
+        if (active) setServerDetail(detail);
+      })
+      .catch((error) => {
+        if (active) console.warn(getMyPageApiErrorMessage(error, '주문/배송 정보를 불러오지 못했습니다.'));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
   const hasDeliveryOrder = Object.prototype.hasOwnProperty.call(ORDER_OVERRIDES, projectId);
   const project = useMemo(
     () =>
@@ -239,9 +319,10 @@ export default function FundingOrderDetailScreen() {
   );
 
   const order = useMemo(() => {
+    if (serverDetail) return buildOrderFromServer(serverDetail);
     if (!project) return null;
     return deriveOrder(project, participation?.amount || project.pricePerBottle || 0, participation?.date || project.endDate || '2025.03.01', user?.name || '김주담');
-  }, [participation, project, user?.name]);
+  }, [participation, project, serverDetail, user?.name]);
 
   if (!order) {
     return (

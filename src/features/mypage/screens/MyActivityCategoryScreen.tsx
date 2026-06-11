@@ -10,12 +10,16 @@ import type { FundingProject } from '@/constants/data';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import {
   getMyPageApiErrorMessage,
+  getMyPageActivityInterests,
+  getMyPageActivityQna,
   getMyPageInterestedRecipes,
   getMyPageLikedPosts,
   getMyPageMyPosts,
   getMyPageMyRecipes,
   getMyPagePostComments,
   getMyPageRecipeComments,
+  type MyPageActivityInterestsResult,
+  type MyPageActivityQnaResult,
   type MyPageCommunityPostActivityDto,
   type MyPagePostCommentActivityDto,
   type MyPageRecipeActivityDto,
@@ -355,6 +359,55 @@ function mapMyPagePostComment(item: MyPagePostCommentActivityDto): ActivityItem 
   };
 }
 
+function mapMyPageFundingInterest(item: MyPageActivityInterestsResult['interests'][number]): ActivityItem {
+  const fundingProject: FundingProject = {
+    id: item.targetId,
+    title: item.title,
+    brewery: '',
+    location: '',
+    category: '전통주',
+    image: item.thumbnailUrl || '',
+    goalAmount: 0,
+    currentAmount: 0,
+    backers: 0,
+    daysLeft: 0,
+    status: 'ACTIVE',
+    liked: true,
+    favoriteCount: 0,
+    mainIngredients: item.summary || undefined,
+    projectSummary: item.summary || undefined,
+  };
+
+  return {
+    id: `funding-interest-${item.targetId}`,
+    eyebrow: '관심 펀딩',
+    title: item.title,
+    description: item.summary || '',
+    meta: formatActivityDate(item.interestedAt),
+    statLabel: '분류',
+    statValue: '펀딩',
+    kind: 'funding',
+    funding: fundingProject,
+    route: `/funding/${item.targetId}`,
+  };
+}
+
+function mapMyPageFundingQna(item: MyPageActivityQnaResult['qna'][number]): ActivityItem {
+  return {
+    id: `funding-qna-${item.questionId}`,
+    eyebrow: item.hasAnswer ? '답변 완료' : '답변 대기',
+    title: item.targetTitle,
+    description: item.questionContent,
+    meta: formatActivityDate(item.questionCreatedAt),
+    statLabel: '상태',
+    statValue: item.answerStatus,
+    kind: 'comment',
+    comment: item.questionContent,
+    answer: item.answerContent || undefined,
+    route: `/funding/${item.targetId}`,
+  };
+}
+
 export function RecipeActivityScreen() {
   const [written, setWritten] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
   const [liked, setLiked] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
@@ -454,25 +507,53 @@ export function RecipeActivityScreen() {
 }
 
 export function FundingActivityScreen() {
-  const dummyFunding: FundingProject = {
-    id: 900301,
-    title: '샘플 펀딩 막걸리',
-    brewery: '주담 테스트 양조장',
-    location: '충북 충주',
-    category: '막걸리',
-    image: '',
-    localImage: require('../../../../newpicutre/funding3.jpg'),
-    goalAmount: 3000000,
-    currentAmount: 3600000,
-    backers: 128,
-    daysLeft: 0,
-    status: '펀딩성공' as FundingProject['status'],
-    bottleSize: '500ml',
-    alcoholContent: '6%',
-    rewardItems: ['샘플 막걸리 1병'],
-    shippingFee: 3000,
-    mainIngredients: '쌀, 배',
-  };
+  const [liked, setLiked] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
+  const [commented] = useState<LoadState<ActivityItem[]>>({ loading: false, error: null, data: [] });
+  const [qna, setQna] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      const load = async () => {
+        setLiked((prev) => ({ ...prev, loading: true, error: null }));
+        setQna((prev) => ({ ...prev, loading: true, error: null }));
+
+        const [interestsResult, qnaResult] = await Promise.allSettled([
+          getMyPageActivityInterests({ type: 'FUNDING' }),
+          getMyPageActivityQna(),
+        ]);
+
+        if (!active) return;
+
+        if (interestsResult.status === 'fulfilled') {
+          setLiked({ loading: false, error: null, data: (interestsResult.value.interests ?? []).map(mapMyPageFundingInterest) });
+        } else {
+          setLiked({
+            loading: false,
+            error: getMyPageApiErrorMessage(interestsResult.reason, '관심 펀딩 목록을 불러오지 못했습니다.'),
+            data: [],
+          });
+        }
+
+        if (qnaResult.status === 'fulfilled') {
+          setQna({ loading: false, error: null, data: (qnaResult.value.qna ?? []).map(mapMyPageFundingQna) });
+        } else {
+          setQna({
+            loading: false,
+            error: getMyPageApiErrorMessage(qnaResult.reason, 'Q&A 목록을 불러오지 못했습니다.'),
+            data: [],
+          });
+        }
+      };
+
+      void load();
+
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
 
   return (
     <MyActivityCategoryScreen
@@ -484,33 +565,27 @@ export function FundingActivityScreen() {
           label: '관심',
           Icon: Heart,
           emptyTitle: '관심 표시한 펀딩이 없습니다',
-          items: [
-            {
-              id: 'dummy-funding-1',
-              eyebrow: '관심 펀딩',
-              title: '샘플 펀딩 막걸리',
-              description: '펀딩 활동 API는 아직 전달되지 않아 기존 화면을 유지합니다.',
-              meta: '목표 120%',
-              statLabel: '참여자',
-              statValue: '128명',
-              kind: 'funding',
-              funding: dummyFunding,
-            },
-          ],
+          items: liked.data,
+          loading: liked.loading,
+          error: liked.error,
         },
         {
           id: 'commented',
           label: '댓글',
           Icon: MessageCircle,
           emptyTitle: '댓글을 남긴 펀딩이 없습니다',
-          items: [],
+          items: commented.data,
+          loading: commented.loading,
+          error: commented.error,
         },
         {
           id: 'qna',
           label: 'Q&A',
           Icon: HelpCircle,
           emptyTitle: '작성한 Q&A가 없습니다',
-          items: [],
+          items: qna.data,
+          loading: qna.loading,
+          error: qna.error,
         },
       ]}
     />

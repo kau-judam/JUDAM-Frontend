@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Image,
   ScrollView,
@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Clock3, Heart, Package, TrendingUp, Users } from 'lucide-react-native';
 
@@ -15,6 +16,7 @@ import { Progress } from '@/components/ui/progress';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { getMyPageApiErrorMessage, getMyPageParticipatedFundings, type MyPageParticipatedFunding } from '@/features/mypage/api';
 import {
   FundingProject,
   getFundingProjectImageSource,
@@ -25,40 +27,13 @@ import {
 type MyFundingProject = FundingProject & {
   myAmount: number;
   myDate: string;
+  orderId?: number;
+  canViewDelivery?: boolean;
+  hasTrackingNumber?: boolean;
 };
 
 const PAGE_SIZE = 3;
 const DELIVERY_ORDER_PROJECT_ID = 5;
-const DUMMY_DELIVERY_PROJECT_ID = 9001;
-
-const DUMMY_DELIVERY_PROJECT: MyFundingProject = {
-  id: DUMMY_DELIVERY_PROJECT_ID,
-  title: '달빛 담은 배 막걸리 배송 더미',
-  brewery: '주담 테스트 양조장',
-  location: '충북 충주',
-  category: '막걸리',
-  shortTitle: '달빛 담은 배 막걸리',
-  shortDescription: '배송조회 확인용 참여 펀딩 더미 데이터',
-  image: '',
-  localImage: require('../../../../newpicutre/funding3.jpg'),
-  goalAmount: 3000000,
-  currentAmount: 3600000,
-  backers: 128,
-  daysLeft: 0,
-  status: '펀딩 성공' as FundingProject['status'],
-  startDate: '2026.04.01',
-  endDate: '2026.05.10',
-  pricePerBottle: 32000,
-  bottleSize: '500ml',
-  alcoholContent: '6%',
-  estimatedDelivery: '2026.06.05',
-  rewardItems: ['달빛 담은 배 막걸리 1병'],
-  shippingFee: 3000,
-  mainIngredients: '쌀, 배',
-  tags: ['테스트', '배송조회'],
-  myAmount: 35000,
-  myDate: '2026.05.21',
-};
 
 function formatManwon(amount: number) {
   return `${Math.round(amount / 10000).toLocaleString()}만원`;
@@ -69,13 +44,72 @@ function isSuccessProject(project: FundingProject) {
   return label.includes('성공') || label.includes('달성');
 }
 
+function formatFundingDate(value?: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function mapParticipatedFundingToProject(item: MyPageParticipatedFunding): MyFundingProject {
+  const goalAmount = item.goalAmount || 1;
+  return {
+    id: item.fundingId,
+    title: item.projectName || item.drinkName,
+    brewery: item.breweryName || '',
+    location: '',
+    category: item.ingredients || '',
+    shortTitle: item.drinkName || item.projectName,
+    shortDescription: item.ingredients || '',
+    image: item.thumbnailUrl || '',
+    goalAmount,
+    currentAmount: item.currentAmount ?? 0,
+    backers: 0,
+    daysLeft: 0,
+    status: item.fundingStatus as FundingProject['status'],
+    alcoholContent: item.abv ? `${item.abv}%` : undefined,
+    mainIngredients: item.ingredients || undefined,
+    myAmount: item.myAmount ?? 0,
+    myDate: formatFundingDate(item.participatedAt),
+    orderId: item.orderId,
+    canViewDelivery: item.canViewDelivery ?? item.fundingStatus === 'SUCCESS',
+    hasTrackingNumber: item.hasTrackingNumber ?? false,
+  };
+}
+
 export default function FundedProjectsScreen() {
   const insets = useSafeAreaInsets();
   const { projects, participatedFundings } = useFunding();
   const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
+  const [serverFundings, setServerFundings] = useState<MyFundingProject[]>([]);
+  const [serverLoadAttempted, setServerLoadAttempted] = useState(false);
   const [page, setPage] = useState(1);
 
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      getMyPageParticipatedFundings()
+        .then((fundings) => {
+          if (!active) return;
+          setServerFundings(fundings.map(mapParticipatedFundingToProject));
+          setServerLoadAttempted(true);
+        })
+        .catch((error) => {
+          if (!active) return;
+          setServerFundings([]);
+          setServerLoadAttempted(true);
+          console.warn(getMyPageApiErrorMessage(error, '참여 펀딩 목록을 불러오지 못했습니다.'));
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
+
   const myFundings = useMemo<MyFundingProject[]>(() => {
+    if (serverLoadAttempted) return serverFundings;
     const realFundings = participatedFundings
       .map((participation) => {
         const project = projects.find((item) => item.id === participation.fundingId);
@@ -87,14 +121,15 @@ export default function FundedProjectsScreen() {
         };
       })
       .filter((item): item is MyFundingProject => Boolean(item));
-    return [DUMMY_DELIVERY_PROJECT, ...realFundings];
-  }, [participatedFundings, projects]);
+    return realFundings;
+  }, [participatedFundings, projects, serverFundings, serverLoadAttempted]);
 
   const totalAmount = myFundings.reduce((sum, item) => sum + item.myAmount, 0);
   const activeCount = myFundings.filter((project) => !isCompletedFundingStatus(project.status)).length;
   const doneCount = myFundings.filter((project) => isCompletedFundingStatus(project.status)).length;
   const totalPages = Math.max(1, Math.ceil(myFundings.length / PAGE_SIZE));
   const paginatedFundings = myFundings.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const loadingFundings = !serverLoadAttempted && myFundings.length === 0;
 
   const changePage = (nextPage: number) => {
     if (nextPage < 1 || nextPage > totalPages) return;
@@ -143,7 +178,14 @@ export default function FundedProjectsScreen() {
           ))}
         </View>
 
-        {myFundings.length === 0 && (
+        {loadingFundings && (
+          <View style={styles.emptyBox}>
+            <TrendingUp size={42} color="#D1D5DB" />
+            <Text style={styles.emptyText}>참여 펀딩 목록을 불러오는 중입니다</Text>
+          </View>
+        )}
+
+        {!loadingFundings && myFundings.length === 0 && (
           <View style={styles.emptyBox}>
             <TrendingUp size={42} color="#D1D5DB" />
             <Text style={styles.emptyText}>아직 참여한 펀딩이 없습니다</Text>
@@ -216,9 +258,7 @@ function FundingParticipationCard({
   const progress = Math.min(Math.round((project.currentAmount / project.goalAmount) * 100), 100);
   const completed = isCompletedFundingStatus(project.status);
   const statusLabel = getFundingStatusLabel(project.status);
-  const showDeliveryButton =
-    project.id === DUMMY_DELIVERY_PROJECT_ID ||
-    (project.id === DELIVERY_ORDER_PROJECT_ID && isSuccessProject(project));
+  const showDeliveryButton = project.id === DELIVERY_ORDER_PROJECT_ID && isSuccessProject(project);
 
   return (
     <TouchableOpacity
@@ -475,3 +515,4 @@ const styles = StyleSheet.create({
   emptyButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999, backgroundColor: '#111827' },
   emptyButtonText: { fontSize: 13, fontWeight: '900', color: '#FFFFFF' },
 });
+

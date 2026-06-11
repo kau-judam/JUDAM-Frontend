@@ -54,7 +54,7 @@ const FAQ_ITEMS = [
 export default function MyPageScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout, updateUser } = useAuth();
-  const { participatedFundings, mergeParticipationsFromOrders } = useFunding();
+  const { mergeParticipationsFromOrders } = useFunding();
   const [supportVisible, setSupportVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [summary, setSummary] = useState<MyPageSummary | null>(null);
@@ -235,8 +235,8 @@ export default function MyPageScreen() {
   const startBtiTest = () => {
     router.push('/bti-test' as any);
   };
-  const fundedCount = summary?.participatedFundingCount ?? (isBrewery ? 6 : participatedFundings.length);
-  const archiveCount = summary?.archiveCount ?? 12;
+  const fundedCount = summary?.participatedFundingCount;
+  const archiveCount = summary?.archiveCount;
   const badgeCount = earnedBadgeCount ?? summary?.badgeCount ?? 0;
 
   return (
@@ -302,8 +302,8 @@ export default function MyPageScreen() {
 
         {/* 3. Stats Grid */}
         <View style={styles.statsGrid}>
-           <StatItem icon={<TrendingUp size={18} color="#4B5563" />} label="참여 펀딩" val={fundedCount.toString()} onPress={() => router.push('/mypage/funded' as any)} />
-           <StatItem icon={<BookOpen size={18} color="#4B5563" />} label="내 아카이브" val={archiveCount.toString()} onPress={() => router.push('/mypage/archive' as any)} />
+           <StatItem icon={<TrendingUp size={18} color="#4B5563" />} label="참여 펀딩" val={fundedCount === undefined ? '-' : fundedCount.toString()} onPress={() => router.push('/mypage/funded' as any)} />
+           <StatItem icon={<BookOpen size={18} color="#4B5563" />} label="내 아카이브" val={archiveCount === undefined ? '-' : archiveCount.toString()} onPress={() => router.push('/mypage/archive' as any)} />
            <StatItem icon={<Award size={18} color="#4B5563" />} label="뱃지" val={badgeCount.toString()} onPress={() => router.push('/mypage/badge' as any)} />
         </View>
 

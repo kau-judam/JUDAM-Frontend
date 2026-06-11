@@ -133,8 +133,37 @@ export type MyPageParticipatedFunding = {
   abv: number | null;
   thumbnailUrl: string | null;
   fundingStatus: string;
+  myAmount?: number;
+  participatedAt?: string;
+  currentAmount?: number;
+  goalAmount?: number;
+  progressRate?: number;
+  canViewDelivery?: boolean;
+  deliveryStatus?: string | null;
+  hasTrackingNumber?: boolean;
   hasReview: boolean;
   reviewId: number | null;
+};
+
+export type MyPageFundingOrderDeliveryDetail = {
+  orderId: number;
+  fundingId: number;
+  projectName: string;
+  breweryName: string | null;
+  rewardName: string | null;
+  paidAmount: number;
+  shippingFee: number;
+  totalAmount: number;
+  orderedAt: string;
+  paymentStatus: string;
+  deliveryStatus: string | null;
+  courierName: string | null;
+  trackingNumber: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  receiverName: string | null;
+  receiverPhone: string | null;
+  receiverAddress: string | null;
 };
 
 export type MyPageFundingArchiveReview = {
@@ -206,6 +235,60 @@ export type MyPageArchiveTagGroup = {
     name: string;
   }[];
 };
+
+export type MyPageActivityTargetType = 'RECIPE' | 'POST' | 'FUNDING';
+
+export type MyPageActivityInterestsResult = {
+  interests: {
+    targetId: number;
+    targetType: MyPageActivityTargetType;
+    title: string;
+    summary: string | null;
+    thumbnailUrl: string | null;
+    interestedAt: string;
+  }[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  size: number;
+};
+
+export type MyPageActivityCommentsResult = {
+  comments: {
+    commentId: number;
+    targetId: number;
+    targetType: Extract<MyPageActivityTargetType, 'RECIPE' | 'POST'>;
+    targetTitle: string;
+    content: string;
+    createdAt: string;
+    updatedAt: string | null;
+  }[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  size: number;
+};
+
+export type MyPageActivityQnaResult = {
+  qna: {
+    questionId: number;
+    targetId: number;
+    targetType: 'FUNDING';
+    targetTitle: string;
+    questionContent: string;
+    questionCreatedAt: string;
+    hasAnswer: boolean;
+    answerContent: string | null;
+    answerCreatedAt: string | null;
+    answerStatus: 'ANSWERED' | 'WAITING' | string;
+  }[];
+  totalElements: number;
+  totalPages: number;
+  currentPage: number;
+  size: number;
+};
+
+type MyPageActivityQnaRawItem = Record<string, unknown>;
 
 export type MyPageBadge = {
   badgeId: string;
@@ -398,6 +481,61 @@ function unwrapMyPageData<T>(response: T | MyPageApiEnvelope<T>) {
     if (data !== undefined) return data;
   }
   return response as T;
+}
+
+function readMyPageString(source: Record<string, unknown>, keys: string[], fallback = '') {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+  }
+  return fallback;
+}
+
+function readMyPageNullableString(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number') return String(value);
+    if (value === null) return null;
+  }
+  return null;
+}
+
+function readMyPageNumber(source: Record<string, unknown>, keys: string[], fallback = 0) {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return fallback;
+}
+
+function readMyPageBoolean(source: Record<string, unknown>, keys: string[], fallback = false) {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === 'true';
+  }
+  return fallback;
+}
+
+function readMyPageObjectArray(source: unknown, keys: string[]) {
+  if (Array.isArray(source)) {
+    return source.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item));
+  }
+  if (!source || typeof source !== 'object') return [];
+  const object = source as Record<string, unknown>;
+  for (const key of keys) {
+    const value = object[key];
+    if (Array.isArray(value)) {
+      return value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item));
+    }
+  }
+  return [];
 }
 
 export async function getMyPageProfile() {
@@ -599,9 +737,14 @@ export async function getMyPageArchiveTags() {
   return unwrapMyPageData<MyPageArchiveTagGroup[]>(response);
 }
 
-export async function getMyPageParticipatedFundings() {
+export async function getMyPageParticipatedFundings(params: { excludeArchived?: boolean } = {}) {
+  const query = new URLSearchParams();
+  if (params.excludeArchived !== undefined) {
+    query.set('excludeArchived', String(params.excludeArchived));
+  }
+  const suffix = query.toString();
   const response = await requestMyPageJson<MyPageApiEnvelope<MyPageParticipatedFunding[]>>(
-    '/api/mypage/fundings/participated'
+    `/api/mypage/fundings/participated${suffix ? `?${suffix}` : ''}`
   );
   return unwrapMyPageData<MyPageParticipatedFunding[]>(response);
 }
@@ -611,6 +754,13 @@ export async function getMyPageFundingArchiveReview(fundingId: string | number) 
     `/api/mypage/fundings/${fundingId}/review`
   );
   return unwrapMyPageData<MyPageFundingArchiveReview | null>(response);
+}
+
+export async function getMyPageFundingOrderDeliveryDetail(orderId: string | number) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageFundingOrderDeliveryDetail>>(
+    `/api/mypage/fundings/orders/${orderId}`
+  );
+  return unwrapMyPageData<MyPageFundingOrderDeliveryDetail>(response);
 }
 
 export async function getMyPageBadges() {
@@ -655,6 +805,88 @@ export async function getMyPagePostComments(page = 0, size = 20) {
   return requestMyPageJson<MyPagePostCommentActivityList>(
     `/api/users/me/post-comments?${buildActivityPageQuery(page, size)}`
   );
+}
+
+function buildUnifiedActivityQuery(params: {
+  type?: MyPageActivityTargetType | Extract<MyPageActivityTargetType, 'RECIPE' | 'POST'>;
+  page?: number;
+  size?: number;
+} = {}) {
+  const query = new URLSearchParams({
+    page: String(params.page ?? 0),
+    size: String(params.size ?? 20),
+  });
+  if (params.type) query.set('type', params.type);
+  return query.toString();
+}
+
+export async function getMyPageActivityInterests(params: {
+  type?: MyPageActivityTargetType;
+  page?: number;
+  size?: number;
+} = {}) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageActivityInterestsResult> | MyPageActivityInterestsResult>(
+    `/api/mypage/activity/interests?${buildUnifiedActivityQuery(params)}`
+  );
+  const data = unwrapMyPageData<MyPageActivityInterestsResult>(response);
+  return {
+    ...data,
+    interests: data.interests ?? [],
+  };
+}
+
+export async function getMyPageActivityComments(params: {
+  type?: Extract<MyPageActivityTargetType, 'RECIPE' | 'POST'>;
+  page?: number;
+  size?: number;
+} = {}) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageActivityCommentsResult> | MyPageActivityCommentsResult>(
+    `/api/mypage/activity/comments?${buildUnifiedActivityQuery(params)}`
+  );
+  const data = unwrapMyPageData<MyPageActivityCommentsResult>(response);
+  return {
+    ...data,
+    comments: data.comments ?? [],
+  };
+}
+
+function normalizeMyPageActivityQnaItem(item: MyPageActivityQnaRawItem): MyPageActivityQnaResult['qna'][number] {
+  const hasAnswer = readMyPageBoolean(item, ['hasAnswer', 'has_answer', 'answered'], Boolean(item.answerContent || item.answer_content || item.answer));
+  return {
+    questionId: readMyPageNumber(item, ['questionId', 'question_id', 'id']),
+    targetId: readMyPageNumber(item, ['targetId', 'target_id', 'fundingId', 'funding_id']),
+    targetType: 'FUNDING',
+    targetTitle: readMyPageString(item, ['targetTitle', 'target_title', 'fundingTitle', 'funding_title', 'projectName', 'project_name', 'title']),
+    questionContent: readMyPageString(item, ['questionContent', 'question_content', 'content', 'body', 'comment']),
+    questionCreatedAt: readMyPageString(item, ['questionCreatedAt', 'question_created_at', 'createdAt', 'created_at', 'date']),
+    hasAnswer,
+    answerContent: readMyPageNullableString(item, ['answerContent', 'answer_content', 'answer']),
+    answerCreatedAt: readMyPageNullableString(item, ['answerCreatedAt', 'answer_created_at', 'answeredAt', 'answered_at']),
+    answerStatus: readMyPageString(item, ['answerStatus', 'answer_status', 'status'], hasAnswer ? 'ANSWERED' : 'WAITING'),
+  };
+}
+
+function normalizeMyPageActivityQnaResult(response: MyPageActivityQnaResult | MyPageApiEnvelope<MyPageActivityQnaResult> | unknown): MyPageActivityQnaResult {
+  const data = unwrapMyPageData<unknown>(response);
+  const container = data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {};
+  const qna = readMyPageObjectArray(data, ['qna', 'questions', 'content', 'items', 'list']).map(normalizeMyPageActivityQnaItem);
+  return {
+    qna,
+    totalElements: readMyPageNumber(container, ['totalElements', 'total_elements', 'total'], qna.length),
+    totalPages: readMyPageNumber(container, ['totalPages', 'total_pages'], qna.length > 0 ? 1 : 0),
+    currentPage: readMyPageNumber(container, ['currentPage', 'current_page', 'page']),
+    size: readMyPageNumber(container, ['size'], qna.length),
+  };
+}
+
+export async function getMyPageActivityQna(params: {
+  page?: number;
+  size?: number;
+} = {}) {
+  const response = await requestMyPageJson<unknown>(
+    `/api/mypage/activity/qna?${buildUnifiedActivityQuery(params)}`
+  );
+  return normalizeMyPageActivityQnaResult(response);
 }
 
 export async function uploadMyPageArchiveImages(archiveId: string | number, images: MyPageImageUploadFile[]) {

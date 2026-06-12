@@ -38,10 +38,21 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const BG_IMAGE = require('../../../../newpicutre/ok.jpg');
 const MAX_LICENSE_FILE_SIZE = 10 * 1024 * 1024;
 
-function isApprovedBreweryApplication(role?: string, status?: string) {
-  const normalizedRole = String(role || '').toUpperCase();
-  const normalizedStatus = String(status || '').toUpperCase();
-  return normalizedRole === 'BREWERY' || normalizedRole === 'BREWERY_APPROVED' || normalizedStatus === 'APPROVED';
+function getBusinessLicenseMimeType(fileName?: string | null, mimeType?: string | null) {
+  if (mimeType?.trim()) return mimeType.trim();
+  const normalizedName = String(fileName || '').toLowerCase();
+  if (normalizedName.endsWith('.pdf')) return 'application/pdf';
+  if (normalizedName.endsWith('.png')) return 'image/png';
+  return 'image/jpeg';
+}
+
+function getBusinessLicenseFileName(fileName?: string | null, mimeType?: string | null) {
+  const trimmedName = fileName?.trim();
+  if (trimmedName) return trimmedName;
+  const normalizedMimeType = getBusinessLicenseMimeType(fileName, mimeType);
+  if (normalizedMimeType === 'application/pdf') return 'business-license.pdf';
+  if (normalizedMimeType === 'image/png') return 'business-license.png';
+  return 'business-license.jpg';
 }
 
 type BusinessLicenseFile = {
@@ -189,6 +200,15 @@ export default function BreweryVerificationScreen() {
     setIsLoading(true);
 
     try {
+      console.log('[BreweryVerification][SUBMIT] start', {
+        mode: isEditMode ? 'edit' : 'create',
+        hasBusinessLicense: Boolean(selectedBusinessLicense),
+        selectedImageUri: selectedBusinessLicense?.uri,
+        fileName: selectedBusinessLicense?.name,
+        mimeType: selectedBusinessLicense?.mimeType,
+        hasPhoneVerificationToken: Boolean(phoneVerificationToken),
+      });
+
       if (isEditMode) {
         await verifyBrewery({
           businessNumber: formData.businessNumber,
@@ -213,17 +233,21 @@ export default function BreweryVerificationScreen() {
           phoneVerificationToken,
           businessLicense: {
             uri: selectedBusinessLicense.uri,
-            name: selectedBusinessLicense.name,
-            mimeType: selectedBusinessLicense.mimeType,
+            name: getBusinessLicenseFileName(selectedBusinessLicense.name, selectedBusinessLicense.mimeType),
+            mimeType: getBusinessLicenseMimeType(selectedBusinessLicense.name, selectedBusinessLicense.mimeType),
           },
         });
+        console.log('[BreweryVerification][SUBMIT] application response', {
+          status: application.status || application.application?.status,
+          ocrStatus: application.ocrStatus || application.application?.ocrStatus,
+          ocrError: application.ocrError || application.application?.ocrError,
+        });
         const latestUser = application.user || application.application?.user;
-        const applicationStatus = application.status || application.application?.status;
-        const isApproved = isApprovedBreweryApplication(latestUser?.role, applicationStatus);
 
         await updateUser({
           type: 'brewery',
-          isBreweryVerified: isApproved,
+          isBreweryVerified: false,
+          role: latestUser?.role || user.role,
           name: latestUser?.nickname || user.name,
           email: latestUser?.email || user.email,
           profileImage: latestUser?.profileImage || user.profileImage,
@@ -237,7 +261,7 @@ export default function BreweryVerificationScreen() {
 
       const successMessage = isEditMode
         ? '양조장 정보가 수정되었습니다.'
-        : '양조장 인증이 승인되었습니다. 양조장 대시보드를 안정적으로 이용하려면 다시 로그인해주세요.';
+        : '양조장 인증 신청이 접수되었습니다. 관리자 검토 후 승인되면 양조장 대시보드를 이용할 수 있습니다.';
       Alert.alert('알림', successMessage, [
         { text: '확인', onPress: () => router.replace('/(tabs)' as any) }
       ]);
@@ -248,6 +272,14 @@ export default function BreweryVerificationScreen() {
           ? error.message
           : (isEditMode ? "정보 수정에 실패했습니다." : "인증 신청에 실패했습니다. 다시 시도해주세요.")
       );
+      console.log('[BreweryVerification][SUBMIT] failed', {
+        stage: isEditMode ? 'verifyBrewery' : 'submitBreweryApplication',
+        message: error instanceof Error ? error.message : String(error),
+        selectedImageUri: selectedBusinessLicense?.uri,
+        fileName: selectedBusinessLicense?.name,
+        mimeType: selectedBusinessLicense?.mimeType,
+        hasPhoneVerificationToken: Boolean(phoneVerificationToken),
+      });
     } finally {
       setIsLoading(false);
     }
@@ -290,9 +322,9 @@ export default function BreweryVerificationScreen() {
 
       const asset = result.assets[0];
       const file: BusinessLicenseFile = {
-        name: asset.fileName || `business_license_${Date.now()}.jpg`,
+        name: getBusinessLicenseFileName(asset.fileName, asset.mimeType),
         uri: asset.uri,
-        mimeType: asset.mimeType || 'image/jpeg',
+        mimeType: getBusinessLicenseMimeType(asset.fileName, asset.mimeType),
         size: asset.fileSize,
         source: 'photo',
       };
@@ -318,9 +350,9 @@ export default function BreweryVerificationScreen() {
 
       const asset = result.assets[0];
       const file: BusinessLicenseFile = {
-        name: asset.name,
+        name: getBusinessLicenseFileName(asset.name, asset.mimeType),
         uri: asset.uri,
-        mimeType: asset.mimeType,
+        mimeType: getBusinessLicenseMimeType(asset.name, asset.mimeType),
         size: asset.size,
         source: 'file',
       };

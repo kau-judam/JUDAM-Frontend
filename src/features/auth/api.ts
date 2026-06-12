@@ -175,11 +175,15 @@ export type BreweryApplicationPayload = {
   businessAddressDetail?: string;
   phoneNumber: string;
   phoneVerificationToken: string;
-  businessLicense: BreweryApplicationFile;
+  businessLicense?: BreweryApplicationFile;
+  documentUrl?: string;
 };
 
 export type BreweryApplicationRecord = {
   applicationId?: number;
+  userId?: number | string | null;
+  applicantName?: string | null;
+  email?: string | null;
   status?: string;
   breweryName?: string;
   businessNumber?: string;
@@ -187,10 +191,18 @@ export type BreweryApplicationRecord = {
   businessAddress?: string;
   businessAddressDetail?: string;
   location?: string;
+  representativeName?: string | null;
   phoneNumber?: string;
   documentUrl?: string;
   documentKey?: string;
+  businessLicenseUrl?: string | null;
+  businessRegistrationFileUrl?: string | null;
   rejectReason?: string | null;
+  ocrStatus?: string | null;
+  ocrSummary?: string | null;
+  ocrError?: string | null;
+  ocrCheckedAt?: string | null;
+  ocr?: unknown;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -210,6 +222,120 @@ export type BreweryApplicationResponse = BreweryApplicationRecord & {
   user?: AuthApiUser;
   message?: string;
 };
+
+export type AdminBreweryApplication = BreweryApplicationRecord & {
+  applicationId: number;
+};
+
+export type AdminBreweryApplicationListResponse = {
+  applications: AdminBreweryApplication[];
+  message?: string;
+};
+
+function isAuthRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function readAuthValue(source: Record<string, unknown> | undefined, keys: string[]) {
+  if (!source) return undefined;
+  for (const key of keys) {
+    if (source[key] !== undefined && source[key] !== null) return source[key];
+  }
+  return undefined;
+}
+
+function readAuthNestedValue(source: Record<string, unknown> | undefined, keys: string[], nestedKey = 'ocr') {
+  const direct = readAuthValue(source, keys);
+  if (direct !== undefined) return direct;
+  const nested = readAuthValue(source, [nestedKey]);
+  if (!isAuthRecord(nested)) return undefined;
+  return readAuthValue(nested, keys);
+}
+
+function readAuthString(source: Record<string, unknown> | undefined, keys: string[]) {
+  const value = readAuthValue(source, keys);
+  if (value === undefined || value === null) return undefined;
+  return String(value);
+}
+
+function readAuthNestedString(source: Record<string, unknown> | undefined, keys: string[]) {
+  const value = readAuthNestedValue(source, keys);
+  if (value === undefined || value === null) return undefined;
+  return String(value);
+}
+
+function readAuthNumber(source: Record<string, unknown> | undefined, keys: string[]) {
+  const value = readAuthValue(source, keys);
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function readAuthObjectArray(source: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(source)) return [];
+  return source.filter(isAuthRecord);
+}
+
+function pickAdminBreweryApplicationItems(response: unknown) {
+  if (Array.isArray(response)) return readAuthObjectArray(response);
+  if (!isAuthRecord(response)) return [];
+
+  const directApplications = readAuthValue(response, ['applications', 'items', 'rows', 'content']);
+  if (Array.isArray(directApplications)) return readAuthObjectArray(directApplications);
+
+  const data = readAuthValue(response, ['data']);
+  if (Array.isArray(data)) return readAuthObjectArray(data);
+  if (isAuthRecord(data)) {
+    const nestedApplications = readAuthValue(data, ['applications', 'items', 'rows', 'content']);
+    if (Array.isArray(nestedApplications)) return readAuthObjectArray(nestedApplications);
+  }
+
+  return [];
+}
+
+function normalizeAdminBreweryApplication(source: Record<string, unknown>): AdminBreweryApplication {
+  const ocr = readAuthValue(source, ['ocr']);
+  const user = readAuthValue(source, ['user']);
+  const userRecord = isAuthRecord(user) ? user : undefined;
+  const applicationId = readAuthNumber(source, ['applicationId', 'application_id', 'id']) || 0;
+
+  return {
+    applicationId,
+    userId: readAuthValue(source, ['userId', 'user_id']) as number | string | null | undefined,
+    applicantName:
+      readAuthString(source, ['applicantName', 'applicant_name', 'nickname', 'userNickname', 'user_nickname']) ||
+      readAuthString(userRecord, ['nickname', 'name']),
+    email:
+      readAuthString(source, ['email', 'userEmail', 'user_email']) ||
+      readAuthString(userRecord, ['email']),
+    status: readAuthString(source, ['status', 'applicationStatus', 'application_status']),
+    breweryName: readAuthString(source, ['breweryName', 'brewery_name', 'name']),
+    businessNumber: readAuthString(source, ['businessNumber', 'business_number', 'businessRegistrationNumber', 'business_registration_number', 'licenseNumber', 'license_number']),
+    licenseNumber: readAuthString(source, ['licenseNumber', 'license_number', 'businessNumber', 'business_number']),
+    businessAddress: readAuthString(source, ['businessAddress', 'business_address', 'address', 'location']),
+    businessAddressDetail: readAuthString(source, ['businessAddressDetail', 'business_address_detail', 'addressDetail', 'address_detail']),
+    location: readAuthString(source, ['location', 'businessAddress', 'business_address', 'address']),
+    representativeName: readAuthString(source, ['representativeName', 'representative_name', 'ownerName', 'owner_name']),
+    phoneNumber:
+      readAuthString(source, ['phoneNumber', 'phone_number', 'phone']) ||
+      readAuthString(userRecord, ['phoneNumber', 'phone_number']),
+    documentUrl: readAuthString(source, ['documentUrl', 'document_url', 'businessLicenseUrl', 'business_license_url', 'businessRegistrationFileUrl', 'business_registration_file_url']),
+    documentKey: readAuthString(source, ['documentKey', 'document_key']),
+    businessLicenseUrl: readAuthString(source, ['businessLicenseUrl', 'business_license_url', 'businessLicense', 'business_license']),
+    businessRegistrationFileUrl: readAuthString(source, ['businessRegistrationFileUrl', 'business_registration_file_url']),
+    rejectReason: readAuthString(source, ['rejectReason', 'reject_reason', 'rejectionReason', 'rejection_reason']) || null,
+    ocrStatus: readAuthNestedString(source, ['ocrStatus', 'ocr_status', 'status']) || null,
+    ocrSummary: readAuthNestedString(source, ['ocrSummary', 'ocr_summary', 'summary']) || null,
+    ocrError: readAuthNestedString(source, ['ocrError', 'ocr_error', 'error']) || null,
+    ocrCheckedAt: readAuthNestedString(source, ['ocrCheckedAt', 'ocr_checked_at', 'checkedAt', 'checked_at']) || null,
+    ocr,
+    createdAt: readAuthString(source, ['createdAt', 'created_at', 'appliedAt', 'applied_at']),
+    updatedAt: readAuthString(source, ['updatedAt', 'updated_at', 'submittedAt', 'submitted_at']),
+  };
+}
 
 function parseAuthResponseBody(path: string, response: Response, text: string) {
   const trimmed = text.trim();
@@ -345,9 +471,14 @@ export async function clearAuthTokens() {
     SafeStorage.removeItem('accessToken'),
     SafeStorage.removeItem('access_token'),
     SafeStorage.removeItem('token'),
+    SafeStorage.removeItem('jwt'),
+    SafeStorage.removeItem('authToken'),
+    SafeStorage.removeItem('judam_token'),
+    SafeStorage.removeItem('judam_jwt'),
     SafeStorage.removeItem('judam_refresh_token'),
     SafeStorage.removeItem('refreshToken'),
     SafeStorage.removeItem('refresh_token'),
+    SafeStorage.removeItem('refresh_token_judam'),
   ]);
 }
 
@@ -560,6 +691,34 @@ export async function submitBreweryApplication(payload: BreweryApplicationPayloa
     throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
   }
 
+  if (!payload.businessLicense && !payload.documentUrl) {
+    throw new Error('businessLicense or documentUrl is required.');
+  }
+
+  if (!payload.businessLicense && payload.documentUrl) {
+    const response = await requestAuthJson<AuthApiEnvelope<BreweryApplicationResponse>>('/api/breweries/applications', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        businessNumber: payload.businessNumber,
+        breweryName: payload.breweryName,
+        businessAddress: payload.businessAddress,
+        businessAddressDetail: payload.businessAddressDetail || '',
+        phoneNumber: payload.phoneNumber,
+        phoneVerificationToken: payload.phoneVerificationToken,
+        documentUrl: payload.documentUrl,
+      }),
+    });
+    return unwrapAuthData<BreweryApplicationResponse>(response);
+  }
+
+  const selectedBusinessLicense = payload.businessLicense;
+  if (!selectedBusinessLicense) {
+    throw new Error('businessLicense is required for file upload.');
+  }
+
   const formData = new FormData();
   formData.append('businessNumber', payload.businessNumber);
   formData.append('breweryName', payload.breweryName);
@@ -567,7 +726,8 @@ export async function submitBreweryApplication(payload: BreweryApplicationPayloa
   formData.append('businessAddressDetail', payload.businessAddressDetail || '');
   formData.append('phoneNumber', payload.phoneNumber);
   formData.append('phoneVerificationToken', payload.phoneVerificationToken);
-  formData.append('businessLicense', createAuthFormFile(payload.businessLicense));
+  if (payload.documentUrl) formData.append('documentUrl', payload.documentUrl);
+  formData.append('businessLicense', createAuthFormFile(selectedBusinessLicense));
 
   const response = await requestAuthForm<AuthApiEnvelope<BreweryApplicationResponse>>('/api/breweries/applications', formData, {
     method: 'POST',
@@ -575,6 +735,61 @@ export async function submitBreweryApplication(payload: BreweryApplicationPayloa
       Authorization: `Bearer ${accessToken}`,
     },
   });
+  return unwrapAuthData<BreweryApplicationResponse>(response);
+}
+
+export async function getAdminBreweryApplications(): Promise<AdminBreweryApplicationListResponse> {
+  const accessToken = await getAuthAccessToken();
+  if (!accessToken) {
+    throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+  }
+
+  const response = await requestAuthJson<AuthApiEnvelope<unknown> | unknown>('/api/breweries/applications', {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  return {
+    applications: pickAdminBreweryApplicationItems(response).map(normalizeAdminBreweryApplication),
+    message: isAuthRecord(response) ? readAuthString(response, ['message']) : undefined,
+  };
+}
+
+export async function approveAdminBreweryApplication(applicationId: number) {
+  const accessToken = await getAuthAccessToken();
+  if (!accessToken) {
+    throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+  }
+
+  const response = await requestAuthJson<AuthApiEnvelope<BreweryApplicationResponse>>(
+    `/api/breweries/applications/${applicationId}/approve`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+  return unwrapAuthData<BreweryApplicationResponse>(response);
+}
+
+export async function rejectAdminBreweryApplication(applicationId: number, rejectReason: string) {
+  const accessToken = await getAuthAccessToken();
+  if (!accessToken) {
+    throw new Error('로그인 정보가 필요합니다. 다시 로그인해주세요.');
+  }
+
+  const response = await requestAuthJson<AuthApiEnvelope<BreweryApplicationResponse>>(
+    `/api/breweries/applications/${applicationId}/reject`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ rejectReason }),
+    }
+  );
   return unwrapAuthData<BreweryApplicationResponse>(response);
 }
 

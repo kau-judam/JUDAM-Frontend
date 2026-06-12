@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   Image,
@@ -51,14 +52,29 @@ const FAQ_ITEMS = [
   { id: 2, q: "배송 조회는 어디서 하나요?", a: "마이페이지 > 참여 펀딩에서 배송 상태를 확인할 수 있으며, 배송 시작 시 알림을 보내드립니다." },
 ];
 
+function isAuthExpiredError(error: unknown) {
+  const status = typeof (error as { status?: unknown })?.status === 'number' ? (error as { status: number }).status : undefined;
+  const message = error instanceof Error ? error.message : String(error || '');
+  return status === 401 || message === 'NEEDS_ACCESS_TOKEN' || message.includes('HTTP 401');
+}
+
 export default function MyPageScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout, updateUser } = useAuth();
   const { mergeParticipationsFromOrders } = useFunding();
+  const authExpiredHandledRef = useRef(false);
   const [supportVisible, setSupportVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [summary, setSummary] = useState<MyPageSummary | null>(null);
   const [earnedBadgeCount, setEarnedBadgeCount] = useState<number | null>(null);
+
+  const handleAuthExpired = useCallback(async () => {
+    if (authExpiredHandledRef.current) return;
+    authExpiredHandledRef.current = true;
+    Alert.alert('로그인이 만료되었습니다', '다시 로그인해주세요.');
+    await logout();
+    router.replace('/login' as any);
+  }, [logout]);
 
   const refreshMyPageData = useCallback((mountedRef: { current: boolean }) => {
     if (!user) return;
@@ -80,6 +96,10 @@ export default function MyPageScreen() {
         }
       })
       .catch((error) => {
+        if (isAuthExpiredError(error)) {
+          void handleAuthExpired();
+          return;
+        }
         console.warn(getMyPageApiErrorMessage(error, '프로필 정보를 불러오지 못했습니다.'));
       });
 
@@ -89,6 +109,10 @@ export default function MyPageScreen() {
         mergeParticipationsFromOrders(response.content);
       })
       .catch((error) => {
+        if (isAuthExpiredError(error)) {
+          void handleAuthExpired();
+          return;
+        }
         if (isFundingApiMissingEndpointError(error)) return;
         console.warn(getFundingApiErrorMessage(error, "후원 내역을 불러오지 못했습니다."));
       });
@@ -103,6 +127,10 @@ export default function MyPageScreen() {
         }
       })
       .catch((error) => {
+        if (isAuthExpiredError(error)) {
+          void handleAuthExpired();
+          return;
+        }
         console.warn(getMyPageApiErrorMessage(error, '마이페이지 요약 정보를 불러오지 못했습니다.'));
       });
 
@@ -112,10 +140,14 @@ export default function MyPageScreen() {
         setEarnedBadgeCount(badges.filter((badge) => badge.earned).length);
       })
       .catch((error) => {
+        if (isAuthExpiredError(error)) {
+          void handleAuthExpired();
+          return;
+        }
         console.warn(getMyPageApiErrorMessage(error, '뱃지 목록을 불러오지 못했습니다.'));
       });
 
-  }, [mergeParticipationsFromOrders, updateUser, user]);
+  }, [handleAuthExpired, mergeParticipationsFromOrders, updateUser, user]);
 
   useFocusEffect(
     useCallback(() => {
@@ -313,7 +345,8 @@ export default function MyPageScreen() {
              <>
                <Text style={styles.sectionLabel}>관리자</Text>
                <View style={styles.menuCard}>
-                  <MenuItem icon={<ShieldCheck size={18} color="#6B7280" />} title="펀딩 심사 관리" last onPress={() => router.push('/admin/fundings/drafts' as any)} />
+                  <MenuItem icon={<ShieldCheck size={18} color="#6B7280" />} title="펀딩 심사 관리" onPress={() => router.push('/admin/fundings/drafts' as any)} />
+                  <MenuItem icon={<BadgeCheck size={18} color="#6B7280" />} title="양조장 인증 심사" last onPress={() => router.push('/admin/breweries/applications' as any)} />
                </View>
              </>
            )}

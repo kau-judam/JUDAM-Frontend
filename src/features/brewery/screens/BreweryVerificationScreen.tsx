@@ -235,7 +235,10 @@ export default function BreweryVerificationScreen() {
         });
       }
 
-      Alert.alert('알림', isEditMode ? "양조장 정보가 수정되었습니다!" : "양조장 인증이 완료되었습니다!", [
+      const successMessage = isEditMode
+        ? '양조장 정보가 수정되었습니다.'
+        : '양조장 인증이 승인되었습니다. 양조장 대시보드를 안정적으로 이용하려면 다시 로그인해주세요.';
+      Alert.alert('알림', successMessage, [
         { text: '확인', onPress: () => router.replace('/(tabs)' as any) }
       ]);
     } catch (error) {

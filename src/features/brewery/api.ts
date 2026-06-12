@@ -107,6 +107,43 @@ export type UpdateBreweryFundingDeliveryPayload = {
   trackingNumber: string;
 };
 
+export type BreweryDashboardOrderDeliveryStatus =
+  | 'ORDERED'
+  | 'PREPARING'
+  | 'SHIPPED'
+  | 'DELIVERED'
+  | 'CANCELED'
+  | string;
+
+export type BreweryDashboardFundingOrder = {
+  orderId: number;
+  fundingId: number;
+  userId: number;
+  nickname: string | null;
+  recipientName: string | null;
+  recipientPhone: string | null;
+  shippingAddress: string | null;
+  shippingDetailAddress: string | null;
+  postalCode: string | null;
+  totalAmount: number;
+  orderStatus: string | null;
+  paymentStatus: string | null;
+  deliveryStatus: BreweryDashboardOrderDeliveryStatus | null;
+  courier: string | null;
+  courierCode: string | null;
+  trackingNumber: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  createdAt: string | null;
+};
+
+export type UpdateBreweryDashboardOrderDeliveryPayload = {
+  deliveryStatus: BreweryDashboardOrderDeliveryStatus;
+  courier?: string;
+  courierCode?: string;
+  trackingNumber?: string;
+};
+
 export type BreweryDashboardNotification = {
   notificationId: number;
   type:
@@ -440,6 +477,28 @@ export async function updateBreweryFundingDelivery(fundingId: number, payload: U
     },
   );
   return unwrapBreweryData<BreweryFundingDeliveryInfo>(response);
+}
+
+export async function getBreweryDashboardFundingOrders(fundingId: number) {
+  const response = await requestBreweryJson<
+    BreweryApiEnvelope<BreweryDashboardFundingOrder[]> | BreweryDashboardFundingOrder[]
+  >(`/api/breweries/me/dashboard/fundings/${fundingId}/orders`);
+  const data = unwrapBreweryData<BreweryDashboardFundingOrder[]>(response);
+  return Array.isArray(data) ? data : [];
+}
+
+export async function updateBreweryDashboardOrderDelivery(
+  fundingId: number,
+  orderId: number,
+  payload: UpdateBreweryDashboardOrderDeliveryPayload,
+) {
+  const response = await requestBreweryJson<
+    BreweryApiEnvelope<BreweryDashboardFundingOrder> | BreweryDashboardFundingOrder
+  >(`/api/breweries/me/dashboard/fundings/${fundingId}/orders/${orderId}/delivery`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+  return unwrapBreweryData<BreweryDashboardFundingOrder>(response);
 }
 
 export async function getBreweryDashboardNotifications() {

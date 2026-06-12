@@ -33,7 +33,6 @@ type MyFundingProject = FundingProject & {
 };
 
 const PAGE_SIZE = 3;
-const DELIVERY_ORDER_PROJECT_ID = 5;
 
 function formatManwon(amount: number) {
   return `${Math.round(amount / 10000).toLocaleString()}만원`;
@@ -258,7 +257,8 @@ function FundingParticipationCard({
   const progress = Math.min(Math.round((project.currentAmount / project.goalAmount) * 100), 100);
   const completed = isCompletedFundingStatus(project.status);
   const statusLabel = getFundingStatusLabel(project.status);
-  const showDeliveryButton = project.id === DELIVERY_ORDER_PROJECT_ID && isSuccessProject(project);
+  const showDeliveryButton =
+    Boolean(project.orderId) && (project.canViewDelivery ?? (completed && isSuccessProject(project)));
 
   return (
     <TouchableOpacity
@@ -326,7 +326,7 @@ function FundingParticipationCard({
               activeOpacity={0.85}
               onPress={(event) => {
                 event.stopPropagation();
-                router.push(`/funding/order/${project.id}` as any);
+                router.push(`/funding/order/${project.orderId ?? project.id}` as any);
               }}
             >
               <Package size={13} color="#FFFFFF" />

@@ -49,13 +49,15 @@ import {
   getBreweryApiErrorMessage,
   getBreweryDashboardBasicInfo,
   getBreweryDashboardFundings,
+  getBreweryDashboardFundingOrders,
   getBreweryDashboardNotifications,
-  getBreweryFundingDelivery,
   getBreweryFundingSummary,
-  updateBreweryFundingDelivery,
+  updateBreweryDashboardOrderDelivery,
   type BreweryDashboardBasicInfo,
   type BreweryDashboardFundingItem,
+  type BreweryDashboardFundingOrder,
   type BreweryDashboardNotification,
+  type BreweryDashboardOrderDeliveryStatus,
   type BreweryFundingSummary,
 } from '@/features/brewery/api';
 import type { AppNotification } from '@/features/notifications/data';
@@ -181,6 +183,26 @@ function getDashboardStatusTextStyle(tone: ReturnType<typeof getFundingStatusTon
   return styles.statusBadgeTxtActive;
 }
 
+const DELIVERY_STATUS_OPTIONS: { value: BreweryDashboardOrderDeliveryStatus; label: string }[] = [
+  { value: 'ORDERED', label: '주문 접수' },
+  { value: 'PREPARING', label: '배송 준비' },
+  { value: 'SHIPPED', label: '배송 중' },
+  { value: 'DELIVERED', label: '배송 완료' },
+  { value: 'CANCELED', label: '취소' },
+];
+
+function getDeliveryStatusLabel(status?: BreweryDashboardOrderDeliveryStatus | null) {
+  const normalized = String(status || 'ORDERED').toUpperCase();
+  return DELIVERY_STATUS_OPTIONS.find((item) => item.value === normalized)?.label || normalized;
+}
+
+function formatDashboardDate(value?: string | null) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+}
+
 export default function BreweryDashboardScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
@@ -191,9 +213,12 @@ export default function BreweryDashboardScreen() {
   const [selectedProject, setSelectedProject] = useState<any>(null);
   const [selectedStatusProject, setSelectedStatusProject] = useState<number | null>(null);
   const [selectedDeliveryProject, setSelectedDeliveryProject] = useState<FundingProject | null>(null);
+  const [deliveryOrders, setDeliveryOrders] = useState<BreweryDashboardFundingOrder[]>([]);
+  const [selectedDeliveryOrderId, setSelectedDeliveryOrderId] = useState<number | null>(null);
+  const [deliveryStatus, setDeliveryStatus] = useState<BreweryDashboardOrderDeliveryStatus>('SHIPPED');
   const [deliveryCourier, setDeliveryCourier] = useState('');
+  const [deliveryCourierCode, setDeliveryCourierCode] = useState('');
   const [deliveryTrackingNumber, setDeliveryTrackingNumber] = useState('');
-  const [deliveryInfoByProjectId, setDeliveryInfoByProjectId] = useState<Record<number, { courier: string; trackingNumber: string }>>({});
   const [isDeliveryEditing, setIsDeliveryEditing] = useState(false);
   const [isDeliveryLoading, setIsDeliveryLoading] = useState(false);
   const [isDeliverySaving, setIsDeliverySaving] = useState(false);
@@ -243,8 +268,8 @@ export default function BreweryDashboardScreen() {
     ? projects.find((project) => project.id === selectedStatusProject)
     : null;
   const currentJournalEntry = journalData[selectedJournalStage];
-  const selectedDeliveryInfo = selectedDeliveryProject
-    ? deliveryInfoByProjectId[selectedDeliveryProject.id]
+  const selectedDeliveryOrder = selectedDeliveryOrderId
+    ? deliveryOrders.find((order) => order.orderId === selectedDeliveryOrderId) || null
     : null;
 
   const loadDashboardNotifications = useCallback(async () => {
@@ -380,39 +405,34 @@ export default function BreweryDashboardScreen() {
     Alert.alert("완료", `프로젝트 상태가 '${status}'로 변경되었습니다.`);
   };
 
-  const openDeliveryModal = async (project: FundingProject) => {
-    const savedInfo = deliveryInfoByProjectId[project.id];
-    setSelectedDeliveryProject(project);
-    setDeliveryCourier(savedInfo?.courier || '');
-    setDeliveryTrackingNumber(savedInfo?.trackingNumber || '');
-    setIsDeliveryEditing(!savedInfo);
+  const beginDeliveryOrderEdit = (order: BreweryDashboardFundingOrder) => {
+    setSelectedDeliveryOrderId(order.orderId);
+    setDeliveryStatus(order.deliveryStatus || 'SHIPPED');
+    setDeliveryCourier(order.courier || '');
+    setDeliveryCourierCode(order.courierCode || '');
+    setDeliveryTrackingNumber(order.trackingNumber || '');
+    setDeliveryMessage('');
+    setIsDeliveryEditing(true);
+  };
 
+  const openDeliveryModal = async (project: FundingProject) => {
+    setSelectedDeliveryProject(project);
+    setDeliveryOrders([]);
+    setSelectedDeliveryOrderId(null);
+    setDeliveryStatus('SHIPPED');
+    setDeliveryCourier('');
+    setDeliveryCourierCode('');
+    setDeliveryTrackingNumber('');
+    setIsDeliveryEditing(false);
     setDeliveryMessage('');
     setIsDeliveryLoading(true);
     try {
-      const delivery = await getBreweryFundingDelivery(project.id);
-      const hasDeliveryInfo = Boolean(delivery.courier && delivery.trackingNumber);
-
-      if (hasDeliveryInfo) {
-        const nextInfo = {
-          courier: delivery.courier || '',
-          trackingNumber: delivery.trackingNumber || '',
-        };
-        setDeliveryInfoByProjectId((prev) => ({
-          ...prev,
-          [project.id]: nextInfo,
-        }));
-        setDeliveryCourier(nextInfo.courier);
-        setDeliveryTrackingNumber(nextInfo.trackingNumber);
-        setIsDeliveryEditing(false);
-      } else {
-        setDeliveryCourier('');
-        setDeliveryTrackingNumber('');
-        setIsDeliveryEditing(true);
-      }
+      const orders = await getBreweryDashboardFundingOrders(project.id);
+      setDeliveryOrders(orders);
+      setSelectedDeliveryOrderId(orders[0]?.orderId ?? null);
     } catch (error) {
-      console.warn(getBreweryApiErrorMessage(error, 'Failed to load delivery information.'));
-      setDeliveryMessage('배송 정보를 불러오지 못했습니다.');
+      console.warn(getBreweryApiErrorMessage(error, 'Failed to load funding orders.'));
+      setDeliveryMessage(getBreweryApiErrorMessage(error, '주문/배송 목록을 불러오지 못했습니다.'));
     } finally {
       setIsDeliveryLoading(false);
     }
@@ -420,7 +440,11 @@ export default function BreweryDashboardScreen() {
 
   const closeDeliveryModal = () => {
     setSelectedDeliveryProject(null);
+    setDeliveryOrders([]);
+    setSelectedDeliveryOrderId(null);
+    setDeliveryStatus('SHIPPED');
     setDeliveryCourier('');
+    setDeliveryCourierCode('');
     setDeliveryTrackingNumber('');
     setIsDeliveryEditing(false);
     setIsDeliveryLoading(false);
@@ -429,32 +453,45 @@ export default function BreweryDashboardScreen() {
   };
 
   const handleDeliverySubmit = async () => {
-    if (!selectedDeliveryProject) return;
-    if (!deliveryCourier.trim() || !deliveryTrackingNumber.trim()) {
-      Alert.alert('알림', '택배사와 송장번호를 모두 입력해주세요.');
+    if (!selectedDeliveryProject || !selectedDeliveryOrder) return;
+    const normalizedStatus = String(deliveryStatus || 'SHIPPED').toUpperCase();
+    const needsTracking = normalizedStatus === 'SHIPPED' || normalizedStatus === 'DELIVERED';
+    if (needsTracking && (!deliveryCourier.trim() || !deliveryTrackingNumber.trim())) {
+      Alert.alert('알림', '배송 중/배송 완료 상태는 택배사와 운송장 번호를 입력해주세요.');
       return;
     }
 
-    const nextInfo = {
+    const payload = {
+      deliveryStatus,
       courier: deliveryCourier.trim(),
+      courierCode: deliveryCourierCode.trim(),
       trackingNumber: deliveryTrackingNumber.trim(),
     };
 
     setIsDeliverySaving(true);
     setDeliveryMessage('');
     try {
-      const savedDelivery = await updateBreweryFundingDelivery(selectedDeliveryProject.id, nextInfo);
-      const savedInfo = {
-        courier: savedDelivery.courier || nextInfo.courier,
-        trackingNumber: savedDelivery.trackingNumber || nextInfo.trackingNumber,
-      };
-      setDeliveryInfoByProjectId((prev) => ({
-        ...prev,
-        [selectedDeliveryProject.id]: savedInfo,
-      }));
-      setDeliveryCourier(savedInfo.courier);
-      setDeliveryTrackingNumber(savedInfo.trackingNumber);
+      const savedDelivery = (await updateBreweryDashboardOrderDelivery(
+        selectedDeliveryProject.id,
+        selectedDeliveryOrder.orderId,
+        payload,
+      )) as Partial<BreweryDashboardFundingOrder> | null | undefined;
+      setDeliveryOrders((prev) =>
+        prev.map((order) =>
+          order.orderId === selectedDeliveryOrder.orderId
+            ? {
+                ...order,
+                ...(savedDelivery || {}),
+                deliveryStatus: savedDelivery?.deliveryStatus || payload.deliveryStatus,
+                courier: savedDelivery?.courier ?? payload.courier,
+                courierCode: savedDelivery?.courierCode ?? payload.courierCode,
+                trackingNumber: savedDelivery?.trackingNumber ?? payload.trackingNumber,
+              }
+            : order
+        )
+      );
       setIsDeliveryEditing(false);
+      Alert.alert('완료', '배송 정보가 저장되었습니다.');
     } catch (error) {
       const message = getBreweryApiErrorMessage(error, '배송 정보를 저장하지 못했습니다.');
       setDeliveryMessage(message);
@@ -855,62 +892,128 @@ export default function BreweryDashboardScreen() {
             </View>
             {isDeliveryLoading ? (
               <View style={styles.deliveryForm}>
-                <Text style={styles.deliveryLoadingText}>배송 정보를 불러오는 중입니다.</Text>
-              </View>
-            ) : selectedDeliveryInfo && !isDeliveryEditing ? (
-              <View style={styles.deliverySummary}>
-                <View style={styles.deliverySummaryHeader}>
-                  <View>
-                    <Text style={styles.deliverySummaryTitle}>배송 정보</Text>
-                    <Text style={styles.deliverySummaryDesc}>저장된 택배사와 송장번호입니다.</Text>
-                  </View>
-                  <TouchableOpacity style={styles.deliveryEditButton} onPress={() => setIsDeliveryEditing(true)}>
-                    <Text style={styles.deliveryEditButtonText}>수정</Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.deliveryInfoBox}>
-                  <View style={styles.deliveryInfoRow}>
-                    <Text style={styles.deliveryInfoLabel}>택배사</Text>
-                    <Text style={styles.deliveryInfoValue}>{selectedDeliveryInfo.courier}</Text>
-                  </View>
-                  <View style={styles.deliveryInfoDivider} />
-                  <View style={styles.deliveryInfoRow}>
-                    <Text style={styles.deliveryInfoLabel}>송장번호</Text>
-                    <Text style={styles.deliveryInfoValue}>{selectedDeliveryInfo.trackingNumber}</Text>
-                  </View>
-                </View>
+                <Text style={styles.deliveryLoadingText}>주문/배송 목록을 불러오는 중입니다.</Text>
               </View>
             ) : (
-              <View style={styles.deliveryForm}>
+              <ScrollView style={styles.deliveryOrderScroll} showsVerticalScrollIndicator={false}>
                 {deliveryMessage ? <Text style={styles.deliveryMessageText}>{deliveryMessage}</Text> : null}
-                <Text style={styles.listLab}>택배사</Text>
-                <TextInput
-                  value={deliveryCourier}
-                  onChangeText={setDeliveryCourier}
-                  placeholder="예: CJ대한통운"
-                  placeholderTextColor="#9CA3AF"
-                  style={styles.deliveryInput}
-                />
-                <Text style={styles.listLab}>송장번호</Text>
-                <TextInput
-                  value={deliveryTrackingNumber}
-                  onChangeText={setDeliveryTrackingNumber}
-                  placeholder="송장번호를 입력해주세요"
-                  placeholderTextColor="#9CA3AF"
-                  keyboardType="number-pad"
-                  style={styles.deliveryInput}
-                />
-                <TouchableOpacity
-                  style={[styles.deliverySubmitButton, isDeliverySaving && styles.deliverySubmitButtonDisabled]}
-                  onPress={handleDeliverySubmit}
-                  disabled={isDeliverySaving}
-                >
-                  <Truck size={16} color="#FFF" />
-                  <Text style={styles.deliverySubmitText}>
-                    {isDeliverySaving ? '저장 중...' : selectedDeliveryInfo ? '배송 정보 수정' : '배송 정보 저장'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+                {deliveryOrders.length === 0 ? (
+                  <View style={styles.deliveryEmptyBox}>
+                    <Truck size={28} color="#D1D5DB" />
+                    <Text style={styles.deliveryEmptyTitle}>주문 내역이 없습니다</Text>
+                    <Text style={styles.deliveryEmptyDesc}>완료된 결제 주문이 생기면 이곳에서 배송을 관리할 수 있습니다.</Text>
+                  </View>
+                ) : (
+                  deliveryOrders.map((order) => {
+                    const selected = selectedDeliveryOrderId === order.orderId;
+                    return (
+                      <View key={order.orderId} style={[styles.deliveryOrderCard, selected && styles.deliveryOrderCardActive]}>
+                        <View style={styles.deliveryOrderHeader}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.deliveryOrderTitle}>주문 #{order.orderId}</Text>
+                            <Text style={styles.deliveryOrderMeta}>{order.nickname || order.recipientName || '주문자'} · {Number(order.totalAmount || 0).toLocaleString()}원</Text>
+                          </View>
+                          <View style={styles.deliveryStatusBadge}>
+                            <Text style={styles.deliveryStatusBadgeText}>{getDeliveryStatusLabel(order.deliveryStatus)}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.deliveryInfoBox}>
+                          <View style={styles.deliveryInfoRow}>
+                            <Text style={styles.deliveryInfoLabel}>받는 분</Text>
+                            <Text style={styles.deliveryInfoValue}>{order.recipientName || '-'}</Text>
+                          </View>
+                          <View style={styles.deliveryInfoDivider} />
+                          <View style={styles.deliveryInfoRow}>
+                            <Text style={styles.deliveryInfoLabel}>연락처</Text>
+                            <Text style={styles.deliveryInfoValue}>{order.recipientPhone || '-'}</Text>
+                          </View>
+                          <View style={styles.deliveryInfoDivider} />
+                          <View style={styles.deliveryInfoRow}>
+                            <Text style={styles.deliveryInfoLabel}>주소</Text>
+                            <Text style={styles.deliveryInfoValue}>
+                              {[order.shippingAddress, order.shippingDetailAddress].filter(Boolean).join(' ') || '-'}
+                            </Text>
+                          </View>
+                          <View style={styles.deliveryInfoDivider} />
+                          <View style={styles.deliveryInfoRow}>
+                            <Text style={styles.deliveryInfoLabel}>우편번호</Text>
+                            <Text style={styles.deliveryInfoValue}>{order.postalCode || '-'}</Text>
+                          </View>
+                          <View style={styles.deliveryInfoDivider} />
+                          <View style={styles.deliveryInfoRow}>
+                            <Text style={styles.deliveryInfoLabel}>송장</Text>
+                            <Text style={styles.deliveryInfoValue}>{order.courier || '-'} {order.trackingNumber || ''}</Text>
+                          </View>
+                          <View style={styles.deliveryInfoDivider} />
+                          <View style={styles.deliveryInfoRow}>
+                            <Text style={styles.deliveryInfoLabel}>주문일</Text>
+                            <Text style={styles.deliveryInfoValue}>{formatDashboardDate(order.createdAt)}</Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity style={styles.deliveryEditButton} onPress={() => beginDeliveryOrderEdit(order)}>
+                          <Text style={styles.deliveryEditButtonText}>배송 정보 수정</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })
+                )}
+
+                {selectedDeliveryOrder && isDeliveryEditing ? (
+                  <View style={styles.deliveryForm}>
+                    <Text style={styles.deliverySummaryTitle}>배송 정보 입력</Text>
+                    <View style={styles.deliveryStatusOptions}>
+                      {DELIVERY_STATUS_OPTIONS.map((option) => {
+                        const selected = String(deliveryStatus).toUpperCase() === option.value;
+                        return (
+                          <TouchableOpacity
+                            key={option.value}
+                            style={[styles.deliveryStatusOption, selected && styles.deliveryStatusOptionActive]}
+                            onPress={() => setDeliveryStatus(option.value)}
+                          >
+                            <Text style={[styles.deliveryStatusOptionText, selected && styles.deliveryStatusOptionTextActive]}>{option.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <Text style={styles.listLab}>택배사</Text>
+                    <TextInput
+                      value={deliveryCourier}
+                      onChangeText={setDeliveryCourier}
+                      placeholder="예: CJ대한통운"
+                      placeholderTextColor="#9CA3AF"
+                      style={styles.deliveryInput}
+                    />
+                    <Text style={styles.listLab}>택배사 코드</Text>
+                    <TextInput
+                      value={deliveryCourierCode}
+                      onChangeText={setDeliveryCourierCode}
+                      placeholder="예: cjlogistics"
+                      placeholderTextColor="#9CA3AF"
+                      autoCapitalize="none"
+                      style={styles.deliveryInput}
+                    />
+                    <Text style={styles.listLab}>운송장 번호</Text>
+                    <TextInput
+                      value={deliveryTrackingNumber}
+                      onChangeText={setDeliveryTrackingNumber}
+                      placeholder="운송장 번호를 입력해주세요"
+                      placeholderTextColor="#9CA3AF"
+                      keyboardType="number-pad"
+                      style={styles.deliveryInput}
+                    />
+                    <TouchableOpacity
+                      style={[styles.deliverySubmitButton, isDeliverySaving && styles.deliverySubmitButtonDisabled]}
+                      onPress={handleDeliverySubmit}
+                      disabled={isDeliverySaving}
+                    >
+                      <Truck size={16} color="#FFF" />
+                      <Text style={styles.deliverySubmitText}>
+                        {isDeliverySaving ? '저장 중...' : '주문 배송 정보 저장'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+              </ScrollView>
             )}
           </Animated.View>
         </View>
@@ -1100,9 +1203,52 @@ const styles = StyleSheet.create({
   modalSub: { fontSize: 12, color: '#6B7280', marginTop: 2 },
   modalList: { padding: 24 },
   listLab: { fontSize: 14, fontWeight: '700', color: '#111', marginBottom: 16 },
+  deliveryOrderScroll: { paddingHorizontal: 24, paddingVertical: 18 },
+  deliveryEmptyBox: {
+    minHeight: 180,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 8,
+  },
+  deliveryEmptyTitle: { fontSize: 15, fontWeight: '900', color: '#111827' },
+  deliveryEmptyDesc: { fontSize: 12, fontWeight: '700', lineHeight: 18, color: '#6B7280', textAlign: 'center' },
+  deliveryOrderCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFF',
+    padding: 14,
+    marginBottom: 12,
+    gap: 12,
+  },
+  deliveryOrderCardActive: { borderColor: '#111827', backgroundColor: '#F9FAFB' },
+  deliveryOrderHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  deliveryOrderTitle: { fontSize: 15, fontWeight: '900', color: '#111827', marginBottom: 3 },
+  deliveryOrderMeta: { fontSize: 12, fontWeight: '700', color: '#6B7280' },
+  deliveryStatusBadge: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, backgroundColor: '#111827' },
+  deliveryStatusBadgeText: { fontSize: 11, fontWeight: '900', color: '#FFF' },
   deliveryForm: { padding: 24, gap: 10 },
   deliveryLoadingText: { fontSize: 14, fontWeight: '800', color: '#6B7280', textAlign: 'center' },
   deliveryMessageText: { fontSize: 12, fontWeight: '700', color: '#EF4444', marginBottom: 2 },
+  deliveryStatusOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  deliveryStatusOption: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deliveryStatusOptionActive: { borderColor: '#111827', backgroundColor: '#111827' },
+  deliveryStatusOptionText: { fontSize: 12, fontWeight: '900', color: '#4B5563' },
+  deliveryStatusOptionTextActive: { color: '#FFF' },
   deliveryInput: {
     height: 48,
     borderRadius: 14,

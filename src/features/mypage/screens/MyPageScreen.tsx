@@ -255,7 +255,8 @@ export default function MyPageScreen() {
   }
 
   const initial = user.name?.[0] || 'U';
-  const isBrewery = user.type === 'brewery';
+  const isBreweryPending = user.type === 'brewery' && user.isBreweryVerified !== true;
+  const isBrewery = user.type === 'brewery' && user.isBreweryVerified === true;
   const isAdmin = String(user.role || '').toUpperCase() === 'ADMIN';
   const summaryBtiCode = summary?.sulbti?.hasResult ? resolveSulbtiCode(summary.sulbti.btiCode || summary.sulbti.type) : null;
   const savedBtiCode = resolveSulbtiCode(user.sulbti) || summaryBtiCode;
@@ -287,8 +288,8 @@ export default function MyPageScreen() {
               <View style={styles.profileInfo}>
                  <Text style={styles.profileName}>{user.name} 님</Text>
                  <View style={styles.typeBadge}>
-                    {isAdmin ? <ShieldCheck size={10} color="#6B7280" /> : isBrewery ? <Factory size={10} color="#6B7280" /> : <Wine size={10} color="#6B7280" />}
-                    <Text style={styles.typeBadgeTxt}>{isAdmin ? "관리자 계정" : isBrewery ? "양조장 계정" : "일반 유저"}</Text>
+                    {isAdmin || isBreweryPending ? <ShieldCheck size={10} color="#6B7280" /> : isBrewery ? <Factory size={10} color="#6B7280" /> : <Wine size={10} color="#6B7280" />}
+                    <Text style={styles.typeBadgeTxt}>{isAdmin ? "관리자 계정" : isBrewery ? "양조장 계정" : isBreweryPending ? "양조장 인증 대기" : "일반 유저"}</Text>
                  </View>
               </View>
               <TouchableOpacity

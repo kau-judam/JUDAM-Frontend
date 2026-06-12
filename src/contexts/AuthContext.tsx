@@ -272,6 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let nextUser = mapAuthApiUser(session.user, type);
     try {
       await saveAuthTokens(getAuthSessionAccessToken(session), getAuthSessionRefreshToken(session));
+      await SafeStorage.removeItem("judam_user");
       nextUser = await mergeMyPageProfileIntoUser(nextUser);
       await SafeStorage.setItem(KEEP_LOGIN_KEY, keepLoggedIn ? "true" : "false");
       await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
@@ -298,6 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let nextUser = mapAuthApiUser(apiUser);
     try {
       await saveAuthTokens(getAuthSessionAccessToken(session), getAuthSessionRefreshToken(session));
+      await SafeStorage.removeItem("judam_user");
       nextUser = await mergeMyPageProfileIntoUser(nextUser);
       await SafeStorage.setItem(KEEP_LOGIN_KEY, keepLoggedIn ? "true" : "false");
       await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));
@@ -371,6 +373,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await SafeStorage.removeItem(KEEP_LOGIN_KEY);
       await SafeStorage.removeItem("judam_onboarded");
       await clearPendingExternalPayment();
+      await clearPendingKakaoAuthRequest();
       await clearAuthTokens();
     } catch (e) {
       console.error("Failed to remove user from SafeStorage", e);
@@ -406,6 +409,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       await saveAuthTokens(getAuthSessionAccessToken(session), getAuthSessionRefreshToken(session));
+      await SafeStorage.removeItem("judam_user");
       nextUser = await mergeMyPageProfileIntoUser(nextUser);
       await SafeStorage.setItem(KEEP_LOGIN_KEY, "false");
       await SafeStorage.setItem("judam_user", JSON.stringify(nextUser));

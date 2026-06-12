@@ -32,6 +32,7 @@ import {
   deleteCommunityPostLike,
   fetchCommunityPosts,
   registerCommunityPostLike,
+  type CommunityBoardType,
 } from '@/features/community/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 
@@ -39,6 +40,13 @@ const POSTS_PER_PAGE = 6;
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 const getAvatarSource = (avatar: ImageSourcePropType | string) =>
   typeof avatar === 'string' ? { uri: avatar } : avatar;
+const COMMUNITY_BOARD_TYPES: CommunityBoardType[] = ['FREE', 'INFO'];
+
+function getCommunityFilterBoardType(filter: string): CommunityBoardType | undefined {
+  if (filter.includes('자유')) return 'FREE';
+  if (filter.includes('정보')) return 'INFO';
+  return undefined;
+}
 
 export default function CommunityScreen() {
   const insets = useSafeAreaInsets();
@@ -56,13 +64,16 @@ export default function CommunityScreen() {
   const loadCommunityPosts = useCallback(() => {
     let isActive = true;
     const apiSort = sortOption === "인기순" ? 'popular' : 'newest';
+    const selectedBoardType = getCommunityFilterBoardType(communityFilter);
+    const boardTypes = selectedBoardType ? [selectedBoardType] : COMMUNITY_BOARD_TYPES;
     setIsApiLoading(true);
 
-    fetchCommunityPosts({ sort: apiSort, page: 0, size: 20 })
-      .then((response) => {
+    Promise.all(boardTypes.map((boardType) => fetchCommunityPosts({ sort: apiSort, boardType, page: 0, size: 20 })))
+      .then((responses) => {
         if (!isActive) return;
+        const nextPosts = responses.flatMap((response) => response.posts);
         setApiPosts(
-          response.posts.map((post) =>
+          nextPosts.map((post) =>
             post.isMine && user?.profileImage ? { ...post, avatar: user.profileImage } : post
           )
         );
@@ -82,7 +93,7 @@ export default function CommunityScreen() {
     return () => {
       isActive = false;
     };
-  }, [sortOption, user?.profileImage]);
+  }, [communityFilter, sortOption, user?.profileImage]);
 
   useFocusEffect(loadCommunityPosts);
 

@@ -380,23 +380,25 @@ export async function updateCommunityPost(postId: number, payload: {
 
 export async function fetchCommunityPosts({
   sort,
+  boardType,
   page = 0,
   size = 20,
 }: {
   sort: CommunitySort;
+  boardType?: CommunityBoardType;
   page?: number;
   size?: number;
 }) {
   const params = new URLSearchParams({
-    board_type: 'ALL',
     sort,
     page: String(page),
     size: String(size),
   });
+  if (boardType) params.set('board_type', boardType);
   const data = await requestJson<CommunityPostListResponse>(`/api/posts?${params.toString()}`);
   return {
     ...data,
-    posts: data.posts.map((post) => mapCommunityPost(post)),
+    posts: (data.posts ?? []).map((post) => mapCommunityPost(post)),
   };
 }
 

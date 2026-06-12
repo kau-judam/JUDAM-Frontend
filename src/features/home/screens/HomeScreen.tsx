@@ -28,7 +28,7 @@ import { RecipeCard } from '@/components/recipe-card';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useFunding } from '@/contexts/FundingContext';
-import { getFundingProjectImageSource, getFundingProjectStatusLabel, getPopularRecipes, isFundingProjectSupportable, sortFundingProjectsByPopularity } from '@/constants/data';
+import { getFundingProjectImageSource, getFundingProjectStatusLabel, getPopularRecipes, isActiveFundingStatus, isFundingProjectSupportable, sortFundingProjectsByPopularity } from '@/constants/data';
 import type { Recipe } from '@/constants/data';
 import { fetchPopularRecipes } from '@/features/recipe/api';
 import { getFundingApiErrorMessage, getFundingList, getFundingStats, type FundingStatsResponse } from '@/features/funding/api';
@@ -74,6 +74,18 @@ function pushTabToTop(pathname: '/recipe' | '/funding') {
   } as any);
 }
 
+function hasFundingDisplayImage(project: Parameters<typeof getFundingProjectImageSource>[0]) {
+  return Boolean(getFundingProjectImageSource(project));
+}
+
+function hasRecipeDisplayImage(recipe: Recipe) {
+  return Boolean(recipe.image);
+}
+
+function isPublishedRecipe(recipe: Recipe) {
+  return String(recipe.status || '').toUpperCase() === 'PUBLISHED';
+}
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
@@ -82,7 +94,17 @@ export default function HomeScreen() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [popularRecipes, setPopularRecipes] = useState<Recipe[]>(() => getPopularRecipes(3));
   const [serverFundingStats, setServerFundingStats] = useState<FundingStatsResponse | null>(null);
-  const popularFundingProjects = sortFundingProjectsByPopularity(projects).slice(0, 3);
+  const popularFundingProjects = useMemo(() => {
+    const activeProjects = sortFundingProjectsByPopularity(
+      projects.filter((project) => isActiveFundingStatus(project.status))
+    );
+    const activeProjectsWithImages = activeProjects.filter(hasFundingDisplayImage);
+    const prioritizedProjects = [
+      ...activeProjectsWithImages,
+      ...activeProjects.filter((project) => !activeProjectsWithImages.some((item) => item.id === project.id)),
+    ];
+    return prioritizedProjects.slice(0, 3);
+  }, [projects]);
   const fundingStats = useMemo(() => {
     if (!serverFundingStats) {
       return {
@@ -107,12 +129,18 @@ export default function HomeScreen() {
 
     const loadPopularFundingProjects = async () => {
       try {
-        const response = await getFundingList({ sort: 'POPULAR', page: 0, size: 3 });
+        const response = await getFundingList({ status: 'ACTIVE', sort: 'POPULAR', page: 0, size: 6 });
         if (!mounted) return;
         const nextProjects = response.data.map((item) =>
           mergeFundingListItem(projectsRef.current.find((project) => project.id === item.fundingId), item)
         );
-        mergeProjects(nextProjects);
+        const activeProjects = nextProjects.filter((project) => isActiveFundingStatus(project.status));
+        const activeProjectsWithImages = activeProjects.filter(hasFundingDisplayImage);
+        const prioritizedProjects = [
+          ...activeProjectsWithImages,
+          ...activeProjects.filter((project) => !activeProjectsWithImages.some((item) => item.id === project.id)),
+        ];
+        mergeProjects(prioritizedProjects.slice(0, 3));
       } catch (error) {
         console.warn(getFundingApiErrorMessage(error, 'Failed to load popular funding projects from API'));
       }
@@ -120,9 +148,19 @@ export default function HomeScreen() {
 
     const loadPopularRecipes = async () => {
       try {
-        const recipes = await fetchPopularRecipes(3);
-        if (mounted && recipes.length > 0) {
-          setPopularRecipes(recipes);
+        const recipes = await fetchPopularRecipes(6);
+        const publishedRecipes = recipes.filter(isPublishedRecipe);
+        const publishedRecipesWithImages = publishedRecipes.filter(hasRecipeDisplayImage);
+        const prioritizedRecipes =
+          publishedRecipesWithImages.length > 0
+            ? publishedRecipesWithImages
+            : publishedRecipes.length > 0
+              ? publishedRecipes
+              : recipes.filter(hasRecipeDisplayImage).length > 0
+                ? recipes.filter(hasRecipeDisplayImage)
+                : recipes;
+        if (mounted && prioritizedRecipes.length > 0) {
+          setPopularRecipes(prioritizedRecipes.slice(0, 3));
         }
       } catch (error) {
         console.warn('Failed to load popular recipes from API', error);

@@ -566,7 +566,8 @@ export function FundingActivityScreen() {
         }
 
         if (qnaResult.status === 'fulfilled') {
-          setQna({ loading: false, error: null, data: (qnaResult.value.qna ?? []).map(mapMyPageFundingQna) });
+          const qnaItems = qnaResult.value.qnas ?? qnaResult.value.qna ?? [];
+          setQna({ loading: false, error: null, data: qnaItems.map(mapMyPageFundingQna) });
         } else {
           setQna({
             loading: false,

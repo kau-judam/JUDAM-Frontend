@@ -33,6 +33,17 @@ export type NicknameCheckResult = {
   isAvailable: boolean;
 };
 
+export type MyPagePhoneVerificationRequestResponse = {
+  phoneNumber?: string;
+  requested?: boolean;
+  message?: string;
+};
+
+export type MyPagePhoneUpdateResponse = {
+  phoneNumber: string;
+  verified?: boolean;
+};
+
 export type MyPageImageUploadFile = {
   uri: string;
   name?: string | null;
@@ -157,6 +168,8 @@ export type MyPageFundingOrderDeliveryDetail = {
   orderedAt: string;
   paymentStatus: string;
   deliveryStatus: string | null;
+  courier: string | null;
+  courierCode: string | null;
   courierName: string | null;
   trackingNumber: string | null;
   shippedAt: string | null;
@@ -164,6 +177,8 @@ export type MyPageFundingOrderDeliveryDetail = {
   receiverName: string | null;
   receiverPhone: string | null;
   receiverAddress: string | null;
+  receiverAddressDetail?: string | null;
+  postalCode?: string | null;
 };
 
 export type MyPageFundingArchiveReview = {
@@ -287,19 +302,22 @@ export type MyPageFundingJournalCommentsResult = {
   size?: number;
 };
 
+export type MyPageActivityQnaItem = {
+  questionId: number;
+  targetId: number;
+  targetType: 'FUNDING';
+  targetTitle: string;
+  questionContent: string;
+  questionCreatedAt: string;
+  hasAnswer: boolean;
+  answerContent: string | null;
+  answerCreatedAt: string | null;
+  answerStatus: 'ANSWERED' | 'WAITING' | string;
+};
+
 export type MyPageActivityQnaResult = {
-  qna: {
-    questionId: number;
-    targetId: number;
-    targetType: 'FUNDING';
-    targetTitle: string;
-    questionContent: string;
-    questionCreatedAt: string;
-    hasAnswer: boolean;
-    answerContent: string | null;
-    answerCreatedAt: string | null;
-    answerStatus: 'ANSWERED' | 'WAITING' | string;
-  }[];
+  qna: MyPageActivityQnaItem[];
+  qnas: MyPageActivityQnaItem[];
   totalElements: number;
   totalPages: number;
   currentPage: number;
@@ -577,12 +595,23 @@ export async function updateMyPageNickname(nickname: string) {
   return unwrapMyPageData<{ nickname: string }>(response);
 }
 
-export async function updateMyPagePhone(phoneNumber: string) {
-  const response = await requestMyPageJson<MyPageApiEnvelope<{ phoneNumber: string }>>('/api/mypage/profile/phone', {
+export async function requestMyPagePhoneVerification(phoneNumber: string) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPagePhoneVerificationRequestResponse>>(
+    '/api/mypage/profile/phone/verification',
+    {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber }),
+    }
+  );
+  return unwrapMyPageData<MyPagePhoneVerificationRequestResponse>(response);
+}
+
+export async function updateMyPagePhone(phoneNumber: string, verificationCode: string) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPagePhoneUpdateResponse>>('/api/mypage/profile/phone-number', {
     method: 'PATCH',
-    body: JSON.stringify({ phoneNumber }),
+    body: JSON.stringify({ phoneNumber, verificationCode }),
   });
-  return unwrapMyPageData<{ phoneNumber: string }>(response);
+  return unwrapMyPageData<MyPagePhoneUpdateResponse>(response);
 }
 
 export async function updateMyPageProfileImage(image: MyPageImageUploadFile) {
@@ -782,8 +811,10 @@ export async function getMyPageFundingOrderDeliveryDetail(orderId: string | numb
 }
 
 export async function getMyPageBadges() {
-  const response = await requestMyPageJson<MyPageApiEnvelope<{ badges: MyPageBadge[] }>>('/api/mypage/badges');
-  return unwrapMyPageData<{ badges: MyPageBadge[] }>(response).badges;
+  const response = await requestMyPageJson<MyPageApiEnvelope<{ badges?: MyPageBadge[] } | MyPageBadge[]>>('/api/mypage/badges');
+  const data = unwrapMyPageData<{ badges?: MyPageBadge[] } | MyPageBadge[]>(response);
+  if (Array.isArray(data)) return data;
+  return data.badges ?? [];
 }
 
 function buildActivityPageQuery(page = 0, size = 20) {
@@ -908,6 +939,7 @@ function normalizeMyPageActivityQnaResult(response: MyPageActivityQnaResult | My
   const qna = readMyPageObjectArray(data, ['qnas', 'qna', 'questions', 'content', 'items', 'list']).map(normalizeMyPageActivityQnaItem);
   return {
     qna,
+    qnas: qna,
     totalElements: readMyPageNumber(container, ['totalElements', 'total_elements', 'total'], qna.length),
     totalPages: readMyPageNumber(container, ['totalPages', 'total_pages'], qna.length > 0 ? 1 : 0),
     currentPage: readMyPageNumber(container, ['currentPage', 'current_page', 'page']),

@@ -66,6 +66,7 @@ type DerivedOrder = {
   deliveredAt: string | null;
   trackingNumber: string | null;
   courier: string | null;
+  courierCode: string | null;
   recipient: string;
   address: string;
   hasReview: boolean;
@@ -122,6 +123,7 @@ const ORDER_OVERRIDES: Record<number, Partial<DerivedOrder>> = {
     address: '서울시 마포구 연남동 123-45, 202호',
     trackingNumber: '624888900100',
     courier: 'CJ대한통운',
+    courierCode: 'cjlogistics',
     hasReview: false,
   },
   5: {
@@ -204,6 +206,7 @@ function deriveOrder(project: FundingProject, participationAmount: number, parti
     deliveredAt: deliveryStatus === '완료' ? estimatedDate : null,
     trackingNumber: deliveryStatus === '예정' ? null : `62${String(4880000000 + project.id * 9173)}`,
     courier: deliveryStatus === '예정' ? null : 'CJ대한통운',
+    courierCode: deliveryStatus === '예정' ? null : 'cjlogistics',
     recipient: userName || '김주담',
     address: '서울시 마포구 연남동 123-45, 202호',
     hasReview: false,
@@ -266,9 +269,12 @@ function buildOrderFromServer(detail: MyPageFundingOrderDeliveryDetail): Derived
     estimatedDate,
     deliveredAt: detail.deliveredAt ? formatServerOrderDate(detail.deliveredAt) : null,
     trackingNumber: detail.trackingNumber,
-    courier: detail.courierName,
+    courier: detail.courier || detail.courierName,
+    courierCode: detail.courierCode,
     recipient: detail.receiverName || '',
-    address: detail.receiverAddress || '',
+    address: [detail.receiverAddress, detail.receiverAddressDetail, detail.postalCode ? `(${detail.postalCode})` : null]
+      .filter(Boolean)
+      .join(' '),
     hasReview: false,
     timeline: [],
     project,
@@ -392,6 +398,7 @@ export default function FundingOrderDetailScreen() {
               <View>
                 <Text style={styles.trackingCourier}>{order.courier}</Text>
                 <Text style={styles.trackingNumber}>{order.trackingNumber}</Text>
+                {order.courierCode ? <Text style={styles.trackingCode}>{order.courierCode}</Text> : null}
               </View>
               <TouchableOpacity style={styles.copyButton} onPress={copyTracking}>
                 <Copy size={13} color={status.text} />
@@ -692,6 +699,7 @@ const styles = StyleSheet.create({
   },
   trackingCourier: { fontSize: 11, fontWeight: '800', color: '#6B7280', marginBottom: 2 },
   trackingNumber: { fontSize: 15, fontWeight: '900', color: '#111827', letterSpacing: 1 },
+  trackingCode: { marginTop: 2, fontSize: 10, fontWeight: '800', color: '#9CA3AF' },
   copyButton: {
     minHeight: 32,
     borderRadius: 10,

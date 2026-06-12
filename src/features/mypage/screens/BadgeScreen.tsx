@@ -28,18 +28,9 @@ const BADGE_IMAGES: Record<string, ImageSourcePropType> = {
   'co-creator': require('../../../../assets/images/badges/co_creator.png'),
 };
 
-const FALLBACK_BADGES: MyPageBadge[] = [
-  { badgeId: 'welcome', name: '반가워요!', displayOrder: 1, earned: false, earnedAt: null },
-  { badgeId: 'communicate', name: '주담과 소통하기', displayOrder: 2, earned: false, earnedAt: null },
-  { badgeId: 'funding-beginner', name: '펀딩 입문자', displayOrder: 3, earned: false, earnedAt: null },
-  { badgeId: 'funding-intermediate', name: '펀딩 중급자', displayOrder: 4, earned: false, earnedAt: null },
-  { badgeId: 'funding-expert', name: '펀딩 숙련가', displayOrder: 5, earned: false, earnedAt: null },
-  { badgeId: 'co-creator', name: '공동 제작자', displayOrder: 6, earned: false, earnedAt: null },
-];
-
 export default function BadgeScreen() {
   const insets = useSafeAreaInsets();
-  const [badges, setBadges] = useState<MyPageBadge[]>(FALLBACK_BADGES);
+  const [badges, setBadges] = useState<MyPageBadge[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -113,6 +104,14 @@ export default function BadgeScreen() {
           ))}
         </View>
 
+        {!isLoading && !errorMessage && displayBadges.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Lock size={30} color="#C4CAD3" />
+            <Text style={styles.emptyTitle}>획득한 뱃지가 없습니다</Text>
+            <Text style={styles.emptyDesc}>활동을 시작하면 이곳에 뱃지가 표시됩니다.</Text>
+          </View>
+        ) : null}
+
         <Text style={styles.footerText}>계속해서 뱃지가 추가될 예정이에요!</Text>
       </ScrollView>
     </View>
@@ -136,6 +135,9 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 24, paddingTop: 24 },
   loadingBox: { alignItems: 'center', paddingVertical: 16 },
   errorText: { marginBottom: 14, fontSize: 13, fontWeight: '800', color: '#EF4444', textAlign: 'center' },
+  emptyBox: { alignItems: 'center', paddingVertical: 48, gap: 8 },
+  emptyTitle: { fontSize: 16, fontWeight: '900', color: '#374151' },
+  emptyDesc: { fontSize: 13, fontWeight: '700', color: '#9CA3AF', textAlign: 'center' },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

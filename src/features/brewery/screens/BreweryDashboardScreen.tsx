@@ -42,6 +42,7 @@ import {
   getFundingStatusLabel,
   isCompletedFundingStatus,
   isSupportableFundingStatus,
+  isSuccessfulFundingStatus,
   type FundingProject,
   type ProjectStatus,
 } from '@/constants/data';
@@ -426,6 +427,11 @@ export default function BreweryDashboardScreen() {
   };
 
   const openDeliveryModal = async (project: FundingProject) => {
+    if (!isSuccessfulFundingStatus(project.status)) {
+      Alert.alert('알림', '펀딩 성공 프로젝트만 배송 관리를 할 수 있습니다.');
+      return;
+    }
+
     setSelectedDeliveryProject(project);
     setDeliveryOrders([]);
     setSelectedDeliveryOrderId(null);
@@ -642,7 +648,8 @@ export default function BreweryDashboardScreen() {
               const progressLabel = Math.round(progress);
               const status = funding.statusLabel || getFundingStatusLabel(funding.status);
               const statusTone = getFundingStatusTone(funding.status);
-              const isDeliveryTarget = isCompletedFundingStatus(funding.status);
+              const isEndedFunding = isCompletedFundingStatus(funding.status);
+              const canManageDelivery = isSuccessfulFundingStatus(funding.status);
 
               return (
                 <TouchableOpacity key={funding.id} style={styles.fundingItemCard} activeOpacity={0.8} onPress={() => router.push(`/funding/${funding.id}` as any)}>
@@ -665,19 +672,19 @@ export default function BreweryDashboardScreen() {
                                <Text style={styles.progressPct}>{progressLabel}%</Text>
                                <Text style={styles.progressAmt} numberOfLines={1}>{funding.currentAmount.toLocaleString()}원</Text>
                             </View>
-                            <Text style={styles.dday}>{isDeliveryTarget ? '종료' : `D-${funding.daysLeft}`}</Text>
+                            <Text style={styles.dday}>{isEndedFunding ? '종료' : `D-${funding.daysLeft}`}</Text>
                          </View>
                          <Progress value={progressBarValue} style={styles.progressBar} />
-                         {isDeliveryTarget ? (
+                         {canManageDelivery ? (
                            <TouchableOpacity style={styles.stageUpdateBtnMini} onPress={() => openDeliveryModal(funding)}>
                              <Truck size={13} color="#FFF" />
                              <Text style={styles.stageUpdateBtnMiniText}>배송 관리</Text>
                            </TouchableOpacity>
-                         ) : (
+                         ) : !isEndedFunding ? (
                            <TouchableOpacity style={styles.stageUpdateBtnMini} onPress={() => router.push(`/brewery/project/${funding.id}/journal` as any)}>
                              <Text style={styles.stageUpdateBtnMiniText}>양조일지 관리</Text>
                            </TouchableOpacity>
-                         )}
+                         ) : null}
                       </View>
                    </View>
                 </TouchableOpacity>
@@ -888,10 +895,9 @@ export default function BreweryDashboardScreen() {
 
       {/* Modal - Delivery */}
       {selectedDeliveryProject && (
-        <View style={styles.modalOverlay}>
+        <View style={styles.centerModalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closeDeliveryModal} />
           <Animated.View entering={SlideInUp} style={[styles.modalSheet, styles.deliveryModalSheet]}>
-            <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>배송 관리</Text>
@@ -905,7 +911,12 @@ export default function BreweryDashboardScreen() {
                 <Text style={styles.deliveryLoadingText}>주문/배송 목록을 불러오는 중입니다.</Text>
               </View>
             ) : (
-              <ScrollView style={styles.deliveryOrderScroll} showsVerticalScrollIndicator={false}>
+              <ScrollView
+                style={styles.deliveryOrderScroll}
+                contentContainerStyle={styles.deliveryOrderContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
                 {deliveryMessage ? <Text style={styles.deliveryMessageText}>{deliveryMessage}</Text> : null}
                 {deliveryOrders.length === 0 ? (
                   <View style={styles.deliveryEmptyBox}>
@@ -1205,7 +1216,15 @@ const styles = StyleSheet.create({
   modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 100, justifyContent: 'flex-end' },
   centerModalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.42)', zIndex: 100, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   modalSheet: { backgroundColor: '#FFF', borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingBottom: 40, maxHeight: '80%' },
-  deliveryModalSheet: { paddingBottom: 18 },
+  deliveryModalSheet: {
+    width: '100%',
+    maxWidth: 420,
+    height: '84%',
+    maxHeight: 680,
+    borderRadius: 24,
+    paddingBottom: 0,
+    overflow: 'hidden',
+  },
   paymentModalCard: { width: '100%', maxWidth: 360, borderRadius: 24, backgroundColor: '#FFF', overflow: 'hidden' },
   modalHandle: { width: 40, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, alignSelf: 'center', marginVertical: 12 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
@@ -1213,7 +1232,8 @@ const styles = StyleSheet.create({
   modalSub: { fontSize: 12, color: '#6B7280', marginTop: 2 },
   modalList: { padding: 24 },
   listLab: { fontSize: 14, fontWeight: '700', color: '#111', marginBottom: 16 },
-  deliveryOrderScroll: { paddingHorizontal: 24, paddingVertical: 18 },
+  deliveryOrderScroll: { flex: 1 },
+  deliveryOrderContent: { paddingHorizontal: 24, paddingTop: 18, paddingBottom: 24 },
   deliveryEmptyBox: {
     minHeight: 180,
     borderRadius: 18,

@@ -189,12 +189,10 @@ export default function AIChatScreen() {
                   activeOpacity={0.85}
                 >
                   <View style={styles.chatRow}>
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.rowBetween}>
-                        <Text style={styles.chatTitle}>{room.title}</Text>
-                        <Text style={styles.chatTime}>{formatTimestamp(room.timestamp)}</Text>
-                      </View>
-                      <Text style={styles.lastMsg} numberOfLines={1}>
+                    <View style={styles.chatBody}>
+                      <Text style={styles.chatTitle} numberOfLines={1}>{room.title}</Text>
+                      <Text style={styles.chatTime}>{formatTimestamp(room.timestamp)}</Text>
+                      <Text style={styles.lastMsg} numberOfLines={2}>
                         {room.lastMessage}
                       </Text>
                     </View>
@@ -221,19 +219,30 @@ const styles = StyleSheet.create({
   headerTop: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 },
   backBtn: { width: 40, height: 40, marginLeft: -10, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#000' },
-  listContent: { flexGrow: 1 },
+  listContent: { flexGrow: 1, backgroundColor: '#F7F7F8', paddingBottom: 110 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, paddingTop: 100 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: '#111', marginTop: 16 },
   emptySub: { fontSize: 14, color: '#9CA3AF', marginTop: 4, marginBottom: 24 },
   newChatBtn: { backgroundColor: '#000', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 9999 },
   newChatBtnTxt: { color: '#FFF', fontSize: 14, fontWeight: '600' },
-  chatList: { borderTopWidth: 1, borderTopColor: '#F9FAFB' },
-  chatItem: { padding: 20, borderBottomWidth: 1, borderBottomColor: '#F9FAFB', backgroundColor: '#FFF' },
-  chatRow: { flexDirection: 'row', gap: 12 },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  chatTitle: { flex: 1, fontSize: 15, fontWeight: '600', color: '#111', marginRight: 10 },
-  chatTime: { fontSize: 12, color: '#9CA3AF' },
-  lastMsg: { fontSize: 14, color: '#6B7280' },
+  chatList: { paddingHorizontal: 16, paddingTop: 18, gap: 12 },
+  chatItem: {
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#EDEFF2',
+    padding: 14,
+    shadowColor: '#111827',
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  chatRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  chatBody: { flex: 1, minWidth: 0 },
+  chatTitle: { fontSize: 16, lineHeight: 22, fontWeight: '900', color: '#111827', marginBottom: 3 },
+  chatTime: { fontSize: 12, lineHeight: 16, fontWeight: '800', color: '#9CA3AF', marginBottom: 8 },
+  lastMsg: { fontSize: 13, lineHeight: 19, fontWeight: '700', color: '#6B7280' },
   deleteAction: { width: 88, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', gap: 4 },
   deleteActionText: { fontSize: 13, fontWeight: '900', color: '#FFF' },
   fabArea: { position: 'absolute', right: 20, alignItems: 'flex-end' },

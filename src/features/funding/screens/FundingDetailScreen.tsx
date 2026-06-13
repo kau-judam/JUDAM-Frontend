@@ -386,6 +386,10 @@ export default function FundingDetailScreen() {
   const initialTab = getInitialTab(tab);
   const project = useMemo(() => projects.find((p) => p.id === projectId) || null, [projectId, projects]);
   const handleHeaderBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
     if (Number.isFinite(previousProjectId) && previousProjectId > 0 && previousProjectId !== projectId) {
       router.replace(`/funding/${previousProjectId}` as any);
       return;

@@ -17,8 +17,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { sendAIChatMessage, type AIChatHistoryItem } from '@/features/ai-chat/api';
 import SafeStorage from '@/utils/storage';
 
-type ChatCategory = 'recommend' | 'pairing' | 'general';
-
 type ChatMessage = {
   role: 'user' | 'assistant';
   text: string;
@@ -26,7 +24,7 @@ type ChatMessage = {
 
 type ChatRoom = {
   id: string;
-  category: ChatCategory;
+  category?: string;
   title: string;
   lastMessage: string;
   timestamp: string;
@@ -35,12 +33,6 @@ type ChatRoom = {
 
 const CHAT_ROOMS_STORAGE_KEY = 'judam.aiChat.rooms';
 const INITIAL_ASSISTANT_MESSAGE = '안녕하세요!';
-
-const CATEGORY_LABELS: Record<string, string> = {
-  recommend: '술 추천',
-  pairing: '안주 추천',
-  general: '통합 AI',
-};
 
 const INITIAL_MESSAGE: ChatMessage = {
   role: 'assistant',
@@ -70,16 +62,16 @@ export default function AIChatRoomScreen() {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const { user } = useAuth();
-  const { category, roomId } = useLocalSearchParams();
-  const chatCategory = Array.isArray(category) ? category[0] : category;
-  const chatRoomId = Array.isArray(roomId) ? roomId[0] : roomId;
+  const params = useLocalSearchParams();
+  const roomIdParam = 'roomId' in params ? params.roomId : undefined;
+  const chatRoomId = Array.isArray(roomIdParam) ? roomIdParam[0] : roomIdParam;
   const [input, setInput] = useState('');
   const [menuVisible, setMenuVisible] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
 
-  const categoryLabel = useMemo(() => CATEGORY_LABELS[chatCategory || ''] || 'AI 챗봇', [chatCategory]);
+  const roomLabel = useMemo(() => '통합 AI', []);
 
   const persistMessages = useCallback(async (nextMessages: ChatMessage[]) => {
     if (!chatRoomId) return;
@@ -95,6 +87,7 @@ export default function AIChatRoomScreen() {
         const lastMessage = nextMessages[nextMessages.length - 1]?.text || INITIAL_ASSISTANT_MESSAGE;
         return {
           ...room,
+          category: 'general',
           title: firstUserMessage ? makeRoomTitle(firstUserMessage) : room.title,
           lastMessage,
           timestamp: now,
@@ -247,7 +240,7 @@ export default function AIChatRoomScreen() {
         onScrollBeginDrag={() => setMenuVisible(false)}
         onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
       >
-        <Text style={styles.category}>{categoryLabel}</Text>
+        <Text style={styles.category}>{roomLabel}</Text>
         {messages.map((message, index) => (
           <View key={`${message.role}-${index}`} style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
             <Text style={[styles.bubbleTxt, message.role === 'user' && styles.userTxt]}>{message.text}</Text>

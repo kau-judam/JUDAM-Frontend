@@ -10,7 +10,7 @@ import {
   StatusBar,
   TextInput,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { 
   TrendingUp, 
   Users, 
@@ -204,6 +204,7 @@ function formatDashboardDate(value?: string | null) {
 }
 
 export default function BreweryDashboardScreen() {
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string | string[] }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { projects, mergeProjects, updateProjectStatus } = useFunding();
@@ -271,6 +272,15 @@ export default function BreweryDashboardScreen() {
   const selectedDeliveryOrder = selectedDeliveryOrderId
     ? deliveryOrders.find((order) => order.orderId === selectedDeliveryOrderId) || null
     : null;
+  const dashboardReturnTo = Array.isArray(returnTo) ? returnTo[0] : returnTo;
+
+  const handleDashboardBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+    router.replace((dashboardReturnTo || '/(tabs)/mypage') as any);
+  }, [dashboardReturnTo]);
 
   const loadDashboardNotifications = useCallback(async () => {
     if (!currentUserId || currentUserType !== 'brewery') return;
@@ -535,7 +545,7 @@ export default function BreweryDashboardScreen() {
         <View style={styles.headerInner}>
           <View style={styles.headerTitleRow}>
             <TouchableOpacity
-              onPress={() => router.replace('/(tabs)/mypage' as any)}
+              onPress={handleDashboardBack}
               style={styles.backButton}
               accessibilityRole="button"
               accessibilityLabel="마이페이지로 돌아가기"

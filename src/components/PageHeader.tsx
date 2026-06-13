@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { router } from 'expo-router';
+import { router, usePathname } from 'expo-router';
 import { Bell, MessageCircle, LayoutDashboard, ChevronLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, showBack = false, showIcons = true }: PageHeaderProps) {
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
   const { user } = useAuth();
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified === true;
 
@@ -39,7 +40,12 @@ export function PageHeader({ title, showBack = false, showIcons = true }: PageHe
                 <>
                   <TouchableOpacity 
                     style={styles.iconBtn}
-                    onPress={() => router.push('/brewery/dashboard' as any)}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/brewery/dashboard',
+                        params: { returnTo: pathname },
+                      } as any)
+                    }
                   >
                     <LayoutDashboard size={22} color="#111" />
                   </TouchableOpacity>

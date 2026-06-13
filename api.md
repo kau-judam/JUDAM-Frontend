@@ -2897,3 +2897,17 @@ Frontend connection:
 - Flavor tag and summary AI suggestion APIs remain connected.
 - Selected sub ingredients still submit to `POST /api/recipes` as `sub_ingredient`.
 - Verification used `npx.cmd tsc --noEmit` and `npm.cmd run lint`.
+
+2026-06-13 recipe create AI button update:
+- Reconnected the recipe create sub ingredient AI button to `POST /api/recipe/suggest-sub-ingredients`.
+- The request sends both `main_ingredient` and `mainIngredient` with the same joined main ingredient text for backend naming compatibility.
+- The old local temporary region suggestion list was removed from the active screen code.
+- Recipe image AI generation is still not connected because this document and the current recipe API client do not include a recipe image generation endpoint/request/response contract. The existing screen still uses the current placeholder image behavior until the backend endpoint is provided.
+- Verification used `npx.cmd tsc --noEmit` and `npm.cmd run lint`.
+
+2026-06-13 recipe image AI via funding API:
+- Connected the recipe create image AI button through the existing funding image AI endpoint `POST /api/fundings/drafts/{draftId}/images/ai-generate`.
+- Because the funding image endpoint requires a funding draft, the recipe screen first creates a funding draft with `createFundingDraft`, then calls `generateFundingDraftAiImage`.
+- The generated `images`, `imageUrl`, or `thumbnailUrl` response is normalized with `normalizeFundingImageUrls` and applied to the recipe image preview. It is treated as a remote preview URL and is not uploaded as a local `image` file in `POST /api/recipes`.
+- This reuse requires a brewery account because `createFundingDraft` requires `breweryId`. Non-brewery users receive a notice instead of calling the funding endpoint.
+- Verification used `npx.cmd tsc --noEmit` and `npm.cmd run lint`.

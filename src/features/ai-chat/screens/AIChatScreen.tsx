@@ -3,14 +3,11 @@ import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { Swipeable } from 'react-native-gesture-handler';
-import { ChevronLeft, MessageCircle, Plus, Sparkles, Trash2, UtensilsCrossed, Wine } from 'lucide-react-native';
+import { ChevronLeft, MessageCircle, Plus, Trash2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { FadeInUp, FadeOut } from 'react-native-reanimated';
 
 import { useAuth } from '@/contexts/AuthContext';
 import SafeStorage from '@/utils/storage';
-
-type ChatCategory = 'recommend' | 'pairing' | 'general';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -19,48 +16,49 @@ type ChatMessage = {
 
 interface ChatRoom {
   id: string;
-  category: ChatCategory;
+  category?: string;
   title: string;
   lastMessage: string;
   timestamp: string;
   messages: ChatMessage[];
 }
 
-const categories = [
-  { id: 'recommend' as ChatCategory, title: '술 추천', icon: Wine },
-  { id: 'pairing' as ChatCategory, title: '안주 추천', icon: UtensilsCrossed },
-  { id: 'general' as ChatCategory, title: '통합 AI', icon: Sparkles },
-];
-
 const CHAT_ROOMS_STORAGE_KEY = 'judam.aiChat.rooms';
 const INITIAL_ASSISTANT_MESSAGE = '안녕하세요!';
 
-const getCategoryTitle = (category: ChatCategory) => {
-  return categories.find((item) => item.id === category)?.title || 'AI';
-};
-
-const makeNewRoom = (category: ChatCategory): ChatRoom => {
+const makeNewRoom = (): ChatRoom => {
   const now = new Date();
   return {
-    id: `${category}-${now.getTime()}`,
-    category,
-    title: `${getCategoryTitle(category)} 대화`,
+    id: `chat-${now.getTime()}`,
+    category: 'general',
+    title: '새 대화',
     lastMessage: INITIAL_ASSISTANT_MESSAGE,
     timestamp: now.toISOString(),
     messages: [{ role: 'assistant', text: INITIAL_ASSISTANT_MESSAGE }],
   };
 };
 
-function isValidRoom(room: ChatRoom) {
-  return !room.id.startsWith('sample-') && categories.some((category) => category.id === room.category);
+function normalizeRoom(room: ChatRoom): ChatRoom | null {
+  if (!room.id || room.id.startsWith('sample-')) return null;
+  const messages = room.messages?.length ? room.messages : [{ role: 'assistant' as const, text: INITIAL_ASSISTANT_MESSAGE }];
+  const [firstMessage, ...restMessages] = messages;
+  const normalizedMessages =
+    firstMessage.role === 'assistant'
+      ? [{ ...firstMessage, text: INITIAL_ASSISTANT_MESSAGE }, ...restMessages]
+      : [{ role: 'assistant' as const, text: INITIAL_ASSISTANT_MESSAGE }, ...messages];
+
+  return {
+    ...room,
+    category: 'general',
+    lastMessage: room.lastMessage || normalizedMessages[normalizedMessages.length - 1]?.text || INITIAL_ASSISTANT_MESSAGE,
+    messages: normalizedMessages,
+  };
 }
 
 export default function AIChatScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const [selectedCategory, setSelectedCategory] = useState<ChatCategory>('recommend');
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
-  const [isFloatingMenuOpen, setIsFloatingMenuOpen] = useState(false);
 
   const persistRooms = async (rooms: ChatRoom[]) => {
     await SafeStorage.setItem(CHAT_ROOMS_STORAGE_KEY, JSON.stringify(rooms));
@@ -75,9 +73,9 @@ export default function AIChatScreen() {
 
     try {
       const parsedRooms = JSON.parse(savedRooms) as ChatRoom[];
-      const availableRooms = parsedRooms.filter(isValidRoom);
+      const availableRooms = parsedRooms.map(normalizeRoom).filter((room): room is ChatRoom => Boolean(room));
       setChatRooms(availableRooms);
-      if (availableRooms.length !== parsedRooms.length) {
+      if (JSON.stringify(availableRooms) !== JSON.stringify(parsedRooms)) {
         await persistRooms(availableRooms);
       }
     } catch {
@@ -96,14 +94,12 @@ export default function AIChatScreen() {
     }, [loadRooms]),
   );
 
-  const createRoom = (category: ChatCategory) => {
-    const nextRoom = makeNewRoom(category);
+  const createRoom = () => {
+    const nextRoom = makeNewRoom();
     const nextRooms = [nextRoom, ...chatRooms];
     setChatRooms(nextRooms);
     persistRooms(nextRooms);
-    setSelectedCategory(category);
-    setIsFloatingMenuOpen(false);
-    router.push(`/ai-chat/${nextRoom.category}/${nextRoom.id}` as any);
+    router.push(`/ai-chat/${nextRoom.id}` as any);
   };
 
   const deleteRoom = (roomId: string) => {
@@ -119,9 +115,7 @@ export default function AIChatScreen() {
     </TouchableOpacity>
   );
 
-  const filteredChatRooms = chatRooms
-    .filter((room) => room.category === selectedCategory)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const sortedChatRooms = [...chatRooms].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp);
@@ -173,40 +167,25 @@ export default function AIChatScreen() {
           <Text style={styles.headerTitle}>AI 챗봇</Text>
           <View style={{ width: 40 }} />
         </View>
-
-        <View style={styles.categoryArea}>
-          <View style={styles.categoryBg}>
-            {categories.map((category) => (
-              <TouchableOpacity
-                key={category.id}
-                onPress={() => setSelectedCategory(category.id)}
-                style={[styles.categoryBtn, selectedCategory === category.id && styles.categoryBtnActive]}
-              >
-                <category.icon size={14} color={selectedCategory === category.id ? '#FFF' : '#8B5A3C'} />
-                <Text style={[styles.categoryTxt, selectedCategory === category.id && styles.categoryTxtActive]}>{category.title}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.listContent}>
-        {filteredChatRooms.length === 0 ? (
+        {sortedChatRooms.length === 0 ? (
           <View style={styles.empty}>
             <MessageCircle size={64} color="#E5E7EB" />
             <Text style={styles.emptyTitle}>아직 대화가 없습니다.</Text>
             <Text style={styles.emptySub}>새로운 질문을 시작해보세요.</Text>
-            <TouchableOpacity style={styles.newChatBtn} onPress={() => createRoom(selectedCategory)}>
+            <TouchableOpacity style={styles.newChatBtn} onPress={createRoom}>
               <Text style={styles.newChatBtnTxt}>대화 시작하기</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={styles.chatList}>
-            {filteredChatRooms.map((room) => (
+            {sortedChatRooms.map((room) => (
               <Swipeable key={room.id} renderRightActions={() => renderDeleteAction(room.id)} overshootRight={false}>
                 <TouchableOpacity
                   style={styles.chatItem}
-                  onPress={() => router.push(`/ai-chat/${room.category}/${room.id}` as any)}
+                  onPress={() => router.push(`/ai-chat/${room.id}` as any)}
                   activeOpacity={0.85}
                 >
                   <View style={styles.chatRow}>
@@ -228,20 +207,8 @@ export default function AIChatScreen() {
       </ScrollView>
 
       <View style={[styles.fabArea, { bottom: insets.bottom + 20 }]}>
-        {isFloatingMenuOpen && (
-          <Animated.View entering={FadeInUp} exiting={FadeOut} style={styles.floatingMenu}>
-            {categories.map((category) => (
-              <TouchableOpacity key={category.id} style={styles.menuItem} onPress={() => createRoom(category.id)}>
-                <category.icon size={18} color="#8B5A3C" />
-                <Text style={styles.menuTxt}>{category.title}</Text>
-              </TouchableOpacity>
-            ))}
-          </Animated.View>
-        )}
-        <TouchableOpacity style={styles.fab} activeOpacity={0.8} onPress={() => setIsFloatingMenuOpen(!isFloatingMenuOpen)}>
-          <Animated.View style={{ transform: [{ rotate: isFloatingMenuOpen ? '45deg' : '0deg' }] }}>
-            <Plus size={28} color="#FFF" />
-          </Animated.View>
+        <TouchableOpacity style={styles.fab} activeOpacity={0.8} onPress={createRoom}>
+          <Plus size={28} color="#FFF" />
         </TouchableOpacity>
       </View>
     </View>
@@ -254,12 +221,6 @@ const styles = StyleSheet.create({
   headerTop: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 },
   backBtn: { width: 40, height: 40, marginLeft: -10, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#000' },
-  categoryArea: { paddingHorizontal: 16, paddingBottom: 12, marginBottom: 12 },
-  categoryBg: { flexDirection: 'row', backgroundColor: '#F5F1ED', borderRadius: 9999, padding: 4, gap: 4 },
-  categoryBtn: { flex: 1, height: 36, borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  categoryBtnActive: { backgroundColor: '#2B1810', elevation: 4, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 5 },
-  categoryTxt: { fontSize: 11, fontWeight: '600', color: '#8B5A3C' },
-  categoryTxtActive: { color: '#FFF' },
   listContent: { flexGrow: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, paddingTop: 100 },
   emptyTitle: { fontSize: 16, fontWeight: '700', color: '#111', marginTop: 16 },
@@ -276,9 +237,6 @@ const styles = StyleSheet.create({
   deleteAction: { width: 88, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center', gap: 4 },
   deleteActionText: { fontSize: 13, fontWeight: '900', color: '#FFF' },
   fabArea: { position: 'absolute', right: 20, alignItems: 'flex-end' },
-  floatingMenu: { backgroundColor: '#FFF', borderRadius: 24, padding: 8, marginBottom: 12, elevation: 10, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, gap: 4, borderWidth: 1, borderColor: '#F3F4F6' },
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16 },
-  menuTxt: { fontSize: 14, fontWeight: '600', color: '#111' },
   fab: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 5 },
   lockedContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   lockedTitle: { fontSize: 22, fontWeight: '900', color: '#111', marginTop: 18, marginBottom: 8 },

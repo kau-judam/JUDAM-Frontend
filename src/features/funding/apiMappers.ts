@@ -219,6 +219,23 @@ function getOfficialBreweryIntro(info?: FundingProject['breweryInfo']) {
   return sanitizeApiText(info?.oneLineIntroduction) || sanitizeApiText(info?.shortIntroduction);
 }
 
+function getRecordValue(source: unknown, keys: string[]) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return '';
+  const record = source as Record<string, unknown>;
+  for (const key of keys) {
+    const text = sanitizeApiText(record[key]);
+    if (text) return text;
+  }
+  return '';
+}
+
+function getFundingShortTitle(source: unknown, nestedSource?: unknown) {
+  return (
+    getRecordValue(source, ['shortTitle', 'short_title']) ||
+    getRecordValue(nestedSource, ['shortTitle', 'short_title'])
+  );
+}
+
 function getPlanText(value: unknown) {
   return sanitizeApiText(value);
 }
@@ -400,6 +417,7 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
   const officialBreweryIntro = getOfficialBreweryIntro(officialBreweryInfo);
   const officialBreweryImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl);
   const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.address) || sanitizeApiText(officialBreweryInfo?.businessAddress);
+  const shortTitle = getFundingShortTitle(item);
   return {
     id: item.fundingId,
     title: sanitizeApiText(item.title) || existing?.title || '',
@@ -407,8 +425,8 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
     breweryLogo: existing?.breweryLogo || '🍶',
     location: officialBusinessAddress || existing?.location || '',
     category: existing?.category || '',
-    shortTitle: existing?.shortTitle || sanitizeApiText(item.title),
-    shortDescription: sanitizeApiText(item.description) || existing?.shortDescription || existing?.projectSummary || sanitizeApiText(item.title),
+    shortTitle: shortTitle || existing?.shortTitle,
+    shortDescription: sanitizeApiText(item.description) || sanitizeApiText(item.summary) || existing?.shortDescription || existing?.projectSummary || sanitizeApiText(item.title),
     image: thumbnailUrl || existing?.image || '',
     images: listImages.length ? listImages : existing?.images,
     localImage: undefined,
@@ -490,6 +508,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
   const officialBreweryIntro = getOfficialBreweryIntro(officialBreweryInfo);
   const officialBreweryImage = normalizeFundingImageUrl(officialBreweryInfo?.profileImageUrl);
   const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.address) || sanitizeApiText(officialBreweryInfo?.businessAddress);
+  const detailShortTitle = getFundingShortTitle(detail, detail.basicInfo || detail.basic_info);
   const businessAddress =
     officialBusinessAddress ||
     sanitizeApiText(detail.businessAddress) ||
@@ -529,7 +548,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     brewery: sameProject ? officialBreweryName || sanitizeApiText(detail.breweryInfo?.breweryName) || sanitizeApiText(detail.breweryName) || existing.brewery : existing.brewery,
     location: sameProject ? businessAddress || existing.location : existing.location,
     category: sameProject ? sanitizeApiText(detail.category) || existing.category : existing.category,
-    shortTitle: sameProject ? sanitizeApiText(detail.shortTitle) || existing.shortTitle : existing.shortTitle,
+    shortTitle: sameProject ? detailShortTitle || existing.shortTitle : existing.shortTitle,
     shortDescription: sameProject ? sanitizeApiText(detail.description) || sanitizeApiText(detail.summary) || existing.shortDescription : existing.shortDescription,
     currentAmount: sameProject ? detail.currentAmount ?? existing.currentAmount : existing.currentAmount,
     goalAmount: sameProject ? detail.targetAmount || existing.goalAmount : existing.goalAmount,

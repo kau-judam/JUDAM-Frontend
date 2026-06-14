@@ -385,6 +385,11 @@ export default function FundingDetailScreen() {
   const previousProjectId = Number(rawFromProjectId);
   const initialTab = getInitialTab(tab);
   const project = useMemo(() => projects.find((p) => p.id === projectId) || null, [projectId, projects]);
+  const headerShortTitle = useMemo(() => {
+    const title = project?.title?.trim() || '';
+    const shortTitle = project?.shortTitle?.trim() || '';
+    return shortTitle && shortTitle !== title ? shortTitle : '';
+  }, [project?.shortTitle, project?.title]);
   const handleHeaderBack = useCallback(() => {
     if (router.canGoBack()) {
       router.back();
@@ -1941,7 +1946,7 @@ export default function FundingDetailScreen() {
         {/* 2. Title & Desc */}
         <Animated.View entering={FadeInUp} style={styles.titleSection}>
           <Text style={styles.projectTitle}>{project.title}</Text>
-          <Text style={styles.shortDesc}>{project.shortDescription}</Text>
+          {headerShortTitle ? <Text style={styles.shortDesc}>{headerShortTitle}</Text> : null}
         </Animated.View>
 
         {/* 3. Funding Status */}
@@ -2129,7 +2134,7 @@ export default function FundingDetailScreen() {
                        <View style={{ gap: 16 }}>
                          {projectSchedule.map((item, index) => (
                            <View key={`${item.date}-${item.description}`} style={styles.schRow}>
-                             <Text style={styles.schDate}>{item.date}</Text>
+                             <Text style={styles.schDate} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>{item.date}</Text>
                              <Text style={[styles.schDesc, index === projectSchedule.length - 1 && { fontWeight: '700', color: '#111' }]}>{item.description}</Text>
                            </View>
                          ))}
@@ -3158,8 +3163,8 @@ const styles = StyleSheet.create({
   budgetTotalLab: { fontSize: 16, fontWeight: '800', color: '#111' },
   budgetTotalVal: { fontSize: 18, fontWeight: '800', color: '#111' },
   budgetGuide: { fontSize: 12, color: '#6B7280', marginTop: 16, lineHeight: 20 },
-  schRow: { flexDirection: 'row', gap: 16, marginBottom: 16 },
-  schDate: { width: 70, fontSize: 14, fontWeight: '600', color: '#111' },
+  schRow: { flexDirection: 'row', gap: 10, marginBottom: 16, alignItems: 'flex-start' },
+  schDate: { width: 104, flexShrink: 0, fontSize: 14, lineHeight: 22, fontWeight: '600', color: '#111' },
   schDesc: { flex: 1, fontSize: 14, color: '#4B5563', lineHeight: 22 },
   schAlert: { marginTop: 8, padding: 16, backgroundColor: '#EFF6FF', borderRadius: 16 },
   schAlertTxt: { fontSize: 12, color: '#1E3A8A', lineHeight: 20 },

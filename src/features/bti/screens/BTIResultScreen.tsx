@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
   ImageSourcePropType,
+  Modal,
   ScrollView,
   Share,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -41,22 +43,17 @@ const BTI_CHARACTER_IMAGES: Record<string, ImageSourcePropType> = {
 const SPECIAL_CHARACTER_LAYOUT_TYPES = new Set(['SHFC', 'SLFC']);
 
 const TASTE_AXIS_CONFIG = [
-  { key: 'sweetness', leftLabel: '달콤함', rightLabel: '깔끔함', valueLabel: '단맛', highSide: 'left' },
-  { key: 'body', leftLabel: '가벼움', rightLabel: '걸쭉함', valueLabel: '바디', highSide: 'right' },
-  { key: 'carbonation', leftLabel: '청량함', rightLabel: '탄산없음', valueLabel: '탄산', highSide: 'left' },
-  { key: 'tradition', leftLabel: '구수함', rightLabel: '독특/새콤함', valueLabel: '전통감', highSide: 'left' },
-  { key: 'alcohol', leftLabel: '낮은 도수', rightLabel: '높은 도수', valueLabel: '도수', highSide: 'right' },
+  { key: 'sweetness', leftLabel: '달콤함', rightLabel: '깔끔함', valueLabel: '단맛', feedbackLabel: '단맛', highSide: 'left' },
+  { key: 'body', leftLabel: '가벼움', rightLabel: '걸쭉함', valueLabel: '바디', feedbackLabel: '바디감/묵직함', highSide: 'right' },
+  { key: 'carbonation', leftLabel: '청량함', rightLabel: '탄산없음', valueLabel: '탄산', feedbackLabel: '탄산감', highSide: 'left' },
+  { key: 'tradition', leftLabel: '구수함', rightLabel: '독특/새콤함', valueLabel: '전통감', feedbackLabel: '풍미/향', highSide: 'left' },
 ] as const;
+
+const BTI_FEEDBACK_AXES = ['단맛', '바디감/묵직함', '탄산감', '풍미/향', '잘 모르겠음'];
 
 function clampProfileValue(value?: number) {
   if (!Number.isFinite(value)) return 3;
   return Math.max(1, Math.min(5, value || 3));
-}
-
-function getAlcoholProfileValue(resultCode: string | null) {
-  if (resultCode?.endsWith('-B')) return 5;
-  if (resultCode?.endsWith('-M')) return 1;
-  return 3;
 }
 
 function getAxisPosition(value: number, highSide: 'left' | 'right') {
@@ -70,6 +67,10 @@ export default function BTIResultScreen() {
   const { type } = useLocalSearchParams<{ type: string }>();
   const { user, updateUser } = useAuth();
   const userId = user?.id;
+  const [feedbackChoice, setFeedbackChoice] = useState<'yes' | 'no' | null>(null);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [selectedMismatchAxes, setSelectedMismatchAxes] = useState<string[]>([]);
+  const [showFeedbackThanks, setShowFeedbackThanks] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -114,15 +115,13 @@ export default function BTIResultScreen() {
     () => TASTE_AXIS_CONFIG.map((axis) => {
       const sourceValue =
         normalizeBtiTasteAxisValue(user?.sulbtiProfile?.[axis.key])
-        ?? (axis.key === 'alcohol'
-          ? getAlcoholProfileValue(resultCode)
-          : result?.tasteProfile.find((item) => item.label === axis.valueLabel)?.value);
+        ?? result?.tasteProfile.find((item) => item.label === axis.valueLabel)?.value;
       return {
         ...axis,
         position: getAxisPosition(clampProfileValue(sourceValue), axis.highSide),
       };
     }),
-    [result, resultCode, user?.sulbtiProfile]
+    [result, user?.sulbtiProfile]
   );
 
   const handleShare = async () => {
@@ -135,6 +134,27 @@ export default function BTIResultScreen() {
     } catch {
       Alert.alert('공유 실패', '결과를 공유하지 못했습니다. 다시 시도해주세요.');
     }
+  };
+
+  const handleFeedbackChoice = (choice: 'yes' | 'no') => {
+    setFeedbackChoice(choice);
+    setFeedbackText('');
+    if (choice === 'yes') {
+      setSelectedMismatchAxes([]);
+    }
+  };
+
+  const toggleMismatchAxis = (axis: string) => {
+    setSelectedMismatchAxes((prev) => (
+      prev.includes(axis) ? prev.filter((item) => item !== axis) : [...prev, axis]
+    ));
+  };
+
+  const canSubmitFeedback = feedbackChoice === 'yes' || (feedbackChoice === 'no' && selectedMismatchAxes.length > 0);
+
+  const handleFeedbackSubmit = () => {
+    if (!canSubmitFeedback) return;
+    setShowFeedbackThanks(true);
   };
 
   if (!user) {
@@ -252,8 +272,13 @@ export default function BTIResultScreen() {
             {tasteAxes.map((axis) => (
               <View key={axis.key} style={styles.profileRow}>
                 <View style={styles.profileMeta}>
-                  <Text style={styles.profileLabel}>{axis.leftLabel}</Text>
-                  <Text style={styles.profileLabelRight}>{axis.rightLabel}</Text>
+                  <View style={styles.profileLabelGroup}>
+                    <Text style={styles.profileAxisName}>{axis.feedbackLabel}</Text>
+                    <Text style={styles.profileLabel}>{axis.leftLabel}</Text>
+                  </View>
+                  <View style={styles.profileLabelGroupRight}>
+                    <Text style={styles.profileLabelRight}>{axis.rightLabel}</Text>
+                  </View>
                 </View>
                 <View style={styles.profileAxisTrack}>
                   <View style={styles.profileAxisCenter} />
@@ -262,6 +287,80 @@ export default function BTIResultScreen() {
               </View>
             ))}
           </View>
+        </View>
+
+        <View style={styles.feedbackCard}>
+          <Text style={styles.feedbackTitle}>이 결과가 본인과 맞나요? ({displayType})</Text>
+          <View style={styles.feedbackChoiceRow}>
+            <TouchableOpacity
+              style={[styles.feedbackChoiceButton, feedbackChoice === 'yes' && styles.feedbackChoiceButtonActive]}
+              activeOpacity={0.86}
+              onPress={() => handleFeedbackChoice('yes')}
+            >
+              <Text style={[styles.feedbackChoiceText, feedbackChoice === 'yes' && styles.feedbackChoiceTextActive]}>맞아요</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.feedbackChoiceButton, feedbackChoice === 'no' && styles.feedbackChoiceButtonActive]}
+              activeOpacity={0.86}
+              onPress={() => handleFeedbackChoice('no')}
+            >
+              <Text style={[styles.feedbackChoiceText, feedbackChoice === 'no' && styles.feedbackChoiceTextActive]}>아니에요</Text>
+            </TouchableOpacity>
+          </View>
+
+          {feedbackChoice === 'yes' ? (
+            <View style={styles.feedbackDetailBox}>
+              <Text style={styles.feedbackDetailTitle}>결과가 맞았다면 어떤 부분이 잘 맞았나요? 또는 추가 의견이 있다면 적어주세요. (선택)</Text>
+              <TextInput
+                style={styles.feedbackTextArea}
+                value={feedbackText}
+                onChangeText={setFeedbackText}
+                placeholder="자유롭게 의견을 적어주세요."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                textAlignVertical="top"
+              />
+            </View>
+          ) : null}
+
+          {feedbackChoice === 'no' ? (
+            <View style={styles.feedbackDetailBox}>
+              <Text style={styles.feedbackDetailTitle}>어떤 부분이 맞지 않았나요? 틀린 축을 선택하고, 이유를 적어주세요!</Text>
+              <View style={styles.axisChipWrap}>
+                {BTI_FEEDBACK_AXES.map((axis) => {
+                  const selected = selectedMismatchAxes.includes(axis);
+                  return (
+                    <TouchableOpacity
+                      key={axis}
+                      style={[styles.axisChip, selected && styles.axisChipActive]}
+                      activeOpacity={0.86}
+                      onPress={() => toggleMismatchAxis(axis)}
+                    >
+                      <Text style={[styles.axisChipText, selected && styles.axisChipTextActive]}>{axis}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <TextInput
+                style={styles.feedbackTextArea}
+                value={feedbackText}
+                onChangeText={setFeedbackText}
+                placeholder="예: 단맛은 잘 맞는데 탄산감이 제 취향보다 강하게 나온 것 같아요."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                textAlignVertical="top"
+              />
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            style={[styles.feedbackSubmitButton, !canSubmitFeedback && styles.feedbackSubmitButtonDisabled]}
+            activeOpacity={canSubmitFeedback ? 0.86 : 1}
+            disabled={!canSubmitFeedback}
+            onPress={handleFeedbackSubmit}
+          >
+            <Text style={styles.feedbackSubmitText}>제출하기</Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={styles.primaryButton} activeOpacity={0.86} onPress={handleShare}>
@@ -280,6 +379,18 @@ export default function BTIResultScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <Modal visible={showFeedbackThanks} transparent animationType="fade" onRequestClose={() => setShowFeedbackThanks(false)}>
+        <View style={styles.feedbackModalOverlay}>
+          <View style={styles.feedbackModalCard}>
+            <Text style={styles.feedbackModalTitle}>응답해 주셔서 감사합니다!</Text>
+            <Text style={styles.feedbackModalDesc}>주담에 큰 도움이 될거예요 :)</Text>
+            <TouchableOpacity style={styles.feedbackModalButton} activeOpacity={0.86} onPress={() => setShowFeedbackThanks(false)}>
+              <Text style={styles.feedbackModalButtonText}>확인</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -313,11 +424,38 @@ const styles = StyleSheet.create({
   profileList: { gap: 17 },
   profileRow: { gap: 8 },
   profileMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  profileLabel: { flex: 1, fontSize: 13, fontWeight: '900', color: '#111' },
-  profileLabelRight: { flex: 1, fontSize: 13, fontWeight: '900', color: '#111', textAlign: 'right' },
+  profileLabelGroup: { flex: 1.15, alignItems: 'flex-start', gap: 2 },
+  profileLabelGroupRight: { flex: 1, alignItems: 'flex-end', paddingTop: 15 },
+  profileAxisName: { fontSize: 10, lineHeight: 13, fontWeight: '800', color: '#9CA3AF' },
+  profileLabel: { fontSize: 13, fontWeight: '900', color: '#111' },
+  profileLabelRight: { fontSize: 13, fontWeight: '900', color: '#111', textAlign: 'right' },
   profileAxisTrack: { height: 6, borderRadius: 999, backgroundColor: '#111', overflow: 'visible', justifyContent: 'center' },
   profileAxisCenter: { position: 'absolute', left: '50%', width: 1, height: 14, backgroundColor: '#D1D5DB' },
   profileAxisThumb: { position: 'absolute', width: 16, height: 16, marginLeft: -8, borderRadius: 8, backgroundColor: '#FFF', borderWidth: 2, borderColor: '#111', shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 5, shadowOffset: { width: 0, height: 2 }, elevation: 3 },
+  feedbackCard: { borderRadius: 22, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', padding: 18, gap: 14 },
+  feedbackTitle: { fontSize: 17, lineHeight: 23, fontWeight: '900', color: '#111827' },
+  feedbackChoiceRow: { flexDirection: 'row', gap: 10 },
+  feedbackChoiceButton: { flex: 1, height: 46, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
+  feedbackChoiceButtonActive: { borderColor: '#111827', backgroundColor: '#111827' },
+  feedbackChoiceText: { fontSize: 14, fontWeight: '900', color: '#374151' },
+  feedbackChoiceTextActive: { color: '#FFF' },
+  feedbackDetailBox: { borderRadius: 18, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', padding: 14, gap: 12 },
+  feedbackDetailTitle: { fontSize: 13, lineHeight: 20, fontWeight: '800', color: '#374151' },
+  axisChipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  axisChip: { minHeight: 36, borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+  axisChipActive: { borderColor: '#111827', backgroundColor: '#111827' },
+  axisChipText: { fontSize: 12, fontWeight: '900', color: '#4B5563' },
+  axisChipTextActive: { color: '#FFF' },
+  feedbackTextArea: { minHeight: 98, borderRadius: 14, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', paddingHorizontal: 13, paddingVertical: 12, fontSize: 14, lineHeight: 20, fontWeight: '700', color: '#111827' },
+  feedbackSubmitButton: { height: 50, borderRadius: 15, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
+  feedbackSubmitButtonDisabled: { backgroundColor: '#D1D5DB' },
+  feedbackSubmitText: { fontSize: 15, fontWeight: '900', color: '#FFF' },
+  feedbackModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.42)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  feedbackModalCard: { width: '100%', maxWidth: 340, borderRadius: 24, backgroundColor: '#FFF', padding: 24, alignItems: 'center' },
+  feedbackModalTitle: { fontSize: 20, fontWeight: '900', color: '#111827', textAlign: 'center', marginBottom: 8 },
+  feedbackModalDesc: { fontSize: 14, lineHeight: 21, fontWeight: '700', color: '#6B7280', textAlign: 'center', marginBottom: 22 },
+  feedbackModalButton: { alignSelf: 'stretch', height: 50, borderRadius: 16, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
+  feedbackModalButtonText: { fontSize: 15, fontWeight: '900', color: '#FFF' },
   primaryButton: { height: 52, borderRadius: 16, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   primaryButtonText: { color: '#FFF', fontSize: 15, fontWeight: '900' },
   actionRow: { flexDirection: 'row', gap: 10 },

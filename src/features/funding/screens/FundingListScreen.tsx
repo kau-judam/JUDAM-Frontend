@@ -28,6 +28,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
+import { getBtiDisplayType } from '@/features/bti/data';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import { getFundingList, getFundingStats, getFundingApiErrorMessage, type FundingStatsResponse } from '@/features/funding/api';
@@ -87,6 +88,7 @@ export default function FundingListScreen() {
   const isBreweryAccount = user?.type === "brewery";
   const isVerifiedBrewery = isBreweryAccount && user?.isBreweryVerified;
   const userTasteProfile = useMemo(() => getTasteProfileFromSulbti(user?.sulbti), [user?.sulbti]);
+  const displaySulbti = useMemo(() => getBtiDisplayType(user?.sulbti), [user?.sulbti]);
   const isTasteSortActive = selectedSort === "추천순" && Boolean(userTasteProfile);
   const showLoginPrompt = (message: string) => {
     setAlertModal({
@@ -379,7 +381,7 @@ export default function FundingListScreen() {
             <View style={styles.sortHeader}>
               <Text style={styles.sortLabel}>정렬/추천</Text>
               <Text style={styles.sortHint}>
-                {user?.sulbti && userTasteProfile ? `나의 술BTI ${user.sulbti} 기준` : "술BTI 검사 후 맞춤 추천 가능"}
+                {user?.sulbti && userTasteProfile ? `나의 술BTI ${displaySulbti} 기준` : "술BTI 검사 후 맞춤 추천 가능"}
               </Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortChipRow}>

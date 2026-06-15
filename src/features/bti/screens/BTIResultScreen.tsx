@@ -73,13 +73,18 @@ export default function BTIResultScreen() {
   const [showFeedbackThanks, setShowFeedbackThanks] = useState(false);
   const [hasSubmittedFeedback, setHasSubmittedFeedback] = useState(false);
   const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
+  const [currentSulbtiResultId, setCurrentSulbtiResultId] = useState<number | string | null>(null);
+  const [currentSulbtiBtiCode, setCurrentSulbtiBtiCode] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
     let mounted = true;
     getMyPageSulbti()
       .then((result) => {
-        if (!mounted || !result.hasResult) return;
+        if (!mounted) return;
+        setCurrentSulbtiResultId(result.sulbtiResultId ?? null);
+        setCurrentSulbtiBtiCode(resolveSulbtiCode(result.btiCode || result.type) || result.btiCode || result.type || null);
+        if (!result.hasResult) return;
         setHasSubmittedFeedback(Boolean(result.feedback?.hasSubmitted));
         const savedType = resolveSulbtiCode(result.btiCode || result.type);
         if (!savedType) return;
@@ -153,15 +158,24 @@ export default function BTIResultScreen() {
     ));
   };
 
-  const canSubmitFeedback = feedbackChoice === 'yes' || (feedbackChoice === 'no' && selectedMismatchAxes.length > 0);
+  const feedbackBtiCode = resolveSulbtiCode(currentSulbtiBtiCode || resultCode) || currentSulbtiBtiCode || resultCode;
+  const hasFeedbackResultIdentity =
+    currentSulbtiResultId !== null
+    && currentSulbtiResultId !== undefined
+    && String(currentSulbtiResultId).trim().length > 0
+    && Boolean(feedbackBtiCode);
+  const canSubmitFeedback =
+    hasFeedbackResultIdentity
+    && (feedbackChoice === 'yes' || (feedbackChoice === 'no' && selectedMismatchAxes.length > 0));
 
   const handleFeedbackSubmit = async () => {
-    if (!canSubmitFeedback || !resultCode || isFeedbackSubmitting) return;
+    if (!canSubmitFeedback || !feedbackBtiCode || isFeedbackSubmitting) return;
 
     try {
       setIsFeedbackSubmitting(true);
       await submitMyPageSulbtiFeedback({
-        btiCode: resultCode,
+        sulbtiResultId: currentSulbtiResultId as number | string,
+        btiCode: feedbackBtiCode,
         isMatched: feedbackChoice === 'yes',
         mismatchedAxes: feedbackChoice === 'no' ? selectedMismatchAxes : [],
         comment: feedbackText,

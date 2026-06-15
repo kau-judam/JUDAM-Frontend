@@ -33,6 +33,38 @@ import {
 const QUESTIONS_PER_PAGE = 5;
 const TOTAL_PAGES = Math.ceil(BTI_QUESTIONS.length / QUESTIONS_PER_PAGE);
 
+function getSavedSulbtiResultId(result: Awaited<ReturnType<typeof getMyPageSulbti>>) {
+  const aliasedResult = result as Awaited<ReturnType<typeof getMyPageSulbti>> & {
+    id?: number | string | null;
+    sulbti_result_id?: number | string | null;
+    sulbtiResultID?: number | string | null;
+    resultId?: number | string | null;
+    result_id?: number | string | null;
+    surveyResultId?: number | string | null;
+    survey_result_id?: number | string | null;
+    sulbtiId?: number | string | null;
+    sulbti_id?: number | string | null;
+    result?: { id?: number | string | null; sulbtiResultId?: number | string | null } | null;
+    sulbtiResult?: { id?: number | string | null; sulbtiResultId?: number | string | null } | null;
+  };
+
+  return aliasedResult.sulbtiResultId
+    ?? aliasedResult.sulbti_result_id
+    ?? aliasedResult.sulbtiResultID
+    ?? aliasedResult.resultId
+    ?? aliasedResult.result_id
+    ?? aliasedResult.surveyResultId
+    ?? aliasedResult.survey_result_id
+    ?? aliasedResult.sulbtiId
+    ?? aliasedResult.sulbti_id
+    ?? aliasedResult.result?.sulbtiResultId
+    ?? aliasedResult.result?.id
+    ?? aliasedResult.sulbtiResult?.sulbtiResultId
+    ?? aliasedResult.sulbtiResult?.id
+    ?? aliasedResult.id
+    ?? null;
+}
+
 export default function BTITestScreen() {
   const insets = useSafeAreaInsets();
   const { user, updateUser } = useAuth();
@@ -146,7 +178,15 @@ export default function BTITestScreen() {
         sulbtiProfile: tasteScores,
         sulbtiFoodPairing: conversion.food_pairing || conversion.preferred_food_pairing,
       });
-      router.replace(`/bti-result/${resultType}` as any);
+      const savedResultId = getSavedSulbtiResultId(savedResult);
+      router.replace({
+        pathname: '/bti-result/[type]',
+        params: {
+          type: resultType,
+          btiCode: resultType,
+          ...(savedResultId !== null && savedResultId !== undefined ? { sulbtiResultId: String(savedResultId) } : {}),
+        },
+      } as any);
     } catch (error) {
       setIsSubmitting(false);
       console.warn('술BTI 결과 저장 실패', error);

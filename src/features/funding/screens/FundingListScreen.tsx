@@ -28,12 +28,13 @@ import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
-import { getBtiDisplayType } from '@/features/bti/data';
+import { getBtiDisplayType, getBtiTasteAxisValuesFromTasteVector, resolveSulbtiCode } from '@/features/bti/data';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import { getFundingList, getFundingStats, getFundingApiErrorMessage, type FundingStatsResponse } from '@/features/funding/api';
 import { mergeFundingListItem } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
+import { getMyPageApiErrorMessage, getMyPageSulbti } from '@/features/mypage/api';
 import {
   getTasteProfileFromSulbti,
   matchesFundingSearch,
@@ -53,7 +54,8 @@ type FundingListAlert = {
   buttons?: FundingAlertButton[];
 };
 
-function getFundingApiStatus(status: FundingStatusFilter) {
+function getFundingApiStatus(status: FundingStatusFilter, sort: FundingSortOption) {
+  if (status === "전체 프로젝트" && sort === "인기순") return "ACTIVE";
   if (status === "진행중인 프로젝트") return "ACTIVE";
   if (status === "성사된 프로젝트") return "SUCCESS";
   return undefined;
@@ -67,7 +69,7 @@ function getFundingApiSort(sort: FundingSortOption) {
 }
 
 export default function FundingListScreen() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { scrollToTop, sort } = useLocalSearchParams<{ scrollToTop?: string; sort?: string }>();
   const scrollRef = useRef<ScrollView>(null);
   const currentScrollYRef = useRef(0);
@@ -84,12 +86,57 @@ export default function FundingListScreen() {
   const [serverFundingStats, setServerFundingStats] = useState<FundingStatsResponse | null>(null);
   const [serverFundingOrderIds, setServerFundingOrderIds] = useState<number[]>([]);
   const [hasLoadedServerFundingList, setHasLoadedServerFundingList] = useState(false);
+  const [isSulbtiRestoring, setIsSulbtiRestoring] = useState(false);
+  const sulbtiRestorePromiseRef = useRef<Promise<boolean> | null>(null);
 
   const isBreweryAccount = user?.type === "brewery";
   const isVerifiedBrewery = isBreweryAccount && user?.isBreweryVerified;
   const userTasteProfile = useMemo(() => getTasteProfileFromSulbti(user?.sulbti), [user?.sulbti]);
   const displaySulbti = useMemo(() => getBtiDisplayType(user?.sulbti), [user?.sulbti]);
   const isTasteSortActive = selectedSort === "추천순" && Boolean(userTasteProfile);
+  const effectiveStatusFilter = useMemo<FundingStatusFilter>(
+    () => selectedStatus === "전체 프로젝트" && selectedSort === "인기순" ? "진행중인 프로젝트" : selectedStatus,
+    [selectedSort, selectedStatus]
+  );
+  const restoreSulbtiResult = useCallback(async () => {
+    if (!user) return false;
+    if (getTasteProfileFromSulbti(user.sulbti)) return true;
+    if (sulbtiRestorePromiseRef.current) return sulbtiRestorePromiseRef.current;
+
+    const restorePromise = (async () => {
+      try {
+        setIsSulbtiRestoring(true);
+        const result = await getMyPageSulbti();
+        if (!result.hasResult) return false;
+        const restoredCode = resolveSulbtiCode(result.btiCode || result.type);
+        if (!restoredCode) return false;
+        await updateUser({
+          sulbti: restoredCode,
+          sulbtiProfile: result.scores
+            ? {
+              sweetness: result.scores.sweetness,
+              body: result.scores.body,
+              carbonation: result.scores.carbonation,
+              tradition: 6 - result.scores.flavor,
+              alcohol: result.scores.abv ?? result.scores.alcohol,
+            }
+            : result.tasteVector
+              ? getBtiTasteAxisValuesFromTasteVector(result.tasteVector)
+              : undefined,
+        });
+        return true;
+      } catch (error) {
+        console.warn(getMyPageApiErrorMessage(error, '술BTI 결과를 불러오지 못했습니다.'));
+        return false;
+      } finally {
+        setIsSulbtiRestoring(false);
+        sulbtiRestorePromiseRef.current = null;
+      }
+    })();
+
+    sulbtiRestorePromiseRef.current = restorePromise;
+    return restorePromise;
+  }, [updateUser, user]);
   const showLoginPrompt = (message: string) => {
     setAlertModal({
       title: '로그인이 필요합니다',
@@ -111,14 +158,24 @@ export default function FundingListScreen() {
   }, [projects]);
 
   useEffect(() => {
-    if (sort === "recommend" && userTasteProfile) {
+    if (!user?.id || user.sulbti) return;
+    void restoreSulbtiResult();
+  }, [restoreSulbtiResult, user?.id, user?.sulbti]);
+
+  useEffect(() => {
+    if (sort !== "recommend" || !user) return;
+    if (userTasteProfile) {
       setSelectedSort("추천순");
+      return;
     }
-  }, [sort, userTasteProfile]);
+    void restoreSulbtiResult().then((restored) => {
+      if (restored) setSelectedSort("추천순");
+    });
+  }, [restoreSulbtiResult, sort, user, userTasteProfile]);
 
   useEffect(() => {
     let mounted = true;
-    const status = getFundingApiStatus(selectedStatus);
+    const status = getFundingApiStatus(effectiveStatusFilter, selectedSort);
     const apiSort = getFundingApiSort(selectedSort);
     setServerFundingOrderIds([]);
     setHasLoadedServerFundingList(false);
@@ -129,8 +186,9 @@ export default function FundingListScreen() {
         const nextProjects = response.data.map((item) =>
           mergeFundingListItem(projectsRef.current.find((project) => project.id === item.fundingId), item)
         );
-        setServerFundingOrderIds(nextProjects.map((project) => project.id));
-        replaceProjects(nextProjects);
+        const displayProjects = nextProjects.filter((project) => matchesFundingStatusFilter(project, effectiveStatusFilter));
+        setServerFundingOrderIds(displayProjects.map((project) => project.id));
+        replaceProjects(displayProjects);
         setHasLoadedServerFundingList(true);
       })
       .catch((error) => {
@@ -145,7 +203,7 @@ export default function FundingListScreen() {
     return () => {
       mounted = false;
     };
-  }, [replaceProjects, selectedSort, selectedStatus, user?.id, user?.sulbti]);
+  }, [effectiveStatusFilter, replaceProjects, selectedSort, user?.id, user?.sulbti]);
 
   useEffect(() => {
     let mounted = true;
@@ -187,9 +245,9 @@ export default function FundingListScreen() {
     if (!hasLoadedServerFundingList || serverFundingOrderIds.length === 0) return [];
     const serverFundingIds = new Set(serverFundingOrderIds);
     return projects.filter((project) => {
-      return serverFundingIds.has(project.id) && matchesFundingSearch(project, searchTerm) && matchesFundingStatusFilter(project, selectedStatus);
+      return serverFundingIds.has(project.id) && matchesFundingSearch(project, searchTerm) && matchesFundingStatusFilter(project, effectiveStatusFilter);
     });
-  }, [hasLoadedServerFundingList, projects, searchTerm, selectedStatus, serverFundingOrderIds]);
+  }, [effectiveStatusFilter, hasLoadedServerFundingList, projects, searchTerm, serverFundingOrderIds]);
 
   const sortedProjects = useMemo(() => {
     const orderMap = new Map(serverFundingOrderIds.map((id, index) => [id, index]));
@@ -272,13 +330,18 @@ export default function FundingListScreen() {
     });
   };
 
-  const handleSortPress = (option: FundingSortOption) => {
+  const handleSortPress = async (option: FundingSortOption) => {
     if (option === "추천순") {
       if (!user) {
         showLoginPrompt('술BTI 맞춤 추천은 로그인 후 이용할 수 있어요.');
         return;
       }
       if (!userTasteProfile) {
+        const restored = await restoreSulbtiResult();
+        if (restored) {
+          setSelectedSort(option);
+          return;
+        }
         setAlertModal({
           title: '술BTI 결과가 필요합니다',
           body: '마이페이지에서 술BTI 검사를 완료하면 취향에 맞는\n펀딩을 추천받을 수 있어요.',
@@ -385,7 +448,11 @@ export default function FundingListScreen() {
             <View style={styles.sortHeader}>
               <Text style={styles.sortLabel}>정렬/추천</Text>
               <Text style={styles.sortHint}>
-                {user?.sulbti && userTasteProfile ? `나의 술BTI ${displaySulbti} 기준` : "술BTI 검사 후 맞춤 추천 가능"}
+                {user?.sulbti && userTasteProfile
+                  ? `나의 술BTI ${displaySulbti} 기준`
+                  : isSulbtiRestoring
+                    ? "저장된 술BTI 불러오는 중"
+                    : "술BTI 검사 후 맞춤 추천 가능"}
               </Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortChipRow}>

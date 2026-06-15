@@ -23,6 +23,7 @@ import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import {
   createRecipe,
   decodeRecipeJwtPayload,
+  fetchIngredientRegions,
   getRecipeAccessToken,
   isJwtExpired,
   suggestRecipeSubIngredients,
@@ -116,21 +117,63 @@ export default function RecipeCreateScreen() {
       return;
     }
     const mainIngredient = getMainIngredientText();
-    const payload = {
-      main_ingredient: mainIngredient,
-      mainIngredient,
-    };
     try {
-      console.log('Recipe sub ingredient AI request', payload);
-      const suggestions = await suggestRecipeSubIngredients(payload);
-      console.log('Recipe sub ingredient AI response', suggestions);
-      if (suggestions.length === 0) {
-        console.warn('Recipe sub ingredient AI returned an empty array.');
+      console.log('Recipe ingredient region request', { ingredient: mainIngredient });
+      const regions = await fetchIngredientRegions(mainIngredient);
+      console.log('Recipe ingredient region response', regions);
+      if (regions.length === 0) {
+        setSubIngredientRegions([]);
+        setSelectedSubIngredientRegion(null);
+        setGeneratedSubIngredients([]);
+        setSelectedSubIngredients([]);
+        showNotice(
+          '\uC0DD\uC0B0\uC9C0\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.',
+          '\uD574\uB2F9 \uBA54\uC778 \uC7AC\uB8CC\uC758 \uC0DD\uC0B0\uC9C0 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC5B4\uC694.'
+        );
+        return;
       }
-      setSubIngredientRegions([]);
+      setSubIngredientRegions(regions.map((region) => ({ region, subIngredients: [] })));
       setSelectedSubIngredientRegion(null);
-      setGeneratedSubIngredients(suggestions);
+      setGeneratedSubIngredients([]);
       setSelectedSubIngredients([]);
+    } catch (error) {
+      console.warn('Failed to fetch ingredient regions', error);
+      showNotice(
+        'AI \uC0DD\uC131\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
+        getApiErrorMessage(error, '\uC0DD\uC0B0\uC9C0\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC5B4\uC694.')
+      );
+    }
+  };
+
+  const handleSelectSubIngredientRegion = async (suggestion: SubIngredientRegionSuggestion) => {
+    const isSameRegion = selectedSubIngredientRegion?.region === suggestion.region;
+    setSelectedSubIngredientRegion(suggestion);
+    setSelectedSubIngredients([]);
+    if (isSameRegion && suggestion.subIngredients.length > 0) {
+      setGeneratedSubIngredients(suggestion.subIngredients);
+      return;
+    }
+    try {
+      const payload = {
+        main_ingredient: getMainIngredientText(),
+        mainIngredient: getMainIngredientText(),
+        region: suggestion.region,
+      };
+      console.log('Recipe sub ingredient AI request', payload);
+      const subIngredients = await suggestRecipeSubIngredients(payload);
+      console.log('Recipe sub ingredient AI response', subIngredients);
+      setSubIngredientRegions((prev) =>
+        prev.map((item) =>
+          item.region === suggestion.region ? { ...item, subIngredients } : item
+        )
+      );
+      setGeneratedSubIngredients(subIngredients);
+      if (subIngredients.length === 0) {
+        showNotice(
+          '\uCD94\uCC9C\uD560 \uC11C\uBE0C \uC7AC\uB8CC\uAC00 \uC5C6\uC5B4\uC694.',
+          '\uD574\uB2F9 \uC9C0\uC5ED\uC5D0\uC11C \uCD94\uCC9C \uAC00\uB2A5\uD55C \uC11C\uBE0C \uC7AC\uB8CC\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.'
+        );
+      }
     } catch (error) {
       console.warn('Failed to suggest recipe sub ingredients', error);
       showNotice(
@@ -138,15 +181,6 @@ export default function RecipeCreateScreen() {
         getApiErrorMessage(error, '\uC11C\uBE0C \uC7AC\uB8CC\uB97C \uCD94\uCC9C\uD558\uC9C0 \uBABB\uD588\uC5B4\uC694.')
       );
     }
-  };
-
-  const handleSelectSubIngredientRegion = (suggestion: SubIngredientRegionSuggestion) => {
-    const isSameRegion = selectedSubIngredientRegion?.region === suggestion.region;
-    setSelectedSubIngredientRegion(suggestion);
-    if (!isSameRegion) {
-      setSelectedSubIngredients([]);
-    }
-    setGeneratedSubIngredients(suggestion.subIngredients);
   };
 
   const toggleSubIngredient = (ingredient: string) => {

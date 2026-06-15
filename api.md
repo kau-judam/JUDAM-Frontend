@@ -2911,3 +2911,10 @@ Frontend connection:
 - The generated `images`, `imageUrl`, or `thumbnailUrl` response is normalized with `normalizeFundingImageUrls` and applied to the recipe image preview. It is treated as a remote preview URL and is not uploaded as a local `image` file in `POST /api/recipes`.
 - This reuse requires a brewery account because `createFundingDraft` requires `breweryId`. Non-brewery users receive a notice instead of calling the funding endpoint.
 - Verification used `npx.cmd tsc --noEmit` and `npm.cmd run lint`.
+
+2026-06-15 recipe sub ingredient AI two-step flow:
+- Added `fetchIngredientRegions` for `GET /api/recipe/ingredient-region?ingredient={mainIngredient}`.
+- The recipe create sub ingredient AI button now calls the region lookup endpoint first and fills the existing region chip UI.
+- Selecting a region chip calls `POST /api/recipe/suggest-sub-ingredients` with `main_ingredient`, `mainIngredient`, and the selected `region`.
+- If no regions or no sub ingredients are returned, the screen shows a notice and clears stale selections.
+- Verification used `npx.cmd tsc --noEmit`, `npm.cmd run lint`, and `git diff --check`.

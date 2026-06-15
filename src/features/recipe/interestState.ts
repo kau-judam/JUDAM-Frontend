@@ -14,7 +14,7 @@ type RecipeEngagementState = {
 export type RecipeReplyState = {
   id: number;
   author: string;
-  avatar: ImageSourcePropType | string;
+  avatar?: ImageSourcePropType | string | null;
   content: string;
   timestamp: string;
   likes: number;

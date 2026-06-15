@@ -78,6 +78,7 @@ export type MyPageSulbtiScores = {
 
 export type MyPageSulbtiResult = {
   hasResult: boolean;
+  sulbtiResultId?: number | string | null;
   type: string | null;
   btiCode?: string | null;
   title: string | null;
@@ -89,6 +90,11 @@ export type MyPageSulbtiResult = {
   tags: string[];
   createdAt: string | null;
   updatedAt: string | null;
+  feedback?: {
+    hasSubmitted?: boolean;
+    feedbackId?: number | string | null;
+    submittedAt?: string | null;
+  } | null;
 };
 
 export type SaveMyPageSulbtiPayload = {
@@ -98,6 +104,23 @@ export type SaveMyPageSulbtiPayload = {
   carbonationScore: number;
   flavorScore: number;
   abvScore: number;
+};
+
+export type MyPageSulbtiFeedbackPayload = {
+  btiCode: string;
+  isMatched: boolean;
+  mismatchedAxes: string[];
+  comment?: string;
+};
+
+export type MyPageSulbtiFeedbackResult = {
+  feedbackId?: number | string;
+  hasSubmittedFeedback?: boolean;
+  feedback?: {
+    hasSubmitted?: boolean;
+    feedbackId?: number | string | null;
+    submittedAt?: string | null;
+  };
 };
 
 export type MyPageArchiveImage = {
@@ -659,6 +682,19 @@ export async function saveMyPageSulbti(payload: SaveMyPageSulbtiPayload) {
     body: JSON.stringify(payload),
   });
   return unwrapMyPageData<MyPageSulbtiResult>(response);
+}
+
+export async function submitMyPageSulbtiFeedback(payload: MyPageSulbtiFeedbackPayload) {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSulbtiFeedbackResult>>('/api/mypage/sulbti/feedback', {
+    method: 'POST',
+    body: JSON.stringify({
+      btiCode: payload.btiCode,
+      isMatched: payload.isMatched,
+      mismatchedAxes: payload.mismatchedAxes,
+      comment: payload.comment?.trim() || '',
+    }),
+  });
+  return unwrapMyPageData<MyPageSulbtiFeedbackResult>(response);
 }
 
 export async function createMyPageArchiveWithImages(payload: CreateMyPageArchiveWithImagesPayload) {

@@ -41,15 +41,22 @@ const person3 = require('../../../../newpicutre/person3.png');
 const person4 = require('../../../../newpicutre/person4.png');
 const person5 = require('../../../../newpicutre/person5.png');
 const person6 = require('../../../../newpicutre/person6.png');
-const getAvatarSource = (avatar: ImageSourcePropType | string) =>
-  typeof avatar === 'string' ? { uri: avatar } : avatar;
-const getCurrentUserAvatar = (profileImage?: string | null) => profileImage || person3;
+type AvatarValue = ImageSourcePropType | string | null | undefined;
+const getOptionalAvatarSource = (avatar?: AvatarValue) => {
+  if (typeof avatar === 'string') {
+    const trimmed = avatar.trim();
+    return trimmed ? { uri: trimmed } : null;
+  }
+  return avatar || null;
+};
+const getCurrentUserAvatar = (profileImage?: string | null): AvatarValue => profileImage?.trim() || null;
+const getAvatarInitial = (name?: string) => (name?.trim()?.[0] || 'U').toUpperCase();
 
 interface CommunityPostDetail {
   id: number;
   author: string;
   authorType: 'user' | 'brewery';
-  avatar: ImageSourcePropType | string;
+  avatar?: AvatarValue;
   title: string;
   content: string;
   image?: string;
@@ -67,7 +74,7 @@ interface CommentReply {
   id: number;
   author: string;
   authorType: 'user' | 'brewery';
-  avatar: ImageSourcePropType | string;
+  avatar?: AvatarValue;
   content: string;
   timestamp: string;
   likes: number;
@@ -80,7 +87,7 @@ interface Comment {
   id: number;
   author: string;
   authorType: 'user' | 'brewery';
-  avatar: ImageSourcePropType | string;
+  avatar?: AvatarValue;
   content: string;
   timestamp: string;
   likes: number;
@@ -256,6 +263,32 @@ export default function CommunityDetailScreen() {
   const hasMoreComments = comments.length > INITIAL_COMMENT_COUNT;
   const getCommentReplies = (comment: Comment) => comment.replies || [];
   const postImageUrls = post?.imageUrls ?? (post?.image ? [post.image] : []);
+  const renderProfileAvatar = (avatar: AvatarValue, name: string, isReply = false) => {
+    const source = getOptionalAvatarSource(avatar);
+    return (
+      <View style={isReply ? styles.replyAvatar : styles.commentAvatar}>
+        {source ? (
+          <Image source={source} style={isReply ? styles.replyAvatarImage : styles.commentAvatarImage} />
+        ) : (
+          <Text style={isReply ? styles.replyAvatarInitial : styles.commentAvatarInitial}>
+            {getAvatarInitial(name)}
+          </Text>
+        )}
+      </View>
+    );
+  };
+  const renderPostAvatar = (avatar: AvatarValue, name: string) => {
+    const source = getOptionalAvatarSource(avatar);
+    return (
+      <View style={styles.avatar}>
+        {source ? (
+          <Image source={source} style={styles.avatarImage} />
+        ) : (
+          <Text style={styles.avatarInitial}>{getAvatarInitial(name)}</Text>
+        )}
+      </View>
+    );
+  };
 
   if (!post && isPostLoading) {
     return (
@@ -402,7 +435,7 @@ export default function CommunityDetailScreen() {
     const newComment: Comment = {
       id: comments.length + 1,
       author: user.name,
-      authorType: 'user',
+      authorType: user.type === 'brewery' ? 'brewery' : 'user',
       avatar: getCurrentUserAvatar(user.profileImage),
       content: commentInput.trim(),
       timestamp: '방금 전',
@@ -650,7 +683,7 @@ export default function CommunityDetailScreen() {
         }}
       >
         <View style={styles.postHeader}>
-          <Image source={getAvatarSource(post.avatar)} style={styles.avatar} />
+          {renderPostAvatar(post.avatar, post.author)}
           <View style={styles.postMeta}>
             <View style={styles.authorRow}>
               <Text style={styles.authorName}>{post.author}</Text>
@@ -698,7 +731,7 @@ export default function CommunityDetailScreen() {
             </View>
           ) : visibleComments.map((comment, index) => (
             <Animated.View key={comment.id} entering={FadeInUp.delay(index * 45)} style={styles.commentItem}>
-              <Image source={getAvatarSource(comment.avatar)} style={styles.commentAvatar} />
+              {renderProfileAvatar(comment.avatar, comment.author)}
               <View style={styles.commentContentWrap}>
                 <View style={styles.commentBubble}>
                   <View style={styles.commentAuthorRow}>
@@ -753,7 +786,7 @@ export default function CommunityDetailScreen() {
                   <View style={styles.replyList}>
                     {getCommentReplies(comment).map((reply) => (
                       <View key={reply.id} style={styles.replyItem}>
-                        <Image source={getAvatarSource(reply.avatar)} style={styles.replyAvatar} />
+                        {renderProfileAvatar(reply.avatar, reply.author, true)}
                         <View style={styles.replyContentWrap}>
                           <View style={styles.commentAuthorRow}>
                             <Text style={styles.commentAuthor}>{reply.author}</Text>
@@ -884,7 +917,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  avatar: { width: 48, height: 48, borderRadius: 24 },
+  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 24 },
+  avatarInitial: { color: '#FFF', fontSize: 17, fontWeight: '900' },
   postMeta: { flex: 1 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
   authorName: { fontSize: 15, fontWeight: '800', color: '#111' },
@@ -919,7 +954,9 @@ const styles = StyleSheet.create({
   commentStateBox: { paddingVertical: 28, alignItems: 'center' },
   commentStateText: { fontSize: 14, color: '#9CA3AF', fontWeight: '700' },
   commentItem: { flexDirection: 'row', gap: 12, marginBottom: 18 },
-  commentAvatar: { width: 40, height: 40, borderRadius: 20 },
+  commentAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  commentAvatarImage: { width: '100%', height: '100%', borderRadius: 20 },
+  commentAvatarInitial: { color: '#FFF', fontSize: 15, fontWeight: '900' },
   commentContentWrap: { flex: 1 },
   commentBubble: { backgroundColor: '#F9FAFB', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, borderWidth: 1, borderColor: '#F3F4F6' },
   commentAuthorRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 5 },
@@ -934,7 +971,9 @@ const styles = StyleSheet.create({
   commentActionActive: { color: '#111' },
   replyList: { marginTop: 12, marginLeft: 6, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: '#E5E7EB', gap: 10 },
   replyItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
-  replyAvatar: { width: 32, height: 32, borderRadius: 16 },
+  replyAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  replyAvatarImage: { width: '100%', height: '100%', borderRadius: 16 },
+  replyAvatarInitial: { color: '#FFF', fontSize: 12, fontWeight: '900' },
   replyContentWrap: { flex: 1, backgroundColor: '#FFF', borderRadius: 14, borderWidth: 1, borderColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 10 },
   replyTime: { marginLeft: 'auto', fontSize: 11, fontWeight: '600', color: '#9CA3AF' },
   replyLikeButton: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, marginTop: 8 },

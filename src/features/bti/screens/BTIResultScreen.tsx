@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { getBtiDisplayType, getBtiResult, getBtiTasteAxisValuesFromTasteVector, normalizeBtiTasteAxisValue, resolveSulbtiCode } from '@/features/bti/data';
-import { getMyPageApiErrorMessage, getMyPageSulbti } from '@/features/mypage/api';
+import { getMyPageApiErrorMessage, getMyPageSulbti, submitMyPageSulbtiFeedback } from '@/features/mypage/api';
 
 const BTI_CHARACTER_IMAGES: Record<string, ImageSourcePropType> = {
   SHFC: require('@/assets/images/BTI/1.png'),
@@ -71,6 +71,8 @@ export default function BTIResultScreen() {
   const [feedbackText, setFeedbackText] = useState('');
   const [selectedMismatchAxes, setSelectedMismatchAxes] = useState<string[]>([]);
   const [showFeedbackThanks, setShowFeedbackThanks] = useState(false);
+  const [hasSubmittedFeedback, setHasSubmittedFeedback] = useState(false);
+  const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -78,6 +80,7 @@ export default function BTIResultScreen() {
     getMyPageSulbti()
       .then((result) => {
         if (!mounted || !result.hasResult) return;
+        setHasSubmittedFeedback(Boolean(result.feedback?.hasSubmitted));
         const savedType = resolveSulbtiCode(result.btiCode || result.type);
         if (!savedType) return;
         updateUser({
@@ -152,9 +155,30 @@ export default function BTIResultScreen() {
 
   const canSubmitFeedback = feedbackChoice === 'yes' || (feedbackChoice === 'no' && selectedMismatchAxes.length > 0);
 
-  const handleFeedbackSubmit = () => {
-    if (!canSubmitFeedback) return;
-    setShowFeedbackThanks(true);
+  const handleFeedbackSubmit = async () => {
+    if (!canSubmitFeedback || !resultCode || isFeedbackSubmitting) return;
+
+    try {
+      setIsFeedbackSubmitting(true);
+      await submitMyPageSulbtiFeedback({
+        btiCode: resultCode,
+        isMatched: feedbackChoice === 'yes',
+        mismatchedAxes: feedbackChoice === 'no' ? selectedMismatchAxes : [],
+        comment: feedbackText,
+      });
+      setHasSubmittedFeedback(true);
+      setShowFeedbackThanks(true);
+    } catch (error) {
+      const message = getMyPageApiErrorMessage(error, '피드백 저장 중 문제가 발생했습니다. 다시 시도해주세요.');
+      if (message.includes('이미')) {
+        setHasSubmittedFeedback(true);
+        setShowFeedbackThanks(true);
+        return;
+      }
+      Alert.alert('피드백 저장 실패', message);
+    } finally {
+      setIsFeedbackSubmitting(false);
+    }
   };
 
   if (!user) {
@@ -289,79 +313,81 @@ export default function BTIResultScreen() {
           </View>
         </View>
 
-        <View style={styles.feedbackCard}>
-          <Text style={styles.feedbackTitle}>이 결과가 본인과 맞나요? ({displayType})</Text>
-          <View style={styles.feedbackChoiceRow}>
+        {!hasSubmittedFeedback ? (
+          <View style={styles.feedbackCard}>
+            <Text style={styles.feedbackTitle}>이 결과가 본인과 맞나요? ({displayType})</Text>
+            <View style={styles.feedbackChoiceRow}>
+              <TouchableOpacity
+                style={[styles.feedbackChoiceButton, feedbackChoice === 'yes' && styles.feedbackChoiceButtonActive]}
+                activeOpacity={0.86}
+                onPress={() => handleFeedbackChoice('yes')}
+              >
+                <Text style={[styles.feedbackChoiceText, feedbackChoice === 'yes' && styles.feedbackChoiceTextActive]}>맞아요</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.feedbackChoiceButton, feedbackChoice === 'no' && styles.feedbackChoiceButtonActive]}
+                activeOpacity={0.86}
+                onPress={() => handleFeedbackChoice('no')}
+              >
+                <Text style={[styles.feedbackChoiceText, feedbackChoice === 'no' && styles.feedbackChoiceTextActive]}>아니에요</Text>
+              </TouchableOpacity>
+            </View>
+
+            {feedbackChoice === 'yes' ? (
+              <View style={styles.feedbackDetailBox}>
+                <Text style={styles.feedbackDetailTitle}>결과가 맞았다면 어떤 부분이 잘 맞았나요? 또는 추가 의견이 있다면 적어주세요. (선택)</Text>
+                <TextInput
+                  style={styles.feedbackTextArea}
+                  value={feedbackText}
+                  onChangeText={setFeedbackText}
+                  placeholder="자유롭게 의견을 적어주세요."
+                  placeholderTextColor="#9CA3AF"
+                  multiline
+                  textAlignVertical="top"
+                />
+              </View>
+            ) : null}
+
+            {feedbackChoice === 'no' ? (
+              <View style={styles.feedbackDetailBox}>
+                <Text style={styles.feedbackDetailTitle}>어떤 부분이 맞지 않았나요? 틀린 축을 선택하고, 이유를 적어주세요!</Text>
+                <View style={styles.axisChipWrap}>
+                  {BTI_FEEDBACK_AXES.map((axis) => {
+                    const selected = selectedMismatchAxes.includes(axis);
+                    return (
+                      <TouchableOpacity
+                        key={axis}
+                        style={[styles.axisChip, selected && styles.axisChipActive]}
+                        activeOpacity={0.86}
+                        onPress={() => toggleMismatchAxis(axis)}
+                      >
+                        <Text style={[styles.axisChipText, selected && styles.axisChipTextActive]}>{axis}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TextInput
+                  style={styles.feedbackTextArea}
+                  value={feedbackText}
+                  onChangeText={setFeedbackText}
+                  placeholder="예: 단맛은 잘 맞는데 탄산감이 제 취향보다 강하게 나온 것 같아요."
+                  placeholderTextColor="#9CA3AF"
+                  multiline
+                  textAlignVertical="top"
+                />
+              </View>
+            ) : null}
+
             <TouchableOpacity
-              style={[styles.feedbackChoiceButton, feedbackChoice === 'yes' && styles.feedbackChoiceButtonActive]}
-              activeOpacity={0.86}
-              onPress={() => handleFeedbackChoice('yes')}
+              style={[styles.feedbackSubmitButton, (!canSubmitFeedback || isFeedbackSubmitting) && styles.feedbackSubmitButtonDisabled]}
+              activeOpacity={canSubmitFeedback && !isFeedbackSubmitting ? 0.86 : 1}
+              disabled={!canSubmitFeedback || isFeedbackSubmitting}
+              onPress={handleFeedbackSubmit}
             >
-              <Text style={[styles.feedbackChoiceText, feedbackChoice === 'yes' && styles.feedbackChoiceTextActive]}>맞아요</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.feedbackChoiceButton, feedbackChoice === 'no' && styles.feedbackChoiceButtonActive]}
-              activeOpacity={0.86}
-              onPress={() => handleFeedbackChoice('no')}
-            >
-              <Text style={[styles.feedbackChoiceText, feedbackChoice === 'no' && styles.feedbackChoiceTextActive]}>아니에요</Text>
+              <Text style={styles.feedbackSubmitText}>{isFeedbackSubmitting ? '저장 중...' : '제출하기'}</Text>
             </TouchableOpacity>
           </View>
-
-          {feedbackChoice === 'yes' ? (
-            <View style={styles.feedbackDetailBox}>
-              <Text style={styles.feedbackDetailTitle}>결과가 맞았다면 어떤 부분이 잘 맞았나요? 또는 추가 의견이 있다면 적어주세요. (선택)</Text>
-              <TextInput
-                style={styles.feedbackTextArea}
-                value={feedbackText}
-                onChangeText={setFeedbackText}
-                placeholder="자유롭게 의견을 적어주세요."
-                placeholderTextColor="#9CA3AF"
-                multiline
-                textAlignVertical="top"
-              />
-            </View>
-          ) : null}
-
-          {feedbackChoice === 'no' ? (
-            <View style={styles.feedbackDetailBox}>
-              <Text style={styles.feedbackDetailTitle}>어떤 부분이 맞지 않았나요? 틀린 축을 선택하고, 이유를 적어주세요!</Text>
-              <View style={styles.axisChipWrap}>
-                {BTI_FEEDBACK_AXES.map((axis) => {
-                  const selected = selectedMismatchAxes.includes(axis);
-                  return (
-                    <TouchableOpacity
-                      key={axis}
-                      style={[styles.axisChip, selected && styles.axisChipActive]}
-                      activeOpacity={0.86}
-                      onPress={() => toggleMismatchAxis(axis)}
-                    >
-                      <Text style={[styles.axisChipText, selected && styles.axisChipTextActive]}>{axis}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <TextInput
-                style={styles.feedbackTextArea}
-                value={feedbackText}
-                onChangeText={setFeedbackText}
-                placeholder="예: 단맛은 잘 맞는데 탄산감이 제 취향보다 강하게 나온 것 같아요."
-                placeholderTextColor="#9CA3AF"
-                multiline
-                textAlignVertical="top"
-              />
-            </View>
-          ) : null}
-
-          <TouchableOpacity
-            style={[styles.feedbackSubmitButton, !canSubmitFeedback && styles.feedbackSubmitButtonDisabled]}
-            activeOpacity={canSubmitFeedback ? 0.86 : 1}
-            disabled={!canSubmitFeedback}
-            onPress={handleFeedbackSubmit}
-          >
-            <Text style={styles.feedbackSubmitText}>제출하기</Text>
-          </TouchableOpacity>
-        </View>
+        ) : null}
 
         <TouchableOpacity style={styles.primaryButton} activeOpacity={0.86} onPress={handleShare}>
           <Share2 size={19} color="#FFF" />

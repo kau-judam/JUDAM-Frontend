@@ -321,6 +321,18 @@ function formatFavoriteCount(count: number) {
   return String(count);
 }
 
+function hasRegisteredBreweryPublicProfile(profile?: Partial<BreweryProfile> | null) {
+  if (!profile) return false;
+  return [
+    profile.profileImageUrl,
+    profile.oneLineIntroduction,
+    profile.shortIntroduction,
+    profile.brandStory,
+    profile.history,
+    profile.establishedYear,
+  ].some((value) => String(value || '').trim());
+}
+
 function getInitialTab(tab?: string | string[]) {
   const targetTab = Array.isArray(tab) ? tab[0] : tab;
   if (targetTab === "journal") return "양조일지";
@@ -799,6 +811,12 @@ export default function FundingDetailScreen() {
   const userTasteProfile = useMemo(() => getTasteProfileFromSulbti(user?.sulbti), [user?.sulbti]);
   const projectBudget = useMemo(() => project?.budget || DEFAULT_PROJECT_BUDGET, [project?.budget]);
   const projectSchedule = useMemo(() => project?.schedule || DEFAULT_PROJECT_SCHEDULE, [project?.schedule]);
+  const projectSummaryText = project?.projectSummary || project?.shortDescription || '';
+  const projectIntroductionText = useMemo(() => {
+    const summary = projectSummaryText.trim();
+    const introduction = (project?.introduction || project?.story || '').trim();
+    return introduction && introduction !== summary ? introduction : '';
+  }, [project?.introduction, project?.story, projectSummaryText]);
   const budgetPlanText = project?.budgetPlanText || '';
   const schedulePlanText = project?.schedulePlanText || '';
   const projectPolicyText = project?.projectPolicy || DEFAULT_PROJECT_POLICY_TEXT;
@@ -913,17 +931,8 @@ export default function FundingDetailScreen() {
     project.breweryProfileImage ||
     '';
   const officialBreweryUserId = officialBreweryInfo?.breweryUserId || project.breweryUserId || '';
-  const dashboardHasBreweryPublicProfile = Boolean(dashboardBreweryProfile && [
-    dashboardBreweryProfile.profileImageUrl,
-    dashboardBreweryProfile.oneLineIntroduction,
-    dashboardBreweryProfile.shortIntroduction,
-  ].some((value) => String(value || '').trim()));
-  const projectHasBreweryPublicProfile = Boolean([
-    officialBreweryUserId,
-    officialBreweryName,
-    officialBreweryIntro,
-    officialBreweryProfileImage,
-  ].some((value) => String(value || '').trim()));
+  const dashboardHasBreweryPublicProfile = hasRegisteredBreweryPublicProfile(dashboardBreweryProfile);
+  const projectHasBreweryPublicProfile = hasRegisteredBreweryPublicProfile(officialBreweryInfo);
   const hasBreweryPublicProfile = isOwnBreweryProject
     ? dashboardHasBreweryPublicProfile
     : projectHasBreweryPublicProfile;
@@ -1062,7 +1071,7 @@ export default function FundingDetailScreen() {
     if (!hasBreweryPublicProfile) {
       setFeedbackModal({
         title: '양조장 프로필이 없습니다',
-        body: '양조장이 프로필을 작성하면 확인할 수 있어요.',
+        body: '아직 양조장이 프로필을 등록하지 않았습니다.\n프로필을 등록하면 확인할 수 있습니다.',
       });
       return;
     }
@@ -2058,10 +2067,10 @@ export default function FundingDetailScreen() {
 
                    <View style={styles.summaryBox}>
                       <Text style={styles.summaryTitle}>📝 프로젝트 요약</Text>
-                      <Text style={styles.summaryTxt}>{project.projectSummary || project.shortDescription || '등록된 프로젝트 요약이 없습니다.'}</Text>
+                      <Text style={styles.summaryTxt}>{projectSummaryText || '등록된 프로젝트 요약이 없습니다.'}</Text>
                    </View>
 
-                   {project.story ? <Text style={styles.bodyTxt}>{project.story}</Text> : null}
+                   {projectIntroductionText ? <Text style={styles.bodyTxt}>{projectIntroductionText}</Text> : null}
                    {project.videoUrl ? (
                      <View style={styles.journalUrlBox}>
                        <Text style={styles.journalUrlLabel}>프로젝트 영상 URL</Text>

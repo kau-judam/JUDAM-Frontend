@@ -5,7 +5,7 @@ export interface Post {
   id: number;
   author: string;
   authorType: "user" | "brewery";
-  avatar: ImageSourcePropType | string;
+  avatar?: ImageSourcePropType | string | null;
   title: string;
   content: string;
   image?: string;

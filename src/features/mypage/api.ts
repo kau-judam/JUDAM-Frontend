@@ -107,6 +107,7 @@ export type SaveMyPageSulbtiPayload = {
 };
 
 export type MyPageSulbtiFeedbackPayload = {
+  sulbtiResultId: number | string;
   btiCode: string;
   isMatched: boolean;
   mismatchedAxes: string[];
@@ -688,6 +689,7 @@ export async function submitMyPageSulbtiFeedback(payload: MyPageSulbtiFeedbackPa
   const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSulbtiFeedbackResult>>('/api/mypage/sulbti/feedback', {
     method: 'POST',
     body: JSON.stringify({
+      sulbtiResultId: payload.sulbtiResultId,
       btiCode: payload.btiCode,
       isMatched: payload.isMatched,
       mismatchedAxes: payload.mismatchedAxes,

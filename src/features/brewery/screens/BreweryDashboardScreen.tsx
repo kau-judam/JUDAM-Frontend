@@ -230,6 +230,7 @@ export default function BreweryDashboardScreen() {
   const [fundingSummary, setFundingSummary] = useState<BreweryFundingSummary | null>(null);
   const [apiFundings, setApiFundings] = useState<Record<'active' | 'completed', DashboardFundingProject[]>>({ active: [], completed: [] });
   const [dashboardNotifications, setDashboardNotifications] = useState<AppNotification[]>([]);
+  const [dashboardUnreadCount, setDashboardUnreadCount] = useState(0);
   const [selectedJournalStage, setSelectedJournalStage] = useState(manufacturingStages[0]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [journalData, setJournalData] = useState<Record<string, JournalEntryState>>({
@@ -289,9 +290,16 @@ export default function BreweryDashboardScreen() {
     try {
       const response = await getBreweryDashboardNotifications();
       const notifications = response.notifications || response.content || [];
-      setDashboardNotifications(notifications.map(mapDashboardNotification).filter((notification) => !notification.read));
+      const unreadNotifications = notifications.map(mapDashboardNotification).filter((notification) => !notification.read);
+      setDashboardNotifications(unreadNotifications);
+      setDashboardUnreadCount(
+        typeof response.unreadCount === 'number'
+          ? response.unreadCount
+          : unreadNotifications.length,
+      );
     } catch (error) {
       console.warn(getBreweryApiErrorMessage(error, '알림 목록을 불러오지 못했습니다.'));
+      setDashboardUnreadCount(0);
     }
   }, [currentUserId, currentUserType]);
 
@@ -562,7 +570,7 @@ export default function BreweryDashboardScreen() {
           </View>
           <TouchableOpacity onPress={() => router.push('/notifications' as any)} style={styles.headerIcon}>
             <Bell size={22} color="#000" />
-            {dashboardNotifications.length > 0 && <View style={styles.notifBadge} />}
+            {dashboardUnreadCount > 0 && <View style={styles.notifBadge} />}
           </TouchableOpacity>
         </View>
       </View>
@@ -581,16 +589,16 @@ export default function BreweryDashboardScreen() {
           >
             <View style={styles.row}>
               <View style={styles.infoIconBox}>
-                {user.breweryProfileImage || dashboardBasicInfo?.profileImageUrl ? (
-                  <Image source={{ uri: user.breweryProfileImage || dashboardBasicInfo?.profileImageUrl || '' }} style={styles.infoIconImage} />
+                {dashboardBasicInfo?.profileImageUrl ? (
+                  <Image source={{ uri: dashboardBasicInfo.profileImageUrl }} style={styles.infoIconImage} />
                 ) : (
                   <Factory size={24} color="#FFF" />
                 )}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.infoName}>{dashboardBasicInfo?.breweryName || user.breweryName || "양조장 이름"}</Text>
+                <Text style={styles.infoName}>{dashboardBasicInfo?.breweryName || "양조장 이름"}</Text>
                 <Text style={styles.infoLoc}>
-                  {[dashboardBasicInfo?.address || user.breweryLocation, dashboardBasicInfo?.addressDetail || user.breweryLocationDetail].filter(Boolean).join(' ') || "양조장 위치"}
+                  {[dashboardBasicInfo?.address, dashboardBasicInfo?.addressDetail].filter(Boolean).join(' ') || "양조장 위치"}
                 </Text>
               </View>
               <ChevronRight size={20} color="#9CA3AF" />

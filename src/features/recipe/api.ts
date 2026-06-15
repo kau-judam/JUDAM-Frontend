@@ -252,6 +252,18 @@ type SuggestSubIngredientsResponse = {
   sub_ingredients?: string[];
 };
 
+type IngredientRegionsResponse = {
+  status?: number;
+  message?: string;
+  data?: {
+    ingredient?: string;
+    regions?: string[];
+    found?: boolean;
+    data_source?: string;
+  };
+  regions?: string[];
+};
+
 type SuggestFlavorTagsResponse = {
   status: number;
   message: string;
@@ -602,6 +614,15 @@ export async function suggestRecipeSubIngredients(payload: SuggestSubIngredients
     body: JSON.stringify(payload),
   });
   return data.data?.sub_ingredients ?? data.sub_ingredients ?? [];
+}
+
+export async function fetchIngredientRegions(mainIngredient: string) {
+  const params = new URLSearchParams({ ingredient: mainIngredient });
+  const data = await requestJson<IngredientRegionsResponse | string[]>(`/api/recipe/ingredient-region?${params.toString()}`, {
+    method: 'GET',
+  });
+  if (Array.isArray(data)) return data;
+  return data.data?.regions ?? data.regions ?? [];
 }
 
 export async function suggestRecipeFlavorTags(payload: SuggestFlavorTagsPayload) {

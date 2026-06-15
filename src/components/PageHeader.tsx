@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { router, usePathname } from 'expo-router';
+import { router, useFocusEffect, usePathname } from 'expo-router';
 import { Bell, MessageCircle, LayoutDashboard, ChevronLeft } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { showLoginRequired } from '@/utils/authPrompt';
+import { getBreweryDashboardNotifications } from '@/features/brewery/api';
 
 interface PageHeaderProps {
   title: string;
@@ -17,6 +18,37 @@ export function PageHeader({ title, showBack = false, showIcons = true }: PageHe
   const pathname = usePathname();
   const { user } = useAuth();
   const isBrewery = user?.type === "brewery" && user?.isBreweryVerified === true;
+  const [hasUnreadNotifications, setHasUnreadNotifications] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+
+      if (!isBrewery) {
+        setHasUnreadNotifications(false);
+        return () => {
+          active = false;
+        };
+      }
+
+      getBreweryDashboardNotifications()
+        .then((response) => {
+          if (!active) return;
+          const notifications = response.notifications || response.content || [];
+          const unreadCount = typeof response.unreadCount === 'number'
+            ? response.unreadCount
+            : notifications.filter((notification) => !notification.isRead).length;
+          setHasUnreadNotifications(unreadCount > 0);
+        })
+        .catch(() => {
+          if (active) setHasUnreadNotifications(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [isBrewery]),
+  );
 
   return (
     <View style={[styles.header, { paddingTop: insets.top }]}>
@@ -54,6 +86,7 @@ export function PageHeader({ title, showBack = false, showIcons = true }: PageHe
                     onPress={() => router.push('/notifications' as any)}
                   >
                     <Bell size={22} color="#111" />
+                    {hasUnreadNotifications && <View style={styles.notifBadge} />}
                   </TouchableOpacity>
                 </>
               )}
@@ -136,5 +169,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+    borderWidth: 1.5,
+    borderColor: '#FFF',
   },
 });

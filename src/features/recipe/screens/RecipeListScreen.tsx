@@ -36,18 +36,17 @@ import {
 import { showLoginRequired } from '@/utils/authPrompt';
 
 const ACTION_CONTROL_HEIGHT = 40;
-const SORT_BUTTON_WIDTH = 104;
+const SORT_BUTTON_WIDTH = 88;
 const RECIPE_PAGE_SIZE = 7;
 
-type SortOption = 'popular' | 'newest' | 'recommended';
+type SortOption = 'popular' | 'newest';
 
 const SORT_LABELS: Record<SortOption, string> = {
   popular: '인기순',
   newest: '최신순',
-  recommended: '내 추천순',
 };
 
-const SORT_OPTIONS: SortOption[] = ['popular', 'newest', 'recommended'];
+const SORT_OPTIONS: SortOption[] = ['popular', 'newest'];
 
 export default function RecipeScreen() {
   const { user, isAuthReady } = useAuth();
@@ -67,15 +66,6 @@ export default function RecipeScreen() {
 
   const loadRecipes = useCallback(async () => {
     if (!isAuthReady) return;
-
-    if (sortOption === 'recommended') {
-      setRecipes([]);
-      setLoadError(false);
-      setIsLoading(false);
-      setTotalPages(1);
-      setTotalElements(0);
-      return;
-    }
 
     setIsLoading(true);
     setLoadError(false);
@@ -290,11 +280,6 @@ export default function RecipeScreen() {
               </Text>
             </TouchableOpacity>
           )}
-          {!isLoading && !loadError && sortOption === 'recommended' && (
-            <View style={styles.stateBox}>
-              <Text style={styles.stateTxt}>내 추천순 API가 아직 준비되지 않았어요.</Text>
-            </View>
-          )}
           {!isLoading && sortedRecipes.map((item, index) => (
             <RecipeCard
               key={item.id}
@@ -305,13 +290,13 @@ export default function RecipeScreen() {
               showLikeButton={true}
             />
           ))}
-          {sortedRecipes.length === 0 && !isLoading && !loadError && sortOption !== 'recommended' && (
+          {sortedRecipes.length === 0 && !isLoading && !loadError && (
             <View style={styles.emptyState}>
               <Text style={styles.emptyTxt}>검색 결과가 없습니다.</Text>
             </View>
           )}
         </View>
-        {totalPages > 1 && !isLoading && !loadError && sortOption !== 'recommended' && (
+        {totalPages > 1 && !isLoading && !loadError && (
           <View style={styles.paginationWrap}>
             <View style={styles.paginationRow}>
               <TouchableOpacity

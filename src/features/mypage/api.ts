@@ -107,7 +107,7 @@ export type SaveMyPageSulbtiPayload = {
 };
 
 export type MyPageSulbtiFeedbackPayload = {
-  sulbtiResultId: number | string;
+  sulbtiResultId?: number | string | null;
   btiCode: string;
   isMatched: boolean;
   mismatchedAxes: string[];
@@ -686,15 +686,20 @@ export async function saveMyPageSulbti(payload: SaveMyPageSulbtiPayload) {
 }
 
 export async function submitMyPageSulbtiFeedback(payload: MyPageSulbtiFeedbackPayload) {
+  const body: Record<string, unknown> = {
+    btiCode: payload.btiCode,
+    isMatched: payload.isMatched,
+    mismatchedAxes: payload.mismatchedAxes,
+    comment: payload.comment?.trim() || '',
+  };
+
+  if (payload.sulbtiResultId !== null && payload.sulbtiResultId !== undefined && String(payload.sulbtiResultId).trim()) {
+    body.sulbtiResultId = payload.sulbtiResultId;
+  }
+
   const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSulbtiFeedbackResult>>('/api/mypage/sulbti/feedback', {
     method: 'POST',
-    body: JSON.stringify({
-      sulbtiResultId: payload.sulbtiResultId,
-      btiCode: payload.btiCode,
-      isMatched: payload.isMatched,
-      mismatchedAxes: payload.mismatchedAxes,
-      comment: payload.comment?.trim() || '',
-    }),
+    body: JSON.stringify(body),
   });
   return unwrapMyPageData<MyPageSulbtiFeedbackResult>(response);
 }

@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { getBtiDisplayType, getBtiResult, getBtiTasteAxisValuesFromTasteVector, normalizeBtiTasteAxisValue, resolveSulbtiCode } from '@/features/bti/data';
-import { getMyPageApiErrorMessage, getMyPageSulbti, submitMyPageSulbtiFeedback } from '@/features/mypage/api';
+import { getMyPageApiErrorMessage, getMyPageSulbti, submitMyPageSulbtiFeedback, type MyPageSulbtiResult } from '@/features/mypage/api';
 
 const BTI_CHARACTER_IMAGES: Record<string, ImageSourcePropType> = {
   SHFC: require('@/assets/images/BTI/1.png'),
@@ -51,6 +51,54 @@ const TASTE_AXIS_CONFIG = [
 
 const BTI_FEEDBACK_AXES = ['단맛', '바디감/묵직함', '탄산감', '풍미/향', '잘 모르겠음'];
 
+type SulbtiResultWithAliases = MyPageSulbtiResult & {
+  id?: number | string | null;
+  sulbti_result_id?: number | string | null;
+  sulbtiResultID?: number | string | null;
+  resultId?: number | string | null;
+  result_id?: number | string | null;
+  surveyResultId?: number | string | null;
+  survey_result_id?: number | string | null;
+  sulbtiId?: number | string | null;
+  sulbti_id?: number | string | null;
+  result?: { id?: number | string | null; sulbtiResultId?: number | string | null } | null;
+  sulbtiResult?: { id?: number | string | null; sulbtiResultId?: number | string | null } | null;
+  bti_code?: string | null;
+};
+
+function getRouteParamValue(value?: string | string[]) {
+  if (Array.isArray(value)) return value[0];
+  return value || null;
+}
+
+function getSulbtiResultId(result: MyPageSulbtiResult) {
+  const aliasedResult = result as SulbtiResultWithAliases;
+  return aliasedResult.sulbtiResultId
+    ?? aliasedResult.sulbti_result_id
+    ?? aliasedResult.sulbtiResultID
+    ?? aliasedResult.resultId
+    ?? aliasedResult.result_id
+    ?? aliasedResult.surveyResultId
+    ?? aliasedResult.survey_result_id
+    ?? aliasedResult.sulbtiId
+    ?? aliasedResult.sulbti_id
+    ?? aliasedResult.result?.sulbtiResultId
+    ?? aliasedResult.result?.id
+    ?? aliasedResult.sulbtiResult?.sulbtiResultId
+    ?? aliasedResult.sulbtiResult?.id
+    ?? aliasedResult.id
+    ?? null;
+}
+
+function getSulbtiBtiCode(result: MyPageSulbtiResult) {
+  const aliasedResult = result as SulbtiResultWithAliases;
+  return resolveSulbtiCode(aliasedResult.btiCode || aliasedResult.bti_code || aliasedResult.type)
+    || aliasedResult.btiCode
+    || aliasedResult.bti_code
+    || aliasedResult.type
+    || null;
+}
+
 function clampProfileValue(value?: number) {
   if (!Number.isFinite(value)) return 3;
   return Math.max(1, Math.min(5, value || 3));
@@ -64,17 +112,23 @@ function getAxisPosition(value: number, highSide: 'left' | 'right') {
 
 export default function BTIResultScreen() {
   const insets = useSafeAreaInsets();
-  const { type } = useLocalSearchParams<{ type: string }>();
+  const { type, sulbtiResultId: routeSulbtiResultId, btiCode: routeBtiCode } = useLocalSearchParams<{
+    type: string;
+    sulbtiResultId?: string | string[];
+    btiCode?: string | string[];
+  }>();
   const { user, updateUser } = useAuth();
   const userId = user?.id;
+  const routeResultId = getRouteParamValue(routeSulbtiResultId);
+  const routeResultBtiCode = getRouteParamValue(routeBtiCode);
   const [feedbackChoice, setFeedbackChoice] = useState<'yes' | 'no' | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
   const [selectedMismatchAxes, setSelectedMismatchAxes] = useState<string[]>([]);
   const [showFeedbackThanks, setShowFeedbackThanks] = useState(false);
   const [hasSubmittedFeedback, setHasSubmittedFeedback] = useState(false);
   const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
-  const [currentSulbtiResultId, setCurrentSulbtiResultId] = useState<number | string | null>(null);
-  const [currentSulbtiBtiCode, setCurrentSulbtiBtiCode] = useState<string | null>(null);
+  const [currentSulbtiResultId, setCurrentSulbtiResultId] = useState<number | string | null>(routeResultId ?? null);
+  const [currentSulbtiBtiCode, setCurrentSulbtiBtiCode] = useState<string | null>(routeResultBtiCode ?? null);
 
   useEffect(() => {
     if (!userId) return;
@@ -82,8 +136,8 @@ export default function BTIResultScreen() {
     getMyPageSulbti()
       .then((result) => {
         if (!mounted) return;
-        setCurrentSulbtiResultId(result.sulbtiResultId ?? null);
-        setCurrentSulbtiBtiCode(resolveSulbtiCode(result.btiCode || result.type) || result.btiCode || result.type || null);
+        setCurrentSulbtiResultId(getSulbtiResultId(result) ?? routeResultId ?? null);
+        setCurrentSulbtiBtiCode(getSulbtiBtiCode(result) ?? routeResultBtiCode ?? null);
         if (!result.hasResult) return;
         setHasSubmittedFeedback(Boolean(result.feedback?.hasSubmitted));
         const savedType = resolveSulbtiCode(result.btiCode || result.type);
@@ -110,7 +164,7 @@ export default function BTIResultScreen() {
     return () => {
       mounted = false;
     };
-  }, [updateUser, userId]);
+  }, [routeResultBtiCode, routeResultId, updateUser, userId]);
   const savedCode = resolveSulbtiCode(user?.sulbti);
   const routeCode = resolveSulbtiCode(type);
   const resultCode = savedCode || routeCode;
@@ -158,24 +212,55 @@ export default function BTIResultScreen() {
     ));
   };
 
-  const feedbackBtiCode = resolveSulbtiCode(currentSulbtiBtiCode || resultCode) || currentSulbtiBtiCode || resultCode;
-  const hasFeedbackResultIdentity =
-    currentSulbtiResultId !== null
-    && currentSulbtiResultId !== undefined
-    && String(currentSulbtiResultId).trim().length > 0
-    && Boolean(feedbackBtiCode);
+  const feedbackBtiCode = resolveSulbtiCode(resultCode || currentSulbtiBtiCode) || resultCode || currentSulbtiBtiCode;
   const canSubmitFeedback =
-    hasFeedbackResultIdentity
-    && (feedbackChoice === 'yes' || (feedbackChoice === 'no' && selectedMismatchAxes.length > 0));
+    feedbackChoice === 'yes' || (feedbackChoice === 'no' && selectedMismatchAxes.length > 0);
+
+  const getFeedbackResultIdentity = async () => {
+    const cachedResultId = currentSulbtiResultId;
+    const cachedBtiCode = feedbackBtiCode;
+    if (
+      cachedResultId !== null
+      && cachedResultId !== undefined
+      && String(cachedResultId).trim().length > 0
+      && cachedBtiCode
+    ) {
+      return { sulbtiResultId: cachedResultId, btiCode: cachedBtiCode };
+    }
+
+    const latestResult = await getMyPageSulbti();
+    const latestResultId = getSulbtiResultId(latestResult) ?? routeResultId ?? null;
+    const latestBtiCode = feedbackBtiCode ?? getSulbtiBtiCode(latestResult) ?? routeResultBtiCode;
+    setCurrentSulbtiResultId(latestResultId);
+    setCurrentSulbtiBtiCode(latestBtiCode);
+    setHasSubmittedFeedback(Boolean(latestResult.feedback?.hasSubmitted));
+
+    if (
+      latestResult.hasResult
+      && latestResultId !== null
+      && latestResultId !== undefined
+      && String(latestResultId).trim().length > 0
+      && latestBtiCode
+    ) {
+      return { sulbtiResultId: latestResultId, btiCode: latestBtiCode };
+    }
+
+    if (latestBtiCode) {
+      return { sulbtiResultId: null, btiCode: latestBtiCode };
+    }
+
+    throw new Error('술BTI 결과 유형을 확인하지 못했습니다. 결과 화면을 다시 열어주세요.');
+  };
 
   const handleFeedbackSubmit = async () => {
-    if (!canSubmitFeedback || !feedbackBtiCode || isFeedbackSubmitting) return;
+    if (!canSubmitFeedback || isFeedbackSubmitting) return;
 
     try {
       setIsFeedbackSubmitting(true);
+      const feedbackIdentity = await getFeedbackResultIdentity();
       await submitMyPageSulbtiFeedback({
-        sulbtiResultId: currentSulbtiResultId as number | string,
-        btiCode: feedbackBtiCode,
+        sulbtiResultId: feedbackIdentity.sulbtiResultId,
+        btiCode: feedbackIdentity.btiCode,
         isMatched: feedbackChoice === 'yes',
         mismatchedAxes: feedbackChoice === 'no' ? selectedMismatchAxes : [],
         comment: feedbackText,

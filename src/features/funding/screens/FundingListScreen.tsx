@@ -252,7 +252,11 @@ export default function FundingListScreen() {
       router.push('/brewery/project/terms' as any);
       return;
     }
-    router.push('/brewery/verification' as any);
+    setAlertModal({
+      title: '양조장 인증 대기 중',
+      body: '아직 양조장 인증이 승인되지 않았습니다.\n승인이 된 후 이용 가능합니다.',
+      tone: 'info',
+    });
   };
 
   const handleFavoritePress = async (projectId: number) => {

@@ -915,7 +915,6 @@ export default function BreweryProjectCreateScreen() {
   const appliedRecipeIdRef = useRef<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('basic');
   const [showPreview, setShowPreview] = useState(false);
-  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -1033,7 +1032,7 @@ export default function BreweryProjectCreateScreen() {
         const summary = recipe.summary || recipe.description || '';
         const recipeImage = typeof recipe.image === 'string' ? recipe.image : '';
         const flavorTags = normalizeProjectTags(recipe.flavorTags);
-        const concept = (recipe.concept?.trim() || '').slice(0, 20);
+        const concept = recipe.concept?.trim() || '';
 
         setBasicInfo((prev) => ({
           ...prev,
@@ -2133,7 +2132,7 @@ export default function BreweryProjectCreateScreen() {
         ...summarizeFundingCreateImages(basicInfo.images),
       });
       const previousDraft = await getSavedDraft();
-      const localTimestamp = previousDraft?.timestamp || new Date().toISOString();
+      const localTimestamp = new Date().toISOString();
       await SafeStorage.setItem(tempSaveKey, JSON.stringify({
         ...createDraftPayload(),
         timestamp: localTimestamp,
@@ -2307,19 +2306,6 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleSave = async () => {
-    if (isEditMode) {
-      await saveDraft({ showSavedModal: true });
-      return;
-    }
-
-    const savedDraft = await getSavedDraft();
-    if (savedDraft || hasTempSave) {
-      setTempSaveTimestamp(savedDraft?.timestamp || tempSaveTimestamp);
-      setHasTempSave(true);
-      setTempSaveMode('existing');
-      setShowTempSaveModal(true);
-      return;
-    }
     await saveDraft({ showSavedModal: true });
   };
 
@@ -2933,30 +2919,7 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleOpenPreview = () => {
-    if (isPreviewLoading) return;
-    void (async () => {
-      setIsPreviewLoading(true);
-      try {
-        const draftId = await ensureServerDraft();
-        logCurrentDraftPair('preview:server-draft', draftId);
-        const serverImageUrls = await uploadProjectImagesToApi(draftId);
-        await updateFundingDraft(draftId, withCurrentFundingId(getDraftUpdatePayloadForApi(serverImageUrls)));
-        await syncReadyProjectSectionsToApi(draftId, serverImageUrls);
-        const preview = await getFundingDraftPreview(draftId);
-        if (preview.draftId) rememberCurrentDraft(preview.draftId, preview.fundingId || editProjectId);
-        logCurrentDraftPair('preview:loaded', preview.draftId || draftId, preview.fundingId || editProjectId);
-        const serverDraft = createProjectDraftFromServerPreview(preview, user);
-        applyDraftPayload(serverDraft);
-        setTempSaveTimestamp(serverDraft.timestamp || '');
-        setHasTempSave(true);
-        setShowPreview(true);
-      } catch (error) {
-        showAlert(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버에서 불러오지 못했습니다.'));
-        warnFundingCreateDebug(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버와 동기화하지 못했습니다.'));
-      } finally {
-        setIsPreviewLoading(false);
-      }
-    })();
+    setShowPreview(true);
   };
 
   const confirmSubmit = async () => {
@@ -3176,7 +3139,6 @@ export default function BreweryProjectCreateScreen() {
             value={basicInfo.shortTitle}
             onChangeText={(value) => setBasicInfo((prev) => ({ ...prev, shortTitle: value }))}
             placeholder="벚꽃 막걸리"
-            maxLength={20}
           />
           <Field
             label="메인 재료"
@@ -3809,8 +3771,8 @@ export default function BreweryProjectCreateScreen() {
               <X size={24} color="#111" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{isEditMode ? '펀딩 프로젝트 수정' : '펀딩 프로젝트 만들기'}</Text>
-            <TouchableOpacity style={styles.headerIcon} onPress={handleOpenPreview} disabled={isPreviewLoading}>
-              <Eye size={20} color={isPreviewLoading ? '#9CA3AF' : '#111'} />
+            <TouchableOpacity style={styles.headerIcon} onPress={handleOpenPreview}>
+              <Eye size={20} color="#111" />
             </TouchableOpacity>
           </View>
           <View style={styles.progressStrip}>

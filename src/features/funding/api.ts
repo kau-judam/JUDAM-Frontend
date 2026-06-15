@@ -1033,6 +1033,8 @@ export type FundingDetailResponse = {
 export type FundingIntroResponse = {
   fundingId: number;
   title: string;
+  summary?: string;
+  description?: string;
   introduction: string;
   story: string;
   mainIngredient?: string;

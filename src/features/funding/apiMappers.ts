@@ -558,7 +558,9 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     endDate: sameProject ? formatDate(detail.endDate) || existing.endDate : existing.endDate,
     startDate: sameProject ? formatDate(detail.startDate) || existing.startDate : existing.startDate,
     estimatedDelivery: sameProject ? formatDate(detail.expectedDeliveryDate) || existing.estimatedDelivery : existing.estimatedDelivery,
-    projectSummary: sameProject ? sanitizeApiText(detail.summary) || sanitizeApiText(detail.description) || existing.projectSummary : existing.projectSummary,
+    projectSummary: sameProject
+      ? sanitizeApiText(detail.summary) || getRecordValue(detail.basicInfo || detail.basic_info, ['summary', 'description']) || existing.projectSummary
+      : existing.projectSummary,
     image: sameProject ? thumbnailUrl || existing.image || '' : existing.image,
     images: sameProject ? (detailImages.length ? detailImages : existing.images) : existing.images,
     pricePerBottle: sameProject ? detail.pricePerBottle ?? supportOption?.price ?? existing.pricePerBottle : existing.pricePerBottle,
@@ -637,7 +639,7 @@ export function mergeFundingIntro(existing: FundingProject, intro: FundingIntroR
   const officialBusinessAddress = sanitizeApiText(officialBreweryInfo?.address) || sanitizeApiText(officialBreweryInfo?.businessAddress);
   return {
     ...existing,
-    projectSummary: existing.projectSummary || sanitizeApiText(intro.introduction),
+    projectSummary: existing.projectSummary || getRecordValue(intro, ['summary', 'description']),
     introduction: sanitizeApiText(intro.introduction) || existing.introduction,
     story: sanitizeApiText(intro.story) || existing.story,
     videoUrl: sanitizeApiText(intro.videoUrl) || existing.videoUrl,

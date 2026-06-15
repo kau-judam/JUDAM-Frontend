@@ -179,7 +179,7 @@ export default function CommunityCreateScreen() {
     const postPayload = {
       author: user?.name || '사용자',
       authorType: user?.type || 'user',
-      avatar: editingPost?.avatar || user?.profileImage || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop',
+      avatar: editingPost?.avatar || user?.profileImage || null,
       title: trimmedTitle,
       content: trimmedContent,
       likes: editingPost?.likes || 0,

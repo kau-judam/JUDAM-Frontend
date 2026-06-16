@@ -39,6 +39,7 @@ function FundingProjectCard({
   const isSupportable = isFundingProjectSupportable(project);
   const tasteMatchScore = getTasteMatchScore(project, tasteProfile);
   const showMatch = showTasteMatch && tasteMatchScore !== null;
+  const matchTone = showMatch ? getMatchTone(tasteMatchScore) : null;
   const favoriteCount = getDisplayFavoriteCount(project, favorite);
   const favoriteCountLabel = formatFavoriteCount(favoriteCount);
   const imageSource = getFundingProjectImageSource(project);
@@ -86,7 +87,14 @@ function FundingProjectCard({
           <Text style={styles.projectTitle} numberOfLines={2}>{project.title}</Text>
           {showMatch && (
             <View style={styles.matchBadge}>
-              <Text style={styles.matchBadgeTxt}>내 술BTI와 {tasteMatchScore}% 매칭</Text>
+              <View style={styles.matchSignal}>
+                <View style={[styles.signalDot, styles.signalDotRed, matchTone === 'red' && styles.signalDotActive]} />
+                <View style={[styles.signalDot, styles.signalDotOrange, matchTone === 'orange' && styles.signalDotActive]} />
+                <View style={[styles.signalDot, styles.signalDotGreen, matchTone === 'green' && styles.signalDotActive]} />
+              </View>
+              <Text style={[styles.matchBadgeTxt, matchTone && getMatchTextStyle(matchTone)]} numberOfLines={1}>
+                {matchTone ? getMatchLabel(matchTone) : '내 술BTI와 잘 어울려요'}
+              </Text>
             </View>
           )}
           <View style={styles.progressRow}>
@@ -113,6 +121,24 @@ function getDisplayFavoriteCount(project: FundingProject, favorite: boolean) {
 function formatFavoriteCount(count: number) {
   if (count > 999) return '999+';
   return String(count);
+}
+
+function getMatchTone(score: number) {
+  if (score < 30) return 'red';
+  if (score < 60) return 'orange';
+  return 'green';
+}
+
+function getMatchTextStyle(tone: ReturnType<typeof getMatchTone>) {
+  if (tone === 'red') return styles.matchBadgeTxtRed;
+  if (tone === 'orange') return styles.matchBadgeTxtOrange;
+  return styles.matchBadgeTxtGreen;
+}
+
+function getMatchLabel(tone: ReturnType<typeof getMatchTone>) {
+  if (tone === 'red') return '내 술BTI와 어울리지 않아요.';
+  if (tone === 'orange') return '내 술BTI와 괜찮은 매칭이에요.';
+  return '내 술BTI와 잘 어울려요';
 }
 
 function getStatusBadgeStyle(tone: ReturnType<typeof getFundingProjectStatusTone>) {
@@ -165,8 +191,17 @@ const styles = StyleSheet.create({
   ownProjectBadge: { alignSelf: 'flex-start', backgroundColor: '#111', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6 },
   ownProjectTxt: { color: '#FFF', fontSize: 10, fontWeight: '900' },
   projectTitle: { fontSize: 16, fontWeight: '800', color: '#111', lineHeight: 22, marginBottom: 8 },
-  matchBadge: { alignSelf: 'flex-start', minHeight: 28, borderRadius: 999, paddingHorizontal: 10, backgroundColor: '#F3F4F6', flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 8 },
-  matchBadgeTxt: { fontSize: 11, fontWeight: '900', color: '#111' },
+  matchBadge: { alignSelf: 'flex-start', maxWidth: '100%', minHeight: 30, borderRadius: 999, paddingHorizontal: 10, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8 },
+  matchSignal: { width: 36, height: 16, borderRadius: 999, backgroundColor: '#EEF0F3', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 4 },
+  signalDot: { width: 7, height: 7, borderRadius: 4, opacity: 0.28 },
+  signalDotActive: { width: 9, height: 9, borderRadius: 5, opacity: 1 },
+  signalDotRed: { backgroundColor: '#EF4444' },
+  signalDotOrange: { backgroundColor: '#F59E0B' },
+  signalDotGreen: { backgroundColor: '#22C55E' },
+  matchBadgeTxt: { flexShrink: 1, fontSize: 11, fontWeight: '900', color: '#111' },
+  matchBadgeTxtRed: { color: '#DC2626' },
+  matchBadgeTxtOrange: { color: '#D97706' },
+  matchBadgeTxtGreen: { color: '#16A34A' },
   progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 6 },
   progressTextRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   progressPct: { fontSize: 22, fontWeight: '900', color: '#111' },

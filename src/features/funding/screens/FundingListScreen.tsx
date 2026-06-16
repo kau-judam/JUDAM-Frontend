@@ -28,7 +28,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
-import { getBtiDisplayType, getBtiTasteAxisValuesFromTasteVector, resolveSulbtiCode } from '@/features/bti/data';
+import { getBtiDisplayType, getBtiTasteAxisValuesFromScores, getBtiTasteAxisValuesFromTasteVector, resolveSulbtiCode } from '@/features/bti/data';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import { getFundingList, getFundingStats, getFundingApiErrorMessage, type FundingStatsResponse } from '@/features/funding/api';
@@ -112,17 +112,10 @@ export default function FundingListScreen() {
         if (!restoredCode) return false;
         await updateUser({
           sulbti: restoredCode,
-          sulbtiProfile: result.scores
-            ? {
-              sweetness: result.scores.sweetness,
-              body: result.scores.body,
-              carbonation: result.scores.carbonation,
-              tradition: 6 - result.scores.flavor,
-              alcohol: result.scores.abv ?? result.scores.alcohol,
-            }
-            : result.tasteVector
+          sulbtiProfile: getBtiTasteAxisValuesFromScores(result.scores)
+            || (result.tasteVector
               ? getBtiTasteAxisValuesFromTasteVector(result.tasteVector)
-              : undefined,
+              : undefined),
         });
         return true;
       } catch (error) {

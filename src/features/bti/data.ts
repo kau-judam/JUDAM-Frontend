@@ -29,6 +29,8 @@ export type BtiSurveyTasteVector = {
   finish?: number;
 };
 
+export type BtiScoreValues = Partial<Record<'sweetness' | 'body' | 'carbonation' | 'flavor' | 'abv' | 'alcohol', number>>;
+
 export interface BtiResultProfile {
   type: string;
   name: string;
@@ -380,6 +382,18 @@ export function getBtiTasteAxisValuesFromTasteVector(tasteVector: BtiSurveyTaste
     carbonation: tasteVectorValueToAxisValue(tasteVector.carbonation),
     tradition: 6 - tasteVectorValueToAxisValue(tasteVector.flavor),
     alcohol: tasteVectorValueToAxisValue(tasteVector.alcohol),
+  };
+}
+
+export function getBtiTasteAxisValuesFromScores(scores?: BtiScoreValues | null): BtiTasteAxisValues | undefined {
+  if (!scores) return undefined;
+
+  return {
+    sweetness: normalizeBtiTasteAxisValue(scores.sweetness) ?? 3,
+    body: normalizeBtiTasteAxisValue(scores.body) ?? 3,
+    carbonation: normalizeBtiTasteAxisValue(scores.carbonation) ?? 3,
+    tradition: 6 - (normalizeBtiTasteAxisValue(scores.flavor) ?? 3),
+    alcohol: normalizeBtiTasteAxisValue(scores.abv ?? scores.alcohol) ?? 3,
   };
 }
 

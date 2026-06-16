@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -18,8 +18,8 @@ import { ArrowLeft, Home, Lock, RotateCcw, Share2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { getBtiDisplayType, getBtiResult, getBtiTasteAxisValuesFromTasteVector, normalizeBtiTasteAxisValue, resolveSulbtiCode } from '@/features/bti/data';
-import { getMyPageApiErrorMessage, getMyPageSulbti, submitMyPageSulbtiFeedback, type MyPageSulbtiResult } from '@/features/mypage/api';
+import { getBtiDisplayType, getBtiResult, getBtiTasteAxisValuesFromScores, getBtiTasteAxisValuesFromTasteVector, normalizeBtiTasteAxisValue, resolveBtiType } from '@/features/bti/data';
+import { getMyPageApiErrorMessage, getMyPageSulbti, saveMyPageSulbti, submitMyPageSulbtiFeedback, type MyPageSulbtiResult } from '@/features/mypage/api';
 
 const BTI_CHARACTER_IMAGES: Record<string, ImageSourcePropType> = {
   SHFC: require('@/assets/images/BTI/1.png'),
@@ -92,11 +92,20 @@ function getSulbtiResultId(result: MyPageSulbtiResult) {
 
 function getSulbtiBtiCode(result: MyPageSulbtiResult) {
   const aliasedResult = result as SulbtiResultWithAliases;
-  return resolveSulbtiCode(aliasedResult.btiCode || aliasedResult.bti_code || aliasedResult.type)
+  return resolveBtiType(aliasedResult.btiCode || aliasedResult.bti_code || aliasedResult.type)
     || aliasedResult.btiCode
     || aliasedResult.bti_code
     || aliasedResult.type
     || null;
+}
+
+function getResultProfileValue(result: ReturnType<typeof getBtiResult> | null | undefined, label: string) {
+  return result?.tasteProfile.find((item) => item.label === label)?.value;
+}
+
+function clampSaveScore(value?: number | null) {
+  if (!Number.isFinite(value)) return 3;
+  return Math.max(1, Math.min(5, Math.round(value || 3)));
 }
 
 function clampProfileValue(value?: number) {
@@ -118,6 +127,7 @@ export default function BTIResultScreen() {
     btiCode?: string | string[];
   }>();
   const { user, updateUser } = useAuth();
+  const updateUserRef = useRef(updateUser);
   const userId = user?.id;
   const routeResultId = getRouteParamValue(routeSulbtiResultId);
   const routeResultBtiCode = getRouteParamValue(routeBtiCode);
@@ -127,47 +137,53 @@ export default function BTIResultScreen() {
   const [showFeedbackThanks, setShowFeedbackThanks] = useState(false);
   const [hasSubmittedFeedback, setHasSubmittedFeedback] = useState(false);
   const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false);
+  const [isFeedbackIdentityLoading, setIsFeedbackIdentityLoading] = useState(Boolean(userId));
   const [currentSulbtiResultId, setCurrentSulbtiResultId] = useState<number | string | null>(routeResultId ?? null);
   const [currentSulbtiBtiCode, setCurrentSulbtiBtiCode] = useState<string | null>(routeResultBtiCode ?? null);
 
   useEffect(() => {
-    if (!userId) return;
+    updateUserRef.current = updateUser;
+  }, [updateUser]);
+
+  useEffect(() => {
+    if (!userId) {
+      setIsFeedbackIdentityLoading(false);
+      return;
+    }
     let mounted = true;
+    setIsFeedbackIdentityLoading(true);
     getMyPageSulbti()
       .then((result) => {
         if (!mounted) return;
-        setCurrentSulbtiResultId(getSulbtiResultId(result) ?? routeResultId ?? null);
-        setCurrentSulbtiBtiCode(getSulbtiBtiCode(result) ?? routeResultBtiCode ?? null);
+        setCurrentSulbtiResultId(result.hasResult ? getSulbtiResultId(result) ?? routeResultId ?? null : null);
+        setCurrentSulbtiBtiCode(result.hasResult ? getSulbtiBtiCode(result) ?? routeResultBtiCode ?? null : routeResultBtiCode ?? null);
         if (!result.hasResult) return;
         setHasSubmittedFeedback(Boolean(result.feedback?.hasSubmitted));
-        const savedType = resolveSulbtiCode(result.btiCode || result.type);
+        const savedType = resolveBtiType(result.btiCode || result.type);
         if (!savedType) return;
-        updateUser({
+        updateUserRef.current({
           sulbti: savedType,
-          sulbtiProfile: result.scores
-            ? {
-              sweetness: result.scores.sweetness,
-              body: result.scores.body,
-              carbonation: result.scores.carbonation,
-              tradition: 6 - result.scores.flavor,
-              alcohol: result.scores.abv ?? result.scores.alcohol,
-            }
-            : result.tasteVector
+          sulbtiProfile: getBtiTasteAxisValuesFromScores(result.scores)
+            || (result.tasteVector
               ? getBtiTasteAxisValuesFromTasteVector(result.tasteVector)
-            : undefined,
+              : undefined),
         });
       })
       .catch((error) => {
         console.warn(getMyPageApiErrorMessage(error, '술BTI 결과를 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (mounted) setIsFeedbackIdentityLoading(false);
       });
 
     return () => {
       mounted = false;
     };
-  }, [routeResultBtiCode, routeResultId, updateUser, userId]);
-  const savedCode = resolveSulbtiCode(user?.sulbti);
-  const routeCode = resolveSulbtiCode(type);
-  const resultCode = savedCode || routeCode;
+  }, [routeResultBtiCode, routeResultId, userId]);
+  const savedCode = resolveBtiType(user?.sulbti);
+  const routeCode = resolveBtiType(type);
+  const loadedCode = resolveBtiType(currentSulbtiBtiCode);
+  const resultCode = loadedCode || routeCode || savedCode;
   const displayType = getBtiDisplayType(resultCode);
   const result = resultCode ? getBtiResult(resultCode) : null;
   const characterImage = result ? BTI_CHARACTER_IMAGES[result.type] : null;
@@ -212,9 +228,54 @@ export default function BTIResultScreen() {
     ));
   };
 
-  const feedbackBtiCode = resolveSulbtiCode(resultCode || currentSulbtiBtiCode) || resultCode || currentSulbtiBtiCode;
+  const feedbackBtiCode = resolveBtiType(resultCode || currentSulbtiBtiCode) || resultCode || currentSulbtiBtiCode;
   const canSubmitFeedback =
-    feedbackChoice === 'yes' || (feedbackChoice === 'no' && selectedMismatchAxes.length > 0);
+    !isFeedbackIdentityLoading
+    && (feedbackChoice === 'yes' || (feedbackChoice === 'no' && selectedMismatchAxes.length > 0));
+
+  const saveDisplayedResultForFeedback = async (btiCode: string) => {
+    const sweetnessScore = clampSaveScore(
+      normalizeBtiTasteAxisValue(user?.sulbtiProfile?.sweetness)
+      ?? getResultProfileValue(result, '단맛')
+    );
+    const bodyScore = clampSaveScore(
+      normalizeBtiTasteAxisValue(user?.sulbtiProfile?.body)
+      ?? getResultProfileValue(result, '바디')
+    );
+    const carbonationScore = clampSaveScore(
+      normalizeBtiTasteAxisValue(user?.sulbtiProfile?.carbonation)
+      ?? getResultProfileValue(result, '탄산')
+    );
+    const traditionScore = clampSaveScore(
+      normalizeBtiTasteAxisValue(user?.sulbtiProfile?.tradition)
+      ?? getResultProfileValue(result, '전통감')
+    );
+    const alcoholScore = clampSaveScore(
+      normalizeBtiTasteAxisValue(user?.sulbtiProfile?.alcohol)
+      ?? getResultProfileValue(result, '도수')
+    );
+
+    const savedResult = await saveMyPageSulbti({
+      type: btiCode,
+      sweetnessScore,
+      bodyScore,
+      carbonationScore,
+      flavorScore: clampSaveScore(6 - traditionScore),
+      abvScore: alcoholScore,
+    });
+    const savedResultId = getSulbtiResultId(savedResult);
+    const savedBtiCode = getSulbtiBtiCode(savedResult) ?? btiCode;
+
+    setCurrentSulbtiResultId(savedResultId);
+    setCurrentSulbtiBtiCode(savedBtiCode);
+    setHasSubmittedFeedback(Boolean(savedResult.feedback?.hasSubmitted));
+
+    if (savedResultId !== null && savedResultId !== undefined && String(savedResultId).trim() && savedBtiCode) {
+      return { sulbtiResultId: savedResultId, btiCode: savedBtiCode };
+    }
+
+    return { sulbtiResultId: null, btiCode: savedBtiCode };
+  };
 
   const getFeedbackResultIdentity = async () => {
     const cachedResultId = currentSulbtiResultId;
@@ -229,8 +290,11 @@ export default function BTIResultScreen() {
     }
 
     const latestResult = await getMyPageSulbti();
-    const latestResultId = getSulbtiResultId(latestResult) ?? routeResultId ?? null;
-    const latestBtiCode = feedbackBtiCode ?? getSulbtiBtiCode(latestResult) ?? routeResultBtiCode;
+    const latestResultId = latestResult.hasResult ? getSulbtiResultId(latestResult) ?? routeResultId ?? null : null;
+    const latestServerBtiCode = getSulbtiBtiCode(latestResult);
+    const latestBtiCode = latestResult.hasResult
+      ? latestServerBtiCode ?? feedbackBtiCode ?? routeResultBtiCode
+      : feedbackBtiCode ?? latestServerBtiCode ?? routeResultBtiCode;
     setCurrentSulbtiResultId(latestResultId);
     setCurrentSulbtiBtiCode(latestBtiCode);
     setHasSubmittedFeedback(Boolean(latestResult.feedback?.hasSubmitted));
@@ -246,7 +310,7 @@ export default function BTIResultScreen() {
     }
 
     if (latestBtiCode) {
-      return { sulbtiResultId: null, btiCode: latestBtiCode };
+      return saveDisplayedResultForFeedback(latestBtiCode);
     }
 
     throw new Error('술BTI 결과 유형을 확인하지 못했습니다. 결과 화면을 다시 열어주세요.');
@@ -258,13 +322,16 @@ export default function BTIResultScreen() {
     try {
       setIsFeedbackSubmitting(true);
       const feedbackIdentity = await getFeedbackResultIdentity();
-      await submitMyPageSulbtiFeedback({
+      const feedbackResult = await submitMyPageSulbtiFeedback({
         sulbtiResultId: feedbackIdentity.sulbtiResultId,
         btiCode: feedbackIdentity.btiCode,
         isMatched: feedbackChoice === 'yes',
         mismatchedAxes: feedbackChoice === 'no' ? selectedMismatchAxes : [],
         comment: feedbackText,
       });
+      if (feedbackResult.sulbtiResultId !== null && feedbackResult.sulbtiResultId !== undefined) {
+        setCurrentSulbtiResultId(feedbackResult.sulbtiResultId);
+      }
       setHasSubmittedFeedback(true);
       setShowFeedbackThanks(true);
     } catch (error) {
@@ -483,7 +550,9 @@ export default function BTIResultScreen() {
               disabled={!canSubmitFeedback || isFeedbackSubmitting}
               onPress={handleFeedbackSubmit}
             >
-              <Text style={styles.feedbackSubmitText}>{isFeedbackSubmitting ? '저장 중...' : '제출하기'}</Text>
+              <Text style={styles.feedbackSubmitText}>
+                {isFeedbackIdentityLoading ? '결과 확인 중...' : isFeedbackSubmitting ? '저장 중...' : '제출하기'}
+              </Text>
             </TouchableOpacity>
           </View>
         ) : null}

@@ -87,6 +87,7 @@ export type CreateRecipePayload = {
   target_flavor: string;
   concept: string;
   summary: string;
+  imageUrl?: string | null;
   image?: {
     uri: string;
     name?: string | null;
@@ -595,6 +596,13 @@ export async function createRecipe(payload: CreateRecipePayload) {
   formData.append('target_flavor', payload.target_flavor);
   formData.append('concept', payload.concept);
   formData.append('summary', payload.summary);
+  const remoteImageUrl = payload.imageUrl?.trim();
+  if (remoteImageUrl && /^https?:\/\//i.test(remoteImageUrl)) {
+    formData.append('image_url', remoteImageUrl);
+    formData.append('imageUrl', remoteImageUrl);
+    formData.append('thumbnail_url', remoteImageUrl);
+    formData.append('thumbnailUrl', remoteImageUrl);
+  }
   if (payload.image?.uri && !payload.image.uri.startsWith('http')) {
     const imageName = payload.image.name || payload.image.uri.split('/').pop() || `recipe-${Date.now()}.jpg`;
     const imageType = payload.image.type || 'image/jpeg';

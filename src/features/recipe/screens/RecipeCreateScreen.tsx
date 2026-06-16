@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { ChevronLeft, Image as ImageIcon, Plus, Wand2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +34,8 @@ import {
 import { markCurrentUserRecipe } from '@/features/recipe/interestState';
 
 const ALCOHOL_RANGES = ['3%~5%', '6%~8%', '9%~12%', '13%~15%', '15% 이상'];
+const RECIPE_AI_IMAGE_STORAGE_ROOT = FileSystem.cacheDirectory || FileSystem.documentDirectory || '';
+const RECIPE_AI_IMAGE_CACHE_DIR = `${RECIPE_AI_IMAGE_STORAGE_ROOT}judam-recipe-ai-images/`;
 
 type SubIngredientRegionSuggestion = {
   region: string;
@@ -45,6 +48,49 @@ type NoticeState = {
   body?: string;
   onConfirm?: () => void;
 } | null;
+
+function isRemoteRecipeImageUri(uri?: string | null) {
+  return Boolean(uri && /^https?:\/\//i.test(uri));
+}
+
+function getRecipeImageFileName(uri: string) {
+  const rawName = uri.split('?')[0]?.split('#')[0]?.split('/').pop();
+  const decodedName = rawName ? decodeURIComponent(rawName) : '';
+  const safeName = (decodedName || `recipe-ai-${Date.now()}.jpg`).replace(/[^\w.-]+/g, '-');
+  return safeName.includes('.') ? safeName : `${safeName}.jpg`;
+}
+
+function getRecipeImageMimeType(fileName: string) {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (extension === 'png') return 'image/png';
+  if (extension === 'webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+async function downloadRecipeAiImageForUpload(imageUrl: string) {
+  if (!RECIPE_AI_IMAGE_STORAGE_ROOT) {
+    throw new Error('AI 생성 이미지를 업로드할 임시 저장소를 찾을 수 없습니다.');
+  }
+
+  const fileName = getRecipeImageFileName(imageUrl);
+  await FileSystem.makeDirectoryAsync(RECIPE_AI_IMAGE_CACHE_DIR, { intermediates: true });
+  const targetUri = `${RECIPE_AI_IMAGE_CACHE_DIR}${Date.now()}-${fileName}`;
+  const result = await FileSystem.downloadAsync(imageUrl, targetUri);
+  if (result.status < 200 || result.status >= 300) {
+    throw new Error('AI 생성 이미지 파일을 내려받지 못했습니다.');
+  }
+
+  const info = await FileSystem.getInfoAsync(result.uri);
+  if (!info.exists) {
+    throw new Error('AI 생성 이미지 파일을 확인하지 못했습니다.');
+  }
+
+  return {
+    uri: result.uri,
+    name: fileName,
+    type: getRecipeImageMimeType(fileName),
+  };
+}
 
 export default function RecipeCreateScreen() {
   const insets = useSafeAreaInsets();
@@ -380,6 +426,25 @@ export default function RecipeCreateScreen() {
       return;
     }
     try {
+      let uploadImage = imageAsset
+        ? {
+            uri: imageAsset.uri,
+            name: imageAsset.fileName,
+            type: imageAsset.mimeType,
+          }
+        : null;
+      if (!uploadImage && isRemoteRecipeImageUri(imagePreview)) {
+        try {
+          uploadImage = await downloadRecipeAiImageForUpload(imagePreview as string);
+        } catch (error) {
+          console.warn('Failed to prepare generated recipe image for upload', error);
+          showNotice(
+            'AI 생성 이미지를 준비하지 못했습니다.',
+            error instanceof Error ? error.message : '이미지를 다시 생성한 뒤 레시피를 제안해주세요.'
+          );
+          return;
+        }
+      }
       console.log('Recipe create request', {
         title: title.trim(),
         abv_range: alcoholRange,
@@ -387,9 +452,11 @@ export default function RecipeCreateScreen() {
         sub_ingredient: selectedSubIngredients.join(', '),
         target_flavor: getSelectedFlavorTags().join(', '),
         hasImageAsset: Boolean(imageAsset),
-        imageName: imageAsset?.fileName,
-        imageType: imageAsset?.mimeType,
-        imageUri: imageAsset?.uri,
+        hasUploadImage: Boolean(uploadImage),
+        imageUrl: !imageAsset && imagePreview ? imagePreview : undefined,
+        imageName: uploadImage?.name,
+        imageType: uploadImage?.type,
+        imageUri: uploadImage?.uri,
       });
       const createdRecipe = await createRecipe({
         title: title.trim(),
@@ -400,13 +467,8 @@ export default function RecipeCreateScreen() {
         target_flavor: getSelectedFlavorTags().join(', '),
         concept: concept.trim(),
         summary: description.trim(),
-        image: imageAsset
-          ? {
-              uri: imageAsset.uri,
-              name: imageAsset.fileName,
-              type: imageAsset.mimeType,
-            }
-          : null,
+        imageUrl: !imageAsset ? imagePreview : null,
+        image: uploadImage,
       });
       markCurrentUserRecipe(createdRecipe.id);
     } catch (error) {

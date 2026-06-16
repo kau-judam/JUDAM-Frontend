@@ -172,6 +172,91 @@ export type BreweryDashboardNotificationsResponse = {
   unreadCount: number;
 };
 
+export type BreweryInsightPaymentType = 'BREWERY_INSIGHT';
+export type BreweryInsightPlanType = 'MONTHLY';
+
+export type CreateBreweryInsightPaymentOrderPayload = {
+  planType: BreweryInsightPlanType;
+  amount: number;
+};
+
+export type BreweryInsightPaymentOrder = {
+  orderId: string;
+  numericOrderId?: number;
+  amount: number;
+  orderName: string;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerMobilePhone?: string | null;
+  paymentType: BreweryInsightPaymentType;
+  planType: BreweryInsightPlanType;
+  paymentStatus: string;
+  message?: string;
+};
+
+export type BreweryInsightAccess = {
+  accessId?: number | null;
+  breweryUserId?: number | string | null;
+  planType: BreweryInsightPlanType | null;
+  isActive: boolean;
+  startedAt: string | null;
+  expiresAt: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type BreweryInsightInput = {
+  post_trends?: {
+    keyword: string;
+    post_count: number;
+    likes: number;
+    comments: number;
+    views: number;
+  }[];
+  funding_success?: {
+    name: string;
+    achieved_pct: number;
+    status: string;
+    ingredients: string[];
+    taste_vector?: Record<string, number>;
+  }[];
+  bti_keywords?: {
+    bti_code: string;
+    user_count: number;
+    top_keywords: string[];
+  }[];
+};
+
+export type BreweryInsightContent = {
+  summary?: string;
+  recommendation?: string;
+  trend_analysis?: string[];
+  funding_analysis?: string[];
+  bti_analysis?: string[];
+};
+
+export type BreweryDashboardInsight = {
+  period: string;
+  input?: BreweryInsightInput;
+  insight?: BreweryInsightContent;
+};
+
+export type ConfirmBreweryInsightTossPaymentPayload = {
+  paymentKey: string;
+  orderId: string;
+  amount: number;
+};
+
+export type ConfirmBreweryInsightTossPaymentResponse = {
+  status: number;
+  orderId: string;
+  paymentStatus: string;
+  amount: number;
+  paymentType: BreweryInsightPaymentType;
+  insightAccess: BreweryInsightAccess;
+  message: string;
+};
+
 function parseBreweryResponseBody(path: string, response: Response, text: string) {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -518,6 +603,41 @@ export async function markAllBreweryNotificationsRead() {
   return requestBreweryJson<{ updatedCount: number; message: string }>('/api/notifications/read-all', {
     method: 'PATCH',
   });
+}
+
+export async function createBreweryInsightPaymentOrder(payload: CreateBreweryInsightPaymentOrderPayload) {
+  const response = await requestBreweryJson<
+    BreweryApiEnvelope<BreweryInsightPaymentOrder> | BreweryInsightPaymentOrder
+  >('/api/breweries/me/dashboard/insight/payment/order', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  return unwrapBreweryData<BreweryInsightPaymentOrder>(response);
+}
+
+export async function confirmBreweryInsightTossPayment(payload: ConfirmBreweryInsightTossPaymentPayload) {
+  return requestBreweryJson<ConfirmBreweryInsightTossPaymentResponse>(
+    '/api/breweries/me/dashboard/insight/payment/toss/confirm',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function getBreweryInsightAccess() {
+  const response = await requestBreweryJson<BreweryApiEnvelope<BreweryInsightAccess> | BreweryInsightAccess>(
+    '/api/breweries/me/dashboard/insight/access',
+  );
+  return unwrapBreweryData<BreweryInsightAccess>(response);
+}
+
+export async function getBreweryDashboardInsight(period: string) {
+  const query = new URLSearchParams({ period });
+  const response = await requestBreweryJson<BreweryApiEnvelope<BreweryDashboardInsight> | BreweryDashboardInsight>(
+    `/api/breweries/me/dashboard/insight?${query.toString()}`,
+  );
+  return unwrapBreweryData<BreweryDashboardInsight>(response);
 }
 
 export function getBreweryApiErrorMessage(error: unknown, fallback: string) {

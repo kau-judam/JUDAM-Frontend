@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -47,27 +48,47 @@ import {
   type ProjectStatus,
 } from '@/constants/data';
 import {
+  createBreweryInsightPaymentOrder,
   getBreweryApiErrorMessage,
   getBreweryDashboardBasicInfo,
   getBreweryDashboardFundings,
   getBreweryDashboardFundingOrders,
+  getBreweryDashboardInsight,
   getBreweryDashboardNotifications,
+  getBreweryInsightAccess,
   getBreweryFundingSummary,
   updateBreweryDashboardOrderDelivery,
   type BreweryDashboardBasicInfo,
   type BreweryDashboardFundingItem,
   type BreweryDashboardFundingOrder,
+  type BreweryDashboardInsight,
   type BreweryDashboardNotification,
   type BreweryDashboardOrderDeliveryStatus,
+  type BreweryInsightAccess,
   type BreweryFundingSummary,
 } from '@/features/brewery/api';
 import type { AppNotification } from '@/features/notifications/data';
 
 const FUNDINGS_PER_PAGE = 3;
+const BREWERY_INSIGHT_ORDER_NAME = '양조장 인사이트 이용권';
 
 type DashboardFundingProject = FundingProject & {
   statusLabel?: string;
 };
+
+function getCurrentInsightPeriod() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getInsightKeywords(insight: BreweryDashboardInsight | null) {
+  const keywords = [
+    ...(insight?.input?.post_trends ?? []).map((item) => item.keyword),
+    ...(insight?.input?.funding_success ?? []).flatMap((item) => item.ingredients ?? []),
+    ...(insight?.input?.bti_keywords ?? []).flatMap((item) => item.top_keywords ?? []),
+  ];
+  return Array.from(new Set(keywords.map((keyword) => String(keyword || '').trim()).filter(Boolean))).slice(0, 8);
+}
 
 const getDashboardFundingItems = (response: {
   content?: BreweryDashboardFundingItem[];
@@ -226,11 +247,17 @@ export default function BreweryDashboardScreen() {
   const [isDeliverySaving, setIsDeliverySaving] = useState(false);
   const [deliveryMessage, setDeliveryMessage] = useState('');
   const [isInsightPaymentVisible, setIsInsightPaymentVisible] = useState(false);
+  const [isInsightPaymentLoading, setIsInsightPaymentLoading] = useState(false);
+  const [insightAccess, setInsightAccess] = useState<BreweryInsightAccess | null>(null);
+  const [dashboardInsight, setDashboardInsight] = useState<BreweryDashboardInsight | null>(null);
+  const [isInsightLoading, setIsInsightLoading] = useState(false);
   const [dashboardBasicInfo, setDashboardBasicInfo] = useState<BreweryDashboardBasicInfo | null>(null);
   const [fundingSummary, setFundingSummary] = useState<BreweryFundingSummary | null>(null);
   const [apiFundings, setApiFundings] = useState<Record<'active' | 'completed', DashboardFundingProject[]>>({ active: [], completed: [] });
   const [dashboardNotifications, setDashboardNotifications] = useState<AppNotification[]>([]);
   const [dashboardUnreadCount, setDashboardUnreadCount] = useState(0);
+  const [isInitialDashboardLoading, setIsInitialDashboardLoading] = useState(true);
+  const [hasLoadedDashboardOnce, setHasLoadedDashboardOnce] = useState(false);
   const [selectedJournalStage, setSelectedJournalStage] = useState(manufacturingStages[0]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [journalData, setJournalData] = useState<Record<string, JournalEntryState>>({
@@ -267,6 +294,9 @@ export default function BreweryDashboardScreen() {
   const activeFundingCount = Math.max(fundingSummary?.activeFundingCount ?? 0, listedActiveFundingCount, localActiveFundingCount);
   const totalFundingCount = Math.max(fundingSummary?.totalFundingCount ?? 0, listedTotalFundingCount, dashboardProjects.length);
   const totalBackers = fundingSummary?.totalParticipantCount ?? dashboardProjects.reduce((sum, project) => sum + project.backers, 0);
+  const isInsightActive = insightAccess?.isActive === true;
+  const insightPeriod = getCurrentInsightPeriod();
+  const insightKeywords = useMemo(() => getInsightKeywords(dashboardInsight), [dashboardInsight]);
   const selectedStatusFunding = selectedStatusProject
     ? projects.find((project) => project.id === selectedStatusProject)
     : null;
@@ -284,12 +314,35 @@ export default function BreweryDashboardScreen() {
     router.replace((dashboardReturnTo || '/(tabs)/mypage') as any);
   }, [dashboardReturnTo]);
 
-  const handleInsightPaymentPress = useCallback(() => {
-    Alert.alert(
-      '결제 API 확인 필요',
-      '양조장 인사이트 결제는 펀딩 후원 주문이 아니어서 인사이트 전용 결제 주문 생성 API가 필요합니다.',
-    );
-  }, []);
+  const handleInsightPaymentPress = useCallback(async () => {
+    if (isInsightPaymentLoading) return;
+    setIsInsightPaymentLoading(true);
+    try {
+      const order = await createBreweryInsightPaymentOrder({
+        planType: 'MONTHLY',
+        amount: 9900,
+      });
+      setIsInsightPaymentVisible(false);
+      router.push({
+        pathname: '/funding/payment/toss',
+        params: {
+          paymentType: order.paymentType || 'BREWERY_INSIGHT',
+          orderId: order.orderId,
+          numericOrderId: order.numericOrderId ? String(order.numericOrderId) : '',
+          amount: String(order.amount || 9900),
+          orderName: order.orderName || BREWERY_INSIGHT_ORDER_NAME,
+          customerName: order.customerName || '',
+          customerEmail: order.customerEmail || '',
+          customerMobilePhone: order.customerMobilePhone || '',
+          returnTo: '/brewery/dashboard',
+        },
+      } as any);
+    } catch (error) {
+      Alert.alert('결제 오류', getBreweryApiErrorMessage(error, '인사이트 결제 주문을 생성하지 못했습니다.'));
+    } finally {
+      setIsInsightPaymentLoading(false);
+    }
+  }, [isInsightPaymentLoading]);
 
   const loadDashboardNotifications = useCallback(async () => {
     if (!currentUserId || currentUserType !== 'brewery') return;
@@ -321,16 +374,21 @@ export default function BreweryDashboardScreen() {
   );
 
   useEffect(() => {
-    if (!currentUserId || currentUserType !== 'brewery') return;
+    if (!currentUserId || currentUserType !== 'brewery') {
+      setIsInitialDashboardLoading(false);
+      return;
+    }
 
     let mounted = true;
+    if (!hasLoadedDashboardOnce) setIsInitialDashboardLoading(true);
 
     Promise.allSettled([
       getBreweryDashboardBasicInfo(),
       getBreweryFundingSummary(),
       getBreweryDashboardFundings({ status: 'active', page: 0, size: 50 }),
       getBreweryDashboardFundings({ status: 'completed', page: 0, size: 50 }),
-    ]).then(([basicInfoResult, summaryResult, activeFundingsResult, completedFundingsResult]) => {
+      getBreweryInsightAccess(),
+    ]).then(([basicInfoResult, summaryResult, activeFundingsResult, completedFundingsResult, insightAccessResult]) => {
       if (!mounted) return;
 
       if (basicInfoResult.status === 'fulfilled') {
@@ -358,12 +416,46 @@ export default function BreweryDashboardScreen() {
         mergeProjects([...active, ...completed]);
       }
 
+      if (insightAccessResult.status === 'fulfilled') {
+        setInsightAccess(insightAccessResult.value);
+      } else {
+        setInsightAccess(null);
+      }
+
+      setHasLoadedDashboardOnce(true);
+      setIsInitialDashboardLoading(false);
     });
 
     return () => {
       mounted = false;
     };
-  }, [currentUserId, currentUserType, mergeProjects]);
+  }, [currentUserId, currentUserType, hasLoadedDashboardOnce, mergeProjects]);
+
+  useEffect(() => {
+    if (!currentUserId || currentUserType !== 'brewery' || !isInsightActive) {
+      setDashboardInsight(null);
+      setIsInsightLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    setIsInsightLoading(true);
+    getBreweryDashboardInsight(insightPeriod)
+      .then((insight) => {
+        if (mounted) setDashboardInsight(insight);
+      })
+      .catch((error) => {
+        console.warn(getBreweryApiErrorMessage(error, '인사이트 정보를 불러오지 못했습니다.'));
+        if (mounted) setDashboardInsight(null);
+      })
+      .finally(() => {
+        if (mounted) setIsInsightLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [currentUserId, currentUserType, insightPeriod, isInsightActive]);
 
   useEffect(() => {
     setFundingPage(0);
@@ -582,6 +674,15 @@ export default function BreweryDashboardScreen() {
         </View>
       </View>
 
+      {isInitialDashboardLoading ? (
+        <View style={styles.dashboardLoadingBody}>
+          <View style={styles.dashboardLoadingIcon}>
+            <ActivityIndicator color="#111827" />
+          </View>
+          <Text style={styles.dashboardLoadingTitle}>양조장 대시보드를 불러오는 중입니다</Text>
+          <Text style={styles.dashboardLoadingDesc}>프로필, 펀딩 현황, 인사이트 정보를 확인하고 있어요.</Text>
+        </View>
+      ) : (
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         {/* Section 0: 양조장 기본 정보 */}
         <View style={styles.sectionGray}>
@@ -740,29 +841,97 @@ export default function BreweryDashboardScreen() {
           <TouchableOpacity
             style={styles.insightLockedCard}
             activeOpacity={0.9}
-            onPress={() => setIsInsightPaymentVisible(true)}
+            disabled={isInsightActive}
+            onPress={() => {
+              if (!isInsightActive) setIsInsightPaymentVisible(true);
+            }}
           >
-            <View style={styles.insightPreviewDim}>
-              <View style={styles.insightPreviewRow}>
-                <View style={styles.insightPreviewBlockLarge} />
-                <View style={styles.insightPreviewStack}>
-                  <View style={styles.insightPreviewLine} />
-                  <View style={[styles.insightPreviewLine, styles.insightPreviewLineShort]} />
-                  <View style={styles.insightPreviewBar} />
+            {isInsightActive ? (
+              <View style={styles.insightContent}>
+                <View style={styles.insightContentHeader}>
+                  <View>
+                    <Text style={styles.insightPeriod}>{dashboardInsight?.period || insightPeriod}</Text>
+                    <Text style={styles.insightContentTitle}>이번 달 인사이트</Text>
+                  </View>
+                  {isInsightLoading ? <Clock size={18} color="#6B7280" /> : <TrendingUp size={18} color="#111827" />}
+                </View>
+
+                {isInsightLoading ? (
+                  <Text style={styles.insightMutedText}>인사이트를 불러오는 중입니다.</Text>
+                ) : dashboardInsight?.insight ? (
+                  <>
+                    {insightKeywords.length > 0 ? (
+                      <View style={styles.insightKeywordPanel}>
+                        <View style={styles.insightKeywordHeader}>
+                          <Text style={styles.insightKeywordLabel}>주요 키워드</Text>
+                          <Text style={styles.insightKeywordCount}>{insightKeywords.length}개</Text>
+                        </View>
+                        <View style={styles.insightKeywordWrap}>
+                          {insightKeywords.map((keyword) => (
+                            <View key={keyword} style={styles.insightKeywordChip}>
+                              <Text style={styles.insightKeywordText}>{keyword}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    ) : null}
+                    {dashboardInsight.insight.summary ? (
+                      <View style={styles.insightPrimaryBox}>
+                        <Text style={styles.insightBoxLabel}>요약</Text>
+                        <Text style={styles.insightBodyText}>{dashboardInsight.insight.summary}</Text>
+                      </View>
+                    ) : null}
+                    {dashboardInsight.insight.recommendation ? (
+                      <View style={styles.insightRecommendationBox}>
+                        <Target size={18} color="#111827" />
+                        <Text style={styles.insightRecommendationText}>{dashboardInsight.insight.recommendation}</Text>
+                      </View>
+                    ) : null}
+                    {[
+                      { title: '트렌드 분석', items: dashboardInsight.insight.trend_analysis },
+                      { title: '펀딩 분석', items: dashboardInsight.insight.funding_analysis },
+                      { title: '술BTI 분석', items: dashboardInsight.insight.bti_analysis },
+                    ].map((section) => section.items?.length ? (
+                      <View key={section.title} style={styles.insightListSection}>
+                        <Text style={styles.insightListTitle}>{section.title}</Text>
+                        {section.items.map((item, index) => (
+                          <View key={`${section.title}-${index}`} style={styles.insightBulletRow}>
+                            <View style={styles.insightBullet} />
+                            <Text style={styles.insightListText}>{item}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null)}
+                  </>
+                ) : (
+                  <Text style={styles.insightMutedText}>아직 표시할 인사이트가 없습니다.</Text>
+                )}
+              </View>
+            ) : (
+              <View style={styles.insightPreviewDim}>
+                <View style={styles.insightPreviewRow}>
+                  <View style={styles.insightPreviewBlockLarge} />
+                  <View style={styles.insightPreviewStack}>
+                    <View style={styles.insightPreviewLine} />
+                    <View style={[styles.insightPreviewLine, styles.insightPreviewLineShort]} />
+                    <View style={styles.insightPreviewBar} />
+                  </View>
+                </View>
+                <View style={styles.insightPreviewChart}>
+                  <View style={[styles.insightChartBar, { height: 30 }]} />
+                  <View style={[styles.insightChartBar, { height: 52 }]} />
+                  <View style={[styles.insightChartBar, { height: 40 }]} />
+                  <View style={[styles.insightChartBar, { height: 66 }]} />
                 </View>
               </View>
-              <View style={styles.insightPreviewChart}>
-                <View style={[styles.insightChartBar, { height: 30 }]} />
-                <View style={[styles.insightChartBar, { height: 52 }]} />
-                <View style={[styles.insightChartBar, { height: 40 }]} />
-                <View style={[styles.insightChartBar, { height: 66 }]} />
+            )}
+            {!isInsightActive && (
+              <View style={styles.insightLockOverlay}>
+                <View style={styles.insightLockButton}>
+                  <Lock size={26} color="#FFF" />
+                </View>
               </View>
-            </View>
-            <View style={styles.insightLockOverlay}>
-              <View style={styles.insightLockButton}>
-                <Lock size={26} color="#FFF" />
-              </View>
-            </View>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -806,6 +975,7 @@ export default function BreweryDashboardScreen() {
            </View>
         </View>
       </ScrollView>
+      )}
 
       {/* Modal - Brewing Journal */}
       {selectedProject && (
@@ -1075,8 +1245,13 @@ export default function BreweryDashboardScreen() {
               </View>
               <Text style={styles.paymentTitle}>인사이트 기능을 구매하시겠어요?</Text>
               <Text style={styles.paymentDesc}>후원자 반응, 펀딩 전환율, 매출 흐름을 대시보드에서 확인할 수 있습니다.</Text>
-              <TouchableOpacity style={styles.paymentPrimaryButton} activeOpacity={0.88} onPress={handleInsightPaymentPress}>
-                <Text style={styles.paymentPrimaryText}>9,900원 결제하기</Text>
+              <TouchableOpacity
+                style={[styles.paymentPrimaryButton, isInsightPaymentLoading && styles.paymentPrimaryButtonDisabled]}
+                activeOpacity={0.88}
+                onPress={handleInsightPaymentPress}
+                disabled={isInsightPaymentLoading}
+              >
+                <Text style={styles.paymentPrimaryText}>{isInsightPaymentLoading ? '결제 준비 중' : '9,900원 결제하기'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1135,6 +1310,10 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '700', color: '#000' },
   headerIcon: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   notifBadge: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, backgroundColor: '#EF4444', borderRadius: 4, borderWidth: 1.5, borderColor: '#FFF' },
+  dashboardLoadingBody: { flex: 1, minHeight: 520, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, backgroundColor: '#FFFFFF' },
+  dashboardLoadingIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
+  dashboardLoadingTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'center', marginBottom: 8 },
+  dashboardLoadingDesc: { fontSize: 13, fontWeight: '700', lineHeight: 20, color: '#6B7280', textAlign: 'center' },
   sectionGray: { backgroundColor: '#F9FAFB', paddingVertical: 24, paddingHorizontal: 20 },
   sectionWhite: { backgroundColor: '#FFF', paddingVertical: 24, paddingHorizontal: 20 },
   sectionHeader: { marginBottom: 16 },
@@ -1176,6 +1355,28 @@ const styles = StyleSheet.create({
   insightChartBar: { flex: 1, borderRadius: 8, backgroundColor: '#111827' },
   insightLockOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.52)' },
   insightLockButton: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
+  insightContent: { padding: 18, gap: 14 },
+  insightContentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  insightPeriod: { fontSize: 11, fontWeight: '800', color: '#6B7280', marginBottom: 3 },
+  insightContentTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
+  insightKeywordPanel: { borderRadius: 18, backgroundColor: '#111827', padding: 14, gap: 12 },
+  insightKeywordHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  insightKeywordLabel: { fontSize: 12, fontWeight: '900', color: '#FFFFFF' },
+  insightKeywordCount: { fontSize: 11, fontWeight: '900', color: 'rgba(255,255,255,0.62)' },
+  insightKeywordWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  insightKeywordChip: { borderRadius: 999, backgroundColor: '#FFFFFF', paddingHorizontal: 11, paddingVertical: 7 },
+  insightKeywordText: { fontSize: 12, fontWeight: '900', color: '#111827' },
+  insightPrimaryBox: { borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', padding: 14, gap: 8 },
+  insightBoxLabel: { fontSize: 11, fontWeight: '900', color: '#6B7280' },
+  insightBodyText: { fontSize: 13, lineHeight: 20, fontWeight: '700', color: '#111827' },
+  insightRecommendationBox: { borderRadius: 16, backgroundColor: '#EEF2FF', padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  insightRecommendationText: { flex: 1, fontSize: 13, lineHeight: 20, fontWeight: '800', color: '#111827' },
+  insightListSection: { borderRadius: 16, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB', padding: 14, gap: 9 },
+  insightListTitle: { fontSize: 13, fontWeight: '900', color: '#111827' },
+  insightBulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  insightBullet: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#111827', marginTop: 8 },
+  insightListText: { flex: 1, fontSize: 12, lineHeight: 19, fontWeight: '700', color: '#4B5563' },
+  insightMutedText: { fontSize: 13, lineHeight: 20, fontWeight: '700', color: '#6B7280' },
   fundingList: { gap: 12 },
   fundingPagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 16 },
   paginationButton: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
@@ -1342,6 +1543,7 @@ const styles = StyleSheet.create({
   paymentTitle: { fontSize: 18, fontWeight: '900', color: '#111827', textAlign: 'center' },
   paymentDesc: { fontSize: 13, lineHeight: 20, fontWeight: '600', color: '#6B7280', textAlign: 'center' },
   paymentPrimaryButton: { width: '100%', height: 52, borderRadius: 16, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  paymentPrimaryButtonDisabled: { opacity: 0.55 },
   paymentPrimaryText: { fontSize: 15, fontWeight: '900', color: '#FFF' },
   stageItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderRadius: 16, borderWidth: 1.5, borderColor: '#F3F4F6', marginBottom: 12 },
   stageItemActive: { borderColor: '#111', backgroundColor: '#F9FAFB' },

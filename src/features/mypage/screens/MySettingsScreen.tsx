@@ -16,6 +16,7 @@ import { AlertTriangle, ArrowLeft, ChevronRight, LockKeyhole, RefreshCw, X } fro
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { getMyPageApiErrorMessage, withdrawMyPageAccount } from '@/features/mypage/api';
 
 type SettingsNotice = {
   title: string;
@@ -24,12 +25,13 @@ type SettingsNotice = {
 
 export default function MySettingsScreen() {
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [confirmWithdrawVisible, setConfirmWithdrawVisible] = useState(false);
   const [withdrawPassword, setWithdrawPassword] = useState('');
   const [withdrawPasswordError, setWithdrawPasswordError] = useState('');
   const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [notice, setNotice] = useState<SettingsNotice>(null);
 
   const openOnboarding = () => {
@@ -80,15 +82,33 @@ export default function MySettingsScreen() {
   };
 
   const closeConfirmWithdrawModal = () => {
+    if (isWithdrawing) return;
     setConfirmWithdrawVisible(false);
   };
 
-  const confirmWithdrawal = () => {
-    setConfirmWithdrawVisible(false);
-    setNotice({
-      title: '회원 탈퇴 API 연결이 필요합니다',
-      body: '닉네임 확인과 최종 확인 UI는 준비되었습니다. 백엔드 탈퇴 API가 준비되면 확인 버튼에서 계정 삭제 요청을 연결하면 됩니다.',
-    });
+  const confirmWithdrawal = async () => {
+    const nickname = withdrawPassword.trim();
+    if (!nickname) {
+      setConfirmWithdrawVisible(false);
+      setPasswordModalVisible(true);
+      setWithdrawPasswordError('닉네임을 입력해주세요.');
+      return;
+    }
+
+    setIsWithdrawing(true);
+    try {
+      await withdrawMyPageAccount(nickname);
+      setConfirmWithdrawVisible(false);
+      await logout();
+      router.replace('/login' as any);
+    } catch (error) {
+      setNotice({
+        title: '회원 탈퇴 실패',
+        body: getMyPageApiErrorMessage(error, '회원 탈퇴에 실패했습니다.'),
+      });
+    } finally {
+      setIsWithdrawing(false);
+    }
   };
 
   return (
@@ -139,6 +159,7 @@ export default function MySettingsScreen() {
       />
       <WithdrawConfirmModal
         visible={confirmWithdrawVisible}
+        loading={isWithdrawing}
         onCancel={closeConfirmWithdrawModal}
         onConfirm={confirmWithdrawal}
       />
@@ -235,10 +256,12 @@ function PasswordConfirmModal({
 
 function WithdrawConfirmModal({
   visible,
+  loading,
   onCancel,
   onConfirm,
 }: {
   visible: boolean;
+  loading: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -254,11 +277,11 @@ function WithdrawConfirmModal({
             탈퇴가 완료되면 계정 정보와 서비스 이용 내역을 되돌릴 수 없습니다.
           </Text>
           <View style={styles.modalButtonRow}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={onCancel}>
+            <TouchableOpacity style={styles.secondaryButton} disabled={loading} onPress={onCancel}>
               <Text style={styles.secondaryButtonText}>취소</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryDangerButton} onPress={onConfirm}>
-              <Text style={styles.primaryDangerButtonText}>탈퇴하기</Text>
+            <TouchableOpacity style={[styles.primaryDangerButton, loading && styles.disabledButton]} disabled={loading} onPress={onConfirm}>
+              {loading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.primaryDangerButtonText}>탈퇴하기</Text>}
             </TouchableOpacity>
           </View>
         </View>

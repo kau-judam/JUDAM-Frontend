@@ -639,6 +639,13 @@ export async function updateMyPagePhone(phoneNumber: string, verificationCode: s
   return unwrapMyPageData<MyPagePhoneUpdateResponse>(response);
 }
 
+export async function withdrawMyPageAccount(nickname: string) {
+  return requestMyPageJson<MyPageApiEnvelope<null>>('/api/users/me', {
+    method: 'DELETE',
+    body: JSON.stringify({ nickname }),
+  });
+}
+
 export async function updateMyPageProfileImage(image: MyPageImageUploadFile) {
   if (!image.uri) {
     throw new Error('프로필 이미지 파일을 첨부해주세요.');

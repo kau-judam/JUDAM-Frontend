@@ -12,12 +12,15 @@ function getParam(value: string | string[] | undefined) {
 
 export default function TossPaymentFailScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ code?: string; message?: string; orderId?: string; fundingId?: string; orderName?: string }>();
+  const params = useLocalSearchParams<{ code?: string; message?: string; orderId?: string; fundingId?: string; orderName?: string; paymentType?: string; returnTo?: string }>();
   const message = getFundingApiSafeMessage(getParam(params.message), '토스 결제가 완료되지 않았습니다.');
   const code = getParam(params.code);
   const orderId = getParam(params.orderId);
   const fundingId = getParam(params.fundingId);
   const orderName = getParam(params.orderName);
+  const paymentType = getParam(params.paymentType);
+  const returnTo = getParam(params.returnTo);
+  const isInsightPayment = paymentType === 'BREWERY_INSIGHT';
 
   useEffect(() => {
     void clearPendingExternalPayment();
@@ -41,6 +44,10 @@ export default function TossPaymentFailScreen() {
         <TouchableOpacity
           style={styles.primaryButton}
           onPress={() => {
+            if (isInsightPayment) {
+              router.replace((returnTo || '/brewery/dashboard') as any);
+              return;
+            }
             if (fundingId) {
               router.replace(`/funding/support?id=${fundingId}` as any);
               return;
@@ -52,7 +59,7 @@ export default function TossPaymentFailScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.secondaryButton}
-          onPress={() => router.replace(fundingId ? `/funding/${fundingId}` as any : '/funding' as any)}
+          onPress={() => router.replace(isInsightPayment ? (returnTo || '/brewery/dashboard') as any : fundingId ? `/funding/${fundingId}` as any : '/funding' as any)}
         >
           <Text style={styles.secondaryButtonText}>펀딩 상세로 돌아가기</Text>
         </TouchableOpacity>

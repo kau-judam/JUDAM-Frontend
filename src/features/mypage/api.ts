@@ -116,6 +116,7 @@ export type MyPageSulbtiFeedbackPayload = {
 
 export type MyPageSulbtiFeedbackResult = {
   feedbackId?: number | string;
+  sulbtiResultId?: number | string | null;
   hasSubmittedFeedback?: boolean;
   feedback?: {
     hasSubmitted?: boolean;

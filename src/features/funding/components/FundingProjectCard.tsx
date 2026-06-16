@@ -93,7 +93,7 @@ function FundingProjectCard({
                 <View style={[styles.signalDot, styles.signalDotGreen, matchTone === 'green' && styles.signalDotActive]} />
               </View>
               <Text style={[styles.matchBadgeTxt, matchTone && getMatchTextStyle(matchTone)]} numberOfLines={1}>
-                {matchTone ? getMatchLabel(matchTone) : '내 술BTI와 잘 어울려요'}
+                {matchTone ? getMatchLabel(matchTone) : '내 술BTI와 잘 어울려요.'}
               </Text>
             </View>
           )}
@@ -136,9 +136,9 @@ function getMatchTextStyle(tone: ReturnType<typeof getMatchTone>) {
 }
 
 function getMatchLabel(tone: ReturnType<typeof getMatchTone>) {
-  if (tone === 'red') return '내 술BTI와 어울리지 않아요.';
+  if (tone === 'red') return '내 술BTI와 어색할 수 있어요.';
   if (tone === 'orange') return '내 술BTI와 괜찮은 매칭이에요.';
-  return '내 술BTI와 잘 어울려요';
+  return '내 술BTI와 잘 어울려요.';
 }
 
 function getStatusBadgeStyle(tone: ReturnType<typeof getFundingProjectStatusTone>) {

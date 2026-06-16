@@ -16,7 +16,6 @@ import { AlertTriangle, ArrowLeft, ChevronRight, LockKeyhole, RefreshCw, X } fro
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { loginWithEmail } from '@/features/auth/api';
 
 type SettingsNotice = {
   title: string;
@@ -57,26 +56,27 @@ export default function MySettingsScreen() {
   };
 
   const verifyWithdrawalPassword = async () => {
-    if (!user?.email) {
-      setWithdrawPasswordError('현재 계정 이메일을 확인할 수 없습니다. 다시 로그인해주세요.');
+    const expectedNickname = (user?.name || '').trim();
+    const inputNickname = withdrawPassword.trim();
+
+    if (!expectedNickname) {
+      setWithdrawPasswordError('현재 계정 닉네임을 확인할 수 없습니다. 다시 로그인해주세요.');
       return;
     }
-    if (!withdrawPassword.trim()) {
-      setWithdrawPasswordError('비밀번호를 입력해주세요.');
+    if (!inputNickname) {
+      setWithdrawPasswordError('닉네임을 입력해주세요.');
+      return;
+    }
+    if (inputNickname !== expectedNickname) {
+      setWithdrawPasswordError('닉네임이 일치하지 않습니다. 다시 입력해주세요.');
       return;
     }
 
     setIsVerifyingPassword(true);
     setWithdrawPasswordError('');
-    try {
-      await loginWithEmail(user.email, withdrawPassword);
-      setPasswordModalVisible(false);
-      setConfirmWithdrawVisible(true);
-    } catch {
-      setWithdrawPasswordError('비밀번호가 일치하지 않습니다. 다시 입력해주세요.');
-    } finally {
-      setIsVerifyingPassword(false);
-    }
+    setPasswordModalVisible(false);
+    setConfirmWithdrawVisible(true);
+    setIsVerifyingPassword(false);
   };
 
   const closeConfirmWithdrawModal = () => {
@@ -87,7 +87,7 @@ export default function MySettingsScreen() {
     setConfirmWithdrawVisible(false);
     setNotice({
       title: '회원 탈퇴 API 연결이 필요합니다',
-      body: '비밀번호 확인과 최종 확인 UI는 준비되었습니다. 백엔드 탈퇴 API가 준비되면 확인 버튼에서 계정 삭제 요청을 연결하면 됩니다.',
+      body: '닉네임 확인과 최종 확인 UI는 준비되었습니다. 백엔드 탈퇴 API가 준비되면 확인 버튼에서 계정 삭제 요청을 연결하면 됩니다.',
     });
   };
 
@@ -201,14 +201,13 @@ function PasswordConfirmModal({
               <X size={22} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.modalTitle}>비밀번호 확인</Text>
-          <Text style={styles.modalDesc}>회원 탈퇴를 진행하려면 현재 계정의 비밀번호를 입력해주세요.</Text>
+          <Text style={styles.modalTitle}>닉네임 확인</Text>
+          <Text style={styles.modalDesc}>회원 탈퇴를 진행하려면 현재 계정의 닉네임을 정확히 입력해주세요.</Text>
           <TextInput
             value={password}
             onChangeText={onChangePassword}
-            placeholder="비밀번호를 입력해주세요"
+            placeholder="닉네임을 입력해주세요"
             placeholderTextColor="#9CA3AF"
-            secureTextEntry
             autoCapitalize="none"
             editable={!loading}
             style={[styles.passwordInput, error ? styles.passwordInputError : null]}

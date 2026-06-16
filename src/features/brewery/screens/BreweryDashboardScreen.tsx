@@ -284,6 +284,13 @@ export default function BreweryDashboardScreen() {
     router.replace((dashboardReturnTo || '/(tabs)/mypage') as any);
   }, [dashboardReturnTo]);
 
+  const handleInsightPaymentPress = useCallback(() => {
+    Alert.alert(
+      '결제 API 확인 필요',
+      '양조장 인사이트 결제는 펀딩 후원 주문이 아니어서 인사이트 전용 결제 주문 생성 API가 필요합니다.',
+    );
+  }, []);
+
   const loadDashboardNotifications = useCallback(async () => {
     if (!currentUserId || currentUserType !== 'brewery') return;
 
@@ -1068,8 +1075,8 @@ export default function BreweryDashboardScreen() {
               </View>
               <Text style={styles.paymentTitle}>인사이트 기능을 구매하시겠어요?</Text>
               <Text style={styles.paymentDesc}>후원자 반응, 펀딩 전환율, 매출 흐름을 대시보드에서 확인할 수 있습니다.</Text>
-              <TouchableOpacity style={styles.paymentPrimaryButton} activeOpacity={0.88}>
-                <Text style={styles.paymentPrimaryText}>결제하기</Text>
+              <TouchableOpacity style={styles.paymentPrimaryButton} activeOpacity={0.88} onPress={handleInsightPaymentPress}>
+                <Text style={styles.paymentPrimaryText}>9,900원 결제하기</Text>
               </TouchableOpacity>
             </View>
           </View>

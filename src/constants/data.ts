@@ -125,6 +125,8 @@ export interface FundingProject {
   matchScore?: number | null;
   tasteMatchScore?: number | null;
   matchRate?: number | null;
+  matchPercent?: number | null;
+  recommendationScore?: number | null;
   goalAmount: number;
   currentAmount: number;
   backers: number;

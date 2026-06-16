@@ -41,7 +41,9 @@ export function getTasteMatchScore(project: FundingProject, userTasteProfile: Ta
     project.sulbtiMatchScore ??
     project.matchScore ??
     project.tasteMatchScore ??
-    project.matchRate;
+    project.matchRate ??
+    project.matchPercent ??
+    project.recommendationScore;
   if (typeof serverMatchScore === 'number' && Number.isFinite(serverMatchScore)) {
     return Math.max(0, Math.min(100, Math.round(serverMatchScore)));
   }

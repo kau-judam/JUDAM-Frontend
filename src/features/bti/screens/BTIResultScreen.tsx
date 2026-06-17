@@ -5,7 +5,6 @@ import {
   ImageSourcePropType,
   Modal,
   ScrollView,
-  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -20,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { getBtiDisplayType, getBtiResult, getBtiTasteAxisValuesFromScores, getBtiTasteAxisValuesFromTasteVector, normalizeBtiTasteAxisValue, resolveBtiType } from '@/features/bti/data';
 import { getMyPageApiErrorMessage, getMyPageSulbti, saveMyPageSulbti, submitMyPageSulbtiFeedback, type MyPageSulbtiResult } from '@/features/mypage/api';
+import { DEFAULT_JUDAM_SHARE_IMAGE_URL, shareJudamLink } from '@/utils/share';
 
 const BTI_CHARACTER_IMAGES: Record<string, ImageSourcePropType> = {
   SHFC: require('@/assets/images/BTI/1.png'),
@@ -204,10 +204,17 @@ export default function BTIResultScreen() {
 
   const handleShare = async () => {
     if (!result) return;
+    const shareUrl = 'https://kaujudam.com/sulbti';
+    const shareTitle = '나의 술BTI 결과';
+    const shareDescription = `나의 술BTI는 ${displayType} - ${result.name}입니다. 주담에서 나에게 맞는 막걸리 펀딩을 찾아보세요.`;
     try {
-      await Share.share({
-        title: '나의 술BTI 결과',
-        message: `나의 술BTI는 ${displayType} - ${result.name}입니다. 주담에서 나에게 맞는 막걸리 펀딩을 찾아보세요.`,
+      await shareJudamLink({
+        title: shareTitle,
+        description: shareDescription,
+        url: shareUrl,
+        imageUrl: DEFAULT_JUDAM_SHARE_IMAGE_URL,
+        buttonTitle: '술BTI 하러가기',
+        nativeMessage: `${shareTitle}\n${shareDescription}\n${shareUrl}`,
       });
     } catch {
       Alert.alert('공유 실패', '결과를 공유하지 못했습니다. 다시 시도해주세요.');

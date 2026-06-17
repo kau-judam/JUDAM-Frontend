@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -32,8 +32,9 @@ import { useFunding } from '@/contexts/FundingContext';
 import { getFundingProjectImageSource, getFundingProjectStatusLabel, getPopularRecipes, isFundingProjectSupportable } from '@/constants/data';
 import type { FundingProject, Recipe } from '@/constants/data';
 import { fetchPopularRecipes } from '@/features/recipe/api';
-import { getFundingApiErrorMessage, getFundingList, getFundingStats, type FundingStatsResponse } from '@/features/funding/api';
+import { getFundingApiErrorMessage, getFundingList } from '@/features/funding/api';
 import { mergeFundingListItem } from '@/features/funding/apiMappers';
+import { getEmptyStatsSummary, getStatsSummary, type HomeStatsSummary } from '@/features/stats/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -83,6 +84,14 @@ function isPublishedRecipe(recipe: Recipe) {
   return String(recipe.status || '').toUpperCase() === 'PUBLISHED';
 }
 
+function formatCountWithUnit(value: number, unit: string) {
+  return `${Math.max(0, Math.round(value || 0)).toLocaleString()}${unit}`;
+}
+
+function formatWon(value: number) {
+  return `${Math.max(0, Math.round(value || 0)).toLocaleString()}원`;
+}
+
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const colors = Colors[colorScheme];
@@ -91,21 +100,8 @@ export default function HomeScreen() {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [popularRecipes, setPopularRecipes] = useState<Recipe[]>(() => getPopularRecipes(3));
   const [popularFundingProjects, setPopularFundingProjects] = useState<FundingProject[]>([]);
-  const [serverFundingStats, setServerFundingStats] = useState<FundingStatsResponse | null>(null);
-  const fundingStats = useMemo(() => {
-    if (!serverFundingStats) {
-      return {
-        participationAvailableFunding: 0,
-        totalSupporterCount: 0,
-        successfulProjectCount: 0,
-        totalRaisedAmount: 0,
-        totalRaisedTenMillion: 0,
-        totalRaisedTenMillionUnit: '천만원',
-      };
-    }
-    return serverFundingStats;
-  }, [serverFundingStats]);
-  const totalRaisedAmountText = `${Math.round((fundingStats.totalRaisedAmount || 0) / 10000).toLocaleString()}만원`;
+  const [homeStats, setHomeStats] = useState<HomeStatsSummary>(() => getEmptyStatsSummary().home);
+  const totalRaisedAmountText = formatWon(homeStats.totalFundingAmount);
 
   useEffect(() => {
     projectsRef.current = projects;
@@ -159,12 +155,12 @@ export default function HomeScreen() {
   useEffect(() => {
     let mounted = true;
 
-    getFundingStats()
+    getStatsSummary()
       .then((stats) => {
-        if (mounted) setServerFundingStats(stats);
+        if (mounted) setHomeStats(stats.home);
       })
       .catch((error) => {
-        console.warn(getFundingApiErrorMessage(error, '펀딩 통계를 불러오지 못했습니다.'));
+        console.warn(getFundingApiErrorMessage(error, '통계를 불러오지 못했습니다.'));
       });
 
     return () => {
@@ -345,7 +341,7 @@ export default function HomeScreen() {
               <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
                 <Users size={20} color="#FFF" />
               </View>
-              <Text style={styles.statsValue}>{fundingStats.totalSupporterCount.toLocaleString()}</Text>
+              <Text style={styles.statsValue}>{formatCountWithUnit(homeStats.memberCount, '명')}</Text>
               <Text style={styles.statsLabel}>가입 회원</Text>
             </View>
             <View style={styles.statsItem}>
@@ -359,14 +355,14 @@ export default function HomeScreen() {
               <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
                 <TrendingUp size={20} color="#FFF" />
               </View>
-              <Text style={styles.statsValue}>{fundingStats.participationAvailableFunding}</Text>
+              <Text style={styles.statsValue}>{formatCountWithUnit(homeStats.activeFundingCount, '개')}</Text>
               <Text style={styles.statsLabel}>진행중인 펀딩</Text>
             </View>
             <View style={styles.statsItem}>
               <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
                 <Trophy size={20} color="#FFF" />
               </View>
-              <Text style={styles.statsValue}>{fundingStats.successfulProjectCount}</Text>
+              <Text style={styles.statsValue}>{formatCountWithUnit(homeStats.successfulFundingCount, '개')}</Text>
               <Text style={styles.statsLabel}>성공한 펀딩</Text>
             </View>
           </View>

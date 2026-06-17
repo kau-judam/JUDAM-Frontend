@@ -76,6 +76,7 @@ import {
 import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { FIXED_PROJECT_SHIPPING_FEE } from '@/features/funding/supportConfig';
+import { fetchRecipeDetail } from '@/features/recipe/api';
 import SafeStorage from '@/utils/storage';
 
 type TabId = 'basic' | 'funding' | 'rewards' | 'taste' | 'plan' | 'creator' | 'trust' | 'verification';
@@ -180,11 +181,11 @@ const EMPTY_UPLOADED_FILES: Record<FileKey, UploadedFileValue> = {
   manufacturingLicense: '',
 };
 const DOCUMENT_TYPE_BY_FILE_KEY: Record<DocumentFileKey, FundingDocumentType> = {
-  idCard: 'idCard',
-  businessLicense: 'businessLicense',
-  salesPermit: 'salesPermit',
-  alcoholPermit: 'alcoholPermit',
-  manufacturingLicense: 'manufacturingLicense',
+  idCard: 'ID_CARD',
+  businessLicense: 'BUSINESS_LICENSE',
+  salesPermit: 'SALES_PERMIT',
+  alcoholPermit: 'ALCOHOL_PERMIT',
+  manufacturingLicense: 'MANUFACTURING_LICENSE',
 };
 const DOCUMENT_LABEL_BY_FILE_KEY: Record<DocumentFileKey, string> = {
   idCard: '신분증/사업자등록증',
@@ -227,6 +228,20 @@ function formatBusinessRegistrationNumber(value: string) {
 
 function isValidProjectPhone(value: string) {
   return /^01[016789][0-9]{7,8}$/.test(digitsOnly(value));
+}
+
+function isValidProjectEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function isPositiveProjectNumber(value: string) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0;
+}
+
+function isReasonableAlcoholPercentage(value: string) {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 && numberValue <= 100;
 }
 
 function parseDate(value: string) {
@@ -331,6 +346,129 @@ function logFundingCreateDebug(...args: unknown[]) {
 function warnFundingCreateDebug(...args: unknown[]) {
   if (!__DEV__) return;
   console.warn(...args);
+}
+
+function getSubmitStepGuide(step: string) {
+  if (step.includes('기본정보')) return '프로젝트 제목, 메인재료, 도수, 한줄 소개, 대표 이미지를 다시 확인해주세요.';
+  if (step.includes('목표 금액') || step.includes('일정')) return '1병당 가격, 수량, 펀딩 시작일, 프로젝트 기간, 종료일, 예상 발송 시작일을 다시 확인해주세요.';
+  if (step.includes('법적 고시')) return '용량, 제품 도수, 원재료명, 원산지가 비어 있거나 형식이 잘못되지 않았는지 확인해주세요.';
+  if (step.includes('프로젝트 계획')) return '프로젝트 소개, 예산, 일정, 영상 URL 형식을 다시 확인해주세요.';
+  if (step.includes('양조장 정보')) return '대표자명, 사업자등록번호, 사업장 주소, 휴대폰 인증, 계좌 인증, 업태, 종목을 다시 확인해주세요.';
+  if (step.includes('안내 사항')) return '프로젝트 정책과 예상되는 어려움/해결 방안을 다시 확인해주세요.';
+  if (step.includes('서류') || step.includes('업로드')) return '첨부한 서류가 PDF/JPG/PNG이고 5MB 이하인지, 서류 5종이 모두 선택되어 있는지 확인해주세요.';
+  if (step.includes('최종 제출')) return '서버에 저장된 임시저장 데이터가 100%인지, 방금 저장한 항목이 모두 반영됐는지 확인해주세요.';
+  return '입력한 값의 형식이나 첨부파일을 다시 확인해주세요.';
+}
+
+function formatSubmitStepError(step: string, error: unknown) {
+  const message = getFundingApiErrorMessage(error, '요청값이 올바르지 않습니다.');
+  const cleanedMessage = message
+    .replace(/펀딩 프로젝트 임시저장/g, '펀딩 프로젝트 제출 준비')
+    .replace(/임시저장/g, '제출 준비')
+    .trim();
+  const hasValidationDetails = /수정할 항목|-\s/.test(cleanedMessage);
+  const isGenericInvalidRequest = /요청값이 올바르지|입력값이 올바르지|bad request|invalid request/i.test(cleanedMessage);
+  const guide = isGenericInvalidRequest && !hasValidationDetails ? `\n\n확인할 항목:\n- ${getSubmitStepGuide(step)}` : '';
+  return `${step} 단계에서 제출이 막혔습니다.\n\n${cleanedMessage || '요청값이 올바르지 않습니다.'}${guide}`;
+}
+
+function getProjectDraftSubmitIssues(draft: any, userEmail?: string | null, options: { checkStartDate?: boolean } = {}) {
+  const issues: string[] = [];
+  const addIssue = (tab: string, message: string) => {
+    issues.push(`${tab}: ${message}`);
+  };
+
+  const basicInfo = draft?.basicInfo || {};
+  const fundingInfo = draft?.fundingInfo || {};
+  const productInfo = draft?.productInfo || {};
+  const projectPlan = normalizeProjectPlanDraft(draft?.projectPlan);
+  const creatorInfo = draft?.creatorInfo || {};
+  const taxInfo = draft?.taxInfo || {};
+  const trustInfo = draft?.trustInfo || {};
+  const uploadedFiles = normalizeUploadedFiles(draft?.uploadedFiles);
+  const filledIngredientRows = Array.isArray(productInfo.ingredients)
+    ? productInfo.ingredients.filter((item: IngredientRow) => item.ingredient?.trim() || item.origin?.trim())
+    : [];
+  const incompleteIngredientRows = filledIngredientRows.filter((item: IngredientRow) => !item.ingredient?.trim() || !item.origin?.trim());
+  const budgetLines = parseTextLines(projectPlan.budget);
+  const budgetItems = parseBudgetItems(projectPlan.budget);
+  const scheduleLines = parseTextLines(projectPlan.schedule);
+  const contactEmail = String(taxInfo.email || userEmail || '').trim();
+
+  if (!String(basicInfo.title || '').trim()) addIssue('기본정보', '프로젝트 제목이 서버에 저장되지 않았습니다.');
+  if (!String(basicInfo.mainIngredient || '').trim()) addIssue('기본정보', '메인재료가 서버에 저장되지 않았습니다.');
+  if (!isReasonableAlcoholPercentage(String(basicInfo.alcoholContent || ''))) addIssue('기본정보', '도수가 서버에 올바르게 저장되지 않았습니다.');
+  if (!String(basicInfo.summary || '').trim()) addIssue('기본정보', '프로젝트 한줄 소개가 서버에 저장되지 않았습니다.');
+  if (!normalizeProjectImageUrls(basicInfo.images).length) addIssue('기본정보', '대표 이미지가 서버에 저장되지 않았습니다.');
+
+  if (!isPositiveProjectNumber(String(fundingInfo.pricePerBottle || ''))) addIssue('목표 금액 및 일정', '1병당 가격이 서버에 저장되지 않았습니다.');
+  if (!Number.isInteger(Number(fundingInfo.bottleQuantity)) || Number(fundingInfo.bottleQuantity) <= 0) {
+    addIssue('목표 금액 및 일정', '수량이 서버에 올바르게 저장되지 않았습니다.');
+  }
+  if (!isPositiveProjectNumber(String(fundingInfo.goalAmount || ''))) addIssue('목표 금액 및 일정', '목표 금액이 서버에 저장되지 않았습니다.');
+  if (!parseDate(String(fundingInfo.startDate || ''))) addIssue('목표 금액 및 일정', '펀딩 시작일이 서버에 저장되지 않았습니다.');
+  if (!parseDate(String(fundingInfo.expectedDeliveryDate || ''))) addIssue('목표 금액 및 일정', '예상 발송 시작일이 서버에 저장되지 않았습니다.');
+  if (options.checkStartDate) {
+    const serverStartDate = parseDate(String(fundingInfo.startDate || ''));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (serverStartDate && serverStartDate < today) addIssue('목표 금액 및 일정', '펀딩 시작일이 오늘보다 이전입니다.');
+  }
+
+  if (!isPositiveProjectNumber(String(productInfo.volume || ''))) addIssue('법적 고시 정보', '용량이 서버에 저장되지 않았습니다.');
+  if (!isReasonableAlcoholPercentage(String(productInfo.alcoholContent || basicInfo.alcoholContent || ''))) {
+    addIssue('법적 고시 정보', '제품 도수가 서버에 올바르게 저장되지 않았습니다.');
+  }
+  if (filledIngredientRows.length === 0) {
+    addIssue('법적 고시 정보', '원재료명과 원산지가 서버에 저장되지 않았습니다.');
+  } else if (incompleteIngredientRows.length > 0) {
+    addIssue('법적 고시 정보', '서버에 저장된 원재료 행 중 원재료명 또는 원산지가 비어 있습니다.');
+  }
+
+  if (!projectPlan.introduction.trim()) addIssue('프로젝트 계획', '프로젝트 소개글이 서버에 저장되지 않았습니다.');
+  if (budgetLines.length === 0) {
+    addIssue('프로젝트 계획', '프로젝트 예산이 서버에 저장되지 않았습니다.');
+  } else if (budgetItems.some((item) => !item.item.trim() || !item.amount)) {
+    addIssue('프로젝트 계획', '프로젝트 예산이 "- 항목: 금액만원" 형식으로 저장되지 않았습니다.');
+  }
+  if (scheduleLines.length === 0) {
+    addIssue('프로젝트 계획', '프로젝트 일정이 서버에 저장되지 않았습니다.');
+  } else if (scheduleLines.some((line) => !line.includes(':'))) {
+    addIssue('프로젝트 계획', '프로젝트 일정이 "- 날짜: 일정 내용" 형식으로 저장되지 않았습니다.');
+  }
+
+  if (!isValidProjectPhone(String(creatorInfo.phone || ''))) addIssue('양조장 정보', '휴대폰 번호가 서버에 올바르게 저장되지 않았습니다.');
+  if (!draft?.phoneVerified) addIssue('양조장 정보', '휴대폰 인증 완료 상태가 서버에 반영되지 않았습니다.');
+  if (!String(creatorInfo.accountBank || '').trim()) addIssue('양조장 정보', '입금 계좌 은행이 서버에 저장되지 않았습니다.');
+  if (!String(creatorInfo.accountNumber || '').trim()) addIssue('양조장 정보', '계좌번호가 서버에 저장되지 않았습니다.');
+  if (!draft?.accountVerified) addIssue('양조장 정보', '입금 계좌 인증 완료 상태가 서버에 반영되지 않았습니다.');
+  if (!String(taxInfo.businessType || '').trim()) addIssue('양조장 정보', '사업자 유형이 서버에 저장되지 않았습니다.');
+  if (!String(taxInfo.businessName || '').trim()) addIssue('양조장 정보', '상호명(법인명)이 서버에 저장되지 않았습니다.');
+  if (digitsOnly(String(taxInfo.businessNumber || '')).length !== 10) addIssue('양조장 정보', '사업자 등록번호 10자리가 서버에 저장되지 않았습니다.');
+  if (!String(taxInfo.ceoName || '').trim()) addIssue('양조장 정보', '대표자 성명이 서버에 저장되지 않았습니다.');
+  if (!String(taxInfo.address || '').trim()) addIssue('양조장 정보', '사업장 소재지가 서버에 저장되지 않았습니다.');
+  if (!String(taxInfo.businessCategory || '').trim()) addIssue('양조장 정보', '업태가 서버에 저장되지 않았습니다.');
+  if (!String(taxInfo.businessItem || '').trim()) addIssue('양조장 정보', '종목이 서버에 저장되지 않았습니다.');
+  if (!isValidProjectEmail(contactEmail)) addIssue('양조장 정보', '이메일 주소가 서버에 올바르게 저장되지 않았습니다.');
+
+  if (!String(trustInfo.projectPolicy || '').trim()) addIssue('안내 사항', '프로젝트 정책이 서버에 저장되지 않았습니다.');
+  if (!String(trustInfo.expectedDifficulties || '').trim()) addIssue('안내 사항', '예상되는 어려움과 해결 방안이 서버에 저장되지 않았습니다.');
+
+  const missingDocuments = DOCUMENT_FILE_KEYS
+    .filter((key) => !isRequiredDocumentReady(uploadedFiles[key]))
+    .map((key) => DOCUMENT_LABEL_BY_FILE_KEY[key]);
+  if (missingDocuments.length > 0) {
+    addIssue('인증 서류', `${missingDocuments.join(', ')} 파일이 서버에 저장되지 않았습니다.`);
+  }
+
+  return Array.from(new Set(issues));
+}
+
+function formatProjectDraftSubmitIssues(issues: string[]) {
+  if (issues.length === 0) return '';
+  const visibleIssues = issues.slice(0, 10);
+  const moreCount = issues.length - visibleIssues.length;
+  return `제출 전에 서버 저장 상태를 확인해주세요.\n\n${visibleIssues.map((issue) => `- ${issue}`).join('\n')}${moreCount > 0 ? `\n- 외 ${moreCount}개 항목` : ''}`;
 }
 
 function parseTextLines(value: string) {
@@ -742,6 +880,12 @@ function replaceProjectDraftImages(draft: any, imageUrls: string[]) {
   };
 }
 
+function normalizeRecipeAlcoholContent(value?: string) {
+  const text = String(value || '').trim();
+  const match = text.match(/\d+(?:\.\d+)?/);
+  return match?.[0] || text;
+}
+
 export default function BreweryProjectCreateScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
@@ -749,8 +893,11 @@ export default function BreweryProjectCreateScreen() {
   const { projects, mergeProjects } = useFunding();
   const editProjectIdParam = getParamValue(params.projectId) || getParamValue(params.editId);
   const initialDraftIdParam = getParamValue(params.draftId);
+  const initialRecipeIdParam = getParamValue(params.recipeId);
   const editProjectId = editProjectIdParam ? Number(editProjectIdParam) : null;
   const initialDraftId = initialDraftIdParam ? Number(initialDraftIdParam) : null;
+  const parsedInitialRecipeId = initialRecipeIdParam ? Number(initialRecipeIdParam) : NaN;
+  const initialRecipeId = Number.isFinite(parsedInitialRecipeId) && parsedInitialRecipeId > 0 ? parsedInitialRecipeId : null;
   const editProject = useMemo(
     () => (editProjectId ? projects.find((project) => project.id === editProjectId) || null : null),
     [editProjectId, projects]
@@ -765,9 +912,9 @@ export default function BreweryProjectCreateScreen() {
   const tempSaveOwnerKey = String(draftOwner.id ?? draftOwner.uid ?? draftOwner.email ?? 'anonymous');
   const tempSaveKey = isEditMode && editProjectId ? `${TEMP_SAVE_KEY}:${tempSaveOwnerKey}:edit:${editProjectId}` : `${TEMP_SAVE_KEY}:${tempSaveOwnerKey}`;
   const appliedEditProjectKeyRef = useRef<string | null>(null);
+  const appliedRecipeIdRef = useRef<number | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('basic');
   const [showPreview, setShowPreview] = useState(false);
-  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -867,6 +1014,47 @@ export default function BreweryProjectCreateScreen() {
     profileImage: user?.breweryProfileImage || '',
     bio: user?.breweryDescription || user?.breweryBrandStory || user?.breweryBrandStoryLong || '',
   }), [user?.breweryBrandStory, user?.breweryBrandStoryLong, user?.breweryDescription, user?.breweryName, user?.breweryProfileImage]);
+
+  useEffect(() => {
+    if (!initialRecipeId || isEditMode) return;
+    if (appliedRecipeIdRef.current === initialRecipeId) return;
+
+    let isMounted = true;
+    appliedRecipeIdRef.current = initialRecipeId;
+
+    fetchRecipeDetail(initialRecipeId)
+      .then((recipe) => {
+        if (!isMounted) return;
+
+        const mainIngredient = recipe.ingredients?.[0] || '';
+        const subIngredient = recipe.subIngredients?.join(', ') || '';
+        const alcoholContent = normalizeRecipeAlcoholContent(recipe.alcoholRange);
+        const summary = recipe.summary || recipe.description || '';
+        const recipeImage = typeof recipe.image === 'string' ? recipe.image : '';
+        const flavorTags = normalizeProjectTags(recipe.flavorTags);
+        const concept = recipe.concept?.trim() || '';
+
+        setBasicInfo((prev) => ({
+          ...prev,
+          title: prev.title.trim() ? prev.title : recipe.title || prev.title,
+          shortTitle: prev.shortTitle.trim() ? prev.shortTitle : concept || prev.shortTitle,
+          mainIngredient: prev.mainIngredient.trim() ? prev.mainIngredient : mainIngredient || prev.mainIngredient,
+          subIngredient: prev.subIngredient.trim() ? prev.subIngredient : subIngredient || prev.subIngredient,
+          alcoholContent: prev.alcoholContent.trim() ? prev.alcoholContent : alcoholContent || prev.alcoholContent,
+          summary: prev.summary.trim() ? prev.summary : summary || prev.summary,
+          images: prev.images.length > 0 || !recipeImage ? prev.images : [recipeImage],
+          tags: prev.tags.length > 0 ? prev.tags : flavorTags,
+        }));
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        showAlert(getFundingApiErrorMessage(error, '기반 레시피 정보를 불러오지 못했습니다. 기본정보를 직접 입력해주세요.'));
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [initialRecipeId, isEditMode]);
 
   useEffect(() => {
     setCurrentDraftId(null);
@@ -1118,6 +1306,107 @@ export default function BreweryProjectCreateScreen() {
     if (progress < 100) return '필수 정보를 모두 입력한 후 제출할 수 있습니다.';
     return '';
   }, [deliveryDateWarning, durationWarning, isEditMode, progress, startDateWarning, uploadedFiles]);
+  const submitValidationMessage = useMemo(() => {
+    const issues: string[] = [];
+    const addIssue = (tab: string, message: string) => {
+      issues.push(`${tab}: ${message}`);
+    };
+    const budgetLines = parseTextLines(projectPlan.budget);
+    const budgetItems = parseBudgetItems(projectPlan.budget);
+    const scheduleLines = parseTextLines(projectPlan.schedule);
+    const filledIngredientRows = productInfo.ingredients.filter((item) => item.ingredient.trim() || item.origin.trim());
+    const incompleteIngredientRows = filledIngredientRows.filter((item) => !item.ingredient.trim() || !item.origin.trim());
+    const businessNumberDigits = digitsOnly(taxInfo.businessNumber);
+    const contactEmail = taxInfo.email.trim() || user?.email || '';
+
+    if (!basicInfo.title.trim()) addIssue('기본정보', '프로젝트 제목을 입력해주세요.');
+    if (!basicInfo.mainIngredient.trim()) addIssue('기본정보', '메인재료를 입력해주세요.');
+    if (!isReasonableAlcoholPercentage(basicInfo.alcoholContent)) addIssue('기본정보', '도수는 1부터 100 사이의 숫자로 입력해주세요.');
+    if (!basicInfo.summary.trim()) addIssue('기본정보', '프로젝트 한줄 소개를 입력해주세요.');
+    if (basicInfo.images.length === 0) addIssue('기본정보', '대표 이미지를 1장 이상 등록해주세요.');
+
+    if (!isPositiveProjectNumber(fundingInfo.pricePerBottle)) addIssue('목표 금액 및 일정', '1병당 가격을 1원 이상 숫자로 입력해주세요.');
+    if (!Number.isInteger(Number(fundingInfo.bottleQuantity)) || Number(fundingInfo.bottleQuantity) <= 0) {
+      addIssue('목표 금액 및 일정', '수량을 1개 이상 숫자로 입력해주세요.');
+    }
+    if (!isPositiveProjectNumber(fundingInfo.goalAmount)) addIssue('목표 금액 및 일정', '목표 금액을 확인해주세요.');
+    if (!parseDate(fundingInfo.startDate)) addIssue('목표 금액 및 일정', '펀딩 시작일을 선택해주세요.');
+    if (durationWarning) addIssue('목표 금액 및 일정', durationWarning);
+    if (!parseDate(fundingInfo.expectedDeliveryDate)) addIssue('목표 금액 및 일정', '예상 발송 시작일을 선택해주세요.');
+    if (startDateWarning && !isEditMode) addIssue('목표 금액 및 일정', startDateWarning);
+    if (deliveryDateWarning) addIssue('목표 금액 및 일정', deliveryDateWarning);
+
+    if (!isPositiveProjectNumber(productInfo.volume)) addIssue('법적 고시 정보', '용량을 1ml 이상 숫자로 입력해주세요.');
+    if (!isReasonableAlcoholPercentage(productInfo.alcoholContent || basicInfo.alcoholContent)) {
+      addIssue('법적 고시 정보', '제품 도수는 1부터 100 사이의 숫자로 입력해주세요.');
+    }
+    if (filledIngredientRows.length === 0) {
+      addIssue('법적 고시 정보', '원재료명과 원산지를 1개 이상 입력해주세요.');
+    } else if (incompleteIngredientRows.length > 0) {
+      addIssue('법적 고시 정보', '추가한 원재료 행의 원재료명과 원산지를 모두 입력해주세요.');
+    }
+
+    if (!projectPlan.introduction.trim()) addIssue('프로젝트 계획', '프로젝트 소개글을 입력해주세요.');
+    if (budgetLines.length === 0) {
+      addIssue('프로젝트 계획', '프로젝트 예산을 입력해주세요. 예: - 원재료 구입비: 25만원');
+    } else if (budgetItems.some((item) => !item.item.trim() || !item.amount)) {
+      addIssue('프로젝트 계획', '프로젝트 예산은 "- 항목: 금액만원" 형식으로 입력해주세요.');
+    }
+    if (scheduleLines.length === 0) {
+      addIssue('프로젝트 계획', '프로젝트 일정을 입력해주세요. 예: - 2026-07-01: 원재료 준비');
+    } else if (scheduleLines.some((line) => !line.includes(':'))) {
+      addIssue('프로젝트 계획', '프로젝트 일정은 "- 날짜: 일정 내용" 형식으로 입력해주세요.');
+    }
+
+    if (!isValidProjectPhone(creatorInfo.phone)) addIssue('양조장 정보', '휴대폰 번호를 확인해주세요.');
+    if (!phoneVerified) addIssue('양조장 정보', '휴대폰 인증을 완료해주세요.');
+    if (!creatorInfo.accountBank.trim()) addIssue('양조장 정보', '입금 계좌 은행을 선택해주세요.');
+    if (!creatorInfo.accountNumber.trim()) addIssue('양조장 정보', '계좌번호를 입력해주세요.');
+    if (!accountVerified) addIssue('양조장 정보', '입금 계좌 인증을 완료해주세요.');
+    if (!taxInfo.businessType) addIssue('양조장 정보', '사업자 유형을 선택해주세요.');
+    if (!taxInfo.businessName.trim()) addIssue('양조장 정보', '상호명(법인명)을 입력해주세요.');
+    if (businessNumberDigits.length !== 10) addIssue('양조장 정보', '사업자 등록번호 10자리를 입력해주세요.');
+    if (!taxInfo.ceoName.trim()) addIssue('양조장 정보', '대표자 성명을 입력해주세요.');
+    if (!taxInfo.address.trim()) addIssue('양조장 정보', '사업장 소재지를 입력해주세요.');
+    if (!taxInfo.businessCategory.trim()) addIssue('양조장 정보', '업태를 입력해주세요.');
+    if (!taxInfo.businessItem.trim()) addIssue('양조장 정보', '종목을 입력해주세요.');
+    if (!isValidProjectEmail(contactEmail)) addIssue('양조장 정보', '이메일 주소를 올바르게 입력해주세요.');
+
+    if (!trustInfo.projectPolicy.trim()) addIssue('안내 사항', '프로젝트 정책을 입력해주세요.');
+    if (!trustInfo.expectedDifficulties.trim()) addIssue('안내 사항', '예상되는 어려움과 해결 방안을 입력해주세요.');
+
+    const missingDocuments = DOCUMENT_FILE_KEYS
+      .filter((key) => !isRequiredDocumentReady(uploadedFiles[key]))
+      .map((key) => DOCUMENT_LABEL_BY_FILE_KEY[key]);
+    if (missingDocuments.length > 0) {
+      addIssue('인증 서류', `${missingDocuments.join(', ')} 파일을 등록해주세요.`);
+    }
+
+    const uniqueIssues = Array.from(new Set(issues));
+    if (uniqueIssues.length === 0) return '';
+    return `제출 전에 아래 항목을 확인해주세요.\n\n${uniqueIssues.slice(0, 8).map((issue) => `- ${issue}`).join('\n')}`;
+  }, [
+    accountVerified,
+    basicInfo,
+    creatorInfo.accountBank,
+    creatorInfo.accountNumber,
+    creatorInfo.phone,
+    deliveryDateWarning,
+    durationWarning,
+    fundingInfo,
+    isEditMode,
+    phoneVerified,
+    productInfo,
+    projectPlan.budget,
+    projectPlan.introduction,
+    projectPlan.schedule,
+    startDateWarning,
+    taxInfo,
+    trustInfo.expectedDifficulties,
+    trustInfo.projectPolicy,
+    uploadedFiles,
+    user?.email,
+  ]);
   const canSendPhoneVerification = isValidProjectPhone(creatorInfo.phone);
   const exitRoute = isEditMode && editProjectId ? `/funding/${editProjectId}` : '/funding';
 
@@ -1131,12 +1420,35 @@ export default function BreweryProjectCreateScreen() {
     setShowAlertModal(true);
   };
 
+  const runSubmitStep = async <T,>(step: string, task: () => Promise<T>) => {
+    try {
+      return await task();
+    } catch (error) {
+      throw new Error(formatSubmitStepError(step, error));
+    }
+  };
+
+  const validateServerDraftBeforeSubmit = async (draftId: number) => {
+    const preview = await runSubmitStep('서버 저장 상태 조회', () => getFundingDraftPreview(draftId));
+    if (preview.draftId) rememberCurrentDraft(preview.draftId, preview.fundingId || editProjectId);
+    const serverDraft = createProjectDraftFromServerPreview(preview, user);
+    const issues = getProjectDraftSubmitIssues(serverDraft, user?.email, { checkStartDate: !isEditMode });
+    const message = formatProjectDraftSubmitIssues(issues);
+    if (message) {
+      throw new Error(`서버 저장 상태 확인 단계에서 제출이 막혔습니다.\n\n${message}`);
+    }
+  };
+
   const getCurrentFundingIdForDraft = () => (isEditMode && editProjectId ? editProjectId : undefined);
 
   const withCurrentFundingId = <T extends object>(payload: T): T & { fundingId?: number } => {
     const fundingId = getCurrentFundingIdForDraft();
     return fundingId ? { ...payload, fundingId } : payload;
   };
+
+  const getRecipeDraftLinkPayload = () => (
+    initialRecipeId ? { recipeId: initialRecipeId, recipe_id: initialRecipeId } : {}
+  );
 
   const rememberCurrentDraft = (draftId?: number | null, fundingId?: number | null) => {
     setCurrentDraftId(draftId || null);
@@ -1205,6 +1517,7 @@ export default function BreweryProjectCreateScreen() {
     ownerUserId: user?.id,
     ownerUid: user?.uid,
     ownerEmail: user?.email,
+    recipeId: initialRecipeId,
     basicInfo: {
       ...basicInfo,
       tags: getReadyTags(),
@@ -1252,6 +1565,7 @@ export default function BreweryProjectCreateScreen() {
 
     return {
       breweryId: getBreweryId(),
+      ...getRecipeDraftLinkPayload(),
       title: basicInfo.title.trim() || undefined,
       shortTitle: basicInfo.shortTitle.trim() || undefined,
       category: basicInfo.category.trim() || '막걸리',
@@ -1337,7 +1651,9 @@ export default function BreweryProjectCreateScreen() {
     const contactPhone = creatorInfo.phone.trim();
 
     return {
+      ...getRecipeDraftLinkPayload(),
       basicInfo: {
+        ...getRecipeDraftLinkPayload(),
         title: basicInfo.title.trim() || undefined,
         shortTitle: basicInfo.shortTitle.trim() || undefined,
         category: basicInfo.category.trim() || '막걸리',
@@ -1355,6 +1671,7 @@ export default function BreweryProjectCreateScreen() {
         targetAmount: getOptionalNumberForApi(fundingInfo.goalAmount),
         fundingStartDate: fundingInfo.startDate || undefined,
         fundingPeriodDays: getOptionalNumberForApi(fundingInfo.duration),
+        fundingEndDate: endDateText || undefined,
         expectedDeliveryDate: fundingInfo.expectedDeliveryDate || undefined,
         shippingFee: FIXED_PROJECT_SHIPPING_FEE,
       },
@@ -1605,6 +1922,7 @@ export default function BreweryProjectCreateScreen() {
     if (hasCompleteBasicInfo) {
       logFundingCreatePayload('SAVE', 'basicInfo payload', {
         draftId,
+        ...getRecipeDraftLinkPayload(),
         title: basicInfo.title.trim(),
         shortTitle: basicInfo.shortTitle.trim() || undefined,
         category: basicInfo.category.trim() || '막걸리',
@@ -1618,6 +1936,7 @@ export default function BreweryProjectCreateScreen() {
         tags: getReadyTags(),
       });
       await saveFundingBasicInfo(draftId, withCurrentFundingId({
+        ...getRecipeDraftLinkPayload(),
         title: basicInfo.title.trim(),
         shortTitle: basicInfo.shortTitle.trim() || undefined,
         category: basicInfo.category.trim() || '막걸리',
@@ -1637,6 +1956,7 @@ export default function BreweryProjectCreateScreen() {
         totalQuantity: Number(fundingInfo.bottleQuantity),
         fundingStartDate: fundingInfo.startDate,
         fundingPeriodDays: Number(fundingInfo.duration),
+        fundingEndDate: endDateText,
         expectedDeliveryDate: fundingInfo.expectedDeliveryDate,
       }));
     }
@@ -1679,17 +1999,18 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const saveProjectSectionsToApi = async (draftId: number) => {
-    const serverImageUrls = await uploadProjectImagesToApi(draftId);
+    const serverImageUrls = await runSubmitStep('대표 이미지 업로드', () => uploadProjectImagesToApi(draftId));
     const draftPayload = getDraftUpdatePayloadForApi(serverImageUrls);
     logFundingCreatePayload('SUBMIT', 'updateFundingDraft payload', {
       draftId,
       ...draftPayload,
       imagesDebug: summarizeFundingCreateImages(serverImageUrls),
     });
-    await updateFundingDraft(draftId, withCurrentFundingId(draftPayload));
+    await runSubmitStep('전체 입력값 동기화', () => updateFundingDraft(draftId, withCurrentFundingId(draftPayload)));
 
     logFundingCreatePayload('SUBMIT', 'basicInfo payload', {
       draftId,
+      ...getRecipeDraftLinkPayload(),
       title: basicInfo.title.trim(),
       shortTitle: basicInfo.shortTitle.trim() || undefined,
       category: basicInfo.category.trim() || '막걸리',
@@ -1702,7 +2023,8 @@ export default function BreweryProjectCreateScreen() {
       images: serverImageUrls,
       tags: getReadyTags(),
     });
-    await saveFundingBasicInfo(draftId, withCurrentFundingId({
+    await runSubmitStep('기본정보 저장', () => saveFundingBasicInfo(draftId, withCurrentFundingId({
+      ...getRecipeDraftLinkPayload(),
       title: basicInfo.title.trim(),
       shortTitle: basicInfo.shortTitle.trim() || undefined,
       category: basicInfo.category.trim() || '막걸리',
@@ -1713,31 +2035,32 @@ export default function BreweryProjectCreateScreen() {
       thumbnailUrl: serverImageUrls[0] || undefined,
       imageUrls: serverImageUrls,
       tags: getReadyTags(),
-    }));
-    await saveFundingSchedule(draftId, withCurrentFundingId({
+    })));
+    await runSubmitStep('목표 금액 및 일정 저장', () => saveFundingSchedule(draftId, withCurrentFundingId({
       pricePerBottle: Number(fundingInfo.pricePerBottle),
       totalQuantity: Number(fundingInfo.bottleQuantity),
       fundingStartDate: fundingInfo.startDate,
       fundingPeriodDays: Number(fundingInfo.duration),
+      fundingEndDate: endDateText,
       expectedDeliveryDate: fundingInfo.expectedDeliveryDate,
-    }));
-    await saveFundingLegalInfo(draftId, withCurrentFundingId(getLegalInfoForApi()));
-    await saveFundingTasteProfile(draftId, withCurrentFundingId(getTasteProfileForApi()));
-    await saveFundingPlan(draftId, withCurrentFundingId({
+    })));
+    await runSubmitStep('법적 고시 정보 저장', () => saveFundingLegalInfo(draftId, withCurrentFundingId(getLegalInfoForApi())));
+    await runSubmitStep('맛 지표 저장', () => saveFundingTasteProfile(draftId, withCurrentFundingId(getTasteProfileForApi())));
+    await runSubmitStep('프로젝트 계획 저장', () => saveFundingPlan(draftId, withCurrentFundingId({
       introduction: projectPlan.introduction.trim(),
       videoUrl: projectPlan.videoUrl.trim() || undefined,
       budgetPlan: projectPlan.budget.trim() || getBudgetPlanForApi(),
       schedulePlan: projectPlan.schedule.trim() || getSchedulePlanForApi(),
       policy: trustInfo.projectPolicy.trim() || undefined,
-    }));
-    await saveFundingBreweryInfo(draftId, withCurrentFundingId(getBreweryInfoForApi()));
-    await saveFundingNotices(draftId, withCurrentFundingId({
+    })));
+    await runSubmitStep('양조장 정보 저장', () => saveFundingBreweryInfo(draftId, withCurrentFundingId(getBreweryInfoForApi())));
+    await runSubmitStep('안내 사항 저장', () => saveFundingNotices(draftId, withCurrentFundingId({
       policy: trustInfo.projectPolicy.trim(),
       refundPolicy: trustInfo.projectPolicy.trim(),
       exchangePolicy: trustInfo.projectPolicy.trim(),
       adultVerificationNotice: '본 프로젝트는 성인인증을 완료한 후원자만 참여할 수 있습니다.',
       riskNotice: trustInfo.expectedDifficulties.trim(),
-    }));
+    })));
     return serverImageUrls;
   };
 
@@ -1750,7 +2073,9 @@ export default function BreweryProjectCreateScreen() {
       if (!file) {
         throw new Error('선택한 서류 파일 정보를 찾을 수 없습니다. 서류를 다시 선택해주세요.');
       }
-      const uploaded = await uploadFundingDocument(draftId, DOCUMENT_TYPE_BY_FILE_KEY[key], file);
+      const uploaded = await runSubmitStep(`${DOCUMENT_LABEL_BY_FILE_KEY[key]} 서류 업로드`, () => (
+        uploadFundingDocument(draftId, DOCUMENT_TYPE_BY_FILE_KEY[key], file)
+      ));
       nextUploadedFiles[key] = uploaded.fileUrl || currentFile;
     }
     setUploadedFiles(normalizeUploadedFiles(nextUploadedFiles));
@@ -1807,7 +2132,7 @@ export default function BreweryProjectCreateScreen() {
         ...summarizeFundingCreateImages(basicInfo.images),
       });
       const previousDraft = await getSavedDraft();
-      const localTimestamp = previousDraft?.timestamp || new Date().toISOString();
+      const localTimestamp = new Date().toISOString();
       await SafeStorage.setItem(tempSaveKey, JSON.stringify({
         ...createDraftPayload(),
         timestamp: localTimestamp,
@@ -1981,19 +2306,6 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleSave = async () => {
-    if (isEditMode) {
-      await saveDraft({ showSavedModal: true });
-      return;
-    }
-
-    const savedDraft = await getSavedDraft();
-    if (savedDraft || hasTempSave) {
-      setTempSaveTimestamp(savedDraft?.timestamp || tempSaveTimestamp);
-      setHasTempSave(true);
-      setTempSaveMode('existing');
-      setShowTempSaveModal(true);
-      return;
-    }
     await saveDraft({ showSavedModal: true });
   };
 
@@ -2599,38 +2911,23 @@ export default function BreweryProjectCreateScreen() {
       showAlert(submitBlockMessage || '필수 정보를 모두 입력한 후 제출할 수 있습니다.');
       return;
     }
+    if (submitValidationMessage) {
+      showAlert(submitValidationMessage);
+      return;
+    }
     setShowSubmitConfirm(true);
   };
 
   const handleOpenPreview = () => {
-    if (isPreviewLoading) return;
-    void (async () => {
-      setIsPreviewLoading(true);
-      try {
-        const draftId = await ensureServerDraft();
-        logCurrentDraftPair('preview:server-draft', draftId);
-        const serverImageUrls = await uploadProjectImagesToApi(draftId);
-        await updateFundingDraft(draftId, withCurrentFundingId(getDraftUpdatePayloadForApi(serverImageUrls)));
-        await syncReadyProjectSectionsToApi(draftId, serverImageUrls);
-        const preview = await getFundingDraftPreview(draftId);
-        if (preview.draftId) rememberCurrentDraft(preview.draftId, preview.fundingId || editProjectId);
-        logCurrentDraftPair('preview:loaded', preview.draftId || draftId, preview.fundingId || editProjectId);
-        const serverDraft = createProjectDraftFromServerPreview(preview, user);
-        applyDraftPayload(serverDraft);
-        setTempSaveTimestamp(serverDraft.timestamp || '');
-        setHasTempSave(true);
-        setShowPreview(true);
-      } catch (error) {
-        showAlert(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버에서 불러오지 못했습니다.'));
-        warnFundingCreateDebug(getFundingApiErrorMessage(error, '프로젝트 미리보기를 서버와 동기화하지 못했습니다.'));
-      } finally {
-        setIsPreviewLoading(false);
-      }
-    })();
+    setShowPreview(true);
   };
 
   const confirmSubmit = async () => {
     setShowSubmitConfirm(false);
+    if (submitValidationMessage) {
+      showAlert(submitValidationMessage);
+      return;
+    }
     setIsSubmitting(true);
     setSubmitSyncWarning('');
     try {
@@ -2644,7 +2941,7 @@ export default function BreweryProjectCreateScreen() {
       let submittedImageUrls: string[] = [];
       if (!isEditMode) {
         try {
-          const draftId = await ensureServerDraft();
+          const draftId = await runSubmitStep('서버 임시저장 준비', () => ensureServerDraft());
           logCurrentDraftPair('submit:create-draft', draftId);
           logFundingCreateDebug('[FundingCreate][SUBMIT] draft ready', {
             draftId,
@@ -2656,8 +2953,9 @@ export default function BreweryProjectCreateScreen() {
             ...summarizeFundingCreateImages(submittedImageUrls),
           });
           await uploadProjectDocumentsToApi(draftId);
+          await validateServerDraftBeforeSubmit(draftId);
           logFundingCreateDebug('[FundingCreate][SUBMIT] submitFundingDraft request', { draftId });
-          const submittedDraft = await submitFundingDraft(draftId);
+          const submittedDraft = await runSubmitStep('최종 제출 요청', () => submitFundingDraft(draftId));
           logFundingCreateDebug('[FundingCreate][SUBMIT] submitFundingDraft response', submittedDraft);
           submittedFundingId = submittedDraft.fundingId || null;
         } catch (error) {
@@ -2668,7 +2966,7 @@ export default function BreweryProjectCreateScreen() {
         }
       }
       if (isEditMode && editProjectId) {
-        const draftId = await ensureServerDraft();
+        const draftId = await runSubmitStep('서버 임시저장 준비', () => ensureServerDraft());
         logCurrentDraftPair('submit:edit-draft', draftId);
         logFundingCreateDebug('[FundingCreate][SUBMIT] edit draft ready', {
           draftId,
@@ -2683,7 +2981,8 @@ export default function BreweryProjectCreateScreen() {
           ...summarizeFundingCreateImages(serverImageUrls),
         });
         await uploadProjectDocumentsToApi(draftId);
-        await updateFundingProjectApi(editProjectId, {
+        await validateServerDraftBeforeSubmit(draftId);
+        await runSubmitStep('공개 펀딩 기본정보 수정', () => updateFundingProjectApi(editProjectId, {
           title: basicInfo.title.trim(),
           description: projectPlan.introduction.trim() || basicInfo.summary.trim(),
           thumbnailUrl: serverImageUrls[0] || undefined,
@@ -2692,8 +2991,8 @@ export default function BreweryProjectCreateScreen() {
           endDate: endDateText,
           pricePerBottle: Number(fundingInfo.pricePerBottle),
           shippingFee: FIXED_PROJECT_SHIPPING_FEE,
-        });
-        await saveFundingLegalInfo(draftId, withCurrentFundingId(getLegalInfoForApi()));
+        }));
+        await runSubmitStep('법적 고시 정보 저장', () => saveFundingLegalInfo(draftId, withCurrentFundingId(getLegalInfoForApi())));
       }
       const payload = buildProjectPayload(isEditMode ? 'edit' : 'create', submittedImageUrls);
       if (isEditMode && editProjectId) {
@@ -2806,6 +3105,16 @@ export default function BreweryProjectCreateScreen() {
             ]}
           />
           <InfoBox tone="red" title="전통주 프로젝트 필수 설정" body="19세 이상 성인만 후원 가능합니다." compact />
+          {initialRecipeId ? (
+            <Field
+              label="기반 레시피 ID"
+              value={String(initialRecipeId)}
+              onChangeText={() => undefined}
+              placeholder="기반 레시피 ID"
+              editable={false}
+              helper="이 레시피를 바탕으로 펀딩 프로젝트를 생성합니다. 수정할 수 없습니다."
+            />
+          ) : null}
           <Field
             label="프로젝트 카테고리"
             required
@@ -2830,7 +3139,6 @@ export default function BreweryProjectCreateScreen() {
             value={basicInfo.shortTitle}
             onChangeText={(value) => setBasicInfo((prev) => ({ ...prev, shortTitle: value }))}
             placeholder="벚꽃 막걸리"
-            maxLength={20}
           />
           <Field
             label="메인 재료"
@@ -3463,8 +3771,8 @@ export default function BreweryProjectCreateScreen() {
               <X size={24} color="#111" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{isEditMode ? '펀딩 프로젝트 수정' : '펀딩 프로젝트 만들기'}</Text>
-            <TouchableOpacity style={styles.headerIcon} onPress={handleOpenPreview} disabled={isPreviewLoading}>
-              <Eye size={20} color={isPreviewLoading ? '#9CA3AF' : '#111'} />
+            <TouchableOpacity style={styles.headerIcon} onPress={handleOpenPreview}>
+              <Eye size={20} color="#111" />
             </TouchableOpacity>
           </View>
           <View style={styles.progressStrip}>
@@ -4057,6 +4365,7 @@ function GuardNotice({ insetsTop, title, description, primaryLabel, onPrimaryPre
 
 function SimpleModal({ visible, icon, title, body, primaryLabel, onPrimary }: { visible: boolean; icon: SimpleModalIcon; title: string; body: string; primaryLabel: string; onPrimary: () => void }) {
   const iconStyle = icon === 'success' ? styles.successCircle : icon === 'info' ? styles.blueCircle : styles.alertCircle;
+  const isLongBody = body.length > 90 || body.includes('\n');
 
   return (
     <Modal transparent visible={visible} animationType="fade">
@@ -4072,7 +4381,9 @@ function SimpleModal({ visible, icon, title, body, primaryLabel, onPrimary }: { 
             )}
           </View>
           <Text style={styles.modalTitle}>{title}</Text>
-          <Text style={styles.modalBody}>{body}</Text>
+          <ScrollView style={styles.modalBodyScroll} contentContainerStyle={styles.modalBodyScrollContent} showsVerticalScrollIndicator={false}>
+            <Text style={[styles.modalBody, isLongBody && styles.modalBodyLong]}>{body}</Text>
+          </ScrollView>
           <TouchableOpacity style={styles.modalPrimary} onPress={onPrimary}>
             <Text style={styles.modalPrimaryText}>{primaryLabel}</Text>
           </TouchableOpacity>
@@ -4662,7 +4973,10 @@ const styles = StyleSheet.create({
   grayIconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' },
   modalTitle: { fontSize: 20, fontWeight: '900', color: '#111', textAlign: 'center' },
   confirmTitle: { fontSize: 18, fontWeight: '900', color: '#111', textAlign: 'center' },
+  modalBodyScroll: { width: '100%', maxHeight: 280 },
+  modalBodyScrollContent: { flexGrow: 1 },
   modalBody: { fontSize: 14, lineHeight: 21, fontWeight: '700', color: '#6B7280', textAlign: 'center' },
+  modalBodyLong: { textAlign: 'left' },
   modalPrimary: { width: '100%', height: 48, borderRadius: 12, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   modalPrimaryFlex: { flex: 1, height: 48, borderRadius: 12, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   modalPrimaryText: { fontSize: 14, fontWeight: '900', color: '#FFF' },

@@ -51,7 +51,6 @@ import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import {
   MAX_ADDITIONAL_SUPPORT,
-  bankOptions,
   digitsOnly,
   getFundingId,
   getInitialQuantity,
@@ -152,7 +151,7 @@ export default function FundingSupportScreen() {
   const [supportMessage, setSupportMessage] = useState('');
   const [showMessageOptions, setShowMessageOptions] = useState(false);
   const [showCustomMessageInput, setShowCustomMessageInput] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>('toss');
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [agreeRefund, setAgreeRefund] = useState(false);
   const [showRefundPolicy, setShowRefundPolicy] = useState(false);
@@ -162,8 +161,6 @@ export default function FundingSupportScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [alertModal, setAlertModal] = useState<FundingSupportAlert | null>(null);
-  const [accountBank, setAccountBank] = useState('');
-  const [depositorName, setDepositorName] = useState(user?.name || '');
   const [recentShippingInfo, setRecentShippingInfo] = useState<ShippingInfo | null>(null);
   const [supporterInfo, setSupporterInfo] = useState({
     phone: user?.phone || '',
@@ -200,7 +197,6 @@ export default function FundingSupportScreen() {
       recipientName: prev.recipientName || user.name,
       phone: prev.phone || user.phone || '',
     }));
-    setDepositorName((prev) => prev || user.name);
   }, [user]);
 
   useEffect(() => {
@@ -236,9 +232,7 @@ export default function FundingSupportScreen() {
     setSupportMessage('');
     setShowMessageOptions(false);
     setShowCustomMessageInput(false);
-    setSelectedPaymentMethod(null);
-    setAccountBank('');
-    setDepositorName(user?.name || '');
+    setSelectedPaymentMethod('toss');
     setAgreeTerms(false);
     setAgreeRefund(false);
     setShowRefundPolicy(false);
@@ -294,7 +288,7 @@ export default function FundingSupportScreen() {
   const progressPercentage = project && project.goalAmount > 0 ? Math.min((project.currentAmount / project.goalAmount) * 100, 100) : 0;
   const canSubmit = Boolean(selectedPaymentMethod && agreeTerms && agreeRefund && !isProcessing);
   const isOwnBreweryProject = isFundingProjectOwnedByBrewery(user, project);
-  const paymentSummary = getPaymentSummary(selectedPaymentMethod, accountBank, depositorName);
+  const paymentSummary = getPaymentSummary(selectedPaymentMethod);
 
   const handleAdditionalSupportChange = (value: string) => {
     const next = digitsOnly(value);
@@ -332,10 +326,6 @@ export default function FundingSupportScreen() {
     if (!isValidPhone(shippingInfo.phone)) next.shippingPhone = '배송 연락처를 올바르게 입력해주세요.';
     if (extra > MAX_ADDITIONAL_SUPPORT) next.additionalSupport = '추가 후원금은 1,000만원 이하로 입력해주세요.';
     if (!selectedPaymentMethod) next.payment = '결제수단을 선택해주세요.';
-    if (selectedPaymentMethod === 'account') {
-      if (!accountBank) next.accountBank = '입금 은행을 선택해주세요.';
-      if (!depositorName.trim()) next.depositorName = '입금자명을 입력해주세요.';
-    }
     setValidationErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -982,38 +972,6 @@ export default function FundingSupportScreen() {
             })}
           </View>
           <FieldError message={validationErrors.payment} />
-          {selectedPaymentMethod === 'account' && (
-            <View style={styles.paymentDetailBox}>
-              <Text style={styles.paymentDetailTitle}>계좌이체 정보</Text>
-              <View style={styles.chipGroup}>
-                {bankOptions.map((bank) => (
-                  <TouchableOpacity
-                    key={bank}
-                    disabled={isProcessing}
-                    style={[styles.detailChip, accountBank === bank && styles.detailChipSelected]}
-                    onPress={() => {
-                      setAccountBank(bank);
-                      clearValidationError('accountBank');
-                    }}
-                  >
-                    <Text style={[styles.detailChipText, accountBank === bank && styles.detailChipTextSelected]}>{bank}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <FieldError message={validationErrors.accountBank} />
-              <LabeledInput
-                label="입금자명"
-                value={depositorName}
-                placeholder="입금자명을 입력하세요"
-                error={validationErrors.depositorName}
-                editable={!isProcessing}
-                onChangeText={(value) => {
-                  setDepositorName(value);
-                  clearValidationError('depositorName');
-                }}
-              />
-            </View>
-          )}
         </Section>
 
         <Section title="최종 확인">
@@ -1446,13 +1404,6 @@ const styles = StyleSheet.create({
   paymentIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E5E7EB' },
   paymentTitle: { fontSize: 14, color: '#111', fontWeight: '900', marginBottom: 2 },
   paymentDesc: { fontSize: 12, color: '#6B7280', fontWeight: '700' },
-  paymentDetailBox: { borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', padding: 14, gap: 10 },
-  paymentDetailTitle: { fontSize: 13, color: '#111', fontWeight: '900' },
-  chipGroup: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  detailChip: { minHeight: 36, borderRadius: 999, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
-  detailChipSelected: { backgroundColor: '#111', borderColor: '#111' },
-  detailChipText: { fontSize: 12, color: '#6B7280', fontWeight: '900' },
-  detailChipTextSelected: { color: '#FFF' },
   radio: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center' },
   radioSelected: { backgroundColor: '#111', borderColor: '#111' },
   finalAmountBox: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 14, gap: 9 },

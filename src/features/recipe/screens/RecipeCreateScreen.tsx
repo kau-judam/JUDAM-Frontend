@@ -12,48 +12,85 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { ChevronLeft, Image as ImageIcon, Plus, Wand2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { recipesData } from '@/constants/data';
+import { createFundingDraft, generateFundingDraftAiImage } from '@/features/funding/api';
+import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import {
   createRecipe,
   decodeRecipeJwtPayload,
+  fetchIngredientRegions,
   getRecipeAccessToken,
   isJwtExpired,
+  suggestRecipeSubIngredients,
   suggestRecipeFlavorTags,
   suggestRecipeSummary,
 } from '@/features/recipe/api';
 import { markCurrentUserRecipe } from '@/features/recipe/interestState';
 
 const ALCOHOL_RANGES = ['3%~5%', '6%~8%', '9%~12%', '13%~15%', '15% 이상'];
-const DUMMY_IMAGE = 'https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?w=800&h=600&fit=crop';
+const RECIPE_AI_IMAGE_STORAGE_ROOT = FileSystem.cacheDirectory || FileSystem.documentDirectory || '';
+const RECIPE_AI_IMAGE_CACHE_DIR = `${RECIPE_AI_IMAGE_STORAGE_ROOT}judam-recipe-ai-images/`;
 
 type SubIngredientRegionSuggestion = {
   region: string;
   subIngredients: string[];
 };
 
-const TEMP_SUB_INGREDIENT_REGION_SUGGESTIONS: SubIngredientRegionSuggestion[] = [
-  { region: '경기', subIngredients: ['누룩', '배', '잣', '오미자'] },
-  { region: '강원', subIngredients: ['옥수수', '메밀', '감자', '산머루'] },
-  { region: '충북', subIngredients: ['사과', '대추', '복숭아', '생강'] },
-  { region: '충남', subIngredients: ['밤', '꿀', '구기자', '배'] },
-  { region: '전북', subIngredients: ['복분자', '오디', '생강', '배'] },
-  { region: '전남', subIngredients: ['유자', '매실', '석류', '녹차'] },
-  { region: '경북', subIngredients: ['사과', '대추', '오미자', '꿀'] },
-  { region: '경남', subIngredients: ['단감', '매실', '유자', '생강'] },
-  { region: '제주', subIngredients: ['감귤', '한라봉', '청귤', '꿀'] },
-  { region: '서울', subIngredients: ['배', '오미자', '누룩', '꿀'] },
-];
 
 type NoticeState = {
   title: string;
   body?: string;
   onConfirm?: () => void;
 } | null;
+
+function isRemoteRecipeImageUri(uri?: string | null) {
+  return Boolean(uri && /^https?:\/\//i.test(uri));
+}
+
+function getRecipeImageFileName(uri: string) {
+  const rawName = uri.split('?')[0]?.split('#')[0]?.split('/').pop();
+  const decodedName = rawName ? decodeURIComponent(rawName) : '';
+  const safeName = (decodedName || `recipe-ai-${Date.now()}.jpg`).replace(/[^\w.-]+/g, '-');
+  return safeName.includes('.') ? safeName : `${safeName}.jpg`;
+}
+
+function getRecipeImageMimeType(fileName: string) {
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (extension === 'png') return 'image/png';
+  if (extension === 'webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+async function downloadRecipeAiImageForUpload(imageUrl: string) {
+  if (!RECIPE_AI_IMAGE_STORAGE_ROOT) {
+    throw new Error('AI 생성 이미지를 업로드할 임시 저장소를 찾을 수 없습니다.');
+  }
+
+  const fileName = getRecipeImageFileName(imageUrl);
+  await FileSystem.makeDirectoryAsync(RECIPE_AI_IMAGE_CACHE_DIR, { intermediates: true });
+  const targetUri = `${RECIPE_AI_IMAGE_CACHE_DIR}${Date.now()}-${fileName}`;
+  const result = await FileSystem.downloadAsync(imageUrl, targetUri);
+  if (result.status < 200 || result.status >= 300) {
+    throw new Error('AI 생성 이미지 파일을 내려받지 못했습니다.');
+  }
+
+  const info = await FileSystem.getInfoAsync(result.uri);
+  if (!info.exists) {
+    throw new Error('AI 생성 이미지 파일을 확인하지 못했습니다.');
+  }
+
+  return {
+    uri: result.uri,
+    name: fileName,
+    type: getRecipeImageMimeType(fileName),
+  };
+}
 
 export default function RecipeCreateScreen() {
   const insets = useSafeAreaInsets();
@@ -79,6 +116,7 @@ export default function RecipeCreateScreen() {
   const [description, setDescription] = useState(editRecipe?.description || '');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageAsset, setImageAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [isGeneratingRecipeImage, setIsGeneratingRecipeImage] = useState(false);
   const [notice, setNotice] = useState<NoticeState>(null);
   const hasMainIngredient = mainIngredients.some((ingredient) => ingredient.trim() !== '');
   const hasSubIngredient = selectedSubIngredients.length > 0;
@@ -105,6 +143,12 @@ export default function RecipeCreateScreen() {
 
   const getSelectedFlavorTags = () => [...selectedFlavorTags, ...customFlavorTags];
 
+  const getCurrentBreweryId = () => {
+    if (!user || user.type !== 'brewery') return null;
+    const breweryId = Number(user.id);
+    return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : null;
+  };
+
   const getAiAbvRangeText = () => {
     if (!alcoholRange) return '';
     if (alcoholRange.includes('이상')) return alcoholRange.replace('%', '도');
@@ -113,24 +157,76 @@ export default function RecipeCreateScreen() {
 
   const getApiErrorMessage = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
 
-  const handleGenerateSubIngredients = () => {
+  const handleGenerateSubIngredients = async () => {
     if (!hasMainIngredient) {
       showNotice('\uBA54\uC778 \uC7AC\uB8CC\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694.');
       return;
     }
-    setSubIngredientRegions(TEMP_SUB_INGREDIENT_REGION_SUGGESTIONS.slice(0, 10));
-    setSelectedSubIngredientRegion(null);
-    setGeneratedSubIngredients([]);
-    setSelectedSubIngredients([]);
+    const mainIngredient = getMainIngredientText();
+    try {
+      console.log('Recipe ingredient region request', { ingredient: mainIngredient });
+      const regions = await fetchIngredientRegions(mainIngredient);
+      console.log('Recipe ingredient region response', regions);
+      if (regions.length === 0) {
+        setSubIngredientRegions([]);
+        setSelectedSubIngredientRegion(null);
+        setGeneratedSubIngredients([]);
+        setSelectedSubIngredients([]);
+        showNotice(
+          '\uC0DD\uC0B0\uC9C0\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.',
+          '\uD574\uB2F9 \uBA54\uC778 \uC7AC\uB8CC\uC758 \uC0DD\uC0B0\uC9C0 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC5B4\uC694.'
+        );
+        return;
+      }
+      setSubIngredientRegions(regions.map((region) => ({ region, subIngredients: [] })));
+      setSelectedSubIngredientRegion(null);
+      setGeneratedSubIngredients([]);
+      setSelectedSubIngredients([]);
+    } catch (error) {
+      console.warn('Failed to fetch ingredient regions', error);
+      showNotice(
+        'AI \uC0DD\uC131\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
+        getApiErrorMessage(error, '\uC0DD\uC0B0\uC9C0\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC5B4\uC694.')
+      );
+    }
   };
 
-  const handleSelectSubIngredientRegion = (suggestion: SubIngredientRegionSuggestion) => {
+  const handleSelectSubIngredientRegion = async (suggestion: SubIngredientRegionSuggestion) => {
     const isSameRegion = selectedSubIngredientRegion?.region === suggestion.region;
     setSelectedSubIngredientRegion(suggestion);
-    if (!isSameRegion) {
-      setSelectedSubIngredients([]);
+    setSelectedSubIngredients([]);
+    if (isSameRegion && suggestion.subIngredients.length > 0) {
+      setGeneratedSubIngredients(suggestion.subIngredients);
+      return;
     }
-    setGeneratedSubIngredients(suggestion.subIngredients);
+    try {
+      const payload = {
+        main_ingredient: getMainIngredientText(),
+        mainIngredient: getMainIngredientText(),
+        region: suggestion.region,
+      };
+      console.log('Recipe sub ingredient AI request', payload);
+      const subIngredients = await suggestRecipeSubIngredients(payload);
+      console.log('Recipe sub ingredient AI response', subIngredients);
+      setSubIngredientRegions((prev) =>
+        prev.map((item) =>
+          item.region === suggestion.region ? { ...item, subIngredients } : item
+        )
+      );
+      setGeneratedSubIngredients(subIngredients);
+      if (subIngredients.length === 0) {
+        showNotice(
+          '\uCD94\uCC9C\uD560 \uC11C\uBE0C \uC7AC\uB8CC\uAC00 \uC5C6\uC5B4\uC694.',
+          '\uD574\uB2F9 \uC9C0\uC5ED\uC5D0\uC11C \uCD94\uCC9C \uAC00\uB2A5\uD55C \uC11C\uBE0C \uC7AC\uB8CC\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC5B4\uC694.'
+        );
+      }
+    } catch (error) {
+      console.warn('Failed to suggest recipe sub ingredients', error);
+      showNotice(
+        'AI \uC0DD\uC131\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
+        getApiErrorMessage(error, '\uC11C\uBE0C \uC7AC\uB8CC\uB97C \uCD94\uCC9C\uD558\uC9C0 \uBABB\uD588\uC5B4\uC694.')
+      );
+    }
   };
 
   const toggleSubIngredient = (ingredient: string) => {
@@ -210,15 +306,64 @@ export default function RecipeCreateScreen() {
     }
   };
 
-  const handleGenerateImage = () => {
+  const handleGenerateImage = async () => {
+    if (isGeneratingRecipeImage) return;
     if (!hasMainIngredient || !hasSubIngredient) {
-      showNotice('메인 재료와 서브 재료를 먼저 입력해주세요.');
+      showNotice('\uBA54\uC778 \uC7AC\uB8CC\uC640 \uC11C\uBE0C \uC7AC\uB8CC\uB97C \uBA3C\uC800 \uC785\uB825\uD574\uC8FC\uC138\uC694.');
       return;
     }
-    setImagePreview(DUMMY_IMAGE);
-    setImageAsset(null);
+    const breweryId = getCurrentBreweryId();
+    if (!breweryId) {
+      showNotice(
+        'AI \uC774\uBBF8\uC9C0 \uC0DD\uC131\uC744 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC5B4\uC694.',
+        '\uD380\uB529 AI \uC774\uBBF8\uC9C0 API\uB294 \uC591\uC870\uC7A5 \uC784\uC2DC\uC800\uC7A5 draftId\uAC00 \uD544\uC694\uD574\uC11C \uC591\uC870\uC7A5 \uACC4\uC815\uC5D0\uC11C\uB9CC \uD638\uCD9C\uD560 \uC218 \uC788\uC5B4\uC694.'
+      );
+      return;
+    }
+    setIsGeneratingRecipeImage(true);
+    try {
+      const mainIngredient = getMainIngredientText();
+      const selectedTags = getSelectedFlavorTags();
+      const draft = await createFundingDraft({
+        breweryId,
+        title: title.trim() || mainIngredient,
+        mainIngredient,
+        subIngredient: selectedSubIngredients.join(', '),
+        summary: description.trim() || concept.trim(),
+      });
+      const payload = {
+        name: title.trim() || mainIngredient,
+        description: description.trim() || concept.trim() || [mainIngredient, selectedSubIngredients.join(', ')].filter(Boolean).join(', '),
+        flavorTags: selectedTags,
+        region: user?.breweryLocation || '',
+      };
+      console.log('Recipe image AI request via funding API', { draftId: draft.draftId, ...payload });
+      const result = await generateFundingDraftAiImage(draft.draftId, payload);
+      console.log('Recipe image AI response via funding API', result);
+      const responseImageUrls = normalizeFundingImageUrls(result.images);
+      const generatedImageUrls = responseImageUrls.length
+        ? responseImageUrls
+        : normalizeFundingImageUrls([result.imageUrl, result.thumbnailUrl]);
+      const nextImageUrl = generatedImageUrls[0];
+      if (!nextImageUrl) {
+        showNotice(
+          'AI \uC0DD\uC131\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
+          result.message || '\uC0DD\uC131\uB41C \uC774\uBBF8\uC9C0 URL\uC744 \uD655\uC778\uD560 \uC218 \uC5C6\uC5B4\uC694.'
+        );
+        return;
+      }
+      setImagePreview(nextImageUrl);
+      setImageAsset(null);
+    } catch (error) {
+      console.warn('Failed to generate recipe image via funding AI image API', error);
+      showNotice(
+        'AI \uC0DD\uC131\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
+        getApiErrorMessage(error, '\uC774\uBBF8\uC9C0\uB97C \uC0DD\uC131\uD558\uC9C0 \uBABB\uD588\uC5B4\uC694.')
+      );
+    } finally {
+      setIsGeneratingRecipeImage(false);
+    }
   };
-
   const handlePickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -281,6 +426,25 @@ export default function RecipeCreateScreen() {
       return;
     }
     try {
+      let uploadImage = imageAsset
+        ? {
+            uri: imageAsset.uri,
+            name: imageAsset.fileName,
+            type: imageAsset.mimeType,
+          }
+        : null;
+      if (!uploadImage && isRemoteRecipeImageUri(imagePreview)) {
+        try {
+          uploadImage = await downloadRecipeAiImageForUpload(imagePreview as string);
+        } catch (error) {
+          console.warn('Failed to prepare generated recipe image for upload', error);
+          showNotice(
+            'AI 생성 이미지를 준비하지 못했습니다.',
+            error instanceof Error ? error.message : '이미지를 다시 생성한 뒤 레시피를 제안해주세요.'
+          );
+          return;
+        }
+      }
       console.log('Recipe create request', {
         title: title.trim(),
         abv_range: alcoholRange,
@@ -288,9 +452,11 @@ export default function RecipeCreateScreen() {
         sub_ingredient: selectedSubIngredients.join(', '),
         target_flavor: getSelectedFlavorTags().join(', '),
         hasImageAsset: Boolean(imageAsset),
-        imageName: imageAsset?.fileName,
-        imageType: imageAsset?.mimeType,
-        imageUri: imageAsset?.uri,
+        hasUploadImage: Boolean(uploadImage),
+        imageUrl: !imageAsset && imagePreview ? imagePreview : undefined,
+        imageName: uploadImage?.name,
+        imageType: uploadImage?.type,
+        imageUri: uploadImage?.uri,
       });
       const createdRecipe = await createRecipe({
         title: title.trim(),
@@ -301,13 +467,8 @@ export default function RecipeCreateScreen() {
         target_flavor: getSelectedFlavorTags().join(', '),
         concept: concept.trim(),
         summary: description.trim(),
-        image: imageAsset
-          ? {
-              uri: imageAsset.uri,
-              name: imageAsset.fileName,
-              type: imageAsset.mimeType,
-            }
-          : null,
+        imageUrl: !imageAsset ? imagePreview : null,
+        image: uploadImage,
       });
       markCurrentUserRecipe(createdRecipe.id);
     } catch (error) {

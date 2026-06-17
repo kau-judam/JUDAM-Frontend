@@ -105,18 +105,18 @@ export default function BreweryProfileScreen() {
     if (usesDashboardProfile) {
       return {
         ...DEFAULT_PROFILE,
-        profileImage: serverProfile?.profileImageUrl || user?.breweryProfileImage || '',
-        breweryName: serverProfile?.breweryName || user?.breweryName || '',
-        brandStory: serverProfile?.oneLineIntroduction || user?.breweryBrandStory || '',
-        description: serverProfile?.shortIntroduction || user?.breweryDescription || '',
-        brandStoryLong: serverProfile?.brandStory || user?.breweryBrandStoryLong || '',
-        history: serverProfile?.history || user?.breweryHistory || '',
-        address: serverProfile?.address || user?.breweryLocation || '',
-        businessNumber: serverProfile?.businessRegistrationNumber || user?.businessNumber || '',
-        representative: serverProfile?.representativeName || user?.name || '',
-        phone: serverProfile?.phoneNumber || user?.phone || '',
-        email: serverProfile?.email || user?.breweryContactEmail || user?.email || '',
-        established: String(serverProfile?.establishedYear || user?.breweryEstablished || ''),
+        profileImage: serverProfile?.profileImageUrl || '',
+        breweryName: serverProfile?.breweryName || '',
+        brandStory: serverProfile?.oneLineIntroduction || '',
+        description: serverProfile?.shortIntroduction || '',
+        brandStoryLong: serverProfile?.brandStory || '',
+        history: serverProfile?.history || '',
+        address: serverProfile?.address || '',
+        businessNumber: serverProfile?.businessRegistrationNumber || '',
+        representative: serverProfile?.representativeName || '',
+        phone: serverProfile?.phoneNumber || '',
+        email: serverProfile?.email || '',
+        established: String(serverProfile?.establishedYear || ''),
       };
     }
 
@@ -135,29 +135,17 @@ export default function BreweryProfileScreen() {
       email: '',
       established: String(publicProfile?.establishedYear || projectBreweryInfo?.establishedYear || ''),
     };
-  }, [project?.brewery, project?.breweryBio, project?.breweryProfileImage, projectBreweryAddress, projectBreweryInfo, publicProfile, serverProfile, user, usesDashboardProfile]);
+  }, [project?.brewery, project?.breweryBio, project?.breweryProfileImage, projectBreweryAddress, projectBreweryInfo, publicProfile, serverProfile, usesDashboardProfile]);
   const [isEditing, setIsEditing] = useState(isOwnProfile && editParam === '1');
   const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<BreweryProfileForm>(profileValues);
-  const profileUserFallback = useMemo(
-    () => user
-      ? {
-          breweryLocation: user.breweryLocation,
-          breweryName: user.breweryName,
-          businessNumber: user.businessNumber,
-          id: user.id,
-          phone: user.phone,
-        }
-      : null,
-    [user]
-  );
 
   useEffect(() => {
     updateUserRef.current = updateUser;
   }, [updateUser]);
 
   useEffect(() => {
-    if (!usesDashboardProfile || !profileUserFallback) {
+    if (!usesDashboardProfile) {
       setServerProfile(null);
       setIsProfileLoading(false);
       return;
@@ -170,16 +158,16 @@ export default function BreweryProfileScreen() {
         if (!mounted) return;
         setServerProfile(profile);
         void updateUserRef.current({
-          breweryName: profile.breweryName || profileUserFallback.breweryName,
-          breweryLocation: profile.address || profileUserFallback.breweryLocation,
+          breweryName: profile.breweryName || undefined,
+          breweryLocation: profile.address || undefined,
           breweryBrandStory: profile.oneLineIntroduction || undefined,
           breweryDescription: profile.shortIntroduction || undefined,
           breweryBrandStoryLong: profile.brandStory || undefined,
           breweryHistory: profile.history || undefined,
           breweryEstablished: profile.establishedYear ? String(profile.establishedYear) : undefined,
           breweryProfileImage: profile.profileImageUrl || undefined,
-          businessNumber: profile.businessRegistrationNumber || profileUserFallback.businessNumber,
-          phone: profile.phoneNumber || profileUserFallback.phone,
+          businessNumber: profile.businessRegistrationNumber || undefined,
+          phone: profile.phoneNumber || undefined,
           breweryContactEmail: profile.email || undefined,
         });
       })
@@ -194,7 +182,6 @@ export default function BreweryProfileScreen() {
       mounted = false;
     };
   }, [
-    profileUserFallback,
     usesDashboardProfile,
   ]);
 
@@ -348,7 +335,6 @@ export default function BreweryProfileScreen() {
         breweryHistory: form.history.trim(),
         breweryEstablished: form.established.trim(),
         breweryProfileImage: form.profileImage?.trim() || undefined,
-        name: form.representative.trim() || user?.name,
         breweryContactEmail: form.email.trim() || undefined,
       });
       setIsEditing(false);

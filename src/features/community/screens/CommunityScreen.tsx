@@ -38,8 +38,15 @@ import { showLoginRequired } from '@/utils/authPrompt';
 
 const POSTS_PER_PAGE = 6;
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
-const getAvatarSource = (avatar: ImageSourcePropType | string) =>
-  typeof avatar === 'string' ? { uri: avatar } : avatar;
+type AvatarValue = ImageSourcePropType | string | null | undefined;
+const getOptionalAvatarSource = (avatar?: AvatarValue) => {
+  if (typeof avatar === 'string') {
+    const trimmed = avatar.trim();
+    return trimmed ? { uri: trimmed } : null;
+  }
+  return avatar || null;
+};
+const getAvatarInitial = (name?: string) => (name?.trim()?.[0] || 'U').toUpperCase();
 const COMMUNITY_BOARD_TYPES: CommunityBoardType[] = ['FREE', 'INFO'];
 
 function getCommunityFilterBoardType(filter: string): CommunityBoardType | undefined {
@@ -141,6 +148,18 @@ export default function CommunityScreen() {
 
   const localOnlyPosts = posts.filter((post) => post.id > 1000000000000);
   const sourcePosts = apiLoadFailed ? localOnlyPosts : [...localOnlyPosts, ...apiPosts];
+  const renderProfileAvatar = (avatar: AvatarValue, name: string) => {
+    const source = getOptionalAvatarSource(avatar);
+    return (
+      <View style={styles.avatar}>
+        {source ? (
+          <Image source={source} style={styles.avatarImage} />
+        ) : (
+          <Text style={styles.avatarInitial}>{getAvatarInitial(name)}</Text>
+        )}
+      </View>
+    );
+  };
 
   const filteredPosts = sourcePosts.filter(p => {
     const catMatch = communityFilter === "전체" || p.category === communityFilter;
@@ -238,7 +257,7 @@ export default function CommunityScreen() {
                onPress={() => router.push(`/community/${post.id}` as any)}
              >
                 <View style={styles.postHeader}>
-                   <Image source={getAvatarSource(post.avatar)} style={styles.avatar} />
+                   {renderProfileAvatar(post.avatar, post.author)}
                    <View style={{ flex: 1 }}>
                       <View style={styles.authorRow}>
                          <Text style={styles.authorName}>{post.author}</Text>
@@ -333,7 +352,9 @@ const styles = StyleSheet.create({
   dropItemTxt: { fontSize: 13, fontWeight: '700', color: '#111' },
   postCard: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#F3F4F6' },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  avatar: { width: 42, height: 42, borderRadius: 21 },
+  avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 21 },
+  avatarInitial: { color: '#FFF', fontSize: 15, fontWeight: '900' },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 3 },
   authorName: { fontSize: 14, fontWeight: '800', color: '#111' },
   breweryBadge: { backgroundColor: '#111', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999 },

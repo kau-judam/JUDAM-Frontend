@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { Landmark, Smartphone } from 'lucide-react-native';
+import { Smartphone } from 'lucide-react-native';
 
 import type { FundingProject } from '@/constants/data';
 
-export type PaymentMethod = 'toss' | 'account';
+export type PaymentMethod = 'toss';
 export type InfoModalType = 'terms' | 'privacy' | null;
 export type ShippingInfo = {
   recipientName: string;
@@ -30,12 +30,10 @@ export const paymentMethods: {
   icon: ReactNode;
 }[] = [
   { id: 'toss', title: '토스페이', desc: '간편결제', icon: <Smartphone size={20} color="#111" /> },
-  { id: 'account', title: '계좌이체', desc: '은행 선택 후 입금', icon: <Landmark size={20} color="#111" /> },
 ];
 
 export const addressSuggestions: SupportAddress[] = [];
 
-export const bankOptions = ['국민은행', '신한은행', '우리은행', '하나은행', '농협은행', '카카오뱅크'];
 export const MAX_ADDITIONAL_SUPPORT = 10000000;
 export const FIXED_PROJECT_SHIPPING_FEE = 3000;
 
@@ -84,12 +82,7 @@ export function getPrimaryRewardItem(project: FundingProject) {
   return project.rewardItems?.[0] || `${project.title} ${getProjectBottleSize(project)} x 1`;
 }
 
-export function getPaymentSummary(
-  method: PaymentMethod | null,
-  accountBank: string,
-  depositorName: string
-) {
+export function getPaymentSummary(method: PaymentMethod | null) {
   if (method === 'toss') return '토스페이 간편결제';
-  if (method === 'account') return `${accountBank || '은행 미선택'} · ${depositorName || '입금자명 미입력'}`;
   return '결제수단 미선택';
 }

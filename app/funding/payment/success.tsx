@@ -14,6 +14,7 @@ import {
   type FundingDetailResponse,
   type FundingOrderPaymentStatusResponse,
 } from '@/features/funding/api';
+import { confirmBreweryInsightTossPayment } from '@/features/brewery/api';
 import { mapFundingStatus, mergeFundingDetail } from '@/features/funding/apiMappers';
 import { clearPendingExternalPayment } from '@/utils/externalFlow';
 
@@ -85,6 +86,8 @@ export default function TossPaymentSuccessScreen() {
     expectedAmount?: string;
     fundingId?: string;
     orderName?: string;
+    paymentType?: string;
+    returnTo?: string;
   }>();
   const { projects, participatedFundings, addParticipation, mergeProject, mergeProjects } = useFunding();
   const hasConfirmedRef = useRef(false);
@@ -113,6 +116,8 @@ export default function TossPaymentSuccessScreen() {
     const amount = expectedAmount ?? returnedAmount;
     const fundingId = Number(getParam(params.fundingId));
     const orderName = getParam(params.orderName) || '주담 펀딩 후원';
+    const paymentType = getParam(params.paymentType) || '';
+    const returnTo = getParam(params.returnTo) || '';
     return {
       paymentKey,
       orderId,
@@ -121,6 +126,8 @@ export default function TossPaymentSuccessScreen() {
       amount,
       fundingId: Number.isFinite(fundingId) ? fundingId : undefined,
       orderName,
+      paymentType,
+      returnTo,
     };
   }, [params]);
 
@@ -151,8 +158,31 @@ export default function TossPaymentSuccessScreen() {
           amount: paymentInfo.amount,
           fundingId: paymentInfo.fundingId,
           numericOrderId: paymentInfo.numericOrderId,
+          paymentType: paymentInfo.paymentType,
           hasPaymentKey: Boolean(paymentInfo.paymentKey),
         });
+        if (paymentInfo.paymentType === 'BREWERY_INSIGHT') {
+          const confirmed = await withPaymentTimeout(
+            confirmBreweryInsightTossPayment({
+              paymentKey: paymentInfo.paymentKey,
+              orderId: paymentInfo.orderId,
+              amount: paymentInfo.amount,
+            }),
+            30000,
+            '결제 승인 응답이 지연되고 있습니다. 잠시 후 다시 확인해주세요.'
+          );
+          const paymentStatus = String(confirmed.paymentStatus || '').trim().toUpperCase();
+          if (paymentStatus !== 'PAID') {
+            throw new Error(confirmed.message || '인사이트 결제 승인 결과를 확인하지 못했습니다.');
+          }
+          if (mounted) {
+            setConfirmedFundingId(null);
+            setPaidAmount(confirmed.amount || paymentInfo.amount);
+            setStatus('success');
+            setMessage(confirmed.message || '양조장 인사이트 결제가 완료되었습니다.');
+          }
+          return;
+        }
         const confirmed = await withPaymentTimeout(
           confirmTossPayment({
             paymentKey: paymentInfo.paymentKey,
@@ -224,28 +254,30 @@ export default function TossPaymentSuccessScreen() {
           message: errorMessage,
           error,
         });
-        try {
-          const orderStatusDetail = await withPaymentTimeout(
-            getFundingOrderPaymentStatus(paymentInfo.orderId),
-            8000,
-            '결제 상태 조회가 지연되고 있습니다.'
-          );
-          if (!mounted) return;
-          setPaymentStatusDetail(orderStatusDetail);
-          if (isPaidOrderStatus(orderStatusDetail)) {
+        if (paymentInfo.paymentType !== 'BREWERY_INSIGHT') {
+          try {
+            const orderStatusDetail = await withPaymentTimeout(
+              getFundingOrderPaymentStatus(paymentInfo.orderId),
+              8000,
+              '결제 상태 조회가 지연되고 있습니다.'
+            );
+            if (!mounted) return;
+            setPaymentStatusDetail(orderStatusDetail);
+            if (isPaidOrderStatus(orderStatusDetail)) {
+              setConfirmedFundingId(orderStatusDetail.fundingId || paymentInfo.fundingId || null);
+              setPaidAmount(orderStatusDetail.amount || paymentInfo.amount);
+              setStatus('success');
+              setMessage('펀딩 참여가 완료되었습니다.');
+              return;
+            }
             setConfirmedFundingId(orderStatusDetail.fundingId || paymentInfo.fundingId || null);
             setPaidAmount(orderStatusDetail.amount || paymentInfo.amount);
-            setStatus('success');
-            setMessage('펀딩 참여가 완료되었습니다.');
+            setStatus('error');
+            setMessage(orderStatusDetail.failureReason || errorMessage);
             return;
+          } catch (statusError) {
+            console.warn(getFundingApiErrorMessage(statusError, '결제 상태를 불러오지 못했습니다.'));
           }
-          setConfirmedFundingId(orderStatusDetail.fundingId || paymentInfo.fundingId || null);
-          setPaidAmount(orderStatusDetail.amount || paymentInfo.amount);
-          setStatus('error');
-          setMessage(orderStatusDetail.failureReason || errorMessage);
-          return;
-        } catch (statusError) {
-          console.warn(getFundingApiErrorMessage(statusError, '결제 상태를 불러오지 못했습니다.'));
         }
         if (/이미|already|PAID/i.test(errorMessage)) {
           if (mounted) {
@@ -277,17 +309,69 @@ export default function TossPaymentSuccessScreen() {
     paymentInfo.fundingId,
     paymentInfo.numericOrderId,
     paymentInfo.orderId,
+    paymentInfo.paymentType,
     paymentInfo.paymentKey,
     paymentInfo.returnedAmount,
   ]);
 
   const isLoading = status === 'loading';
   const isSuccess = status === 'success';
+  const isInsightPayment = paymentInfo.paymentType === 'BREWERY_INSIGHT';
   const detailFundingId = confirmedFundingId || paymentStatusDetail?.fundingId || paymentInfo.fundingId;
-  const displayTitle = paymentStatusDetail?.fundingTitle || paymentInfo.orderName;
-  const displayAmount = paymentStatusDetail?.amount || paidAmount;
+  const displayTitle = isInsightPayment ? paymentInfo.orderName : paymentStatusDetail?.fundingTitle || paymentInfo.orderName;
+  const displayAmount = isInsightPayment ? paidAmount : paymentStatusDetail?.amount || paidAmount;
   const paidAt = formatPaymentDateTime(paymentStatusDetail?.paidAt);
   const failedAt = formatPaymentDateTime(paymentStatusDetail?.failedAt);
+  const titleText = isLoading
+    ? isInsightPayment ? '인사이트 결제 승인 중' : '결제 승인 중'
+    : isSuccess
+      ? isInsightPayment ? '인사이트 결제가 완료되었습니다' : '펀딩 참여가 완료되었습니다'
+      : isInsightPayment ? '인사이트 결제 승인 실패' : '결제 승인 실패';
+  const bodyText = isInsightPayment && isSuccess
+    ? '양조장 인사이트 결제가 완료되었습니다.'
+    : message;
+  const infoLabelText = isInsightPayment ? '이용권' : '프로젝트';
+  const primaryButtonText = isInsightPayment ? '양조장 대시보드로 돌아가기' : '펀딩 상세로 돌아가기';
+
+  if (isInsightPayment) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}>
+        <View style={[styles.iconBox, isSuccess && styles.iconBoxSuccess, status === 'error' && styles.iconBoxError]}>
+          {isLoading ? (
+            <ActivityIndicator color="#111827" />
+          ) : isSuccess ? (
+            <CheckCircle2 size={38} color="#FFFFFF" />
+          ) : (
+            <XCircle size={38} color="#991B1B" />
+          )}
+        </View>
+        <Text style={styles.title}>{titleText}</Text>
+        <Text style={styles.body}>{bodyText}</Text>
+        {(displayAmount || displayTitle) && (
+          <View style={styles.infoBox}>
+            <Text style={styles.infoLabel}>{infoLabelText}</Text>
+            <Text style={styles.infoValue}>{displayTitle}</Text>
+            {displayAmount ? (
+              <>
+                <View style={styles.divider} />
+                <Text style={styles.infoLabel}>결제 금액</Text>
+                <Text style={styles.amountValue}>{displayAmount.toLocaleString()}원</Text>
+              </>
+            ) : null}
+          </View>
+        )}
+        <View style={styles.buttonGroup}>
+          <TouchableOpacity
+            style={[styles.primaryButton, isLoading && styles.buttonDisabled]}
+            onPress={() => router.replace((paymentInfo.returnTo || '/brewery/dashboard') as any)}
+            disabled={isLoading}
+          >
+            <Text style={styles.primaryButtonText}>{primaryButtonText}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}>

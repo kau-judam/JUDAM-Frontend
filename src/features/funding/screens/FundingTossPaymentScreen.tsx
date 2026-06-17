@@ -225,6 +225,8 @@ export default function FundingTossPaymentScreen() {
     customerEmail?: string;
     customerMobilePhone?: string;
     projectTitle?: string;
+    paymentType?: string;
+    returnTo?: string;
   }>();
   const handledReturnRef = useRef(false);
   const lastExternalUrlRef = useRef('');
@@ -241,6 +243,8 @@ export default function FundingTossPaymentScreen() {
     const customerName = getParam(params.customerName) || undefined;
     const customerEmail = getParam(params.customerEmail) || undefined;
     const customerMobilePhone = getParam(params.customerMobilePhone)?.replace(/\D/g, '') || undefined;
+    const paymentType = getParam(params.paymentType) || '';
+    const returnTo = getParam(params.returnTo) || '';
     return {
       fundingId,
       orderId,
@@ -250,6 +254,8 @@ export default function FundingTossPaymentScreen() {
       customerName,
       customerEmail,
       customerMobilePhone,
+      paymentType,
+      returnTo,
     };
   }, [params]);
 
@@ -259,7 +265,9 @@ export default function FundingTossPaymentScreen() {
     expectedAmount: Number.isFinite(paymentInfo.amount) ? String(paymentInfo.amount) : '',
     orderName: paymentInfo.orderName,
     tossOrderId: paymentInfo.orderId,
-  }), [paymentInfo.amount, paymentInfo.fundingId, paymentInfo.numericOrderId, paymentInfo.orderId, paymentInfo.orderName]);
+    paymentType: paymentInfo.paymentType,
+    returnTo: paymentInfo.returnTo,
+  }), [paymentInfo.amount, paymentInfo.fundingId, paymentInfo.numericOrderId, paymentInfo.orderId, paymentInfo.orderName, paymentInfo.paymentType, paymentInfo.returnTo]);
 
   const html = useMemo(() => {
     if (!TOSS_CLIENT_KEY || !paymentInfo.orderId || !Number.isFinite(paymentInfo.amount) || paymentInfo.amount <= 0) {
@@ -280,12 +288,16 @@ export default function FundingTossPaymentScreen() {
   }, [paymentInfo, returnParams]);
 
   const goBackToFunding = useCallback(() => {
+    if (paymentInfo.paymentType === 'BREWERY_INSIGHT') {
+      router.replace((paymentInfo.returnTo || '/brewery/dashboard') as any);
+      return;
+    }
     if (paymentInfo.fundingId) {
       router.replace(`/funding/${paymentInfo.fundingId}` as any);
       return;
     }
     router.replace('/funding' as any);
-  }, [paymentInfo.fundingId]);
+  }, [paymentInfo.fundingId, paymentInfo.paymentType, paymentInfo.returnTo]);
 
   const handleReturnUrl = useCallback((url: string) => {
     if (!isTossReturnUrl(url) || handledReturnRef.current) return false;

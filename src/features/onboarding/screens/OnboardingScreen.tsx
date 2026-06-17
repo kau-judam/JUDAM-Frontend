@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
   ArrowLeft,
@@ -75,7 +75,7 @@ const SLIDES = [
   },
 ];
 
-const TOTAL = SLIDES.length + 1;
+const DEFAULT_RETURN_TO = '/(tabs)/mypage';
 
 const CTA_FEATURES = [
   { emoji: "🍶", label: "술BTI\n테스트" },
@@ -86,26 +86,47 @@ const CTA_FEATURES = [
 
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ mode?: string | string[]; returnTo?: string | string[] }>();
   const { logout } = useAuth();
   const [current, setCurrent] = useState(0);
   const [dir, setDir] = useState(1);
+
+  const mode = Array.isArray(params.mode) ? params.mode[0] : params.mode;
+  const returnToParam = Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+  const isReviewMode = mode === 'review';
+  const returnTo = returnToParam || DEFAULT_RETURN_TO;
+  const maxIndex = isReviewMode ? SLIDES.length - 1 : SLIDES.length;
+  const total = maxIndex + 1;
 
   useEffect(() => {
     RNStatusBar.setHidden(true, 'none');
   }, []);
 
-  const isCTA = current === SLIDES.length;
+  const isCTA = !isReviewMode && current === SLIDES.length;
 
   const go = useCallback((index: number) => {
-    setDir(index > current ? 1 : -1);
-    setCurrent(index);
-  }, [current]);
+    const nextIndex = Math.max(0, Math.min(index, maxIndex));
+    setDir(nextIndex > current ? 1 : -1);
+    setCurrent(nextIndex);
+  }, [current, maxIndex]);
 
   const handleNext = () => {
-    if (current < SLIDES.length) go(current + 1);
+    if (current < maxIndex) {
+      go(current + 1);
+      return;
+    }
+    if (isReviewMode) {
+      finishOnboarding(returnTo);
+    }
   };
 
-  const handleSkip = () => go(SLIDES.length);
+  const handleSkip = () => {
+    if (isReviewMode) {
+      finishOnboarding(returnTo);
+      return;
+    }
+    go(SLIDES.length);
+  };
 
   const panResponder = useMemo(
     () => PanResponder.create({
@@ -114,7 +135,7 @@ export default function OnboardingScreen() {
       ),
       onPanResponderRelease: (_, gesture) => {
         if (Math.abs(gesture.dx) < 52) return;
-        if (gesture.dx < 0 && current < SLIDES.length) {
+        if (gesture.dx < 0 && current < maxIndex) {
           go(current + 1);
         }
         if (gesture.dx > 0 && current > 0) {
@@ -122,7 +143,7 @@ export default function OnboardingScreen() {
         }
       },
     }),
-    [current, go]
+    [current, go, maxIndex]
   );
 
   const finishOnboarding = async (target: string) => {
@@ -190,7 +211,7 @@ export default function OnboardingScreen() {
         <View style={[styles.bottomNav, { paddingBottom: insets.bottom + 40 }]}>
           {/* Progress dots */}
           <View style={styles.pagination}>
-            {Array.from({ length: TOTAL }).map((_, i) => (
+            {Array.from({ length: total }).map((_, i) => (
               <TouchableOpacity
                 key={i}
                 activeOpacity={0.85}
@@ -217,7 +238,7 @@ export default function OnboardingScreen() {
               <Text style={styles.nextBtnText}>
                 {current < SLIDES.length - 1 ? "다음" : "시작하기"}
               </Text>
-              {current < SLIDES.length - 1 ? (
+              {current < maxIndex ? (
                 <ChevronRight size={16} color="#111" />
               ) : (
                 <ArrowRight size={16} color="#111" />

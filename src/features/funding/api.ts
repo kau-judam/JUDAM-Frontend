@@ -5,6 +5,10 @@ export const JUDAM_FUNDING_API_BASE_URL = 'http://43.202.24.223:3000';
 type FundingApiErrorBody = {
   status?: number;
   message?: string;
+  error?: string;
+  errors?: unknown;
+  details?: unknown;
+  data?: unknown;
 };
 
 type FundingApiEnvelope<T> = FundingApiErrorBody & {
@@ -71,6 +75,8 @@ type FundingAgreementResponse = {
 
 type FundingDraftPayload = {
   breweryId: number;
+  recipeId?: number | null;
+  recipe_id?: number | null;
   title?: string;
   shortTitle?: string;
   category?: string;
@@ -285,6 +291,8 @@ type FundingDraftDeleteResponse = {
 
 type FundingBasicInfoPayload = {
   fundingId?: number;
+  recipeId?: number | null;
+  recipe_id?: number | null;
   title?: string;
   shortTitle?: string;
   category?: string;
@@ -914,6 +922,9 @@ export type FundingOfficialBreweryInfo = {
 export type FundingListItem = {
   fundingId: number;
   title: string;
+  shortTitle?: string;
+  short_title?: string;
+  summary?: string;
   description?: string;
   recipeTitle?: string;
   thumbnailUrl: string | null;
@@ -982,6 +993,9 @@ export type FundingDetailResponse = {
   breweryName: string;
   category?: string;
   shortTitle?: string;
+  short_title?: string;
+  basicInfo?: FundingDraftPreviewResponse['basicInfo'];
+  basic_info?: FundingDraftPreviewResponse['basicInfo'];
   mainIngredient?: string;
   primaryIngredient?: string;
   mainIngredientLabel?: string;
@@ -1047,6 +1061,8 @@ export type FundingDetailResponse = {
 export type FundingIntroResponse = {
   fundingId: number;
   title: string;
+  summary?: string;
+  description?: string;
   introduction: string;
   story: string;
   mainIngredient?: string;
@@ -2936,12 +2952,229 @@ function appendFundingFormFiles(formData: FormData, fieldName: string, files?: F
 }
 
 export function getFundingApiErrorMessage(error: unknown, fallback = '요청을 처리하지 못했습니다.') {
+  if (error instanceof FundingApiError) {
+    const validationMessage = getFundingApiValidationMessage(error.data);
+    if (validationMessage) return validationMessage;
+    if (isLikelyGarbledFundingApiMessage(error.message)) return fallback;
+    return error.message || fallback;
+  }
   if (error instanceof Error) {
     if (error.message === 'NEEDS_ACCESS_TOKEN') return '로그인 정보가 필요합니다. 다시 로그인해주세요.';
     if (isLikelyGarbledFundingApiMessage(error.message)) return fallback;
     return error.message || fallback;
   }
   return fallback;
+}
+
+const fundingValidationFieldLabels: Record<string, string> = {
+  basicInfo: '기본정보',
+  basic_info: '기본정보',
+  title: '프로젝트 제목',
+  shortTitle: '짧은 제목',
+  short_title: '짧은 제목',
+  category: '상품 분류',
+  mainIngredient: '메인재료',
+  main_ingredient: '메인재료',
+  subIngredient: '부재료',
+  sub_ingredient: '부재료',
+  subIngredients: '부재료',
+  sub_ingredients: '부재료',
+  alcoholPercentage: '도수',
+  alcohol_percentage: '도수',
+  alcoholContent: '도수',
+  alcohol_content: '도수',
+  summary: '프로젝트 한줄 소개',
+  thumbnailUrl: '대표 이미지',
+  thumbnail_url: '대표 이미지',
+  imageUrls: '대표 이미지',
+  image_urls: '대표 이미지',
+  images: '대표 이미지',
+  schedule: '목표 금액 및 일정',
+  pricePerBottle: '1병당 가격',
+  price_per_bottle: '1병당 가격',
+  totalQuantity: '수량',
+  total_quantity: '수량',
+  bottleQuantity: '수량',
+  bottle_quantity: '수량',
+  targetAmount: '목표 금액',
+  target_amount: '목표 금액',
+  goalAmount: '목표 금액',
+  goal_amount: '목표 금액',
+  fundingStartDate: '펀딩 시작일',
+  funding_start_date: '펀딩 시작일',
+  startDate: '펀딩 시작일',
+  start_date: '펀딩 시작일',
+  fundingPeriodDays: '프로젝트 기간',
+  funding_period_days: '프로젝트 기간',
+  duration: '프로젝트 기간',
+  expectedDeliveryDate: '예상 발송 시작일',
+  expected_delivery_date: '예상 발송 시작일',
+  legalInfo: '법적 고시 정보',
+  legal_info: '법적 고시 정보',
+  productType: '상품 분류',
+  product_type: '상품 분류',
+  volume: '용량',
+  rawMaterials: '원재료/원산지',
+  raw_materials: '원재료/원산지',
+  name: '원재료명',
+  ingredient: '원재료명',
+  origin: '원산지',
+  tasteProfile: '맛 지표',
+  taste_profile: '맛 지표',
+  sweetness: '단맛',
+  acidity: '산미',
+  body: '바디감',
+  carbonation: '탄산감',
+  aromaIntensity: '풍미/향',
+  aroma_intensity: '풍미/향',
+  alcoholIntensity: '도수감',
+  alcohol_intensity: '도수감',
+  plan: '프로젝트 계획',
+  projectPlan: '프로젝트 계획',
+  project_plan: '프로젝트 계획',
+  introduction: '프로젝트 소개',
+  videoUrl: '영상 URL',
+  video_url: '영상 URL',
+  budgetPlan: '프로젝트 예산',
+  budget_plan: '프로젝트 예산',
+  schedulePlan: '프로젝트 일정',
+  schedule_plan: '프로젝트 일정',
+  policy: '프로젝트 정책',
+  projectPolicy: '프로젝트 정책',
+  project_policy: '프로젝트 정책',
+  notices: '안내 사항',
+  riskNotice: '프로젝트 위험/안내 사항',
+  risk_notice: '프로젝트 위험/안내 사항',
+  adultVerificationNotice: '성인인증 안내',
+  adult_verification_notice: '성인인증 안내',
+  breweryInfo: '양조장 정보',
+  brewery_info: '양조장 정보',
+  breweryName: '양조장명/상호명',
+  brewery_name: '양조장명/상호명',
+  representativeName: '대표자 성명',
+  representative_name: '대표자 성명',
+  businessRegistrationNumber: '사업자 등록번호',
+  business_registration_number: '사업자 등록번호',
+  businessAddress: '사업장 소재지',
+  business_address: '사업장 소재지',
+  contactEmail: '이메일 주소',
+  contact_email: '이메일 주소',
+  contactPhone: '휴대폰 번호',
+  contact_phone: '휴대폰 번호',
+  bankName: '은행',
+  bank_name: '은행',
+  accountNumber: '계좌번호',
+  account_number: '계좌번호',
+  accountHolder: '예금주',
+  account_holder: '예금주',
+  businessType: '사업자 유형',
+  business_type: '사업자 유형',
+  businessName: '상호명',
+  business_name: '상호명',
+  businessCategory: '업태',
+  business_category: '업태',
+  businessItem: '종목',
+  business_item: '종목',
+  phoneVerified: '휴대폰 인증',
+  phone_verified: '휴대폰 인증',
+  accountVerified: '입금 계좌 인증',
+  account_verified: '입금 계좌 인증',
+  documents: '인증 서류',
+  documentType: '서류 종류',
+  document_type: '서류 종류',
+  fileUrl: '첨부 파일',
+  file_url: '첨부 파일',
+};
+
+function isFundingApiRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function normalizeFundingValidationText(value: unknown) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed && !isLikelyGarbledFundingApiMessage(trimmed) ? trimmed : '';
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}
+
+function formatFundingValidationField(field: unknown) {
+  const rawField = normalizeFundingValidationText(field);
+  if (!rawField) return '';
+  const parts = rawField
+    .replace(/\[(\d+)\]/g, '.$1')
+    .split('.')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !/^\d+$/.test(part));
+  const labels = parts.map((part) => fundingValidationFieldLabels[part] || part);
+  return Array.from(new Set(labels)).join(' > ');
+}
+
+function collectFundingValidationMessages(value: unknown, parentField = '', depth = 0): string[] {
+  if (depth > 5 || value === undefined || value === null) return [];
+
+  if (typeof value === 'string') {
+    const message = normalizeFundingValidationText(value);
+    if (!message) return [];
+    const fieldLabel = formatFundingValidationField(parentField);
+    return [fieldLabel ? `${fieldLabel}: ${message}` : message];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectFundingValidationMessages(item, parentField, depth + 1));
+  }
+
+  if (!isFundingApiRecord(value)) return [];
+
+  const field = value.field ?? value.path ?? value.property ?? value.param ?? value.key ?? parentField;
+  const message = value.message ?? value.msg ?? value.reason ?? value.error;
+  const directMessage = normalizeFundingValidationText(message);
+  const directField = formatFundingValidationField(field);
+  const messages: string[] = [];
+
+  if (directMessage) {
+    messages.push(directField ? `${directField}: ${directMessage}` : directMessage);
+  }
+
+  const nestedKeys = ['errors', 'validationErrors', 'details', 'issues', 'violations', 'children', 'constraints'];
+  nestedKeys.forEach((key) => {
+    if (key in value) {
+      messages.push(...collectFundingValidationMessages(value[key], directField || parentField, depth + 1));
+    }
+  });
+
+  if (messages.length === 0) {
+    Object.entries(value).forEach(([key, entry]) => {
+      if (['status', 'message', 'error', 'data'].includes(key)) return;
+      const nextField = parentField ? `${parentField}.${key}` : key;
+      messages.push(...collectFundingValidationMessages(entry, nextField, depth + 1));
+    });
+  }
+
+  return messages;
+}
+
+function getFundingApiValidationMessage(data: unknown) {
+  if (!isFundingApiRecord(data)) return '';
+  const baseMessage = normalizeFundingValidationText(data.message) || normalizeFundingValidationText(data.error);
+  const validationSources = [
+    data.errors,
+    data.validationErrors,
+    data.details,
+    data.issues,
+    isFundingApiRecord(data.data) ? data.data.errors : undefined,
+    isFundingApiRecord(data.data) ? data.data.validationErrors : undefined,
+    isFundingApiRecord(data.data) ? data.data.details : undefined,
+  ];
+  const details = Array.from(new Set(
+    validationSources.flatMap((source) => collectFundingValidationMessages(source)).filter(Boolean)
+  )).slice(0, 6);
+
+  if (details.length === 0) return '';
+  const title = baseMessage && !/^HTTP\s+\d+$/i.test(baseMessage) ? baseMessage : '입력값을 다시 확인해주세요.';
+  return `${title}\n\n수정할 항목:\n${details.map((detail) => `- ${detail}`).join('\n')}`;
 }
 
 export function getFundingApiSafeMessage(message: unknown, fallback = '요청을 처리했습니다.') {
@@ -3222,8 +3455,10 @@ export async function verifyBreweryAccount(payload: VerifyBreweryAccountPayload)
 
 export async function saveFundingBreweryInfo(draftId: number, payload: FundingBreweryInfoPayload) {
   const digitsOnly = (value: string) => value.replace(/\D/g, '');
+  const compactBusinessRegistrationNumber = digitsOnly(payload.businessRegistrationNumber) || payload.businessRegistrationNumber;
   const compactPayload = {
     ...payload,
+    businessRegistrationNumber: compactBusinessRegistrationNumber,
     contactPhone: digitsOnly(payload.contactPhone) || payload.contactPhone,
     accountNumber: digitsOnly(payload.accountNumber) || payload.accountNumber,
   };

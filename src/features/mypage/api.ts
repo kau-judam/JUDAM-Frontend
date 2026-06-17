@@ -78,6 +78,7 @@ export type MyPageSulbtiScores = {
 
 export type MyPageSulbtiResult = {
   hasResult: boolean;
+  sulbtiResultId?: number | string | null;
   type: string | null;
   btiCode?: string | null;
   title: string | null;
@@ -89,6 +90,11 @@ export type MyPageSulbtiResult = {
   tags: string[];
   createdAt: string | null;
   updatedAt: string | null;
+  feedback?: {
+    hasSubmitted?: boolean;
+    feedbackId?: number | string | null;
+    submittedAt?: string | null;
+  } | null;
 };
 
 export type SaveMyPageSulbtiPayload = {
@@ -98,6 +104,25 @@ export type SaveMyPageSulbtiPayload = {
   carbonationScore: number;
   flavorScore: number;
   abvScore: number;
+};
+
+export type MyPageSulbtiFeedbackPayload = {
+  sulbtiResultId?: number | string | null;
+  btiCode: string;
+  isMatched: boolean;
+  mismatchedAxes: string[];
+  comment?: string;
+};
+
+export type MyPageSulbtiFeedbackResult = {
+  feedbackId?: number | string;
+  sulbtiResultId?: number | string | null;
+  hasSubmittedFeedback?: boolean;
+  feedback?: {
+    hasSubmitted?: boolean;
+    feedbackId?: number | string | null;
+    submittedAt?: string | null;
+  };
 };
 
 export type MyPageArchiveImage = {
@@ -614,6 +639,13 @@ export async function updateMyPagePhone(phoneNumber: string, verificationCode: s
   return unwrapMyPageData<MyPagePhoneUpdateResponse>(response);
 }
 
+export async function withdrawMyPageAccount(nickname: string) {
+  return requestMyPageJson<MyPageApiEnvelope<null>>('/api/users/me', {
+    method: 'DELETE',
+    body: JSON.stringify({ nickname }),
+  });
+}
+
 export async function updateMyPageProfileImage(image: MyPageImageUploadFile) {
   if (!image.uri) {
     throw new Error('프로필 이미지 파일을 첨부해주세요.');
@@ -659,6 +691,25 @@ export async function saveMyPageSulbti(payload: SaveMyPageSulbtiPayload) {
     body: JSON.stringify(payload),
   });
   return unwrapMyPageData<MyPageSulbtiResult>(response);
+}
+
+export async function submitMyPageSulbtiFeedback(payload: MyPageSulbtiFeedbackPayload) {
+  const body: Record<string, unknown> = {
+    btiCode: payload.btiCode,
+    isMatched: payload.isMatched,
+    mismatchedAxes: payload.mismatchedAxes,
+    comment: payload.comment?.trim() || '',
+  };
+
+  if (payload.sulbtiResultId !== null && payload.sulbtiResultId !== undefined && String(payload.sulbtiResultId).trim()) {
+    body.sulbtiResultId = payload.sulbtiResultId;
+  }
+
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSulbtiFeedbackResult>>('/api/mypage/sulbti/feedback', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return unwrapMyPageData<MyPageSulbtiFeedbackResult>(response);
 }
 
 export async function createMyPageArchiveWithImages(payload: CreateMyPageArchiveWithImagesPayload) {

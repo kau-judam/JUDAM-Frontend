@@ -24,9 +24,9 @@ import {
   updateMyPageProfileImage,
 } from '@/features/mypage/api';
 import { showLoginRequired } from '@/utils/authPrompt';
-import { formatPhoneNumber, isValidEmail } from '@/utils/validation';
+import { formatPhoneNumber } from '@/utils/validation';
 
-type EditableField = 'nickname' | 'email';
+type EditableField = 'nickname';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -79,7 +79,7 @@ export default function ProfileScreen() {
     setEditingField(field);
     setIsNicknameChecked(false);
     setIsNicknameAvailable(false);
-    setDraftValue(field === 'nickname' ? displayName : user.email || '');
+    setDraftValue(displayName);
   };
 
   const closeEdit = () => {
@@ -146,15 +146,6 @@ export default function ProfileScreen() {
           name: result.nickname,
           breweryName: user.type === 'brewery' ? result.nickname : user.breweryName,
         });
-      }
-
-      if (editingField === 'email') {
-        const email = value.toLowerCase();
-        if (!isValidEmail(email)) {
-          Alert.alert('이메일 확인', '올바른 이메일 주소를 입력해주세요.');
-          return;
-        }
-        await updateUser({ email });
       }
 
       Alert.alert('저장 완료', '프로필 정보가 변경되었습니다.');
@@ -232,7 +223,7 @@ export default function ProfileScreen() {
         <View style={styles.card}>
           <InfoRow icon={<UserRound size={18} color="#4B5563" />} label="닉네임" value={displayName} onPress={() => openEdit('nickname')} />
           <InfoRow icon={<Phone size={18} color="#4B5563" />} label="전화번호" value={formattedPhone || '전화번호 없음'} />
-          <InfoRow icon={<Mail size={18} color="#4B5563" />} label="이메일" value={user.email || '이메일 없음'} onPress={() => openEdit('email')} last />
+          <InfoRow icon={<Mail size={18} color="#4B5563" />} label="이메일" value={user.email || '이메일 없음'} last />
         </View>
 
         <View style={styles.card}>
@@ -260,14 +251,13 @@ export default function ProfileScreen() {
               <View style={styles.row}>
                 <View style={[styles.inputBox, { flex: 1 }]}>
                   {editingField === 'nickname' ? <UserRound size={18} color="#9CA3AF" style={styles.inputIcon} /> : null}
-                  {editingField === 'email' ? <Mail size={18} color="#9CA3AF" style={styles.inputIcon} /> : null}
                   <TextInput
                     style={styles.input}
                     value={draftValue}
                     onChangeText={handleDraftChange}
                     placeholder={getPlaceholder(editingField)}
                     placeholderTextColor="#9CA3AF"
-                    keyboardType={editingField === 'email' ? 'email-address' : 'default'}
+                    keyboardType="default"
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
@@ -335,19 +325,16 @@ function VerifiedLabel({ text }: { text: string }) {
 
 function getSheetTitle(field: EditableField | null) {
   if (field === 'nickname') return '닉네임 변경';
-  if (field === 'email') return '이메일 변경';
   return '';
 }
 
 function getInputLabel(field: EditableField | null) {
   if (field === 'nickname') return '닉네임';
-  if (field === 'email') return '이메일';
   return '';
 }
 
 function getPlaceholder(field: EditableField | null) {
   if (field === 'nickname') return '새 닉네임을 입력하세요';
-  if (field === 'email') return 'example@email.com';
   return '';
 }
 

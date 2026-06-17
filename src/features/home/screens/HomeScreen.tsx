@@ -17,7 +17,8 @@ import {
   Wine, 
   Lightbulb, 
   Factory, 
-  Trophy 
+  Trophy,
+  Image as ImageIcon,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -28,8 +29,8 @@ import { RecipeCard } from '@/components/recipe-card';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useFunding } from '@/contexts/FundingContext';
-import { getFundingProjectImageSource, getFundingProjectStatusLabel, getPopularRecipes, isActiveFundingStatus, isFundingProjectSupportable, sortFundingProjectsByPopularity } from '@/constants/data';
-import type { Recipe } from '@/constants/data';
+import { getFundingProjectImageSource, getFundingProjectStatusLabel, getPopularRecipes, isFundingProjectSupportable } from '@/constants/data';
+import type { FundingProject, Recipe } from '@/constants/data';
 import { fetchPopularRecipes } from '@/features/recipe/api';
 import { getFundingApiErrorMessage, getFundingList, getFundingStats, type FundingStatsResponse } from '@/features/funding/api';
 import { mergeFundingListItem } from '@/features/funding/apiMappers';
@@ -74,10 +75,6 @@ function pushTabToTop(pathname: '/recipe' | '/funding') {
   } as any);
 }
 
-function hasFundingDisplayImage(project: Parameters<typeof getFundingProjectImageSource>[0]) {
-  return Boolean(getFundingProjectImageSource(project));
-}
-
 function hasRecipeDisplayImage(recipe: Recipe) {
   return Boolean(recipe.image);
 }
@@ -93,18 +90,8 @@ export default function HomeScreen() {
   const projectsRef = useRef(projects);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [popularRecipes, setPopularRecipes] = useState<Recipe[]>(() => getPopularRecipes(3));
+  const [popularFundingProjects, setPopularFundingProjects] = useState<FundingProject[]>([]);
   const [serverFundingStats, setServerFundingStats] = useState<FundingStatsResponse | null>(null);
-  const popularFundingProjects = useMemo(() => {
-    const activeProjects = sortFundingProjectsByPopularity(
-      projects.filter((project) => isActiveFundingStatus(project.status))
-    );
-    const activeProjectsWithImages = activeProjects.filter(hasFundingDisplayImage);
-    const prioritizedProjects = [
-      ...activeProjectsWithImages,
-      ...activeProjects.filter((project) => !activeProjectsWithImages.some((item) => item.id === project.id)),
-    ];
-    return prioritizedProjects.slice(0, 3);
-  }, [projects]);
   const fundingStats = useMemo(() => {
     if (!serverFundingStats) {
       return {
@@ -129,18 +116,13 @@ export default function HomeScreen() {
 
     const loadPopularFundingProjects = async () => {
       try {
-        const response = await getFundingList({ status: 'ACTIVE', sort: 'POPULAR', page: 0, size: 6 });
+        const response = await getFundingList({ status: 'ACTIVE', sort: 'POPULAR', page: 0, size: 3 });
         if (!mounted) return;
         const nextProjects = response.data.map((item) =>
           mergeFundingListItem(projectsRef.current.find((project) => project.id === item.fundingId), item)
         );
-        const activeProjects = nextProjects.filter((project) => isActiveFundingStatus(project.status));
-        const activeProjectsWithImages = activeProjects.filter(hasFundingDisplayImage);
-        const prioritizedProjects = [
-          ...activeProjectsWithImages,
-          ...activeProjects.filter((project) => !activeProjectsWithImages.some((item) => item.id === project.id)),
-        ];
-        mergeProjects(prioritizedProjects.slice(0, 3));
+        setPopularFundingProjects(nextProjects.slice(0, 3));
+        mergeProjects(nextProjects);
       } catch (error) {
         console.warn(getFundingApiErrorMessage(error, 'Failed to load popular funding projects from API'));
       }
@@ -293,11 +275,18 @@ export default function HomeScreen() {
                 >
                   <View style={styles.fundingRow}>
                     <View style={styles.fundingThumbBox}>
-                      <Image
-                        source={fundingImageSource}
-                        style={styles.fundingThumb}
-                        resizeMode="contain"
-                      />
+                      {fundingImageSource ? (
+                        <Image
+                          source={fundingImageSource}
+                          style={styles.fundingThumb}
+                          resizeMode="contain"
+                        />
+                      ) : (
+                        <View style={styles.emptyFundingThumb}>
+                          <ImageIcon size={20} color="#9CA3AF" />
+                          <Text style={styles.emptyFundingThumbText}>이미지 없음</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={styles.fundingInfo}>
                       <View style={styles.fundingMeta}>
@@ -425,6 +414,8 @@ const styles = StyleSheet.create({
   fundingRow: { flexDirection: 'row', gap: 16 },
   fundingThumbBox: { width: 100, height: 100, borderRadius: 16, overflow: 'hidden', backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center' },
   fundingThumb: { width: '100%', height: '100%', objectFit: 'contain' },
+  emptyFundingThumb: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  emptyFundingThumbText: { fontSize: 10, fontWeight: '900', color: '#9CA3AF' },
   fundingInfo: { flex: 1, justifyContent: 'space-between' },
   fundingMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   breweryName: { fontSize: 12, fontWeight: '800', color: '#6B7280' },

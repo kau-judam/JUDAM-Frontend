@@ -44,6 +44,17 @@ export type CommunityCommentDto = {
   comment_id: number;
   user_id: number | string;
   nickname: string;
+  author_type?: string | null;
+  authorType?: string | null;
+  writer_role?: string | null;
+  writerRole?: string | null;
+  role?: string | null;
+  user_role?: string | null;
+  userRole?: string | null;
+  is_brewery?: boolean | null;
+  isBrewery?: boolean | null;
+  writer_is_brewery?: boolean | null;
+  writerIsBrewery?: boolean | null;
   author_profile_image?: string | null;
   author_profile_image_url?: string | null;
   profile_image_url?: string | null;
@@ -152,7 +163,6 @@ type DeleteCommunityResponse = {
 };
 
 const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
-const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop';
 
 export async function getCommunityAccessToken() {
   for (const key of TOKEN_STORAGE_KEYS) {
@@ -222,6 +232,27 @@ function getCommunityAuthorType(boardType?: string): 'user' | 'brewery' {
   return boardType === 'BREWERY' ? 'brewery' : 'user';
 }
 
+function getCommunityCommentAuthorType(item: CommunityCommentDto): 'user' | 'brewery' {
+  const explicitBrewery =
+    item.is_brewery ?? item.isBrewery ?? item.writer_is_brewery ?? item.writerIsBrewery;
+
+  if (explicitBrewery === true) return 'brewery';
+  if (explicitBrewery === false) return 'user';
+
+  const role = String(
+    item.author_type ??
+      item.authorType ??
+      item.writer_role ??
+      item.writerRole ??
+      item.role ??
+      item.user_role ??
+      item.userRole ??
+      ''
+  ).toUpperCase();
+
+  return role.includes('BREWERY') ? 'brewery' : 'user';
+}
+
 function getAuthorProfileImage(item: {
   author_profile_image?: string | null;
   author_profile_image_url?: string | null;
@@ -249,7 +280,7 @@ export function mapCommunityPost(item: CommunityPostDto, fallbackAvatar?: ImageS
     id: item.post_id,
     author: item.nickname || '사용자',
     authorType: getCommunityAuthorType(item.board_type),
-    avatar: getAuthorProfileImage(item) || fallbackAvatar || DEFAULT_AVATAR,
+    avatar: getAuthorProfileImage(item) || fallbackAvatar,
     title: item.title,
     content: item.content || '',
     image: imageUrls[0],
@@ -269,8 +300,8 @@ export function mapCommunityComment(item: CommunityCommentDto, fallbackAvatar?: 
   return {
     id: item.comment_id,
     author: item.nickname || '사용자',
-    authorType: 'user' as const,
-    avatar: getAuthorProfileImage(item) || fallbackAvatar || DEFAULT_AVATAR,
+    authorType: getCommunityCommentAuthorType(item),
+    avatar: getAuthorProfileImage(item) || fallbackAvatar,
     content: item.content,
     timestamp: formatCommunityTimestamp(item.created_at),
     likes: item.like_count,
@@ -286,8 +317,8 @@ export function mapCommunityReply(item: CommunityReplyDto, fallbackAvatar?: Imag
   return {
     id: item.comment_id,
     author: item.nickname || '사용자',
-    authorType: 'user' as const,
-    avatar: getAuthorProfileImage(item) || fallbackAvatar || DEFAULT_AVATAR,
+    authorType: getCommunityCommentAuthorType(item),
+    avatar: getAuthorProfileImage(item) || fallbackAvatar,
     content: item.content,
     timestamp: formatCommunityTimestamp(item.created_at),
     likes: item.like_count ?? 0,

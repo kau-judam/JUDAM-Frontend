@@ -321,6 +321,18 @@ function formatFavoriteCount(count: number) {
   return String(count);
 }
 
+function hasRegisteredBreweryPublicProfile(profile?: Partial<BreweryProfile> | null) {
+  if (!profile) return false;
+  return [
+    profile.profileImageUrl,
+    profile.oneLineIntroduction,
+    profile.shortIntroduction,
+    profile.brandStory,
+    profile.history,
+    profile.establishedYear,
+  ].some((value) => String(value || '').trim());
+}
+
 function getInitialTab(tab?: string | string[]) {
   const targetTab = Array.isArray(tab) ? tab[0] : tab;
   if (targetTab === "journal") return "양조일지";
@@ -385,7 +397,16 @@ export default function FundingDetailScreen() {
   const previousProjectId = Number(rawFromProjectId);
   const initialTab = getInitialTab(tab);
   const project = useMemo(() => projects.find((p) => p.id === projectId) || null, [projectId, projects]);
+  const headerShortTitle = useMemo(() => {
+    const title = project?.title?.trim() || '';
+    const shortTitle = project?.shortTitle?.trim() || '';
+    return shortTitle && shortTitle !== title ? shortTitle : '';
+  }, [project?.shortTitle, project?.title]);
   const handleHeaderBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
     if (Number.isFinite(previousProjectId) && previousProjectId > 0 && previousProjectId !== projectId) {
       router.replace(`/funding/${previousProjectId}` as any);
       return;
@@ -790,6 +811,12 @@ export default function FundingDetailScreen() {
   const userTasteProfile = useMemo(() => getTasteProfileFromSulbti(user?.sulbti), [user?.sulbti]);
   const projectBudget = useMemo(() => project?.budget || DEFAULT_PROJECT_BUDGET, [project?.budget]);
   const projectSchedule = useMemo(() => project?.schedule || DEFAULT_PROJECT_SCHEDULE, [project?.schedule]);
+  const projectSummaryText = project?.projectSummary || project?.shortDescription || '';
+  const projectIntroductionText = useMemo(() => {
+    const summary = projectSummaryText.trim();
+    const introduction = (project?.introduction || project?.story || '').trim();
+    return introduction && introduction !== summary ? introduction : '';
+  }, [project?.introduction, project?.story, projectSummaryText]);
   const budgetPlanText = project?.budgetPlanText || '';
   const schedulePlanText = project?.schedulePlanText || '';
   const projectPolicyText = project?.projectPolicy || DEFAULT_PROJECT_POLICY_TEXT;
@@ -904,17 +931,8 @@ export default function FundingDetailScreen() {
     project.breweryProfileImage ||
     '';
   const officialBreweryUserId = officialBreweryInfo?.breweryUserId || project.breweryUserId || '';
-  const dashboardHasBreweryPublicProfile = Boolean(dashboardBreweryProfile && [
-    dashboardBreweryProfile.profileImageUrl,
-    dashboardBreweryProfile.oneLineIntroduction,
-    dashboardBreweryProfile.shortIntroduction,
-  ].some((value) => String(value || '').trim()));
-  const projectHasBreweryPublicProfile = Boolean([
-    officialBreweryUserId,
-    officialBreweryName,
-    officialBreweryIntro,
-    officialBreweryProfileImage,
-  ].some((value) => String(value || '').trim()));
+  const dashboardHasBreweryPublicProfile = hasRegisteredBreweryPublicProfile(dashboardBreweryProfile);
+  const projectHasBreweryPublicProfile = hasRegisteredBreweryPublicProfile(officialBreweryInfo);
   const hasBreweryPublicProfile = isOwnBreweryProject
     ? dashboardHasBreweryPublicProfile
     : projectHasBreweryPublicProfile;
@@ -1053,7 +1071,7 @@ export default function FundingDetailScreen() {
     if (!hasBreweryPublicProfile) {
       setFeedbackModal({
         title: '양조장 프로필이 없습니다',
-        body: '양조장이 프로필을 작성하면 확인할 수 있어요.',
+        body: '아직 양조장이 프로필을 등록하지 않았습니다.\n프로필을 등록하면 확인할 수 있습니다.',
       });
       return;
     }
@@ -1937,7 +1955,7 @@ export default function FundingDetailScreen() {
         {/* 2. Title & Desc */}
         <Animated.View entering={FadeInUp} style={styles.titleSection}>
           <Text style={styles.projectTitle}>{project.title}</Text>
-          <Text style={styles.shortDesc}>{project.shortDescription}</Text>
+          {headerShortTitle ? <Text style={styles.shortDesc}>{headerShortTitle}</Text> : null}
         </Animated.View>
 
         {/* 3. Funding Status */}
@@ -2049,10 +2067,10 @@ export default function FundingDetailScreen() {
 
                    <View style={styles.summaryBox}>
                       <Text style={styles.summaryTitle}>📝 프로젝트 요약</Text>
-                      <Text style={styles.summaryTxt}>{project.projectSummary || project.shortDescription || '등록된 프로젝트 요약이 없습니다.'}</Text>
+                      <Text style={styles.summaryTxt}>{projectSummaryText || '등록된 프로젝트 요약이 없습니다.'}</Text>
                    </View>
 
-                   {project.story ? <Text style={styles.bodyTxt}>{project.story}</Text> : null}
+                   {projectIntroductionText ? <Text style={styles.bodyTxt}>{projectIntroductionText}</Text> : null}
                    {project.videoUrl ? (
                      <View style={styles.journalUrlBox}>
                        <Text style={styles.journalUrlLabel}>프로젝트 영상 URL</Text>
@@ -2125,7 +2143,7 @@ export default function FundingDetailScreen() {
                        <View style={{ gap: 16 }}>
                          {projectSchedule.map((item, index) => (
                            <View key={`${item.date}-${item.description}`} style={styles.schRow}>
-                             <Text style={styles.schDate}>{item.date}</Text>
+                             <Text style={styles.schDate} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>{item.date}</Text>
                              <Text style={[styles.schDesc, index === projectSchedule.length - 1 && { fontWeight: '700', color: '#111' }]}>{item.description}</Text>
                            </View>
                          ))}
@@ -3154,8 +3172,8 @@ const styles = StyleSheet.create({
   budgetTotalLab: { fontSize: 16, fontWeight: '800', color: '#111' },
   budgetTotalVal: { fontSize: 18, fontWeight: '800', color: '#111' },
   budgetGuide: { fontSize: 12, color: '#6B7280', marginTop: 16, lineHeight: 20 },
-  schRow: { flexDirection: 'row', gap: 16, marginBottom: 16 },
-  schDate: { width: 70, fontSize: 14, fontWeight: '600', color: '#111' },
+  schRow: { flexDirection: 'row', gap: 10, marginBottom: 16, alignItems: 'flex-start' },
+  schDate: { width: 104, flexShrink: 0, fontSize: 14, lineHeight: 22, fontWeight: '600', color: '#111' },
   schDesc: { flex: 1, fontSize: 14, color: '#4B5563', lineHeight: 22 },
   schAlert: { marginTop: 8, padding: 16, backgroundColor: '#EFF6FF', borderRadius: 16 },
   schAlertTxt: { fontSize: 12, color: '#1E3A8A', lineHeight: 20 },

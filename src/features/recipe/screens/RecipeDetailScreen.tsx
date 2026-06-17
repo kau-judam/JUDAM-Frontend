@@ -11,11 +11,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import {
   ChevronLeft,
   Heart,
+  ImageOff,
   MessageCircle,
   Sparkles,
   Rocket,
@@ -72,14 +74,21 @@ const personImages = [
   require('../../../../newpicutre/person6.png'),
 ];
 
-const getAvatarSource = (avatar?: ImageSourcePropType | string) =>
-  typeof avatar === 'string' ? { uri: avatar } : avatar || personImages[0];
-const getCurrentUserAvatar = (profileImage?: string | null) => profileImage || personImages[0];
+type AvatarValue = ImageSourcePropType | string | null | undefined;
+const getOptionalAvatarSource = (avatar?: AvatarValue) => {
+  if (typeof avatar === 'string') {
+    const trimmed = avatar.trim();
+    return trimmed ? { uri: trimmed } : null;
+  }
+  return avatar || null;
+};
+const getCurrentUserAvatar = (profileImage?: string | null): AvatarValue => profileImage?.trim() || null;
+const getAvatarInitial = (name?: string) => (name?.trim()?.[0] || 'U').toUpperCase();
 
 interface RecipeCommentReply {
   id: number;
   author: string;
-  avatar: ImageSourcePropType | string;
+  avatar?: AvatarValue;
   content: string;
   timestamp: string;
   likes: number;
@@ -92,7 +101,7 @@ interface RecipeCommentReply {
 interface RecipeComment {
   id: number;
   author: string;
-  avatar: ImageSourcePropType | string;
+  avatar?: AvatarValue;
   content: string;
   timestamp: string;
   likes: number;
@@ -142,6 +151,7 @@ export default function RecipeDetailScreen() {
     authorId: fallbackRecipe.authorId,
   });
   const [comments, setComments] = useState<RecipeComment[]>([]);
+  const [showVerificationPendingModal, setShowVerificationPendingModal] = useState(false);
 
   const loadRecipeFromApi = useCallback(async () => {
     if (!Number.isFinite(recipeId)) return;
@@ -159,7 +169,7 @@ export default function RecipeDetailScreen() {
         id: nextRecipe.id,
         title: nextRecipe.title,
         author: nextRecipe.author,
-        authorAvatar: nextRecipe.authorAvatar || personImages[(nextRecipe.id - 1) % personImages.length],
+        authorAvatar: nextRecipe.authorAvatar || (nextRecipe.authorId === user?.id ? user?.profileImage || null : null),
         alcoholRange: nextRecipe.alcoholRange || '6%~8%',
         description: nextRecipe.description,
         concept: nextRecipe.concept,
@@ -201,23 +211,21 @@ export default function RecipeDetailScreen() {
     } finally {
       setIsDetailLoading(false);
     }
-  }, [fallbackRecipe, recipeId]);
+  }, [fallbackRecipe, recipeId, user?.id, user?.profileImage]);
 
   const loadCommentsFromApi = useCallback(async () => {
     if (!Number.isFinite(recipeId)) return;
     try {
       const response = await fetchRecipeComments(recipeId);
       setComments(
-        response.comments.map((comment, index) =>
-          {
-            const mapped = mapRecipeComment(comment, personImages[index % personImages.length]) as RecipeComment;
-            const rememberedReplies = getRecipeReplyState(recipeId, mapped.id);
-            const rememberedReplyCount = getRecipeReplyCountState(recipeId, mapped.id);
-            return rememberedReplies.length
-              ? { ...mapped, replyCount: rememberedReplyCount ?? mapped.replyCount ?? rememberedReplies.length, replies: rememberedReplies }
-              : { ...mapped, replyCount: rememberedReplyCount ?? mapped.replyCount ?? 0 };
-          }
-        )
+        response.comments.map((comment) => {
+          const mapped = mapRecipeComment(comment) as RecipeComment;
+          const rememberedReplies = getRecipeReplyState(recipeId, mapped.id);
+          const rememberedReplyCount = getRecipeReplyCountState(recipeId, mapped.id);
+          return rememberedReplies.length
+            ? { ...mapped, replyCount: rememberedReplyCount ?? mapped.replyCount ?? rememberedReplies.length, replies: rememberedReplies }
+            : { ...mapped, replyCount: rememberedReplyCount ?? mapped.replyCount ?? 0 };
+        })
       );
       setRecipeCommentCountState(recipeId, response.totalElements);
       setRecipe((prev) => ({ ...prev, commentsCount: response.totalElements }));
@@ -243,17 +251,31 @@ export default function RecipeDetailScreen() {
   const canManageSelectedComment = Boolean(user && (selectedComment?.author === user.name || selectedComment?.isMine));
   const getCommentReplies = (comment: RecipeComment) => comment.replies || [];
   const visibleComments = showAllComments ? comments : comments.slice(0, INITIAL_COMMENT_COUNT);
+  const renderProfileAvatar = (avatar: AvatarValue, name: string, isReply = false) => {
+    const source = getOptionalAvatarSource(avatar);
+    return (
+      <View style={isReply ? styles.replyAvatar : styles.commentAvatar}>
+        {source ? (
+          <Image source={source} style={isReply ? styles.replyAvatarImage : styles.commentAvatarImage} />
+        ) : (
+          <Text style={isReply ? styles.replyAvatarInitial : styles.commentAvatarInitial}>
+            {getAvatarInitial(name)}
+          </Text>
+        )}
+      </View>
+    );
+  };
 
   const loadRepliesFromApi = useCallback(async (commentId: number) => {
     if (!Number.isFinite(recipeId) || loadedReplyCommentIds.has(commentId)) return;
     try {
       const response = await fetchRecipeCommentReplies(recipeId, commentId);
-      const mappedReplies: RecipeCommentReply[] = response.replies.map((reply, index) => {
-        const mapped = mapRecipeComment(reply, personImages[index % personImages.length]);
+      const mappedReplies: RecipeCommentReply[] = response.replies.map((reply) => {
+        const mapped = mapRecipeComment(reply);
         return {
           id: mapped.id,
           author: mapped.author,
-          avatar: mapped.avatar || personImages[index % personImages.length],
+          avatar: mapped.avatar || null,
           content: mapped.content,
           timestamp: mapped.timestamp,
           likes: mapped.likes,
@@ -588,6 +610,10 @@ export default function RecipeDetailScreen() {
       showLoginRequired('펀딩 제안은 양조장 로그인 후 이용할 수 있어요.');
       return;
     }
+    if (!user.isBreweryVerified) {
+      setShowVerificationPendingModal(true);
+      return;
+    }
     router.push(`/brewery/project/terms?recipeId=${recipe.id}` as any);
   };
 
@@ -606,6 +632,8 @@ export default function RecipeDetailScreen() {
       </View>
     );
   }
+
+  const recipeImageSource = getImageSource(recipe.image);
 
   return (
     <View style={styles.container}>
@@ -640,13 +668,20 @@ export default function RecipeDetailScreen() {
         }}
       >
         <View style={styles.imageBox}>
-          <Image source={getImageSource(recipe.image)!} style={styles.mainImg} />
+          {recipeImageSource ? (
+            <Image source={recipeImageSource} style={styles.mainImg} />
+          ) : (
+            <View style={styles.noImageBox}>
+              <ImageOff size={42} color="#9CA3AF" />
+              <Text style={styles.noImageText}>이미지 없음</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.content}>
           <View style={styles.authorRow}>
             <View style={styles.authorInfo}>
-              <Image source={getAvatarSource(recipe.authorAvatar)} style={styles.avatar} />
+              {renderProfileAvatar(recipe.authorAvatar, recipe.author)}
               <View>
                 <Text style={styles.authorName}>{recipe.author}</Text>
                 <Text style={styles.timeTxt}>{recipe.timestamp}</Text>
@@ -718,7 +753,7 @@ export default function RecipeDetailScreen() {
           <Text style={styles.commentHeader}>댓글 {recipe.commentsCount}</Text>
           {visibleComments.map((c, idx) => (
             <Animated.View key={c.id} entering={FadeInUp.delay(idx * 50)} style={styles.commentItem}>
-              <Image source={getAvatarSource(c.avatar)} style={styles.commentAvatar} />
+              {renderProfileAvatar(c.avatar, c.author)}
               <View style={{ flex: 1 }}>
                 <View style={styles.commentBubble}>
                   <View style={styles.commentUserRow}>
@@ -765,7 +800,7 @@ export default function RecipeDetailScreen() {
                   <View style={styles.replyList}>
                     {getCommentReplies(c).map((reply) => (
                       <View key={reply.id} style={styles.replyItem}>
-                        <Image source={getAvatarSource(reply.avatar)} style={styles.replyAvatar} />
+                        {renderProfileAvatar(reply.avatar, reply.author, true)}
                         <View style={styles.replyContentWrap}>
                           <View style={styles.commentUserRow}>
                             <Text style={styles.commentAuthor}>{reply.author}</Text>
@@ -812,6 +847,35 @@ export default function RecipeDetailScreen() {
         </View>
       </ScrollView>
 
+      <Modal
+        visible={showVerificationPendingModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowVerificationPendingModal(false)}
+      >
+        <View style={styles.verificationModalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowVerificationPendingModal(false)}
+          />
+          <View style={styles.verificationModalCard}>
+            <Text style={styles.verificationModalTitle}>양조장 인증 대기 중</Text>
+            <Text style={styles.verificationModalBody}>
+              아직 양조장 인증이 승인되지 않았습니다.{'\n'}
+              승인이 된 후 이용 가능합니다.
+            </Text>
+            <TouchableOpacity
+              style={styles.verificationModalButton}
+              activeOpacity={0.86}
+              onPress={() => setShowVerificationPendingModal(false)}
+            >
+              <Text style={styles.verificationModalButtonText}>확인</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.footer}>
         <View style={[styles.footerInner, { paddingBottom: insets.bottom + 10 }]}>
           {user ? (
@@ -852,6 +916,8 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '700' },
   imageBox: { width: '100%', height: 300, backgroundColor: '#F9FAFB' },
   mainImg: { width: '100%', height: '100%', resizeMode: 'cover' },
+  noImageBox: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 10 },
+  noImageText: { fontSize: 15, lineHeight: 22, fontWeight: '800', color: '#9CA3AF' },
   content: { padding: 24 },
   authorRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   authorInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -883,7 +949,9 @@ const styles = StyleSheet.create({
   commentSection: { borderTopWidth: 8, borderTopColor: '#F9FAFB', padding: 24 },
   commentHeader: { fontSize: 16, fontWeight: '800', color: '#111', marginBottom: 24 },
   commentItem: { flexDirection: 'row', gap: 12, marginBottom: 20 },
-  commentAvatar: { width: 40, height: 40, borderRadius: 20 },
+  commentAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  commentAvatarImage: { width: '100%', height: '100%', borderRadius: 20 },
+  commentAvatarInitial: { color: '#FFF', fontSize: 15, fontWeight: '900' },
   commentBubble: { flex: 1, backgroundColor: '#F9FAFB', padding: 16, borderRadius: 20, borderTopLeftRadius: 4 },
   commentUserRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   commentAuthor: { fontSize: 13, fontWeight: '700', color: '#111' },
@@ -900,7 +968,9 @@ const styles = StyleSheet.create({
   commentActionButton: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   replyList: { marginTop: 12, marginLeft: 6, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: '#E5E7EB', gap: 10 },
   replyItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 2 },
-  replyAvatar: { width: 32, height: 32, borderRadius: 16 },
+  replyAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  replyAvatarImage: { width: '100%', height: '100%', borderRadius: 16 },
+  replyAvatarInitial: { color: '#FFF', fontSize: 12, fontWeight: '900' },
   replyContentWrap: { flex: 1, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#F3F4F6', borderRadius: 14, padding: 12 },
   replyTime: { marginLeft: 'auto', fontSize: 11, color: '#9CA3AF', fontWeight: '600' },
   replyLikeBtn: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, marginTop: 8 },
@@ -910,6 +980,12 @@ const styles = StyleSheet.create({
   replySendBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   moreBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, backgroundColor: '#F9FAFB', borderRadius: 16, marginTop: 10 },
   moreBtnTxt: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
+  verificationModalOverlay: { flex: 1, backgroundColor: 'rgba(17, 24, 39, 0.58)', justifyContent: 'center', paddingHorizontal: 22 },
+  verificationModalCard: { backgroundColor: '#FFF', borderRadius: 24, padding: 22, alignItems: 'center', borderWidth: 1, borderColor: '#F3F4F6', elevation: 18, shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 24, shadowOffset: { width: 0, height: 12 } },
+  verificationModalTitle: { fontSize: 18, lineHeight: 24, fontWeight: '900', color: '#111827', textAlign: 'center', marginBottom: 8 },
+  verificationModalBody: { fontSize: 14, lineHeight: 22, fontWeight: '700', color: '#6B7280', textAlign: 'center' },
+  verificationModalButton: { alignSelf: 'stretch', minHeight: 50, borderRadius: 16, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, marginTop: 20 },
+  verificationModalButtonText: { fontSize: 15, fontWeight: '900', color: '#FFF' },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   footerInner: { paddingHorizontal: 20, paddingTop: 12 },
   inputBox: { height: 52, backgroundColor: '#F9FAFB', borderRadius: 26, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, borderWidth: 1, borderColor: '#F3F4F6' },

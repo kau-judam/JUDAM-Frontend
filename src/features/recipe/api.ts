@@ -87,6 +87,7 @@ export type CreateRecipePayload = {
   target_flavor: string;
   concept: string;
   summary: string;
+  imageUrl?: string | null;
   image?: {
     uri: string;
     name?: string | null;
@@ -250,6 +251,18 @@ type SuggestSubIngredientsResponse = {
     sub_ingredients: string[];
   };
   sub_ingredients?: string[];
+};
+
+type IngredientRegionsResponse = {
+  status?: number;
+  message?: string;
+  data?: {
+    ingredient?: string;
+    regions?: string[];
+    found?: boolean;
+    data_source?: string;
+  };
+  regions?: string[];
 };
 
 type SuggestFlavorTagsResponse = {
@@ -583,6 +596,13 @@ export async function createRecipe(payload: CreateRecipePayload) {
   formData.append('target_flavor', payload.target_flavor);
   formData.append('concept', payload.concept);
   formData.append('summary', payload.summary);
+  const remoteImageUrl = payload.imageUrl?.trim();
+  if (remoteImageUrl && /^https?:\/\//i.test(remoteImageUrl)) {
+    formData.append('image_url', remoteImageUrl);
+    formData.append('imageUrl', remoteImageUrl);
+    formData.append('thumbnail_url', remoteImageUrl);
+    formData.append('thumbnailUrl', remoteImageUrl);
+  }
   if (payload.image?.uri && !payload.image.uri.startsWith('http')) {
     const imageName = payload.image.name || payload.image.uri.split('/').pop() || `recipe-${Date.now()}.jpg`;
     const imageType = payload.image.type || 'image/jpeg';
@@ -602,6 +622,15 @@ export async function suggestRecipeSubIngredients(payload: SuggestSubIngredients
     body: JSON.stringify(payload),
   });
   return data.data?.sub_ingredients ?? data.sub_ingredients ?? [];
+}
+
+export async function fetchIngredientRegions(mainIngredient: string) {
+  const params = new URLSearchParams({ ingredient: mainIngredient });
+  const data = await requestJson<IngredientRegionsResponse | string[]>(`/api/recipe/ingredient-region?${params.toString()}`, {
+    method: 'GET',
+  });
+  if (Array.isArray(data)) return data;
+  return data.data?.regions ?? data.regions ?? [];
 }
 
 export async function suggestRecipeFlavorTags(payload: SuggestFlavorTagsPayload) {

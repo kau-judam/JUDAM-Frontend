@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   BackHandler,
   View,
   Text,
@@ -26,10 +27,12 @@ import {
   Phone, 
   Upload, 
   MessageSquare,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
-import { confirmPhoneVerification, requestPhoneVerification, submitBreweryApplication } from '@/features/auth/api';
+import { AuthApiError, confirmPhoneVerification, getMyBreweryApplication, requestPhoneVerification, submitBreweryApplication, type BreweryApplicationResponse } from '@/features/auth/api';
 import DaumAddressSearchModal, { type DaumAddressResult } from '@/features/funding/components/DaumAddressSearchModal';
 import { formatBusinessNumber, formatPhoneNumber, isValidBusinessNumber, isValidPhone } from '@/utils/validation';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
@@ -63,6 +66,18 @@ type BusinessLicenseFile = {
   source: 'photo' | 'file';
 };
 
+type BreweryApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | '';
+
+function getBreweryApplicationStatus(application: BreweryApplicationResponse | null): BreweryApplicationStatus {
+  const status = String(application?.status || application?.application?.status || '').toUpperCase();
+  if (status === 'PENDING' || status === 'APPROVED' || status === 'REJECTED') return status;
+  return '';
+}
+
+function getBreweryApplicationRejectReason(application: BreweryApplicationResponse | null) {
+  return application?.rejectReason || application?.application?.rejectReason || '';
+}
+
 export default function BreweryVerificationScreen() {
   const insets = useSafeAreaInsets();
   const { from } = useLocalSearchParams<{ from?: string }>();
@@ -87,6 +102,9 @@ export default function BreweryVerificationScreen() {
   const [isVerificationChecking, setIsVerificationChecking] = useState(false);
   const [isPhoneVerified, setIsPhoneVerified] = useState(isEditMode);
   const [showAddressModal, setShowAddressModal] = useState(false);
+  const [application, setApplication] = useState<BreweryApplicationResponse | null>(null);
+  const [isApplicationLoading, setIsApplicationLoading] = useState(false);
+  const [showApplicationForm, setShowApplicationForm] = useState(false);
 
   const handleBack = useCallback(() => {
     if (!isEditMode && shouldReturnToUserType) {
@@ -106,6 +124,68 @@ export default function BreweryVerificationScreen() {
       return () => subscription.remove();
     }, [handleBack])
   );
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (!user) {
+      setApplication(null);
+      setIsApplicationLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    setIsApplicationLoading(true);
+    getMyBreweryApplication()
+      .then((nextApplication) => {
+        if (!mounted) return;
+        setApplication(nextApplication);
+        setShowApplicationForm(false);
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setApplication(null);
+        setShowApplicationForm(false);
+        if (!(error instanceof AuthApiError && error.status === 404)) {
+          console.warn('[BreweryVerification] Failed to load my brewery application', error);
+        }
+      })
+      .finally(() => {
+        if (mounted) setIsApplicationLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
+  const applicationStatus = useMemo(() => getBreweryApplicationStatus(application), [application]);
+  const applicationRejectReason = useMemo(() => getBreweryApplicationRejectReason(application), [application]);
+  const shouldShowApplicationStatus = isApplicationLoading || applicationStatus === 'PENDING' || applicationStatus === 'APPROVED' || applicationStatus === 'REJECTED';
+  const shouldShowForm =
+    isEditMode ||
+    (!isApplicationLoading && (
+      !applicationStatus ||
+      (applicationStatus === 'REJECTED' && showApplicationForm)
+    ));
+
+  const applicationStatusTitle = isApplicationLoading
+    ? '양조장 인증 신청 상태를 확인하고 있습니다.'
+    : applicationStatus === 'PENDING'
+      ? '양조장 인증 심사 중입니다.'
+      : applicationStatus === 'APPROVED'
+        ? '양조장 인증이 완료되었습니다.'
+        : applicationStatus === 'REJECTED'
+          ? '양조장 인증이 반려되었습니다.'
+          : '';
+  const applicationStatusDescription = applicationStatus === 'PENDING'
+    ? '관리자 검토 후 승인 여부가 안내됩니다.'
+    : applicationStatus === 'APPROVED'
+      ? '이제 양조장 기능을 사용할 수 있습니다.'
+      : applicationStatus === 'REJECTED'
+        ? '반려 사유를 확인하고 다시 신청해주세요.'
+        : '잠시만 기다려주세요.';
 
   if (!user) {
     return (
@@ -428,6 +508,63 @@ export default function BreweryVerificationScreen() {
               </Text>
             </View>
 
+            {shouldShowApplicationStatus && (
+              <View style={[
+                styles.applicationStatusCard,
+                applicationStatus === 'APPROVED' && styles.applicationStatusApproved,
+                applicationStatus === 'REJECTED' && styles.applicationStatusRejected,
+              ]}>
+                <View style={styles.applicationStatusTop}>
+                  <View style={[
+                    styles.applicationStatusIcon,
+                    applicationStatus === 'APPROVED' && styles.applicationStatusIconApproved,
+                    applicationStatus === 'REJECTED' && styles.applicationStatusIconRejected,
+                  ]}>
+                    {isApplicationLoading ? (
+                      <ActivityIndicator color="#1E293B" />
+                    ) : applicationStatus === 'APPROVED' ? (
+                      <CheckCircle2 size={22} color="#059669" />
+                    ) : applicationStatus === 'REJECTED' ? (
+                      <AlertCircle size={22} color="#DC2626" />
+                    ) : (
+                      <FileText size={22} color="#1E293B" />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.applicationStatusTitle}>{applicationStatusTitle}</Text>
+                    <Text style={styles.applicationStatusDescription}>{applicationStatusDescription}</Text>
+                  </View>
+                </View>
+
+                {applicationStatus === 'REJECTED' && applicationRejectReason ? (
+                  <View style={styles.rejectReasonBox}>
+                    <Text style={styles.rejectReasonText}>반려 사유: {applicationRejectReason}</Text>
+                  </View>
+                ) : null}
+
+                {applicationStatus === 'APPROVED' && (
+                  <TouchableOpacity
+                    style={styles.applicationStatusPrimaryButton}
+                    activeOpacity={0.85}
+                    onPress={() => router.push('/brewery/dashboard' as any)}
+                  >
+                    <Text style={styles.applicationStatusPrimaryButtonText}>양조장 대시보드로 이동</Text>
+                  </TouchableOpacity>
+                )}
+
+                {applicationStatus === 'REJECTED' && !showApplicationForm && (
+                  <TouchableOpacity
+                    style={styles.applicationStatusPrimaryButton}
+                    activeOpacity={0.85}
+                    onPress={() => setShowApplicationForm(true)}
+                  >
+                    <Text style={styles.applicationStatusPrimaryButtonText}>다시 신청하기</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {shouldShowForm && (
             <View style={styles.form}>
               {/* Business Number */}
               <View style={styles.inputGroup}>
@@ -593,8 +730,8 @@ export default function BreweryVerificationScreen() {
                 <View style={styles.infoBox}>
                   <Text style={styles.infoTitle}>인증 안내</Text>
                   <Text style={styles.infoTxt}>• 사업자등록증은 영업 중인 양조장임을 확인하는 용도로만 사용됩니다.</Text>
-                  <Text style={styles.infoTxt}>• 신청이 정상 처리되면 즉시 양조장 인증 완료 상태로 반영됩니다.</Text>
-                  <Text style={styles.infoTxt}>• 인증 완료 후 바로 프로젝트 생성이 가능합니다.</Text>
+                  <Text style={styles.infoTxt}>• 신청이 접수되면 관리자 검토 후 승인 여부가 안내됩니다.</Text>
+                  <Text style={styles.infoTxt}>• 승인 후 양조장 대시보드와 프로젝트 생성 기능을 사용할 수 있습니다.</Text>
                 </View>
               )}
 
@@ -617,6 +754,7 @@ export default function BreweryVerificationScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            )}
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -664,6 +802,19 @@ const styles = StyleSheet.create({
   uploadBox: { height: 120, backgroundColor: 'rgba(255, 255, 255, 0.7)', borderRadius: 12, borderStyle: 'dashed', borderWidth: 2, borderColor: '#D1D5DB', justifyContent: 'center', alignItems: 'center', gap: 4 },
   uploadMainTxt: { fontSize: 14, color: '#4B5563', fontWeight: '500' },
   uploadSubTxt: { fontSize: 12, color: '#9CA3AF' },
+  applicationStatusCard: { backgroundColor: 'rgba(255, 255, 255, 0.88)', borderRadius: 18, borderWidth: 1, borderColor: '#E5E7EB', padding: 16, marginBottom: 18, gap: 14 },
+  applicationStatusApproved: { borderColor: '#BBF7D0', backgroundColor: 'rgba(240, 253, 244, 0.92)' },
+  applicationStatusRejected: { borderColor: '#FECACA', backgroundColor: 'rgba(254, 242, 242, 0.94)' },
+  applicationStatusTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  applicationStatusIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#F8FAFC', alignItems: 'center', justifyContent: 'center' },
+  applicationStatusIconApproved: { backgroundColor: '#DCFCE7' },
+  applicationStatusIconRejected: { backgroundColor: '#FEE2E2' },
+  applicationStatusTitle: { fontSize: 16, fontWeight: '900', color: '#111827', lineHeight: 22 },
+  applicationStatusDescription: { marginTop: 4, fontSize: 13, fontWeight: '700', color: '#4B5563', lineHeight: 19 },
+  rejectReasonBox: { borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#FECACA', padding: 12 },
+  rejectReasonText: { fontSize: 13, fontWeight: '800', color: '#991B1B', lineHeight: 19 },
+  applicationStatusPrimaryButton: { height: 46, borderRadius: 13, backgroundColor: '#1E293B', alignItems: 'center', justifyContent: 'center' },
+  applicationStatusPrimaryButtonText: { fontSize: 14, fontWeight: '900', color: '#FFFFFF' },
   infoBox: { backgroundColor: 'rgba(255, 255, 255, 0.7)', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E5E7EB' },
   infoTitle: { fontSize: 14, fontWeight: '600', color: '#111', marginBottom: 8 },
   infoTxt: { fontSize: 12, color: '#4B5563', lineHeight: 18 },

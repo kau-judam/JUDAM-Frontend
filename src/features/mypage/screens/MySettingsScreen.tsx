@@ -28,8 +28,8 @@ export default function MySettingsScreen() {
   const { user, logout } = useAuth();
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [confirmWithdrawVisible, setConfirmWithdrawVisible] = useState(false);
-  const [withdrawPassword, setWithdrawPassword] = useState('');
-  const [withdrawPasswordError, setWithdrawPasswordError] = useState('');
+  const [withdrawNickname, setWithdrawNickname] = useState('');
+  const [withdrawNicknameError, setWithdrawNicknameError] = useState('');
   const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [notice, setNotice] = useState<SettingsNotice>(null);
@@ -45,37 +45,37 @@ export default function MySettingsScreen() {
   };
 
   const withdraw = () => {
-    setWithdrawPassword('');
-    setWithdrawPasswordError('');
+    setWithdrawNickname('');
+    setWithdrawNicknameError('');
     setPasswordModalVisible(true);
   };
 
   const closePasswordModal = () => {
     if (isVerifyingPassword) return;
     setPasswordModalVisible(false);
-    setWithdrawPassword('');
-    setWithdrawPasswordError('');
+    setWithdrawNickname('');
+    setWithdrawNicknameError('');
   };
 
   const verifyWithdrawalPassword = async () => {
     const expectedNickname = (user?.name || '').trim();
-    const inputNickname = withdrawPassword.trim();
+    const inputNickname = withdrawNickname.trim();
 
     if (!expectedNickname) {
-      setWithdrawPasswordError('현재 계정 닉네임을 확인할 수 없습니다. 다시 로그인해주세요.');
+      setWithdrawNicknameError('현재 계정 닉네임을 확인할 수 없습니다. 다시 로그인해주세요.');
       return;
     }
     if (!inputNickname) {
-      setWithdrawPasswordError('닉네임을 입력해주세요.');
+      setWithdrawNicknameError('닉네임을 입력해주세요.');
       return;
     }
     if (inputNickname !== expectedNickname) {
-      setWithdrawPasswordError('닉네임이 일치하지 않습니다. 다시 입력해주세요.');
+      setWithdrawNicknameError('닉네임이 일치하지 않습니다. 다시 입력해주세요.');
       return;
     }
 
     setIsVerifyingPassword(true);
-    setWithdrawPasswordError('');
+    setWithdrawNicknameError('');
     setPasswordModalVisible(false);
     setConfirmWithdrawVisible(true);
     setIsVerifyingPassword(false);
@@ -87,11 +87,11 @@ export default function MySettingsScreen() {
   };
 
   const confirmWithdrawal = async () => {
-    const nickname = withdrawPassword.trim();
+    const nickname = withdrawNickname.trim();
     if (!nickname) {
       setConfirmWithdrawVisible(false);
       setPasswordModalVisible(true);
-      setWithdrawPasswordError('닉네임을 입력해주세요.');
+      setWithdrawNicknameError('닉네임을 입력해주세요.');
       return;
     }
 
@@ -147,12 +147,12 @@ export default function MySettingsScreen() {
 
       <PasswordConfirmModal
         visible={passwordModalVisible}
-        password={withdrawPassword}
-        error={withdrawPasswordError}
+        password={withdrawNickname}
+        error={withdrawNicknameError}
         loading={isVerifyingPassword}
         onChangePassword={(value) => {
-          setWithdrawPassword(value);
-          if (withdrawPasswordError) setWithdrawPasswordError('');
+          setWithdrawNickname(value);
+          if (withdrawNicknameError) setWithdrawNicknameError('');
         }}
         onCancel={closePasswordModal}
         onSubmit={verifyWithdrawalPassword}

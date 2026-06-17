@@ -48,6 +48,12 @@ import { useFunding } from '@/contexts/FundingContext';
 import DaumAddressSearchModal from '@/features/funding/components/DaumAddressSearchModal';
 import { confirmPhoneVerification, getMyBreweryApplication, requestPhoneVerification } from '@/features/auth/api';
 import {
+  PHONE_VERIFICATION_SMS_AFTER_OPEN_GUIDE,
+  buildPhoneVerificationGuideMessage,
+  buildPhoneVerificationRequestGuideMessage,
+  openPhoneVerificationSmsApp,
+} from '@/utils/phoneVerificationSms';
+import {
   createFundingDraft,
   deleteFundingDraft,
   generateFundingDraftAiImage,
@@ -2695,11 +2701,14 @@ export default function BreweryProjectCreateScreen() {
       }
       setPhoneVerificationSent(true);
       setPhoneVerificationCode(result.verificationCode);
-      setPhoneVerificationGuideMessage(
-        result.guideMessage || `휴대폰 문자로 ${result.verificationCode}을 ${result.sendTo || '1666-3538'}로 보내주세요.`
-      );
       setPhoneTimer(180);
-      showAlert(result.guideMessage || `휴대폰 문자로 ${result.verificationCode}을 ${result.sendTo || '1666-3538'}로 보내주세요.`);
+      const smsOpened = await openPhoneVerificationSmsApp(result);
+      setPhoneVerificationGuideMessage(
+        smsOpened ? buildPhoneVerificationGuideMessage(result) : buildPhoneVerificationRequestGuideMessage(result)
+      );
+      if (smsOpened) {
+        showAlert(PHONE_VERIFICATION_SMS_AFTER_OPEN_GUIDE);
+      }
     } catch (error) {
       showAlert(getFundingApiErrorMessage(error, '전화번호 인증 요청에 실패했습니다.'));
     }

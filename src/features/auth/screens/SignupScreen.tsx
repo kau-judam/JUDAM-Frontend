@@ -63,6 +63,12 @@ import {
   isValidEmail,
   isValidPhone,
 } from '@/utils/validation';
+import {
+  PHONE_VERIFICATION_SMS_AFTER_OPEN_GUIDE,
+  buildPhoneVerificationGuideMessage,
+  buildPhoneVerificationRequestGuideMessage,
+  openPhoneVerificationSmsApp,
+} from '@/utils/phoneVerificationSms';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -348,8 +354,13 @@ export default function SignupScreen() {
       setIsPhoneVerificationSent(true);
       setPhoneVerificationCode(result.verificationCode || '');
       setPhoneVerificationCheckCount(0);
-      setPhoneVerificationGuide(result.guideMessage || `${result.verificationCode || '인증 코드'}을 ${result.sendTo || '1666-3538'}로 문자 전송해주세요.`);
-      showNotice(result.guideMessage || '인증 요청이 생성되었습니다.');
+      const smsOpened = await openPhoneVerificationSmsApp(result);
+      setPhoneVerificationGuide(
+        smsOpened ? buildPhoneVerificationGuideMessage(result) : buildPhoneVerificationRequestGuideMessage(result)
+      );
+      if (smsOpened) {
+        showNotice(PHONE_VERIFICATION_SMS_AFTER_OPEN_GUIDE);
+      }
     } catch (error) {
       showNotice(error instanceof Error ? error.message : '본인인증 요청에 실패했습니다.');
     } finally {

@@ -34,6 +34,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { AuthApiError, confirmPhoneVerification, getMyBreweryApplication, requestPhoneVerification, submitBreweryApplication, type BreweryApplicationResponse } from '@/features/auth/api';
 import DaumAddressSearchModal, { type DaumAddressResult } from '@/features/funding/components/DaumAddressSearchModal';
+import {
+  PHONE_VERIFICATION_SMS_AFTER_OPEN_GUIDE,
+  buildPhoneVerificationGuideMessage,
+  buildPhoneVerificationRequestGuideMessage,
+  openPhoneVerificationSmsApp,
+} from '@/utils/phoneVerificationSms';
 import { formatBusinessNumber, formatPhoneNumber, isValidBusinessNumber, isValidPhone } from '@/utils/validation';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 
@@ -222,9 +228,14 @@ export default function BreweryVerificationScreen() {
     try {
       const result = await requestPhoneVerification(formData.phone);
       setVerificationCode(result.verificationCode || '');
-      setVerificationGuide(result.guideMessage || `${result.verificationCode || '인증 코드'}을 ${result.sendTo || '1666-3538'}로 문자 전송해주세요.`);
       setIsVerificationSent(true);
-      Alert.alert('알림', result.guideMessage || '인증 요청이 생성되었습니다.');
+      const smsOpened = await openPhoneVerificationSmsApp(result);
+      setVerificationGuide(
+        smsOpened ? buildPhoneVerificationGuideMessage(result) : buildPhoneVerificationRequestGuideMessage(result)
+      );
+      if (smsOpened) {
+        Alert.alert('알림', PHONE_VERIFICATION_SMS_AFTER_OPEN_GUIDE);
+      }
     } catch (error) {
       Alert.alert('오류', error instanceof Error ? error.message : '인증 요청에 실패했습니다.');
     }

@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Share as NativeShare,
 } from 'react-native';
 import type { ImageSourcePropType, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -121,6 +120,7 @@ import {
 import { normalizeFundingImageUrl, normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
 import { canAccessFundingReviews } from '@/features/funding/permissions';
+import { DEFAULT_JUDAM_SHARE_IMAGE_URL, shareJudamLink } from '@/utils/share';
 
 const HERO_IMAGE_HEIGHT = 256;
 type FundingQuestionComment = {
@@ -179,7 +179,6 @@ function getReportSubmitErrorMessage(error: unknown) {
 }
 
 const FUNDING_SHARE_FALLBACK_BASE_URL = 'https://kaujudam.com/funding';
-const FUNDING_SHARE_FALLBACK_IMAGE_URL = 'https://kaujudam.com/og-image.png';
 const FUNDING_SHARE_MESSAGE_SUFFIX = '주담 펀딩 프로젝트를 확인해보세요.';
 
 function getFundingShareFallbackUrl(fundingId: number) {
@@ -213,48 +212,7 @@ function getProjectShareImageUrl(project: FundingProject, thumbnailImageUrl?: st
     thumbnailImageUrl,
     project.image,
     project.images,
-  ]) || FUNDING_SHARE_FALLBACK_IMAGE_URL;
-}
-
-async function shareFundingProjectWithKakao(params: {
-  title: string;
-  description: string;
-  imageUrl: string;
-  shareUrl: string;
-}) {
-  try {
-    const kakaoShareModule = await import('@react-native-kakao/share');
-    const shareFeedTemplate = kakaoShareModule.shareFeedTemplate || kakaoShareModule.default?.shareFeedTemplate;
-    if (typeof shareFeedTemplate !== 'function') return false;
-
-    await shareFeedTemplate({
-      template: {
-        content: {
-          title: params.title,
-          description: params.description,
-          imageUrl: params.imageUrl,
-          link: {
-            webUrl: params.shareUrl,
-            mobileWebUrl: params.shareUrl,
-          },
-        },
-        buttons: [
-          {
-            title: '펀딩 보러가기',
-            link: {
-              webUrl: params.shareUrl,
-              mobileWebUrl: params.shareUrl,
-            },
-          },
-        ],
-      },
-      useWebBrowserIfKakaoTalkNotAvailable: true,
-    });
-    return true;
-  } catch (error) {
-    console.warn('[FundingDetail] Kakao share failed, fallback to NativeShare', error);
-    return false;
-  }
+  ]) || DEFAULT_JUDAM_SHARE_IMAGE_URL;
 }
 
 function createFundingProjectFromDetail(detail: FundingDetailResponse): FundingProject {
@@ -1921,26 +1879,17 @@ export default function FundingDetailScreen() {
       console.warn('[FundingDetail] Failed to load funding share link, using fallback URL', error);
     }
 
-    const shareProjectWithNative = async () => {
-      await NativeShare.share({
-        title: shareTitle,
-        message: `${shareTitle}\n${shareDescription}\n${shareUrl}\n${FUNDING_SHARE_MESSAGE_SUFFIX}`,
-        url: shareUrl,
-      });
-    };
-
     try {
-      const kakaoShared = await shareFundingProjectWithKakao({
+      await shareJudamLink({
         title: shareTitle,
         description: shareDescription,
+        url: shareUrl,
         imageUrl: shareImageUrl,
-        shareUrl,
+        buttonTitle: '펀딩 보러가기',
+        nativeMessage: `${shareTitle}\n${shareDescription}\n${shareUrl}\n${FUNDING_SHARE_MESSAGE_SUFFIX}`,
       });
-      if (!kakaoShared) {
-        await shareProjectWithNative();
-      }
     } catch (error) {
-      console.warn('[FundingDetail] Native share failed', error);
+      console.warn('[FundingDetail] Share failed', error);
       setFeedbackModal({
         title: '공유하기',
         body: '공유를 완료하지 못했습니다. 다시 시도해주세요.',

@@ -159,6 +159,38 @@ export type PasswordResetConfirmResponse = {
   success?: boolean;
 };
 
+export type PasswordResetPhoneRequestPayload = {
+  email: string;
+  phoneNumber: string;
+};
+
+export type PasswordResetPhoneRequestResponse = PhoneVerificationRequestResponse & {
+  email?: string;
+};
+
+export type PasswordResetPhoneConfirmPayload = {
+  email: string;
+  phoneNumber: string;
+  verificationCode: string;
+};
+
+export type PasswordResetPhoneConfirmResponse = {
+  email?: string;
+  phoneNumber?: string;
+  verified?: boolean;
+  resetToken?: string;
+  passwordResetToken?: string;
+  token?: string;
+  expiresInMinutes?: number;
+  message?: string;
+};
+
+export type PasswordResetPhoneCompletePayload = {
+  resetToken: string;
+  newPassword: string;
+  newPasswordConfirm: string;
+};
+
 export type PhoneVerificationRequestResponse = {
   phoneNumber: string;
   verificationCode?: string;
@@ -718,6 +750,39 @@ export async function confirmPasswordReset(payload: PasswordResetConfirmPayload)
     method: 'POST',
     body: JSON.stringify(payload),
   });
+  return unwrapAuthData<PasswordResetConfirmResponse>(response);
+}
+
+export async function requestPhonePasswordReset(payload: PasswordResetPhoneRequestPayload) {
+  const response = await requestAuthJson<AuthApiEnvelope<PasswordResetPhoneRequestResponse>>(
+    '/api/auth/password-reset/phone/request',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  return unwrapAuthData<PasswordResetPhoneRequestResponse>(response);
+}
+
+export async function confirmPhonePasswordReset(payload: PasswordResetPhoneConfirmPayload) {
+  const response = await requestAuthJson<AuthApiEnvelope<PasswordResetPhoneConfirmResponse>>(
+    '/api/auth/password-reset/phone/confirm',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
+  return unwrapAuthData<PasswordResetPhoneConfirmResponse>(response);
+}
+
+export async function completePhonePasswordReset(payload: PasswordResetPhoneCompletePayload) {
+  const response = await requestAuthJson<AuthApiEnvelope<PasswordResetConfirmResponse>>(
+    '/api/auth/password-reset/phone/complete',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }
+  );
   return unwrapAuthData<PasswordResetConfirmResponse>(response);
 }
 

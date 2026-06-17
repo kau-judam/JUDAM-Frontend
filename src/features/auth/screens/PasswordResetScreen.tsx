@@ -8,6 +8,7 @@ import {
   Lock,
   Mail,
   MessageSquare,
+  Phone,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -29,8 +30,18 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { requestPasswordReset, resetPassword, verifyPasswordResetCode } from '@/features/auth/api';
-import { getPasswordStrength, isPasswordReady, isValidEmail } from '@/utils/validation';
+import {
+  completePhonePasswordReset,
+  confirmPhonePasswordReset,
+  requestPhonePasswordReset,
+} from '@/features/auth/api';
+import {
+  PHONE_VERIFICATION_SMS_AFTER_OPEN_GUIDE,
+  buildPhoneVerificationGuideMessage,
+  buildPhoneVerificationRequestGuideMessage,
+  openPhoneVerificationSmsApp,
+} from '@/utils/phoneVerificationSms';
+import { digitsOnly, formatPhoneNumber, getPasswordStrength, isPasswordReady, isValidEmail, isValidPhone } from '@/utils/validation';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -39,8 +50,8 @@ const BG_IMAGE = require('../../../../newpicutre/picure3.jpg');
 type ResetStep = 'email' | 'verify' | 'newPassword';
 
 const STEP_COPY = {
-  email: '가입한 이메일 주소를 입력해주세요',
-  verify: '이메일로 전송된 인증번호를 입력해주세요',
+  email: '가입한 이메일과 전화번호를 입력해주세요',
+  verify: '문자 인증을 완료해주세요',
   newPassword: '새로운 비밀번호를 설정해주세요',
 };
 
@@ -58,7 +69,9 @@ export default function PasswordResetScreen() {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<ResetStep>('email');
   const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
+  const [phoneVerificationGuide, setPhoneVerificationGuide] = useState('');
   const [passwordResetToken, setPasswordResetToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -94,6 +107,7 @@ export default function PasswordResetScreen() {
 
   const handleSendCode = async () => {
     const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhoneNumber = digitsOnly(phoneNumber);
     if (!normalizedEmail) {
       showNotice('이메일을 입력해주세요.');
       return;
@@ -102,18 +116,32 @@ export default function PasswordResetScreen() {
       showNotice('올바른 이메일 형식이 아닙니다.');
       return;
     }
+    if (!isValidPhone(normalizedPhoneNumber)) {
+      showNotice('전화번호를 정확히 입력해주세요.');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      const result = await requestPasswordReset(normalizedEmail);
+      const result = await requestPhonePasswordReset({
+        email: normalizedEmail,
+        phoneNumber: normalizedPhoneNumber,
+      });
       setEmail(result.email || normalizedEmail);
+      setPhoneNumber(formatPhoneNumber(result.phoneNumber || normalizedPhoneNumber));
       setVerificationCode('');
       setPasswordResetToken('');
       setIsResetCodeVerified(false);
-      showNotice('인증번호가 발송되었습니다.');
+      const smsOpened = await openPhoneVerificationSmsApp(result);
+      setPhoneVerificationGuide(
+        smsOpened ? buildPhoneVerificationGuideMessage(result) : buildPhoneVerificationRequestGuideMessage(result)
+      );
+      if (smsOpened) {
+        showNotice(PHONE_VERIFICATION_SMS_AFTER_OPEN_GUIDE);
+      }
       setStep('verify');
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : '인증번호 요청에 실패했습니다.');
+      showNotice(error instanceof Error ? error.message : '비밀번호 재설정 인증 문자 요청에 실패했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -127,11 +155,16 @@ export default function PasswordResetScreen() {
 
     setIsLoading(true);
     try {
-      const result = await verifyPasswordResetCode(email, verificationCode.trim());
-      if (!result.passwordResetToken) {
+      const result = await confirmPhonePasswordReset({
+        email: email.trim().toLowerCase(),
+        phoneNumber: digitsOnly(phoneNumber),
+        verificationCode: verificationCode.trim(),
+      });
+      const resetToken = result.resetToken || result.passwordResetToken || result.token;
+      if (!resetToken) {
         throw new Error('비밀번호 재설정 토큰을 받지 못했습니다. 인증번호를 다시 확인해주세요.');
       }
-      setPasswordResetToken(result.passwordResetToken);
+      setPasswordResetToken(resetToken);
       setIsResetCodeVerified(true);
       showNotice('인증이 완료되었습니다.');
       setStep('newPassword');
@@ -169,12 +202,12 @@ export default function PasswordResetScreen() {
 
     setIsLoading(true);
     try {
-      await resetPassword({
-        passwordResetToken,
+      await completePhonePasswordReset({
+        resetToken: passwordResetToken,
         newPassword,
         newPasswordConfirm: confirmPassword,
       });
-      showNotice('비밀번호가 재설정되었습니다.');
+      showNotice('비밀번호가 변경되었습니다.');
     } catch (error) {
       showNotice(getPasswordResetErrorMessage(error));
     } finally {
@@ -183,7 +216,7 @@ export default function PasswordResetScreen() {
   };
 
   const closeNotice = () => {
-    const shouldGoLogin = notice === '비밀번호가 재설정되었습니다.';
+    const shouldGoLogin = notice === '비밀번호가 변경되었습니다.';
     setNotice('');
     if (shouldGoLogin) {
       router.replace('/login' as any);
@@ -233,13 +266,23 @@ export default function PasswordResetScreen() {
                       onChangeText={setEmail}
                       keyboardType="email-address"
                     />
+                    <Field
+                      label="전화번호"
+                      icon={<Phone size={20} color="#9CA3AF" />}
+                      placeholder="010-0000-0000"
+                      value={phoneNumber}
+                      onChangeText={(value) => setPhoneNumber(formatPhoneNumber(value))}
+                      keyboardType="number-pad"
+                    />
                     <TouchableOpacity
                       activeOpacity={0.85}
                       style={[styles.primaryButton, isLoading && styles.disabledButton]}
                       disabled={isLoading}
                       onPress={handleSendCode}
                     >
-                      <Text style={styles.primaryButtonText}>{isLoading ? '발송 중...' : '인증번호 받기'}</Text>
+                      <Text style={styles.primaryButtonText}>
+                        {isLoading ? '문자 준비 중...' : '비밀번호 재설정 인증 문자 보내기'}
+                      </Text>
                     </TouchableOpacity>
                   </Animated.View>
                 )}
@@ -248,13 +291,17 @@ export default function PasswordResetScreen() {
                   <Animated.View key="verify" entering={FadeIn.duration(220)} style={styles.formStack}>
                     <View style={styles.infoBox}>
                       <Text style={styles.infoText}>
-                        <Text style={styles.infoTextStrong}>{email}</Text>로 인증번호를 발송했습니다.
+                        <Text style={styles.infoTextStrong}>{email}</Text> 계정의 전화번호{' '}
+                        <Text style={styles.infoTextStrong}>{phoneNumber}</Text> 인증을 진행합니다.
                       </Text>
+                      {phoneVerificationGuide ? (
+                        <Text style={styles.verificationGuideText}>{phoneVerificationGuide}</Text>
+                      ) : null}
                     </View>
                     <Field
                       label="인증번호"
                       icon={<MessageSquare size={20} color="#9CA3AF" />}
-                      placeholder="6자리 인증번호"
+                      placeholder="인증번호 입력"
                       value={verificationCode}
                       onChangeText={setVerificationCode}
                       keyboardType="number-pad"
@@ -265,10 +312,10 @@ export default function PasswordResetScreen() {
                       disabled={isLoading}
                       onPress={handleVerifyCode}
                     >
-                      <Text style={styles.primaryButtonText}>{isLoading ? '확인 중...' : '인증 확인'}</Text>
+                      <Text style={styles.primaryButtonText}>{isLoading ? '확인 중...' : '인증 완료'}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.resendButton} onPress={handleSendCode} disabled={isLoading}>
-                      <Text style={styles.resendText}>인증번호 재전송</Text>
+                      <Text style={styles.resendText}>인증 문자 다시 보내기</Text>
                     </TouchableOpacity>
                   </Animated.View>
                 )}
@@ -336,7 +383,7 @@ export default function PasswordResetScreen() {
                       disabled={isLoading}
                       onPress={handleResetPassword}
                     >
-                      <Text style={styles.primaryButtonText}>{isLoading ? '처리 중...' : '비밀번호 재설정'}</Text>
+                      <Text style={styles.primaryButtonText}>{isLoading ? '처리 중...' : '비밀번호 변경'}</Text>
                     </TouchableOpacity>
                   </Animated.View>
                 )}
@@ -437,6 +484,7 @@ const styles = StyleSheet.create({
   infoBox: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#F3F4F6' },
   infoText: { fontSize: 12.5, lineHeight: 18, fontWeight: '600', color: '#4B5563' },
   infoTextStrong: { fontWeight: '900', color: '#111827' },
+  verificationGuideText: { marginTop: 8, fontSize: 12.5, lineHeight: 18, fontWeight: '700', color: '#111827' },
   helperText: { color: '#9CA3AF', fontSize: 11.2, marginLeft: 4, marginTop: -4 },
   resendButton: { alignItems: 'center', paddingVertical: 8 },
   resendText: { fontSize: 13, fontWeight: '700', color: '#6B7280', textDecorationLine: 'underline' },

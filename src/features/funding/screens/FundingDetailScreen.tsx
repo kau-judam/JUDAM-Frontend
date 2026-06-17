@@ -428,7 +428,12 @@ export default function FundingDetailScreen() {
   const [supportOptionId, setSupportOptionId] = useState<number | null>(null);
   const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
-  const [reviewPermission, setReviewPermission] = useState<{ canWriteReview: boolean; canReview: boolean } | null>(null);
+  const [reviewPermission, setReviewPermission] = useState<{
+    canWriteReview: boolean;
+    canReview: boolean;
+    hasWrittenReview?: boolean;
+    myReviewId?: number;
+  } | null>(null);
   const [ownBreweryProfile, setOwnBreweryProfile] = useState<BreweryProfile | null>(null);
   const [isOwnBreweryProfileLoading, setIsOwnBreweryProfileLoading] = useState(false);
   const isOwnBreweryProject = useMemo(
@@ -477,6 +482,8 @@ export default function FundingDetailScreen() {
         setReviewPermission({
           canWriteReview: response.canWriteReview,
           canReview: response.canReview,
+          hasWrittenReview: response.hasWrittenReview,
+          myReviewId: response.myReviewId,
         });
         mergeFundingReviews(projectId, response.content.map((review) => mapFundingReview(projectId, review)));
       })
@@ -758,6 +765,8 @@ export default function FundingDetailScreen() {
         setReviewPermission({
           canWriteReview: response.canWriteReview,
           canReview: response.canReview,
+          hasWrittenReview: response.hasWrittenReview,
+          myReviewId: response.myReviewId,
         });
         mergeFundingReviews(projectId, response.content.map((review) => mapFundingReview(projectId, review)));
       })
@@ -847,8 +856,15 @@ export default function FundingDetailScreen() {
     [fundingReviews, project]
   );
   const myReview = useMemo(
-    () => (user ? projectReviews.find((review) => isFundingReviewOwnedByUser(review, user)) || null : null),
-    [projectReviews, user]
+    () => {
+      if (!user) return null;
+      if (reviewPermission?.myReviewId) {
+        const matchedReview = projectReviews.find((review) => review.id === reviewPermission.myReviewId);
+        if (matchedReview) return matchedReview;
+      }
+      return projectReviews.find((review) => isFundingReviewOwnedByUser(review, user)) || null;
+    },
+    [projectReviews, reviewPermission?.myReviewId, user]
   );
   const canShowAndWriteReviews = useMemo(
     () => Boolean(project && (canAccessFundingReviews(project) || projectReviews.length > 0 || reviewPermission !== null)),
@@ -1786,7 +1802,7 @@ export default function FundingDetailScreen() {
       });
       return;
     }
-    const canStartReview = canWriteFundingReview || Boolean(myReview);
+    const canStartReview = canWriteFundingReview || Boolean(myReview) || Boolean(reviewPermission?.hasWrittenReview && reviewPermission.myReviewId);
     if (!canStartReview) {
       setFeedbackModal({
         title: '후기 작성 불가',
@@ -1796,6 +1812,10 @@ export default function FundingDetailScreen() {
     }
     if (myReview) {
       setReviewEditPrompt(myReview);
+      return;
+    }
+    if (reviewPermission?.hasWrittenReview && reviewPermission.myReviewId) {
+      router.push(`/archive/review/${project.id}?reviewId=${reviewPermission.myReviewId}` as any);
       return;
     }
     router.push(`/archive/review/${project.id}` as any);

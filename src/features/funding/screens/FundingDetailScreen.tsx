@@ -178,6 +178,85 @@ function getReportSubmitErrorMessage(error: unknown) {
   return isGarbledKoreanMessage(message) ? fallback : message;
 }
 
+const FUNDING_SHARE_FALLBACK_BASE_URL = 'https://kaujudam.com/funding';
+const FUNDING_SHARE_FALLBACK_IMAGE_URL = 'https://kaujudam.com/og-image.png';
+const FUNDING_SHARE_MESSAGE_SUFFIX = '주담 펀딩 프로젝트를 확인해보세요.';
+
+function getFundingShareFallbackUrl(fundingId: number) {
+  return `${FUNDING_SHARE_FALLBACK_BASE_URL}/${fundingId}`;
+}
+
+function readProjectShareString(project: FundingProject, keys: string[]) {
+  const source = project as unknown as Record<string, unknown>;
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function getProjectShareDescription(project: FundingProject, summary?: string) {
+  return (
+    summary?.trim()
+    || project.shortDescription?.trim()
+    || project.projectSummary?.trim()
+    || project.introduction?.trim()
+    || project.story?.trim()
+    || FUNDING_SHARE_MESSAGE_SUFFIX
+  );
+}
+
+function getProjectShareImageUrl(project: FundingProject, thumbnailImageUrl?: string) {
+  const directImageUrl = readProjectShareString(project, ['imageUrl', 'thumbnailUrl', 'representativeImageUrl']);
+  return normalizeFundingImageUrl([
+    directImageUrl,
+    thumbnailImageUrl,
+    project.image,
+    project.images,
+  ]) || FUNDING_SHARE_FALLBACK_IMAGE_URL;
+}
+
+async function shareFundingProjectWithKakao(params: {
+  title: string;
+  description: string;
+  imageUrl: string;
+  shareUrl: string;
+}) {
+  try {
+    const kakaoShareModule = await import('@react-native-kakao/share');
+    const shareFeedTemplate = kakaoShareModule.shareFeedTemplate || kakaoShareModule.default?.shareFeedTemplate;
+    if (typeof shareFeedTemplate !== 'function') return false;
+
+    await shareFeedTemplate({
+      template: {
+        content: {
+          title: params.title,
+          description: params.description,
+          imageUrl: params.imageUrl,
+          link: {
+            webUrl: params.shareUrl,
+            mobileWebUrl: params.shareUrl,
+          },
+        },
+        buttons: [
+          {
+            title: '펀딩 보러가기',
+            link: {
+              webUrl: params.shareUrl,
+              mobileWebUrl: params.shareUrl,
+            },
+          },
+        ],
+      },
+      useWebBrowserIfKakaoTalkNotAvailable: true,
+    });
+    return true;
+  } catch (error) {
+    console.warn('[FundingDetail] Kakao share failed, fallback to NativeShare', error);
+    return false;
+  }
+}
+
 function createFundingProjectFromDetail(detail: FundingDetailResponse): FundingProject {
   return mergeFundingDetail(
     {
@@ -1826,24 +1905,48 @@ export default function FundingDetailScreen() {
   };
 
   const handleShareProject = async () => {
-    const shareProject = async (shareUrl: string, title = project.title, summary = project.shortDescription || project.projectSummary || '') => {
-      await NativeShare.share({
-        title,
-        message: `${title}\n${summary}\n${shareUrl}\n주담 펀딩 프로젝트를 확인해보세요.`,
-        url: shareUrl,
-      });
-      setShowShareModal(false);
-    };
+    const fallbackShareUrl = getFundingShareFallbackUrl(project.id);
+    let shareUrl = fallbackShareUrl;
+    let shareTitle = project.title;
+    let shareDescription = getProjectShareDescription(project);
+    let shareImageUrl = getProjectShareImageUrl(project);
 
     try {
       const share = await getFundingShareLink(project.id);
-      if (!share.shareUrl) throw new Error('공유 링크가 비어 있습니다.');
-      await shareProject(share.shareUrl, share.title || project.title, share.summary || project.shortDescription || project.projectSummary || '');
-    } catch {
+      shareUrl = share.shareUrl?.trim() || fallbackShareUrl;
+      shareTitle = share.title?.trim() || project.title;
+      shareDescription = getProjectShareDescription(project, share.summary);
+      shareImageUrl = getProjectShareImageUrl(project, share.thumbnailImageUrl);
+    } catch (error) {
+      console.warn('[FundingDetail] Failed to load funding share link, using fallback URL', error);
+    }
+
+    const shareProjectWithNative = async () => {
+      await NativeShare.share({
+        title: shareTitle,
+        message: `${shareTitle}\n${shareDescription}\n${shareUrl}\n${FUNDING_SHARE_MESSAGE_SUFFIX}`,
+        url: shareUrl,
+      });
+    };
+
+    try {
+      const kakaoShared = await shareFundingProjectWithKakao({
+        title: shareTitle,
+        description: shareDescription,
+        imageUrl: shareImageUrl,
+        shareUrl,
+      });
+      if (!kakaoShared) {
+        await shareProjectWithNative();
+      }
+    } catch (error) {
+      console.warn('[FundingDetail] Native share failed', error);
       setFeedbackModal({
         title: '공유하기',
         body: '공유를 완료하지 못했습니다. 다시 시도해주세요.',
       });
+    } finally {
+      setShowShareModal(false);
     }
   };
 

@@ -71,7 +71,23 @@
       "expo-document-picker",
       "@react-native-community/datetimepicker",
       "expo-font",
-      "./plugins/withAndroidCleartextTraffic"
+      "./plugins/withAndroidCleartextTraffic",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": [
+              "https://devrepo.kakao.com/nexus/content/groups/public/"
+            ]
+          }
+        }
+      ],
+      [
+        "@react-native-kakao/core",
+        {
+          "nativeAppKey": "f3b606d0a36f4db4e35d523e00648e8a"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

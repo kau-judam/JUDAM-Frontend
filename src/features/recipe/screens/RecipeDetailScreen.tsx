@@ -17,6 +17,7 @@ import { useLocalSearchParams, router } from 'expo-router';
 import {
   ChevronLeft,
   Heart,
+  ImageOff,
   MessageCircle,
   Sparkles,
   Rocket,
@@ -632,6 +633,8 @@ export default function RecipeDetailScreen() {
     );
   }
 
+  const recipeImageSource = getImageSource(recipe.image);
+
   return (
     <View style={styles.container}>
       <View style={[styles.header, { height: insets.top + 56, paddingTop: insets.top }]}>
@@ -665,7 +668,14 @@ export default function RecipeDetailScreen() {
         }}
       >
         <View style={styles.imageBox}>
-          <Image source={getImageSource(recipe.image)!} style={styles.mainImg} />
+          {recipeImageSource ? (
+            <Image source={recipeImageSource} style={styles.mainImg} />
+          ) : (
+            <View style={styles.noImageBox}>
+              <ImageOff size={42} color="#9CA3AF" />
+              <Text style={styles.noImageText}>이미지 없음</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.content}>
@@ -906,6 +916,8 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 14, color: '#6B7280', fontWeight: '700' },
   imageBox: { width: '100%', height: 300, backgroundColor: '#F9FAFB' },
   mainImg: { width: '100%', height: '100%', resizeMode: 'cover' },
+  noImageBox: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, gap: 10 },
+  noImageText: { fontSize: 15, lineHeight: 22, fontWeight: '800', color: '#9CA3AF' },
   content: { padding: 24 },
   authorRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   authorInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },

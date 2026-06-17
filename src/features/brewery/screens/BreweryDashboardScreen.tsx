@@ -11,7 +11,9 @@ import {
   StatusBar,
   TextInput,
 } from 'react-native';
+import * as MediaLibrary from 'expo-media-library';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { captureRef } from 'react-native-view-shot';
 import { 
   TrendingUp, 
   Users, 
@@ -29,6 +31,7 @@ import {
   Truck,
   Lock,
   CreditCard,
+  Download,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { SlideInUp } from 'react-native-reanimated';
@@ -231,6 +234,7 @@ export default function BreweryDashboardScreen() {
   const { user } = useAuth();
   const { projects, mergeProjects, updateProjectStatus } = useFunding();
   const projectsRef = useRef(projects);
+  const insightCaptureRef = useRef<View>(null);
   const [fundingFilter, setFundingFilter] = useState<"active" | "completed">("active");
   const [fundingPage, setFundingPage] = useState(0);
   const [selectedProject, setSelectedProject] = useState<any>(null);
@@ -251,6 +255,7 @@ export default function BreweryDashboardScreen() {
   const [insightAccess, setInsightAccess] = useState<BreweryInsightAccess | null>(null);
   const [dashboardInsight, setDashboardInsight] = useState<BreweryDashboardInsight | null>(null);
   const [isInsightLoading, setIsInsightLoading] = useState(false);
+  const [isSavingInsightImage, setIsSavingInsightImage] = useState(false);
   const [dashboardBasicInfo, setDashboardBasicInfo] = useState<BreweryDashboardBasicInfo | null>(null);
   const [fundingSummary, setFundingSummary] = useState<BreweryFundingSummary | null>(null);
   const [apiFundings, setApiFundings] = useState<Record<'active' | 'completed', DashboardFundingProject[]>>({ active: [], completed: [] });
@@ -313,6 +318,42 @@ export default function BreweryDashboardScreen() {
     }
     router.replace((dashboardReturnTo || '/(tabs)/mypage') as any);
   }, [dashboardReturnTo]);
+
+  const handleSaveInsightImage = useCallback(async () => {
+    if (isSavingInsightImage || isInsightLoading || !dashboardInsight?.insight) return;
+    if (!insightCaptureRef.current) {
+      Alert.alert('저장 실패', '저장할 인사이트 화면을 찾지 못했습니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+
+    try {
+      setIsSavingInsightImage(true);
+      let permission = await MediaLibrary.getPermissionsAsync(true);
+
+      if (!permission.granted && permission.canAskAgain) {
+        permission = await MediaLibrary.requestPermissionsAsync(true);
+      }
+
+      if (!permission.granted) {
+        Alert.alert('권한 필요', '인사이트 이미지를 저장하려면 사진 접근 권한이 필요합니다.');
+        return;
+      }
+
+      const uri = await captureRef(insightCaptureRef.current, {
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+      });
+
+      await MediaLibrary.saveToLibraryAsync(uri);
+      Alert.alert('저장 완료', '인사이트 이미지가 갤러리에 저장되었습니다.');
+    } catch (error) {
+      console.warn('[BreweryDashboard][InsightSave] failed', error);
+      Alert.alert('저장 실패', '인사이트 이미지를 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setIsSavingInsightImage(false);
+    }
+  }, [dashboardInsight?.insight, isInsightLoading, isSavingInsightImage]);
 
   const handleInsightPaymentPress = useCallback(async () => {
     if (isInsightPaymentLoading) return;
@@ -847,13 +888,27 @@ export default function BreweryDashboardScreen() {
             }}
           >
             {isInsightActive ? (
-              <View style={styles.insightContent}>
+              <View ref={insightCaptureRef} collapsable={false} style={styles.insightContent}>
                 <View style={styles.insightContentHeader}>
                   <View>
                     <Text style={styles.insightPeriod}>{dashboardInsight?.period || insightPeriod}</Text>
                     <Text style={styles.insightContentTitle}>이번 달 인사이트</Text>
                   </View>
-                  {isInsightLoading ? <Clock size={18} color="#6B7280" /> : <TrendingUp size={18} color="#111827" />}
+                  {isInsightLoading ? (
+                    <Clock size={18} color="#6B7280" />
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.insightSaveButton, isSavingInsightImage && styles.insightSaveButtonDisabled]}
+                      activeOpacity={0.85}
+                      onPress={handleSaveInsightImage}
+                      disabled={isSavingInsightImage || !dashboardInsight?.insight}
+                    >
+                      <Download size={14} color="#111827" />
+                      <Text style={styles.insightSaveButtonText}>
+                        {isSavingInsightImage ? '저장 중' : '사진으로 저장'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 {isInsightLoading ? (
@@ -1355,10 +1410,23 @@ const styles = StyleSheet.create({
   insightChartBar: { flex: 1, borderRadius: 8, backgroundColor: '#111827' },
   insightLockOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.52)' },
   insightLockButton: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
-  insightContent: { padding: 18, gap: 14 },
+  insightContent: { padding: 18, gap: 14, backgroundColor: '#F9FAFB' },
   insightContentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   insightPeriod: { fontSize: 11, fontWeight: '800', color: '#6B7280', marginBottom: 3 },
   insightContentTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
+  insightSaveButton: {
+    minHeight: 34,
+    borderRadius: 17,
+    paddingHorizontal: 11,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  insightSaveButtonDisabled: { opacity: 0.55 },
+  insightSaveButtonText: { fontSize: 11, fontWeight: '900', color: '#111827' },
   insightKeywordPanel: { borderRadius: 18, backgroundColor: '#111827', padding: 14, gap: 12 },
   insightKeywordHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   insightKeywordLabel: { fontSize: 12, fontWeight: '900', color: '#FFFFFF' },

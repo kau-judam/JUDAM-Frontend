@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -24,6 +24,7 @@ import {
   Package,
   Phone,
   ReceiptText,
+  RefreshCw,
   Star,
   Truck,
   X,
@@ -63,6 +64,7 @@ type DerivedOrder = {
   paymentMethod: string;
   deliveryStatus: DeliveryStatus;
   estimatedDate: string;
+  shippedAt: string | null;
   deliveredAt: string | null;
   trackingNumber: string | null;
   courier: string | null;
@@ -203,6 +205,7 @@ function deriveOrder(project: FundingProject, participationAmount: number, parti
     paymentMethod: '토스페이',
     deliveryStatus,
     estimatedDate,
+    shippedAt: deliveryStatus === '예정' ? null : addDays(participationDate, 55),
     deliveredAt: deliveryStatus === '완료' ? estimatedDate : null,
     trackingNumber: deliveryStatus === '예정' ? null : `62${String(4880000000 + project.id * 9173)}`,
     courier: deliveryStatus === '예정' ? null : 'CJ대한통운',
@@ -267,6 +270,7 @@ function buildOrderFromServer(detail: MyPageFundingOrderDeliveryDetail): Derived
     paymentMethod: detail.paymentStatus,
     deliveryStatus,
     estimatedDate,
+    shippedAt: detail.shippedAt ? formatServerOrderDate(detail.shippedAt) : null,
     deliveredAt: detail.deliveredAt ? formatServerOrderDate(detail.deliveredAt) : null,
     trackingNumber: detail.trackingNumber,
     courier: detail.courier || detail.courierName,
@@ -293,8 +297,24 @@ export default function FundingOrderDetailScreen() {
   const [inquiryEmail, setInquiryEmail] = useState(user?.email || '');
   const [inquiryContent, setInquiryContent] = useState('');
   const [serverDetail, setServerDetail] = useState<MyPageFundingOrderDeliveryDetail | null>(null);
+  const [isRefreshingDelivery, setIsRefreshingDelivery] = useState(false);
 
   const projectId = Number(Array.isArray(id) ? id[0] : id);
+
+  const refreshDeliveryDetail = useCallback(async () => {
+    if (!Number.isFinite(projectId) || isRefreshingDelivery) return;
+    setIsRefreshingDelivery(true);
+    try {
+      const detail = await getMyPageFundingOrderDeliveryDetail(projectId);
+      setServerDetail(detail);
+    } catch (error) {
+      console.warn(getMyPageApiErrorMessage(error, '배송 정보를 다시 불러오지 못했습니다.'));
+      Alert.alert('알림', '배송 정보를 다시 불러오지 못했습니다.');
+    } finally {
+      setIsRefreshingDelivery(false);
+    }
+  }, [isRefreshingDelivery, projectId]);
+
   useEffect(() => {
     if (!Number.isFinite(projectId)) return;
     let active = true;
@@ -408,6 +428,35 @@ export default function FundingOrderDetailScreen() {
           ) : (
             <Text style={[styles.statusHelp, { color: status.text }]}>제조가 완료되면 운송장 번호가 등록됩니다.</Text>
           )}
+
+          {(order.shippedAt || order.deliveredAt) && (
+            <View style={styles.deliveryDateBox}>
+              {order.shippedAt ? (
+                <View style={styles.deliveryDateRow}>
+                  <Text style={styles.deliveryDateLabel}>발송일</Text>
+                  <Text style={styles.deliveryDateValue}>{order.shippedAt}</Text>
+                </View>
+              ) : null}
+              {order.deliveredAt ? (
+                <View style={styles.deliveryDateRow}>
+                  <Text style={styles.deliveryDateLabel}>배송완료일</Text>
+                  <Text style={styles.deliveryDateValue}>{order.deliveredAt}</Text>
+                </View>
+              ) : null}
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={[styles.refreshDeliveryButton, isRefreshingDelivery && styles.refreshDeliveryButtonDisabled]}
+            activeOpacity={0.85}
+            disabled={isRefreshingDelivery}
+            onPress={refreshDeliveryDetail}
+          >
+            <RefreshCw size={14} color={isRefreshingDelivery ? '#9CA3AF' : status.text} />
+            <Text style={[styles.refreshDeliveryText, { color: isRefreshingDelivery ? '#9CA3AF' : status.text }]}>
+              {isRefreshingDelivery ? '새로고침 중...' : '배송 현황 새로고침'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <SectionCard title="배송 타임라인">
@@ -711,6 +760,24 @@ const styles = StyleSheet.create({
   },
   copyText: { fontSize: 12, fontWeight: '900' },
   statusHelp: { fontSize: 13, fontWeight: '700', lineHeight: 20 },
+  deliveryDateBox: { marginTop: 12, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.58)', padding: 12, gap: 7 },
+  deliveryDateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  deliveryDateLabel: { fontSize: 12, fontWeight: '800', color: '#6B7280' },
+  deliveryDateValue: { flexShrink: 0, fontSize: 12, fontWeight: '900', color: '#111827' },
+  refreshDeliveryButton: {
+    marginTop: 12,
+    minHeight: 42,
+    borderRadius: 13,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  refreshDeliveryButtonDisabled: { backgroundColor: '#F3F4F6' },
+  refreshDeliveryText: { fontSize: 13, fontWeight: '900' },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 20,

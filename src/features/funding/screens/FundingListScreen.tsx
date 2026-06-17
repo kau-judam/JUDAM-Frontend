@@ -31,10 +31,11 @@ import { useFunding } from '@/contexts/FundingContext';
 import { getBtiDisplayType, getBtiTasteAxisValuesFromScores, getBtiTasteAxisValuesFromTasteVector, resolveSulbtiCode } from '@/features/bti/data';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
 import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
-import { getFundingList, getFundingStats, getFundingApiErrorMessage, type FundingStatsResponse } from '@/features/funding/api';
+import { getFundingList, getFundingApiErrorMessage } from '@/features/funding/api';
 import { mergeFundingListItem } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { getMyPageApiErrorMessage, getMyPageSulbti } from '@/features/mypage/api';
+import { getEmptyStatsSummary, getStatsSummary, type FundingStatsSummary } from '@/features/stats/api';
 import {
   getTasteProfileFromSulbti,
   matchesFundingSearch,
@@ -53,6 +54,14 @@ type FundingListAlert = {
   tone?: FundingAlertTone;
   buttons?: FundingAlertButton[];
 };
+
+function formatCountWithUnit(value: number, unit: string) {
+  return `${Math.max(0, Math.round(value || 0)).toLocaleString()}${unit}`;
+}
+
+function formatWon(value: number) {
+  return `${Math.max(0, Math.round(value || 0)).toLocaleString()}원`;
+}
 
 function getFundingApiStatus(status: FundingStatusFilter, sort: FundingSortOption) {
   if (status === "전체 프로젝트" && sort === "인기순") return "ACTIVE";
@@ -83,7 +92,7 @@ export default function FundingListScreen() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [alertModal, setAlertModal] = useState<FundingListAlert | null>(null);
-  const [serverFundingStats, setServerFundingStats] = useState<FundingStatsResponse | null>(null);
+  const [serverFundingStats, setServerFundingStats] = useState<FundingStatsSummary>(() => getEmptyStatsSummary().funding);
   const [serverFundingOrderIds, setServerFundingOrderIds] = useState<number[]>([]);
   const [hasLoadedServerFundingList, setHasLoadedServerFundingList] = useState(false);
   const [isSulbtiRestoring, setIsSulbtiRestoring] = useState(false);
@@ -201,12 +210,12 @@ export default function FundingListScreen() {
   useEffect(() => {
     let mounted = true;
 
-    getFundingStats()
+    getStatsSummary()
       .then((stats) => {
-        if (mounted) setServerFundingStats(stats);
+        if (mounted) setServerFundingStats(stats.funding);
       })
       .catch((error) => {
-        console.warn(getFundingApiErrorMessage(error, '펀딩 통계를 불러오지 못했습니다.'));
+        console.warn(getFundingApiErrorMessage(error, '통계를 불러오지 못했습니다.'));
       });
 
     return () => {
@@ -254,30 +263,10 @@ export default function FundingListScreen() {
     () => sortedProjects.slice((currentPage - 1) * FUNDING_ITEMS_PER_PAGE, currentPage * FUNDING_ITEMS_PER_PAGE),
     [currentPage, sortedProjects]
   );
-  const fundingStats = useMemo(() => {
-    if (!serverFundingStats) {
-      return {
-        supportableCount: 0,
-        totalBackers: 0,
-        completedCount: 0,
-        totalRaised: 0,
-        totalRaisedTenMillion: 0,
-        totalRaisedTenMillionUnit: '천만원',
-      };
-    }
-    return {
-      supportableCount: serverFundingStats.participationAvailableFunding,
-      totalBackers: serverFundingStats.totalSupporterCount,
-      completedCount: serverFundingStats.successfulProjectCount,
-      totalRaised: serverFundingStats.totalRaisedAmount,
-      totalRaisedTenMillion: serverFundingStats.totalRaisedTenMillion,
-      totalRaisedTenMillionUnit: serverFundingStats.totalRaisedTenMillionUnit || '천만원',
-    };
-  }, [serverFundingStats]);
-  const totalRaisedMilestoneText = useMemo(() => {
-    const amount = Number(fundingStats.totalRaisedTenMillion || 0);
-    return `${amount.toLocaleString(undefined, { maximumFractionDigits: 1 })}${fundingStats.totalRaisedTenMillionUnit || '천만원'}`;
-  }, [fundingStats.totalRaisedTenMillion, fundingStats.totalRaisedTenMillionUnit]);
+  const totalRaisedMilestoneText = useMemo(
+    () => formatWon(serverFundingStats.totalRaisedAmount),
+    [serverFundingStats.totalRaisedAmount]
+  );
 
   useEffect(() => {
     restorePaginationScroll();
@@ -539,19 +528,19 @@ export default function FundingListScreen() {
           <View style={styles.statsGrid}>
             <StatCard 
               icon={<TrendingUp size={22} color="#FFF" />} 
-              val={fundingStats.supportableCount.toString()}
+              val={formatCountWithUnit(serverFundingStats.supportableFundingCount, '개')}
               label="참여 가능 펀딩"
               sub="지금 후원 가능"
             />
             <StatCard 
               icon={<Users size={22} color="#FFF" />} 
-              val={fundingStats.totalBackers.toLocaleString()}
+              val={formatCountWithUnit(serverFundingStats.totalBackerCount, '명')}
               label="총 참여자" 
               sub="함께한 사람들"
             />
             <StatCard 
               icon={<Text style={{ fontSize: 18, color: '#FFF' }}>✓</Text>} 
-              val={fundingStats.completedCount.toString()}
+              val={formatCountWithUnit(serverFundingStats.successfulProjectCount, '개')}
               label="성공 프로젝트" 
               sub="여러분의 선택"
             />

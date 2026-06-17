@@ -1266,6 +1266,8 @@ export type FundingReviewsResponse = {
   totalPages: number;
   canWriteReview: boolean;
   canReview: boolean;
+  hasWrittenReview: boolean;
+  myReviewId?: number;
   message?: string;
 };
 
@@ -2210,16 +2212,25 @@ function normalizeFundingReviewItem(source: Record<string, unknown>): FundingRev
 function normalizeFundingReviewsResponse(response: unknown): FundingReviewsResponse {
   const raw = getFundingApiRawObject(response);
   const data = getFundingApiObject(response);
-  const content = getFundingApiArray<Record<string, unknown>>(response, ['content', 'reviews', 'data']);
+  const content = [
+    ...readFundingApiArray<Record<string, unknown>>(raw, ['content', 'reviews']),
+    ...readFundingApiArray<Record<string, unknown>>(data, ['content', 'reviews']),
+  ];
+  const uniqueContent = Array.from(new Map(content.map((item) => [
+    readFundingApiNumber(item, ['reviewId', 'review_id', 'id']) || JSON.stringify(item),
+    item,
+  ])).values());
   const permission = readFundingReviewPermission(raw, data);
   return {
-    content: content.map(normalizeFundingReviewItem),
+    content: uniqueContent.map(normalizeFundingReviewItem),
     page: readFundingApiNumber(data, ['page']),
-    size: readFundingApiNumber(data, ['size'], content.length),
-    totalElements: readFundingApiNumber(data, ['totalElements', 'total_elements'], content.length),
-    totalPages: readFundingApiNumber(data, ['totalPages', 'total_pages'], content.length > 0 ? 1 : 0),
+    size: readFundingApiNumber(data, ['size'], uniqueContent.length),
+    totalElements: readFundingApiNumber(data, ['totalElements', 'total_elements'], uniqueContent.length),
+    totalPages: readFundingApiNumber(data, ['totalPages', 'total_pages'], uniqueContent.length > 0 ? 1 : 0),
     canWriteReview: permission.canWriteReview,
     canReview: permission.canReview,
+    hasWrittenReview: readFundingApiBoolean(Object.assign({}, raw, data), ['hasWrittenReview', 'has_written_review']),
+    myReviewId: readFundingApiOptionalNumber(Object.assign({}, raw, data), ['myReviewId', 'my_review_id']),
     message: readFundingApiString(data, ['message']) || readFundingApiString(raw, ['message']) || undefined,
   };
 }

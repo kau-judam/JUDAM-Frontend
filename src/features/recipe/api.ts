@@ -1,7 +1,7 @@
 import { ImageSourcePropType } from 'react-native';
 
 import type { Recipe } from '@/constants/data';
-import SafeStorage from '@/utils/storage';
+import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
 export const JUDAM_API_BASE_URL = 'http://43.202.24.223:3000';
 
@@ -283,14 +283,8 @@ type SuggestSummaryResponse = {
   summary?: string;
 };
 
-const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
-
 export async function getRecipeAccessToken() {
-  for (const key of TOKEN_STORAGE_KEYS) {
-    const value = await SafeStorage.getItem(key);
-    if (value) return value;
-  }
-  return null;
+  return getAuthAccessToken();
 }
 
 export type RecipeJwtPayload = {
@@ -373,29 +367,39 @@ function getRecipeApiErrorMessage(data: unknown, fallback: string) {
 }
 async function requestJson<T>(path: string, options: RequestInit & { auth?: boolean } = {}) {
   const { auth, headers, ...requestOptions } = options;
-  const nextHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(headers as Record<string, string> | undefined),
+  const createHeaders = (token?: string | null): Record<string, string> => {
+    const nextHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(headers as Record<string, string> | undefined),
+    };
+    if (token) nextHeaders.Authorization = `Bearer ${token}`;
+    return nextHeaders;
   };
 
-  if (auth) {
-    const token = await getRecipeAccessToken();
-    if (!token) {
-      throw new Error('NEEDS_ACCESS_TOKEN');
-    }
-    nextHeaders.Authorization = `Bearer ${token}`;
-  } else {
-    const token = await getRecipeAccessToken();
-    if (token) nextHeaders.Authorization = `Bearer ${token}`;
+  const token = await getRecipeAccessToken();
+  if (auth && !token) {
+    throw new Error('NEEDS_ACCESS_TOKEN');
   }
 
-  const response = await fetch(`${JUDAM_API_BASE_URL}${path}`, {
+  let response = await fetch(`${JUDAM_API_BASE_URL}${path}`, {
     ...requestOptions,
-    headers: nextHeaders,
+    headers: createHeaders(token),
   });
 
-  const text = await response.text();
-  const data = parseRecipeResponseBody(path, response, text);
+  let text = await response.text();
+  let data = parseRecipeResponseBody(path, response, text);
+
+  if (response.status === 401 && (auth || token)) {
+    const refreshedToken = await refreshAuthAccessToken();
+    if (refreshedToken) {
+      response = await fetch(`${JUDAM_API_BASE_URL}${path}`, {
+        ...requestOptions,
+        headers: createHeaders(refreshedToken),
+      });
+      text = await response.text();
+      data = parseRecipeResponseBody(path, response, text);
+    }
+  }
 
   if (!response.ok) {
     throw new Error(getRecipeApiErrorMessage(data, `HTTP ${response.status}`));
@@ -406,30 +410,42 @@ async function requestJson<T>(path: string, options: RequestInit & { auth?: bool
 
 async function requestFormJson<T>(path: string, formData: FormData, options: RequestInit & { auth?: boolean } = {}) {
   const { auth, headers, ...requestOptions } = options;
-  const nextHeaders: Record<string, string> = {
-    ...(headers as Record<string, string> | undefined),
+  const createHeaders = (token?: string | null): Record<string, string> => {
+    const nextHeaders: Record<string, string> = {
+      ...(headers as Record<string, string> | undefined),
+    };
+    if (token) nextHeaders.Authorization = `Bearer ${token}`;
+    return nextHeaders;
   };
 
-  if (auth) {
-    const token = await getRecipeAccessToken();
-    if (!token) {
-      throw new Error('NEEDS_ACCESS_TOKEN');
-    }
-    nextHeaders.Authorization = `Bearer ${token}`;
-  } else {
-    const token = await getRecipeAccessToken();
-    if (token) nextHeaders.Authorization = `Bearer ${token}`;
+  const token = await getRecipeAccessToken();
+  if (auth && !token) {
+    throw new Error('NEEDS_ACCESS_TOKEN');
   }
 
-  const response = await fetch(`${JUDAM_API_BASE_URL}${path}`, {
+  let response = await fetch(`${JUDAM_API_BASE_URL}${path}`, {
     ...requestOptions,
     method: requestOptions.method || 'POST',
     body: formData,
-    headers: nextHeaders,
+    headers: createHeaders(token),
   });
 
-  const text = await response.text();
-  const data = parseRecipeResponseBody(path, response, text);
+  let text = await response.text();
+  let data = parseRecipeResponseBody(path, response, text);
+
+  if (response.status === 401 && (auth || token)) {
+    const refreshedToken = await refreshAuthAccessToken();
+    if (refreshedToken) {
+      response = await fetch(`${JUDAM_API_BASE_URL}${path}`, {
+        ...requestOptions,
+        method: requestOptions.method || 'POST',
+        body: formData,
+        headers: createHeaders(refreshedToken),
+      });
+      text = await response.text();
+      data = parseRecipeResponseBody(path, response, text);
+    }
+  }
 
   if (!response.ok) {
     console.warn('Recipe API error response', {

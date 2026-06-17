@@ -1,7 +1,7 @@
 import { ImageSourcePropType } from 'react-native';
 
 import type { Post } from '@/contexts/CommunityContext';
-import SafeStorage from '@/utils/storage';
+import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
 export const JUDAM_COMMUNITY_API_BASE_URL = 'http://43.202.24.223:3000';
 
@@ -162,14 +162,8 @@ type DeleteCommunityResponse = {
   message: string;
 };
 
-const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
-
 export async function getCommunityAccessToken() {
-  for (const key of TOKEN_STORAGE_KEYS) {
-    const value = await SafeStorage.getItem(key);
-    if (value) return value;
-  }
-  return null;
+  return getAuthAccessToken();
 }
 
 function parseCommunityResponseBody(path: string, response: Response, text: string) {
@@ -187,27 +181,39 @@ function parseCommunityResponseBody(path: string, response: Response, text: stri
 async function requestJson<T>(path: string, options: RequestInit & { auth?: boolean } = {}) {
   const { auth, headers, ...requestOptions } = options;
   const isFormData = typeof FormData !== 'undefined' && requestOptions.body instanceof FormData;
-  const nextHeaders: Record<string, string> = {
-    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-    ...(headers as Record<string, string> | undefined),
+  const createHeaders = (token?: string | null): Record<string, string> => {
+    const nextHeaders: Record<string, string> = {
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(headers as Record<string, string> | undefined),
+    };
+    if (token) nextHeaders.Authorization = `Bearer ${token}`;
+    return nextHeaders;
   };
 
-  if (auth) {
-    const token = await getCommunityAccessToken();
-    if (!token) throw new Error('NEEDS_ACCESS_TOKEN');
-    nextHeaders.Authorization = `Bearer ${token}`;
-  } else {
-    const token = await getCommunityAccessToken();
-    if (token) nextHeaders.Authorization = `Bearer ${token}`;
+  const token = await getCommunityAccessToken();
+  if (auth && !token) {
+    throw new Error('NEEDS_ACCESS_TOKEN');
   }
 
-  const response = await fetch(`${JUDAM_COMMUNITY_API_BASE_URL}${path}`, {
+  let response = await fetch(`${JUDAM_COMMUNITY_API_BASE_URL}${path}`, {
     ...requestOptions,
-    headers: nextHeaders,
+    headers: createHeaders(token),
   });
 
-  const text = await response.text();
-  const data = parseCommunityResponseBody(path, response, text);
+  let text = await response.text();
+  let data = parseCommunityResponseBody(path, response, text);
+
+  if (response.status === 401 && (auth || token)) {
+    const refreshedToken = await refreshAuthAccessToken();
+    if (refreshedToken) {
+      response = await fetch(`${JUDAM_COMMUNITY_API_BASE_URL}${path}`, {
+        ...requestOptions,
+        headers: createHeaders(refreshedToken),
+      });
+      text = await response.text();
+      data = parseCommunityResponseBody(path, response, text);
+    }
+  }
 
   if (!response.ok) {
     const message = (data as ApiErrorBody | null)?.message || `HTTP ${response.status}`;

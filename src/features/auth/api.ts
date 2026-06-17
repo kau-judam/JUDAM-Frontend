@@ -110,6 +110,24 @@ type AuthTokenSource = {
 
 type AuthRefreshResponse = Partial<NonNullable<AuthTokenSource>>;
 
+type AuthSessionExpiredListener = () => void | Promise<void>;
+const authSessionExpiredListeners = new Set<AuthSessionExpiredListener>();
+
+export function addAuthSessionExpiredListener(listener: AuthSessionExpiredListener) {
+  authSessionExpiredListeners.add(listener);
+  return () => {
+    authSessionExpiredListeners.delete(listener);
+  };
+}
+
+function notifyAuthSessionExpired() {
+  authSessionExpiredListeners.forEach((listener) => {
+    void Promise.resolve(listener()).catch((error) => {
+      console.warn('Failed to handle expired auth session.', error);
+    });
+  });
+}
+
 export type AuthAvailabilityResponse = {
   email?: string;
   nickname?: string;
@@ -349,6 +367,33 @@ function parseAuthResponseBody(path: string, response: Response, text: string) {
   }
 }
 
+function hasAuthAuthorizationHeader(headers?: HeadersInit) {
+  if (!headers) return false;
+  if (headers instanceof Headers) return Boolean(headers.get('Authorization'));
+  if (Array.isArray(headers)) return headers.some(([key]) => key.toLowerCase() === 'authorization');
+  return Object.keys(headers).some((key) => key.toLowerCase() === 'authorization');
+}
+
+function mergeAuthHeaders(headers: HeadersInit | undefined, nextHeaders: Record<string, string>) {
+  if (headers instanceof Headers) {
+    const merged: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      merged[key] = value;
+    });
+    return { ...merged, ...nextHeaders };
+  }
+  if (Array.isArray(headers)) {
+    return {
+      ...Object.fromEntries(headers),
+      ...nextHeaders,
+    };
+  }
+  return {
+    ...(headers as Record<string, string> | undefined),
+    ...nextHeaders,
+  };
+}
+
 function unwrapAuthData<T>(response: T | AuthApiEnvelope<T>) {
   if (response && typeof response === 'object' && 'data' in response) {
     const data = (response as AuthApiEnvelope<T>).data;
@@ -358,16 +403,31 @@ function unwrapAuthData<T>(response: T | AuthApiEnvelope<T>) {
 }
 
 async function requestAuthJson<T>(path: string, options: RequestInit = {}) {
-  const response = await fetch(`${JUDAM_AUTH_API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers as Record<string, string> | undefined),
-    },
+  const hasAuthorization = hasAuthAuthorizationHeader(options.headers);
+  const createHeaders = (token?: string | null) => ({
+    'Content-Type': 'application/json',
+    ...mergeAuthHeaders(options.headers, token ? { Authorization: `Bearer ${token}` } : {}),
   });
 
-  const text = await response.text();
-  const data = parseAuthResponseBody(path, response, text);
+  let response = await fetch(`${JUDAM_AUTH_API_BASE_URL}${path}`, {
+    ...options,
+    headers: createHeaders(),
+  });
+
+  let text = await response.text();
+  let data = parseAuthResponseBody(path, response, text);
+
+  if (response.status === 401 && hasAuthorization) {
+    const refreshedToken = await refreshAuthAccessToken();
+    if (refreshedToken) {
+      response = await fetch(`${JUDAM_AUTH_API_BASE_URL}${path}`, {
+        ...options,
+        headers: createHeaders(refreshedToken),
+      });
+      text = await response.text();
+      data = parseAuthResponseBody(path, response, text);
+    }
+  }
 
   if (!response.ok) {
     const message = (data as AuthApiEnvelope<unknown> | null)?.message || `HTTP ${response.status}`;
@@ -378,16 +438,33 @@ async function requestAuthJson<T>(path: string, options: RequestInit = {}) {
 }
 
 async function requestAuthForm<T>(path: string, formData: FormData, options: RequestInit = {}) {
-  const response = await fetch(`${JUDAM_AUTH_API_BASE_URL}${path}`, {
+  const hasAuthorization = hasAuthAuthorizationHeader(options.headers);
+  const createHeaders = (token?: string | null) => mergeAuthHeaders(
+    options.headers,
+    token ? { Authorization: `Bearer ${token}` } : {}
+  );
+
+  let response = await fetch(`${JUDAM_AUTH_API_BASE_URL}${path}`, {
     ...options,
-    headers: {
-      ...(options.headers as Record<string, string> | undefined),
-    },
+    headers: createHeaders(),
     body: formData,
   });
 
-  const text = await response.text();
-  const data = parseAuthResponseBody(path, response, text);
+  let text = await response.text();
+  let data = parseAuthResponseBody(path, response, text);
+
+  if (response.status === 401 && hasAuthorization) {
+    const refreshedToken = await refreshAuthAccessToken();
+    if (refreshedToken) {
+      response = await fetch(`${JUDAM_AUTH_API_BASE_URL}${path}`, {
+        ...options,
+        headers: createHeaders(refreshedToken),
+        body: formData,
+      });
+      text = await response.text();
+      data = parseAuthResponseBody(path, response, text);
+    }
+  }
 
   if (!response.ok) {
     const message = (data as AuthApiEnvelope<unknown> | null)?.message || `HTTP ${response.status}`;
@@ -458,6 +535,7 @@ async function getStoredAuthRefreshToken() {
     if (!token) continue;
     if (isAuthJwtExpired(token)) {
       await clearAuthTokens();
+      notifyAuthSessionExpired();
       return null;
     }
     return token;
@@ -502,6 +580,7 @@ export async function refreshAuthAccessToken() {
 
       if (!nextAccessToken) {
         await clearAuthTokens();
+        notifyAuthSessionExpired();
         return null;
       }
 
@@ -509,6 +588,7 @@ export async function refreshAuthAccessToken() {
       return nextAccessToken;
     } catch {
       await clearAuthTokens();
+      notifyAuthSessionExpired();
       return null;
     }
   })();

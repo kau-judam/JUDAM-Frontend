@@ -1,4 +1,4 @@
-import SafeStorage from '@/utils/storage';
+import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
 export const JUDAM_AI_CHAT_API_BASE_URL = 'http://43.202.24.223:3000';
 
@@ -24,14 +24,8 @@ type ApiErrorBody = {
   message?: string;
 };
 
-const TOKEN_STORAGE_KEYS = ['judam_access_token', 'access_token', 'accessToken', 'token'];
-
 async function getStoredAccessToken() {
-  for (const key of TOKEN_STORAGE_KEYS) {
-    const token = await SafeStorage.getItem(key);
-    if (token) return token;
-  }
-  return null;
+  return getAuthAccessToken();
 }
 
 async function parseApiError(response: Response) {
@@ -57,7 +51,7 @@ export async function sendAIChatMessage(payload: {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${JUDAM_AI_CHAT_API_BASE_URL}/api/ai/chat`, {
+  let response = await fetch(`${JUDAM_AI_CHAT_API_BASE_URL}/api/ai/chat`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -66,6 +60,24 @@ export async function sendAIChatMessage(payload: {
       history: payload.history || [],
     }),
   });
+
+  if (response.status === 401 && token) {
+    const refreshedToken = await refreshAuthAccessToken();
+    if (refreshedToken) {
+      response = await fetch(`${JUDAM_AI_CHAT_API_BASE_URL}/api/ai/chat`, {
+        method: 'POST',
+        headers: {
+          ...headers,
+          Authorization: `Bearer ${refreshedToken}`,
+        },
+        body: JSON.stringify({
+          message: payload.message,
+          user_id: payload.userId,
+          history: payload.history || [],
+        }),
+      });
+    }
+  }
 
   if (!response.ok) {
     throw new Error(await parseApiError(response));

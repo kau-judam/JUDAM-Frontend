@@ -3,6 +3,7 @@ import { Linking } from "react-native";
 import { router } from "expo-router";
 import SafeStorage from "@/utils/storage";
 import {
+  addAuthSessionExpiredListener,
   clearAuthTokens,
   completeKakaoSignup,
   getAuthAccessToken,
@@ -366,7 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.remove();
   }, [isAuthReady, loginWithKakaoCode]);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     setUser(null);
     try {
       await SafeStorage.removeItem("judam_user");
@@ -378,7 +379,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error("Failed to remove user from SafeStorage", e);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    return addAuthSessionExpiredListener(async () => {
+      await logout();
+      router.replace("/login" as any);
+    });
+  }, [logout]);
 
   const signup = async (data: SignupData) => {
     const role: SelectableAuthRole = data.type === "brewery" ? "BREWERY_PENDING" : "USER";

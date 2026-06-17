@@ -148,6 +148,12 @@ const mapDashboardNotificationType = (type: string): AppNotification['type'] => 
       return 'funding_progress';
     case 'RECIPE_POPULAR':
       return 'recipe_popular';
+    case 'BREWERY_APPLICATION_SUBMITTED':
+      return 'brewery_application_submitted';
+    case 'BREWERY_APPLICATION_APPROVED':
+      return 'brewery_application_approved';
+    case 'BREWERY_APPLICATION_REJECTED':
+      return 'brewery_application_rejected';
     default:
       return 'funding_progress';
   }

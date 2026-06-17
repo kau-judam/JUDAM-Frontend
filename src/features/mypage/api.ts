@@ -97,6 +97,15 @@ export type MyPageSulbtiResult = {
   } | null;
 };
 
+export type MyPageSulbtiShareLinkResponse = {
+  shareUrl: string;
+  title?: string;
+  summary?: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  message?: string;
+};
+
 export type SaveMyPageSulbtiPayload = {
   type: string;
   sweetnessScore: number;
@@ -689,6 +698,27 @@ export async function getMyPageSummary() {
 export async function getMyPageSulbti() {
   const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSulbtiResult>>('/api/mypage/sulbti');
   return unwrapMyPageData<MyPageSulbtiResult>(response);
+}
+
+export async function getMyPageSulbtiShareLink() {
+  const response = await requestMyPageJson<MyPageApiEnvelope<MyPageSulbtiShareLinkResponse> | MyPageSulbtiShareLinkResponse>('/api/mypage/sulbti/share-link');
+  const responseData = response && typeof response === 'object' ? response as Record<string, unknown> : {};
+  const data = responseData.data && typeof responseData.data === 'object'
+    ? responseData.data as Record<string, unknown>
+    : responseData;
+  return {
+    shareUrl: readMyPageString(data, ['shareUrl', 'share_url', 'url'])
+      || readMyPageString(responseData, ['shareUrl', 'share_url', 'url']),
+    title: readMyPageString(data, ['title']) || readMyPageString(responseData, ['title']) || undefined,
+    summary: readMyPageString(data, ['summary', 'description']) || readMyPageString(responseData, ['summary', 'description']) || undefined,
+    imageUrl: readMyPageString(data, ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url'])
+      || readMyPageString(responseData, ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url'])
+      || undefined,
+    thumbnailUrl: readMyPageString(data, ['thumbnailUrl', 'thumbnail_url'])
+      || readMyPageString(responseData, ['thumbnailUrl', 'thumbnail_url'])
+      || undefined,
+    message: readMyPageString(data, ['message']) || readMyPageString(responseData, ['message']) || undefined,
+  };
 }
 
 export async function saveMyPageSulbti(payload: SaveMyPageSulbtiPayload) {

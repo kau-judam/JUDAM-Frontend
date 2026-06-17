@@ -50,6 +50,15 @@ function formatFundingDate(value?: string) {
   return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
 }
 
+function normalizeSupporterCount(...values: (number | string | null | undefined)[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    const count = Number(value);
+    if (Number.isFinite(count) && count >= 0) return Math.trunc(count);
+  }
+  return 0;
+}
+
 function mapParticipatedFundingToProject(item: MyPageParticipatedFunding): MyFundingProject {
   const goalAmount = item.goalAmount || 1;
   return {
@@ -63,7 +72,14 @@ function mapParticipatedFundingToProject(item: MyPageParticipatedFunding): MyFun
     image: item.thumbnailUrl || '',
     goalAmount,
     currentAmount: item.currentAmount ?? 0,
-    backers: 0,
+    backers: normalizeSupporterCount(
+      item.supporterCount,
+      item.participantCount,
+      item.supporter_count,
+      item.participant_count,
+      item.supporters,
+      item.backers
+    ),
     daysLeft: 0,
     status: item.fundingStatus as FundingProject['status'],
     alcoholContent: item.abv ? `${item.abv}%` : undefined,

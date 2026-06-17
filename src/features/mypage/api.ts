@@ -174,6 +174,12 @@ export type MyPageParticipatedFunding = {
   currentAmount?: number;
   goalAmount?: number;
   progressRate?: number;
+  supporterCount?: number | string | null;
+  participantCount?: number | string | null;
+  supporter_count?: number | string | null;
+  participant_count?: number | string | null;
+  supporters?: number | string | null;
+  backers?: number | string | null;
   canViewDelivery?: boolean;
   deliveryStatus?: string | null;
   hasTrackingNumber?: boolean;

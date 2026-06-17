@@ -46,6 +46,12 @@ const mapDashboardNotificationType = (type: string): AppNotification['type'] => 
       return 'funding_progress';
     case 'RECIPE_POPULAR':
       return 'recipe_popular';
+    case 'BREWERY_APPLICATION_SUBMITTED':
+      return 'brewery_application_submitted';
+    case 'BREWERY_APPLICATION_APPROVED':
+      return 'brewery_application_approved';
+    case 'BREWERY_APPLICATION_REJECTED':
+      return 'brewery_application_rejected';
     default:
       return 'funding_progress';
   }
@@ -96,6 +102,9 @@ export default function NotificationScreen() {
       case "funding_new": return <Wine size={20} color="#4B5563" />;
       case "funding_progress": return <TrendingUp size={20} color="#2563EB" />;
       case "recipe_popular": return <BookOpen size={20} color="#9333EA" />;
+      case "brewery_application_submitted": return <Bell size={20} color="#4B5563" />;
+      case "brewery_application_approved": return <CheckCheck size={20} color="#059669" />;
+      case "brewery_application_rejected": return <AlertCircle size={20} color="#DC2626" />;
     }
   };
 

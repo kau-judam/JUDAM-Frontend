@@ -591,6 +591,8 @@ type FundingReportsResponse = {
 };
 
 type CreateFundingOrderPayload = {
+  supportOptionId?: number;
+  support_option_id?: number;
   optionId?: number;
   option_id?: number;
   quantity: number;
@@ -630,8 +632,10 @@ type CreateFundingOrderPayload = {
 
 type CreateFundingOrderResponse = {
   orderId: string | number;
+  tossOrderId?: string;
   numericOrderId?: number;
   fundingId: number;
+  supportOptionId?: number;
   optionId: number;
   quantity: number;
   amount: number;
@@ -640,6 +644,9 @@ type CreateFundingOrderResponse = {
   customerName?: string;
   customerEmail?: string;
   customerMobilePhone?: string;
+  successUrl?: string;
+  failUrl?: string;
+  paymentStatus?: string;
   orderStatus: string;
   message: string;
 };
@@ -689,6 +696,27 @@ type FundingPaymentInfoResponse = {
   amount: number;
   approvedAt?: string;
   createdAt: string;
+};
+
+export type FundingOrderPaymentStatusResponse = {
+  orderId: string | number;
+  tossOrderId?: string;
+  fundingId: number;
+  fundingTitle?: string;
+  supportOptionId?: number;
+  supportOptionName?: string;
+  quantity: number;
+  amount: number;
+  orderStatus: string;
+  paymentStatus: string;
+  paymentKey?: string;
+  paidAt?: string;
+  failedAt?: string;
+  failureReason?: string;
+  currentAmount?: number;
+  targetAmount?: number;
+  remainingStock?: number;
+  message?: string;
 };
 
 type CompleteFundingPaymentResponse = {
@@ -2312,13 +2340,17 @@ function normalizeFundingDraftSubmitResponse(response: unknown): FundingDraftSub
 function normalizeFundingOrderResponse(response: unknown): CreateFundingOrderResponse {
   const data = getFundingApiObject(response);
   const orderId = readFundingApiString(data, ['orderId', 'order_id']);
+  const tossOrderId = readFundingApiString(data, ['tossOrderId', 'toss_order_id']);
   const numericOrderId = readFundingApiOptionalNumber(data, ['numericOrderId', 'numeric_order_id']);
   const amount = readFundingApiNumber(data, ['amount', 'totalAmount', 'total_amount']);
+  const supportOptionId = readFundingApiNumber(data, ['supportOptionId', 'support_option_id', 'optionId', 'option_id']);
   return {
     orderId: orderId || numericOrderId || 0,
+    tossOrderId: tossOrderId || undefined,
     numericOrderId,
     fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
-    optionId: readFundingApiNumber(data, ['optionId', 'option_id']),
+    supportOptionId: supportOptionId || undefined,
+    optionId: supportOptionId,
     quantity: readFundingApiNumber(data, ['quantity']),
     amount,
     totalAmount: amount,
@@ -2326,6 +2358,9 @@ function normalizeFundingOrderResponse(response: unknown): CreateFundingOrderRes
     customerName: readFundingApiString(data, ['customerName', 'customer_name']) || undefined,
     customerEmail: readFundingApiString(data, ['customerEmail', 'customer_email']) || undefined,
     customerMobilePhone: readFundingApiString(data, ['customerMobilePhone', 'customer_mobile_phone']) || undefined,
+    successUrl: readFundingApiString(data, ['successUrl', 'success_url']) || undefined,
+    failUrl: readFundingApiString(data, ['failUrl', 'fail_url']) || undefined,
+    paymentStatus: readFundingApiString(data, ['paymentStatus', 'payment_status']) || undefined,
     orderStatus: readFundingApiString(data, ['orderStatus', 'order_status']),
     message: readFundingApiString(data, ['message']),
   };
@@ -2440,6 +2475,30 @@ function normalizeFundingPaymentInfoResponse(response: unknown): FundingPaymentI
     amount: readFundingApiNumber(data, ['amount', 'totalAmount', 'total_amount']),
     approvedAt: readFundingApiString(data, ['approvedAt', 'approved_at']) || undefined,
     createdAt: readFundingApiString(data, ['createdAt', 'created_at']),
+  };
+}
+
+function normalizeFundingOrderPaymentStatusResponse(response: unknown): FundingOrderPaymentStatusResponse {
+  const data = getFundingApiObject(response);
+  return {
+    orderId: readFundingApiString(data, ['orderId', 'order_id']),
+    tossOrderId: readFundingApiString(data, ['tossOrderId', 'toss_order_id']) || undefined,
+    fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
+    fundingTitle: readFundingApiString(data, ['fundingTitle', 'funding_title', 'title']) || undefined,
+    supportOptionId: readFundingApiOptionalNumber(data, ['supportOptionId', 'support_option_id', 'optionId', 'option_id']),
+    supportOptionName: readFundingApiString(data, ['supportOptionName', 'support_option_name', 'optionName', 'option_name']) || undefined,
+    quantity: readFundingApiNumber(data, ['quantity']),
+    amount: readFundingApiNumber(data, ['amount', 'totalAmount', 'total_amount']),
+    orderStatus: readFundingApiString(data, ['orderStatus', 'order_status', 'status']),
+    paymentStatus: readFundingApiString(data, ['paymentStatus', 'payment_status']),
+    paymentKey: readFundingApiString(data, ['paymentKey', 'payment_key']) || undefined,
+    paidAt: readFundingApiString(data, ['paidAt', 'paid_at', 'approvedAt', 'approved_at']) || undefined,
+    failedAt: readFundingApiString(data, ['failedAt', 'failed_at']) || undefined,
+    failureReason: readFundingApiString(data, ['failureReason', 'failure_reason', 'message', 'reason']) || undefined,
+    currentAmount: readFundingApiOptionalNumber(data, ['currentAmount', 'current_amount']),
+    targetAmount: readFundingApiOptionalNumber(data, ['targetAmount', 'target_amount']),
+    remainingStock: readFundingApiOptionalNumber(data, ['remainingStock', 'remaining_stock']),
+    message: readFundingApiString(data, ['message']) || undefined,
   };
 }
 
@@ -3490,6 +3549,13 @@ export async function getFundingPaymentInfo(orderId: number | string) {
     auth: true,
   });
   return normalizeFundingPaymentInfoResponse(result);
+}
+
+export async function getFundingOrderPaymentStatus(orderId: number | string) {
+  const result = await requestFundingJson<unknown>(`/api/payments/orders/${encodeURIComponent(String(orderId))}/status`, {
+    auth: true,
+  });
+  return normalizeFundingOrderPaymentStatusResponse(result);
 }
 
 export async function getOrderPayment(orderId: number | string) {

@@ -6,7 +6,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useFunding } from '@/contexts/FundingContext';
 import type { FundingProject } from '@/constants/data';
-import { confirmTossPayment, getFundingApiErrorMessage, getFundingDetail, getFundingOrderDetail, type FundingDetailResponse } from '@/features/funding/api';
+import {
+  confirmTossPayment,
+  getFundingApiErrorMessage,
+  getFundingDetail,
+  getFundingOrderPaymentStatus,
+  type FundingDetailResponse,
+  type FundingOrderPaymentStatusResponse,
+} from '@/features/funding/api';
 import { mapFundingStatus, mergeFundingDetail } from '@/features/funding/apiMappers';
 import { clearPendingExternalPayment } from '@/utils/externalFlow';
 
@@ -35,6 +42,17 @@ function isPaidConfirmResponse(response: Awaited<ReturnType<typeof confirmTossPa
   return paymentStatus === 'PAID' || (response.status === 200 && /완료|성공|승인/.test(message));
 }
 
+function isPaidOrderStatus(detail?: FundingOrderPaymentStatusResponse | null) {
+  return String(detail?.paymentStatus || '').trim().toUpperCase() === 'PAID';
+}
+
+function formatPaymentDateTime(value?: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
 function createFundingProjectFromPaymentDetail(detail: FundingDetailResponse): FundingProject {
   return mergeFundingDetail(
     {
@@ -61,6 +79,7 @@ export default function TossPaymentSuccessScreen() {
   const params = useLocalSearchParams<{
     paymentKey?: string;
     orderId?: string;
+    tossOrderId?: string;
     numericOrderId?: string;
     amount?: string;
     expectedAmount?: string;
@@ -75,6 +94,7 @@ export default function TossPaymentSuccessScreen() {
   const [message, setMessage] = useState('토스 결제를 승인하고 있습니다.');
   const [paidAmount, setPaidAmount] = useState<number | null>(null);
   const [confirmedFundingId, setConfirmedFundingId] = useState<number | null>(null);
+  const [paymentStatusDetail, setPaymentStatusDetail] = useState<FundingOrderPaymentStatusResponse | null>(null);
 
   useEffect(() => {
     projectsRef.current = projects;
@@ -86,7 +106,7 @@ export default function TossPaymentSuccessScreen() {
 
   const paymentInfo = useMemo(() => {
     const paymentKey = getParam(params.paymentKey);
-    const orderId = getParam(params.orderId);
+    const orderId = getParam(params.orderId) || getParam(params.tossOrderId);
     const numericOrderId = getParam(params.numericOrderId);
     const returnedAmount = getFiniteAmount(getParam(params.amount));
     const expectedAmount = getFiniteAmount(getParam(params.expectedAmount));
@@ -156,21 +176,19 @@ export default function TossPaymentSuccessScreen() {
           setMessage('펀딩 참여가 완료되었습니다.');
         }
 
-        const orderLookupId = paymentInfo.numericOrderId || paymentInfo.orderId;
-        let detail: Awaited<ReturnType<typeof getFundingOrderDetail>> | null = null;
-        if (orderLookupId) {
-          try {
-            detail = await withPaymentTimeout(
-              getFundingOrderDetail(orderLookupId),
-              8000,
-              '주문 상세 조회가 지연되고 있습니다.'
-            );
-          } catch (detailError) {
-            console.warn(getFundingApiErrorMessage(detailError, '주문 상세를 불러오지 못했습니다.'));
-          }
+        let orderStatusDetail: FundingOrderPaymentStatusResponse | null = null;
+        try {
+          orderStatusDetail = await withPaymentTimeout(
+            getFundingOrderPaymentStatus(paymentInfo.orderId),
+            8000,
+            '결제 상태 조회가 지연되고 있습니다.'
+          );
+          if (mounted) setPaymentStatusDetail(orderStatusDetail);
+        } catch (detailError) {
+          console.warn(getFundingApiErrorMessage(detailError, '결제 상태를 불러오지 못했습니다.'));
         }
-        const fundingId = detail?.fundingId || paymentInfo.fundingId;
-        const nextPaidAmount = confirmed.paidAmount || detail?.totalAmount || paymentInfo.amount;
+        const fundingId = orderStatusDetail?.fundingId || paymentInfo.fundingId;
+        const nextPaidAmount = orderStatusDetail?.amount || confirmed.paidAmount || paymentInfo.amount;
 
         if (fundingId) {
           if (!participatedFundingsRef.current.some((item) => item.fundingId === fundingId)) {
@@ -206,6 +224,29 @@ export default function TossPaymentSuccessScreen() {
           message: errorMessage,
           error,
         });
+        try {
+          const orderStatusDetail = await withPaymentTimeout(
+            getFundingOrderPaymentStatus(paymentInfo.orderId),
+            8000,
+            '결제 상태 조회가 지연되고 있습니다.'
+          );
+          if (!mounted) return;
+          setPaymentStatusDetail(orderStatusDetail);
+          if (isPaidOrderStatus(orderStatusDetail)) {
+            setConfirmedFundingId(orderStatusDetail.fundingId || paymentInfo.fundingId || null);
+            setPaidAmount(orderStatusDetail.amount || paymentInfo.amount);
+            setStatus('success');
+            setMessage('펀딩 참여가 완료되었습니다.');
+            return;
+          }
+          setConfirmedFundingId(orderStatusDetail.fundingId || paymentInfo.fundingId || null);
+          setPaidAmount(orderStatusDetail.amount || paymentInfo.amount);
+          setStatus('error');
+          setMessage(orderStatusDetail.failureReason || errorMessage);
+          return;
+        } catch (statusError) {
+          console.warn(getFundingApiErrorMessage(statusError, '결제 상태를 불러오지 못했습니다.'));
+        }
         if (/이미|already|PAID/i.test(errorMessage)) {
           if (mounted) {
             setConfirmedFundingId(paymentInfo.fundingId || null);
@@ -242,7 +283,11 @@ export default function TossPaymentSuccessScreen() {
 
   const isLoading = status === 'loading';
   const isSuccess = status === 'success';
-  const detailFundingId = confirmedFundingId || paymentInfo.fundingId;
+  const detailFundingId = confirmedFundingId || paymentStatusDetail?.fundingId || paymentInfo.fundingId;
+  const displayTitle = paymentStatusDetail?.fundingTitle || paymentInfo.orderName;
+  const displayAmount = paymentStatusDetail?.amount || paidAmount;
+  const paidAt = formatPaymentDateTime(paymentStatusDetail?.paidAt);
+  const failedAt = formatPaymentDateTime(paymentStatusDetail?.failedAt);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 48, paddingBottom: insets.bottom + 24 }]}>
@@ -257,15 +302,43 @@ export default function TossPaymentSuccessScreen() {
       </View>
       <Text style={styles.title}>{isLoading ? '결제 승인 중' : isSuccess ? '펀딩 참여가 완료되었습니다' : '결제 승인 실패'}</Text>
       <Text style={styles.body}>{message}</Text>
-      {(paidAmount || paymentInfo.orderName) && (
+      {(displayAmount || displayTitle || paymentStatusDetail) && (
         <View style={styles.infoBox}>
           <Text style={styles.infoLabel}>프로젝트</Text>
-          <Text style={styles.infoValue}>{paymentInfo.orderName}</Text>
-          {paidAmount ? (
+          <Text style={styles.infoValue}>{displayTitle}</Text>
+          {displayAmount ? (
             <>
               <View style={styles.divider} />
               <Text style={styles.infoLabel}>결제 금액</Text>
-              <Text style={styles.amountValue}>{paidAmount.toLocaleString()}원</Text>
+              <Text style={styles.amountValue}>{displayAmount.toLocaleString()}원</Text>
+            </>
+          ) : null}
+          {paymentStatusDetail?.orderStatus ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.infoLabel}>주문 상태</Text>
+              <Text style={styles.infoValue}>{paymentStatusDetail.orderStatus}</Text>
+            </>
+          ) : null}
+          {paymentStatusDetail?.paymentStatus ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.infoLabel}>결제 상태</Text>
+              <Text style={styles.infoValue}>{paymentStatusDetail.paymentStatus}</Text>
+            </>
+          ) : null}
+          {paidAt ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.infoLabel}>결제 완료 시간</Text>
+              <Text style={styles.infoValue}>{paidAt}</Text>
+            </>
+          ) : null}
+          {!isSuccess && (paymentStatusDetail?.failureReason || failedAt) ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.infoLabel}>실패 정보</Text>
+              <Text style={styles.infoValue}>{paymentStatusDetail?.failureReason || failedAt}</Text>
             </>
           ) : null}
         </View>

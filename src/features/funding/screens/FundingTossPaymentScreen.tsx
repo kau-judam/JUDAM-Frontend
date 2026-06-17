@@ -258,7 +258,8 @@ export default function FundingTossPaymentScreen() {
     numericOrderId: paymentInfo.numericOrderId,
     expectedAmount: Number.isFinite(paymentInfo.amount) ? String(paymentInfo.amount) : '',
     orderName: paymentInfo.orderName,
-  }), [paymentInfo.amount, paymentInfo.fundingId, paymentInfo.numericOrderId, paymentInfo.orderName]);
+    tossOrderId: paymentInfo.orderId,
+  }), [paymentInfo.amount, paymentInfo.fundingId, paymentInfo.numericOrderId, paymentInfo.orderId, paymentInfo.orderName]);
 
   const html = useMemo(() => {
     if (!TOSS_CLIENT_KEY || !paymentInfo.orderId || !Number.isFinite(paymentInfo.amount) || paymentInfo.amount <= 0) {

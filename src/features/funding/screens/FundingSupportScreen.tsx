@@ -112,12 +112,6 @@ function getInitialSupportOptionId(value: unknown) {
   return Number.isInteger(optionId) && optionId > 0 ? optionId : null;
 }
 
-const TOSS_ORDER_ID_PATTERN = /^[A-Za-z0-9_-]{6,64}$/;
-
-function normalizeTossOrderId(value: string) {
-  return value.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 64);
-}
-
 function getOrderLookupId(orderId: string | number, numericOrderId?: number) {
   if (typeof numericOrderId === 'number' && Number.isFinite(numericOrderId) && numericOrderId > 0) {
     return String(Math.trunc(numericOrderId));
@@ -126,19 +120,6 @@ function getOrderLookupId(orderId: string | number, numericOrderId?: number) {
   const numericOnly = rawOrderId.match(/^\d+$/)?.[0];
   if (numericOnly) return numericOnly;
   return rawOrderId.match(/^order[_-]?(\d+)$/i)?.[1] || '';
-}
-
-function getTossPaymentOrderId(orderId: string | number, numericOrderId?: number) {
-  const rawOrderId = String(orderId || '').trim();
-  const lookupId = getOrderLookupId(orderId, numericOrderId);
-  const baseOrderId = lookupId || rawOrderId;
-  const prefixedOrderId = normalizeTossOrderId(`order_${baseOrderId}`);
-  if (TOSS_ORDER_ID_PATTERN.test(prefixedOrderId)) return prefixedOrderId;
-
-  const normalizedRawOrderId = normalizeTossOrderId(rawOrderId);
-  if (TOSS_ORDER_ID_PATTERN.test(normalizedRawOrderId)) return normalizedRawOrderId;
-
-  return normalizeTossOrderId(`order_${Date.now()}`);
 }
 
 function goBackWithFallback(fallbackHref: string) {
@@ -422,7 +403,12 @@ export default function FundingSupportScreen() {
       const trimmedShippingDetailAddress = shippingInfo.detailAddress.trim();
       const postalCode = getPostalCodeFromAddress(trimmedShippingAddress);
       const orderPayload = {
-        ...(normalizedOptionId !== null ? { optionId: normalizedOptionId, option_id: normalizedOptionId } : {}),
+        ...(normalizedOptionId !== null ? {
+          supportOptionId: normalizedOptionId,
+          support_option_id: normalizedOptionId,
+          optionId: normalizedOptionId,
+          option_id: normalizedOptionId,
+        } : {}),
         quantity,
         supporterPhone: trimmedSupporterPhone,
         supporter_phone: trimmedSupporterPhone,
@@ -471,22 +457,8 @@ export default function FundingSupportScreen() {
       });
       const order = await createFundingOrder(project.id, orderPayload);
       const paymentAmount = Number(order.amount ?? order.totalAmount);
-      if (paymentAmount !== totalAmount) {
-        console.warn('Funding order amount mismatch', {
-          fundingId: project.id,
-          optionId: normalizedOptionId,
-          quantity,
-          expectedAmount: totalAmount,
-          orderAmount: paymentAmount,
-          orderId: order.orderId,
-          numericOrderId: order.numericOrderId,
-        });
-        throw new Error(
-          `주문 생성 금액(${paymentAmount.toLocaleString()}원)이 화면 금액(${totalAmount.toLocaleString()}원)과 다릅니다. 결제를 진행하지 않고 다시 확인해주세요.`
-        );
-      }
       const numericOrderId = getOrderLookupId(order.orderId, order.numericOrderId);
-      const tossOrderId = getTossPaymentOrderId(order.orderId, order.numericOrderId);
+      const tossOrderId = String(order.tossOrderId || order.orderId || '').trim();
       if (!tossOrderId || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
         throw new Error('주문 금액을 확인하지 못했습니다. 다시 시도해주세요.');
       }

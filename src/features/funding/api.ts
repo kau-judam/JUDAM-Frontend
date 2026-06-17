@@ -776,6 +776,7 @@ type CreateFundingReviewResponse = {
   fundingId: number;
   rating: number;
   imageUrls: string[];
+  images: string[];
   message: string;
 };
 
@@ -2178,6 +2179,12 @@ function normalizeBreweryLogMutationResponse(response: unknown): FundingBreweryL
 }
 
 function normalizeFundingReviewItem(source: Record<string, unknown>): FundingReviewItem {
+  const imageUrls = normalizeFundingApiImageUrls([
+    source.imageUrls,
+    source.image_urls,
+    source.images,
+  ]);
+
   return {
     reviewId: readFundingApiNumber(source, ['reviewId', 'review_id', 'id']),
     fundingId: readFundingApiNumber(source, ['fundingId', 'funding_id']) || undefined,
@@ -2186,7 +2193,7 @@ function normalizeFundingReviewItem(source: Record<string, unknown>): FundingRev
     ...readFundingWriterBadgeFields(source),
     rating: readFundingApiNumber(source, ['rating']),
     content: readFundingApiString(source, ['content', 'detailReview', 'detail_review', 'comment', 'reviewContent', 'review_content', 'body']),
-    imageUrls: readFundingApiStringArray(source, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
+    imageUrls,
     createdAt: readFundingApiString(source, ['createdAt', 'created_at', 'date']),
     mood: readFundingApiString(source, ['mood']) || undefined,
     pairing: readFundingApiString(source, ['pairing']) || undefined,
@@ -2246,11 +2253,21 @@ function normalizeFundingReviewCommentsResponse(response: unknown): FundingRevie
 function normalizeCreateFundingReviewResponse(response: unknown): CreateFundingReviewResponse {
   const responseData = getFundingApiObject(response);
   const data = getFundingApiNestedObject(responseData, ['review', 'fundingReview', 'funding_review', 'data']);
+  const imageUrls = normalizeFundingApiImageUrls([
+    data.imageUrls,
+    data.image_urls,
+    data.images,
+    responseData.imageUrls,
+    responseData.image_urls,
+    responseData.images,
+  ]);
+
   return {
     reviewId: readFundingApiNumber(data, ['reviewId', 'review_id', 'id']),
     fundingId: readFundingApiNumber(data, ['fundingId', 'funding_id']),
     rating: readFundingApiNumber(data, ['rating']),
-    imageUrls: readFundingApiStringArray(data, ['imageUrls', 'image_urls', 'images'], ['imageUrl', 'image_url', 'thumbnailUrl', 'thumbnail_url']),
+    imageUrls,
+    images: imageUrls,
     message: readFundingApiString(responseData, ['message']) || readFundingApiString(data, ['message']),
   };
 }
@@ -2842,10 +2859,25 @@ async function requestFundingJson<T>(path: string, options: RequestInit & { auth
 
 async function requestFundingForm<T>(path: string, formData: FormData, options: RequestInit & { auth?: boolean } = {}) {
   const { auth, headers, ...requestOptions } = options;
-  const createHeaders = (token?: string | null): Record<string, string> => ({
-    ...(headers as Record<string, string> | undefined),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  });
+  const createHeaders = (token?: string | null): Record<string, string> => {
+    const nextHeaders: Record<string, string> = {};
+    if (headers instanceof Headers) {
+      headers.forEach((value, key) => {
+        nextHeaders[key] = value;
+      });
+    } else if (Array.isArray(headers)) {
+      headers.forEach(([key, value]) => {
+        nextHeaders[key] = value;
+      });
+    } else if (headers) {
+      Object.assign(nextHeaders, headers as Record<string, string>);
+    }
+    Object.keys(nextHeaders).forEach((key) => {
+      if (key.toLowerCase() === 'content-type') delete nextHeaders[key];
+    });
+    if (token) nextHeaders.Authorization = `Bearer ${token}`;
+    return nextHeaders;
+  };
 
   const token = await getFundingAccessToken();
   if (auth && !token) {
@@ -2937,11 +2969,29 @@ async function requestFundingForm<T>(path: string, formData: FormData, options: 
   return data as T;
 }
 
+function getFundingUploadFileName(file: FundingUploadFile) {
+  const rawName = file.name || file.uri.split('/').pop()?.split('?')[0] || `upload-${Date.now()}.jpg`;
+  const safeName = rawName.trim().replace(/[^\w.-]+/g, '-');
+  return safeName.includes('.') ? safeName : `${safeName}.jpg`;
+}
+
+function getFundingUploadMimeType(file: FundingUploadFile, fileName: string) {
+  if (file.mimeType) return file.mimeType;
+  const extension = fileName.split('.').pop()?.toLowerCase();
+  if (extension === 'png') return 'image/png';
+  if (extension === 'webp') return 'image/webp';
+  if (extension === 'heic') return 'image/heic';
+  if (extension === 'heif') return 'image/heif';
+  return 'image/jpeg';
+}
+
 function createFundingFormFile(file: FundingUploadFile) {
+  const name = getFundingUploadFileName(file);
+
   return {
     uri: file.uri,
-    name: file.name,
-    type: file.mimeType || 'application/octet-stream',
+    name,
+    type: getFundingUploadMimeType(file, name),
   } as unknown as Blob;
 }
 

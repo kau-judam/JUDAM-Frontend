@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as ImagePicker from 'expo-image-picker';
 import { ChevronLeft, Image as ImageIcon, Plus, Wand2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -32,6 +31,7 @@ import {
   suggestRecipeSummary,
 } from '@/features/recipe/api';
 import { markCurrentUserRecipe } from '@/features/recipe/interestState';
+import { pickSingleImage, type PickedImageFile } from '@/utils/imagePicker';
 
 const ALCOHOL_RANGES = ['3%~5%', '6%~8%', '9%~12%', '13%~15%', '15% 이상'];
 const RECIPE_AI_IMAGE_STORAGE_ROOT = FileSystem.cacheDirectory || FileSystem.documentDirectory || '';
@@ -115,7 +115,7 @@ export default function RecipeCreateScreen() {
   const [concept, setConcept] = useState('');
   const [description, setDescription] = useState(editRecipe?.description || '');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [imageAsset, setImageAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [imageFile, setImageFile] = useState<PickedImageFile | null>(null);
   const [isGeneratingRecipeImage, setIsGeneratingRecipeImage] = useState(false);
   const [notice, setNotice] = useState<NoticeState>(null);
   const hasMainIngredient = mainIngredients.some((ingredient) => ingredient.trim() !== '');
@@ -353,7 +353,7 @@ export default function RecipeCreateScreen() {
         return;
       }
       setImagePreview(nextImageUrl);
-      setImageAsset(null);
+      setImageFile(null);
     } catch (error) {
       console.warn('Failed to generate recipe image via funding AI image API', error);
       showNotice(
@@ -365,26 +365,19 @@ export default function RecipeCreateScreen() {
     }
   };
   const handlePickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
+    const result = await pickSingleImage('recipe', 0.9);
+    if (result.canceled && result.denied) {
       showNotice('갤러리 접근 권한이 필요합니다.', '이미지를 선택하려면 갤러리 접근 권한을 허용해주세요.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.9,
-    });
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      setImagePreview(asset.uri);
-      setImageAsset(asset);
-    }
+    if (result.canceled) return;
+    setImagePreview(result.file.uri);
+    setImageFile(result.file);
   };
 
   const handleRemoveImage = () => {
     setImagePreview(null);
-    setImageAsset(null);
+    setImageFile(null);
   };
 
   const handleSubmit = async () => {
@@ -426,13 +419,7 @@ export default function RecipeCreateScreen() {
       return;
     }
     try {
-      let uploadImage = imageAsset
-        ? {
-            uri: imageAsset.uri,
-            name: imageAsset.fileName,
-            type: imageAsset.mimeType,
-          }
-        : null;
+      let uploadImage = imageFile;
       if (!uploadImage && isRemoteRecipeImageUri(imagePreview)) {
         try {
           uploadImage = await downloadRecipeAiImageForUpload(imagePreview as string);
@@ -451,9 +438,9 @@ export default function RecipeCreateScreen() {
         main_ingredient: getMainIngredientText(),
         sub_ingredient: selectedSubIngredients.join(', '),
         target_flavor: getSelectedFlavorTags().join(', '),
-        hasImageAsset: Boolean(imageAsset),
+        hasImageAsset: Boolean(imageFile),
         hasUploadImage: Boolean(uploadImage),
-        imageUrl: !imageAsset && imagePreview ? imagePreview : undefined,
+        imageUrl: !imageFile && imagePreview ? imagePreview : undefined,
         imageName: uploadImage?.name,
         imageType: uploadImage?.type,
         imageUri: uploadImage?.uri,
@@ -467,7 +454,7 @@ export default function RecipeCreateScreen() {
         target_flavor: getSelectedFlavorTags().join(', '),
         concept: concept.trim(),
         summary: description.trim(),
-        imageUrl: !imageAsset ? imagePreview : null,
+        imageUrl: !imageFile ? imagePreview : null,
         image: uploadImage,
       });
       markCurrentUserRecipe(createdRecipe.id);

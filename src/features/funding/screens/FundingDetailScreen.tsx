@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import type { ImageSourcePropType, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -2974,7 +2976,10 @@ export default function FundingDetailScreen() {
       </Modal>
 
       <Modal visible={showReportModal} animationType="fade" transparent>
-        <View style={styles.actionModalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.actionModalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setShowReportModal(false)} />
           <Animated.View entering={SlideInDown} style={styles.reportModal}>
             <View style={styles.actionModalHeader}>
@@ -2983,43 +2988,50 @@ export default function FundingDetailScreen() {
                 <X size={18} color="#6B7280" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.reportLabel}>신고 사유 *</Text>
-            <View style={styles.reportReasonList}>
-              {[
-                ['FALSE_INFORMATION', '허위 정보'],
-                ['INAPPROPRIATE_CONTENT', '부적절한 내용'],
-                ['COPYRIGHT', '저작권 침해'],
-                ['FRAUD', '사기 의심'],
-                ['ETC', '기타'],
-              ].map(([value, label]) => (
-                <TouchableOpacity key={value} style={[styles.reportReasonButton, reportReason === value && styles.reportReasonButtonActive]} onPress={() => setReportReason(value)}>
-                  <Text style={[styles.reportReasonText, reportReason === value && styles.reportReasonTextActive]}>{label}</Text>
+            <ScrollView
+              style={styles.reportModalScroll}
+              contentContainerStyle={styles.reportModalContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.reportLabel}>신고 사유 *</Text>
+              <View style={styles.reportReasonList}>
+                {[
+                  ['FALSE_INFORMATION', '허위 정보'],
+                  ['INAPPROPRIATE_CONTENT', '부적절한 내용'],
+                  ['COPYRIGHT', '저작권 침해'],
+                  ['FRAUD', '사기 의심'],
+                  ['ETC', '기타'],
+                ].map(([value, label]) => (
+                  <TouchableOpacity key={value} style={[styles.reportReasonButton, reportReason === value && styles.reportReasonButtonActive]} onPress={() => setReportReason(value)}>
+                    <Text style={[styles.reportReasonText, reportReason === value && styles.reportReasonTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.reportLabel}>상세 내용</Text>
+              <TextInput
+                style={styles.reportTextArea}
+                value={reportDetail}
+                onChangeText={setReportDetail}
+                placeholder="신고 사유를 자세히 작성해주세요"
+                placeholderTextColor="#9CA3AF"
+                multiline
+                textAlignVertical="top"
+              />
+              <View style={styles.reportWarningBox}>
+                <Text style={styles.reportWarningText}>⚠️ 허위 신고 시 서비스 이용이 제한될 수 있습니다.</Text>
+              </View>
+              <View style={styles.reportFooter}>
+                <TouchableOpacity style={styles.reportCancelButton} onPress={() => setShowReportModal(false)}>
+                  <Text style={styles.reportCancelText}>취소</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-            <Text style={styles.reportLabel}>상세 내용</Text>
-            <TextInput
-              style={styles.reportTextArea}
-              value={reportDetail}
-              onChangeText={setReportDetail}
-              placeholder="신고 사유를 자세히 작성해주세요"
-              placeholderTextColor="#9CA3AF"
-              multiline
-              textAlignVertical="top"
-            />
-            <View style={styles.reportWarningBox}>
-              <Text style={styles.reportWarningText}>⚠️ 허위 신고 시 서비스 이용이 제한될 수 있습니다.</Text>
-            </View>
-            <View style={styles.reportFooter}>
-              <TouchableOpacity style={styles.reportCancelButton} onPress={() => setShowReportModal(false)}>
-                <Text style={styles.reportCancelText}>취소</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.reportSubmitButton} onPress={handleSubmitReport}>
-                <Text style={styles.reportSubmitText}>신고하기</Text>
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity style={styles.reportSubmitButton} onPress={handleSubmitReport}>
+                  <Text style={styles.reportSubmitText}>신고하기</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </Animated.View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={Boolean(feedbackModal)} animationType="fade" transparent>
@@ -3433,7 +3445,9 @@ const styles = StyleSheet.create({
   optionConfirmTxt: { color: '#FFF', fontSize: 16, fontWeight: '900' },
   actionModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 16 },
   actionModal: { backgroundColor: '#FFF', borderRadius: 24, padding: 24, gap: 16 },
-  reportModal: { backgroundColor: '#FFF', borderRadius: 24, padding: 24, gap: 14, maxHeight: '86%' },
+  reportModal: { backgroundColor: '#FFF', borderRadius: 24, paddingHorizontal: 24, paddingTop: 24, maxHeight: '86%', overflow: 'hidden' },
+  reportModalScroll: { marginTop: 14 },
+  reportModalContent: { gap: 14, paddingBottom: 24 },
   actionModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   actionModalTitle: { fontSize: 18, fontWeight: '900', color: '#111' },
   actionModalClose: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F9FAFB', alignItems: 'center', justifyContent: 'center' },

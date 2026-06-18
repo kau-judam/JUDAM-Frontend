@@ -12,7 +12,6 @@ import {
   View,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AlertCircle, BookOpen, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Image as ImageIcon, Plus, Star, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +24,7 @@ import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels'
 import { createFundingReview, getFundingApiErrorMessage, getFundingReviewDetail, getFundingReviews, isFundingReviewNotFoundError, updateFundingReviewApi, type FundingReviewItem, type FundingUploadFile } from '@/features/funding/api';
 import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { isFundingReviewOwnedByUser, reviewPresetTags } from '@/features/funding/reviews';
+import { pickMultipleImages } from '@/utils/imagePicker';
 
 type ReviewAlert = {
   title: string;
@@ -396,31 +396,18 @@ export default function FundingReviewWriteScreen() {
   };
 
   const pickImages = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
+    const remaining = 3 - uploadedImages.length;
+    const result = await pickMultipleImages('funding-review', remaining, 0.9);
+    if (result.canceled && result.denied) {
       showReviewAlert('권한 필요', '후기 사진을 첨부하려면 갤러리 접근 권한이 필요합니다.', 'warning');
       return;
     }
-
-    const remaining = 3 - uploadedImages.length;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      selectionLimit: remaining,
-      quality: 0.9,
-    });
-
     if (result.canceled) return;
-    const selected = result.assets.reduce<FundingUploadFile[]>((files, asset, index) => {
-        if (!asset.uri) return files;
-        const name = asset.fileName || getReviewImageFileName(asset.uri, index);
-        files.push({
-          uri: asset.uri,
-          name,
-          mimeType: asset.mimeType || getReviewImageMimeType(name),
-        });
-        return files;
-      }, []);
+    const selected = result.files.map((file, index) => ({
+      uri: file.uri,
+      name: file.name || getReviewImageFileName(file.uri, index),
+      mimeType: file.type || getReviewImageMimeType(file.name),
+    }));
     const preparedSelected = await Promise.all(
       selected.map((asset, index) => prepareReviewImageForUpload(asset, index))
     );

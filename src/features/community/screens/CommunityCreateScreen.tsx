@@ -10,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { ChevronLeft, Image as ImageIcon, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -20,9 +19,11 @@ import { useCommunity } from '@/contexts/CommunityContext';
 import {
   createCommunityPost,
   type CommunityBoardType,
+  type CommunityImageFile,
   fetchCommunityPost,
   updateCommunityPost,
 } from '@/features/community/api';
+import { pickSingleImage } from '@/utils/imagePicker';
 
 const BOARDS = ['자유', '정보'] as const;
 const BOARD_TYPE_BY_INDEX: CommunityBoardType[] = ['FREE', 'INFO'];
@@ -33,6 +34,11 @@ type NoticeState = {
   body?: string;
   onConfirm?: () => void;
 } | null;
+type SelectedCommunityImage = string | CommunityImageFile;
+
+function getSelectedImageUri(image: SelectedCommunityImage) {
+  return typeof image === 'string' ? image : image.uri;
+}
 
 export default function CommunityCreateScreen() {
   const insets = useSafeAreaInsets();
@@ -51,7 +57,9 @@ export default function CommunityCreateScreen() {
   const [selectedBoard, setSelectedBoard] = useState<Board>(initialBoard);
   const [title, setTitle] = useState(editingPost?.title || '');
   const [content, setContent] = useState(editingPost?.content || '');
-  const [imageUris, setImageUris] = useState<string[]>(editingPost?.imageUrls ?? (editingPost?.image ? [editingPost.image] : []));
+  const [imageUris, setImageUris] = useState<SelectedCommunityImage[]>(
+    editingPost?.imageUrls ?? (editingPost?.image ? [editingPost.image] : [])
+  );
   const [notice, setNotice] = useState<NoticeState>(null);
   const imageCountLabel = `사진 추가 (${imageUris.length}/5)`;
 
@@ -140,25 +148,17 @@ export default function CommunityCreateScreen() {
       return;
     }
 
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
+    const result = await pickSingleImage('community', 0.9);
+    if (result.canceled && result.denied) {
       showNotice('갤러리 접근 권한이 필요합니다.', '사진을 추가하려면 갤러리 접근 권한을 허용해주세요.');
       return;
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.9,
-    });
-
-    if (!result.canceled) {
-      setImageUris((prev) => [...prev, result.assets[0].uri].slice(0, 5));
-    }
+    if (result.canceled) return;
+    setImageUris((prev) => [...prev, result.file].slice(0, 5));
   };
 
   const handleRemoveImage = (uri: string) => {
-    setImageUris((prev) => prev.filter((item) => item !== uri));
+    setImageUris((prev) => prev.filter((item) => getSelectedImageUri(item) !== uri));
   };
 
   const getSelectedBoardType = (): CommunityBoardType => {
@@ -187,16 +187,20 @@ export default function CommunityCreateScreen() {
       timestamp: editingPost?.timestamp || '방금',
       liked: editingPost?.liked || false,
       category: boardType === 'FREE' ? '자유게시판' : '정보게시판',
-      image: imageUris[0],
-      imageUrls: imageUris,
+      image: imageUris[0] ? getSelectedImageUri(imageUris[0]) : undefined,
+      imageUrls: imageUris.map(getSelectedImageUri),
       tags: [boardType],
       authorId: user?.id,
       isMine: true,
     };
 
     if (editingPost) {
-      const existingImageUrls = imageUris.filter((uri) => /^https?:\/\//i.test(uri));
-      const localImageUris = imageUris.filter((uri) => !/^https?:\/\//i.test(uri));
+      const existingImageUrls = imageUris
+        .filter((image): image is string => typeof image === 'string' && /^https?:\/\//i.test(image));
+      const localImageUris = imageUris.filter((image) => {
+        const uri = getSelectedImageUri(image);
+        return !/^https?:\/\//i.test(uri);
+      });
       try {
         const response = await updateCommunityPost(editingPost.id, {
           title: trimmedTitle,
@@ -228,8 +232,8 @@ export default function CommunityCreateScreen() {
       addPost({
         id: response.post.post_id,
         ...postPayload,
-        image: response.post.image_urls?.[0] || imageUris[0],
-        imageUrls: response.post.image_urls || imageUris,
+        image: response.post.image_urls?.[0] || (imageUris[0] ? getSelectedImageUri(imageUris[0]) : undefined),
+        imageUrls: response.post.image_urls || imageUris.map(getSelectedImageUri),
       });
     } catch (error) {
       console.warn('Failed to create community post', error);
@@ -297,7 +301,9 @@ export default function CommunityCreateScreen() {
 
         {imageUris.length > 0 && (
           <View style={styles.imagePreviewGrid}>
-            {imageUris.map((uri) => (
+            {imageUris.map((image) => {
+              const uri = getSelectedImageUri(image);
+              return (
               <View key={uri} style={styles.imagePreviewItem}>
                 <Image source={{ uri }} style={styles.imagePreview} />
                 <TouchableOpacity
@@ -308,7 +314,8 @@ export default function CommunityCreateScreen() {
                   <X size={14} color="#FFF" />
                 </TouchableOpacity>
               </View>
-            ))}
+              );
+            })}
           </View>
         )}
 

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
   Animated,
@@ -83,6 +82,7 @@ import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
 import { FIXED_PROJECT_SHIPPING_FEE } from '@/features/funding/supportConfig';
 import { fetchRecipeDetail } from '@/features/recipe/api';
+import { pickMultipleImages, type PickedImageFile } from '@/utils/imagePicker';
 import SafeStorage from '@/utils/storage';
 
 type TabId = 'basic' | 'funding' | 'rewards' | 'taste' | 'plan' | 'creator' | 'trust' | 'verification';
@@ -952,6 +952,7 @@ export default function BreweryProjectCreateScreen() {
   const [isAiImageGenerating, setIsAiImageGenerating] = useState(false);
   const [currentDraftId, setCurrentDraftId] = useState<number | null>(null);
   const [currentDraftFundingId, setCurrentDraftFundingId] = useState<number | null>(null);
+  const [projectImageFilesByUri, setProjectImageFilesByUri] = useState<Record<string, PickedImageFile>>({});
   const [basicInfo, setBasicInfo] = useState({
     category: '막걸리',
     title: '',
@@ -1894,7 +1895,12 @@ export default function BreweryProjectCreateScreen() {
         index,
         image: summarizeFundingCreateImages([image]).images[0],
       });
-      const uploaded = await uploadFundingDraftFile(draftId, 'PROJECT_IMAGE', getProjectImageUploadFile(image, index));
+      const localFile = projectImageFilesByUri[image];
+      const uploaded = await uploadFundingDraftFile(
+        draftId,
+        'PROJECT_IMAGE',
+        localFile ? { uri: localFile.uri, name: localFile.name, mimeType: localFile.type } : getProjectImageUploadFile(image, index)
+      );
       if (!uploaded.fileUrl) {
         throw new Error('대표 이미지 업로드 결과 URL을 확인할 수 없습니다.');
       }
@@ -2504,27 +2510,14 @@ export default function BreweryProjectCreateScreen() {
     }
 
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permission.granted) {
+      const remainingCount = 5 - basicInfo.images.length;
+      const result = await pickMultipleImages('project-image', remainingCount, 0.9);
+      if (result.canceled && result.denied) {
         showAlert('대표 이미지를 등록하려면 갤러리 접근 권한이 필요합니다.');
         return;
       }
-
-      const remainingCount = 5 - basicInfo.images.length;
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true,
-        selectionLimit: remainingCount,
-        quality: 0.9,
-      });
-
-      if (result.canceled || !result.assets?.length) return;
-
-      const selectedImages = result.assets
-        .map((asset) => asset.uri)
-        .filter(Boolean)
-        .slice(0, remainingCount);
+      if (result.canceled) return;
+      const selectedImages = result.files.map((file) => file.uri).slice(0, remainingCount);
 
       if (!selectedImages.length) return;
 
@@ -2532,6 +2525,13 @@ export default function BreweryProjectCreateScreen() {
         ...prev,
         images: [...prev.images, ...selectedImages].slice(0, 5),
       }));
+      setProjectImageFilesByUri((prev) => {
+        const next = { ...prev };
+        result.files.forEach((file) => {
+          next[file.uri] = file;
+        });
+        return next;
+      });
     } catch {
       showAlert('이미지를 불러오지 못했습니다. 다시 시도해주세요.');
     }
@@ -2651,7 +2651,15 @@ export default function BreweryProjectCreateScreen() {
 
   const removeProjectImage = (index: number) => {
     setIsImageReordering(false);
+    const removedImage = basicInfo.images[index];
     setBasicInfo((prev) => ({ ...prev, images: prev.images.filter((_, i) => i !== index) }));
+    if (removedImage) {
+      setProjectImageFilesByUri((prev) => {
+        const next = { ...prev };
+        delete next[removedImage];
+        return next;
+      });
+    }
   };
 
   const addTag = (tag: string) => {

@@ -74,6 +74,7 @@ import {
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const BG_IMAGE = require('../../../../newpicutre/picure3.jpg');
+const ENABLE_KAKAO_LOGIN = false;
 
 const SPRING_CONFIG = {
   damping: 25,
@@ -550,6 +551,8 @@ export default function SignupScreen() {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
+              {ENABLE_KAKAO_LOGIN ? (
+                <>
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={handleKakaoSignup}
@@ -565,6 +568,8 @@ export default function SignupScreen() {
                 <Text style={styles.dividerTxt}>이메일로 가입</Text>
                 <View style={styles.dividerLine} />
               </View>
+                </>
+              ) : null}
 
               <View style={styles.form}>
                 <View style={styles.inputGroup}>

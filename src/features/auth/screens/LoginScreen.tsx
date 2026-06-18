@@ -50,6 +50,7 @@ import { isValidEmail } from '@/utils/validation';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const BG_IMAGE = require('../../../../newpicutre/picure3.jpg');
+const ENABLE_KAKAO_LOGIN = false;
 
 const SPRING_CONFIG = {
   damping: 25,
@@ -368,6 +369,8 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </View>
 
+              {ENABLE_KAKAO_LOGIN ? (
+                <>
               <View style={styles.dividerRow}>
                 <View style={styles.dividerLine} />
                 <Text style={styles.dividerTxt}>또는</Text>
@@ -378,6 +381,8 @@ export default function LoginScreen() {
                 <MessageCircle size={20} color="#1a1a1a" fill="#1a1a1a" />
                 <Text style={styles.kakaoTxt}>카카오로 로그인</Text>
               </TouchableOpacity>
+                </>
+              ) : null}
 
               <View style={styles.footerLinks}>
                 <TouchableOpacity onPress={() => router.push('/signup' as any)}>

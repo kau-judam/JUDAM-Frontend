@@ -281,6 +281,22 @@ function alcoholText(value: string) {
   return value ? `${value}%` : '';
 }
 
+function cleanPreviewText(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === 'null' || trimmed === 'undefined' || trimmed === '[object Object]') return '';
+  return trimmed;
+}
+
+function cleanPreviewDate(value: unknown) {
+  const text = cleanPreviewText(value);
+  if (!text) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const match = text.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/);
+  return match ? `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}` : text;
+}
+
 function normalizeProjectTags(tags?: string[]) {
   if (!tags?.length) return [];
   return Array.from(new Set(tags.map((tag) => tag.trim()).filter(Boolean))).slice(0, 10);
@@ -641,10 +657,26 @@ function readPreviewString(source: unknown, keys: string[]) {
 
 function getLegalInfoRawMaterials(
   legalInfo: FundingDraftPreviewResponse['legalInfo'] = {},
-  basicInfo: FundingDraftPreviewResponse['basicInfo'] = {}
+  basicInfo: FundingDraftPreviewResponse['basicInfo'] = {},
+  supportOption?: NonNullable<FundingDraftPreviewResponse['supportOptions']>[number]
 ) {
   const rawMaterials = (legalInfo.rawMaterials || []).filter((item) => item.name || item.origin);
   if (rawMaterials.length > 0) return rawMaterials;
+
+  const optionIngredients = Array.isArray(supportOption?.ingredients)
+    ? supportOption.ingredients
+        .map((item) => {
+          if (typeof item === 'string') return { name: item.trim(), origin: '' };
+          if (!item || typeof item !== 'object') return { name: '', origin: '' };
+          const record = item as Record<string, unknown>;
+          return {
+            name: readPreviewString(record, ['name', 'ingredient', 'mainIngredient', 'main_ingredient', 'materialName', 'material_name']),
+            origin: readPreviewString(record, ['origin', 'originName', 'origin_name', 'countryOfOrigin', 'country_of_origin']),
+          };
+        })
+        .filter((item) => item.name || item.origin)
+    : [];
+  if (optionIngredients.length > 0) return optionIngredients;
 
   const fallbackName =
     readPreviewString(legalInfo, [
@@ -656,7 +688,7 @@ function getLegalInfoRawMaterials(
       'raw_material',
       'materialName',
       'material_name',
-    ]) || basicInfo.mainIngredient || '';
+    ]) || basicInfo.mainIngredient || supportOption?.mainIngredient || supportOption?.primaryIngredient || '';
   const fallbackOrigin = readPreviewString(legalInfo, [
     'origin',
     'originName',
@@ -729,10 +761,17 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
   const legalInfo = preview.legalInfo || {};
   const tasteProfile = preview.tasteProfile || {};
   const plan = preview.plan || {};
+  const supportOption = preview.supportOptions?.[0];
   const breweryInfo = preview.breweryInfo || {};
   const notices = preview.notices || {};
-  const rawMaterials = getLegalInfoRawMaterials(legalInfo, basicInfo);
-  const subIngredients = basicInfo.subIngredients || [];
+  const rawMaterials = getLegalInfoRawMaterials(legalInfo, basicInfo, supportOption);
+  const subIngredients = basicInfo.subIngredients?.length
+    ? basicInfo.subIngredients
+    : supportOption?.subIngredients?.length
+      ? supportOption.subIngredients
+      : supportOption?.subIngredient
+        ? [supportOption.subIngredient]
+        : [];
   const thumbnailUrl = basicInfo.thumbnailUrl || '';
   const imageUrls = normalizeProjectImageUrls(
     basicInfo.allImageUrls?.length
@@ -745,7 +784,16 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
             ? [thumbnailUrl]
             : []
   );
-  const alcoholContent = String(legalInfo.alcoholPercentage || basicInfo.alcoholPercentage || '');
+  const alcoholContent = String(
+    legalInfo.alcoholPercentage
+      || basicInfo.alcoholPercentage
+      || supportOption?.alcoholPercentage
+      || supportOption?.alcohol
+      || ''
+  );
+  const pricePerBottle = schedule.pricePerBottle || supportOption?.price || 0;
+  const bottleQuantity = schedule.totalQuantity || supportOption?.stock || supportOption?.remainingStock || 0;
+  const targetAmount = schedule.targetAmount || (pricePerBottle && bottleQuantity ? pricePerBottle * bottleQuantity : 0);
   const breweryName = breweryInfo.breweryName || user?.breweryName || '';
   const businessAddress = breweryInfo.businessAddressDetail && breweryInfo.businessAddress && !breweryInfo.businessAddress.includes(breweryInfo.businessAddressDetail)
     ? `${breweryInfo.businessAddress} ${breweryInfo.businessAddressDetail}`
@@ -757,7 +805,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       category: basicInfo.category || '막걸리',
       title: basicInfo.title || '',
       shortTitle: basicInfo.shortTitle || '',
-      mainIngredient: basicInfo.mainIngredient || '',
+      mainIngredient: basicInfo.mainIngredient || supportOption?.mainIngredient || supportOption?.primaryIngredient || '',
       subIngredient: subIngredients[0] || '',
       alcoholContent,
       summary: basicInfo.summary || '',
@@ -765,16 +813,16 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
       tags: normalizeProjectTags(basicInfo.tags?.length ? basicInfo.tags : tasteProfile.flavorNotes),
     },
     fundingInfo: {
-      pricePerBottle: schedule.pricePerBottle ? String(schedule.pricePerBottle) : '',
-      bottleQuantity: schedule.totalQuantity ? String(schedule.totalQuantity) : '',
-      goalAmount: schedule.targetAmount ? String(schedule.targetAmount) : '',
+      pricePerBottle: pricePerBottle ? String(pricePerBottle) : '',
+      bottleQuantity: bottleQuantity ? String(bottleQuantity) : '',
+      goalAmount: targetAmount ? String(targetAmount) : '',
       startDate: normalizeProjectDate(schedule.fundingStartDate),
       duration: schedule.fundingPeriodDays ? String(schedule.fundingPeriodDays) : '30',
-      expectedDeliveryDate: normalizeProjectDate(schedule.expectedDeliveryDate),
+      expectedDeliveryDate: normalizeProjectDate(schedule.expectedDeliveryDate || supportOption?.expectedDeliveryDate || ''),
     },
     productInfo: {
       productType: legalInfo.productType || basicInfo.category || '막걸리',
-      volume: legalInfo.volume ? String(legalInfo.volume) : '',
+      volume: legalInfo.volume || supportOption?.volume ? String(legalInfo.volume || supportOption?.volume) : '',
       alcoholContent,
       ingredients: rawMaterials.map((item, index) => ({
         id: index + 1,
@@ -817,7 +865,7 @@ function createProjectDraftFromServerPreview(preview: FundingDraftPreviewRespons
     },
     trustInfo: {
       projectPolicy: plan.policy || notices.policy || notices.refundPolicy || DEFAULT_PROJECT_POLICY,
-      expectedDifficulties: notices.riskNotice || DEFAULT_EXPECTED_DIFFICULTIES,
+      expectedDifficulties: plan.risks || plan.expectedDifficulties || plan.difficulties || notices.riskNotice || DEFAULT_EXPECTED_DIFFICULTIES,
     },
     uploadedFiles: getUploadedFilesFromPreview(preview),
     phoneVerified: Boolean(breweryInfo.phoneVerified || breweryInfo.contactPhone),
@@ -928,6 +976,7 @@ export default function BreweryProjectCreateScreen() {
   const [tempSaveMode, setTempSaveMode] = useState<TempSaveMode>('saved');
   const [tempSaveTimestamp, setTempSaveTimestamp] = useState('');
   const [hasTempSave, setHasTempSave] = useState(false);
+  const [isLoadingSavedDraft, setIsLoadingSavedDraft] = useState(false);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertIcon, setAlertIcon] = useState<SimpleModalIcon>('alert');
@@ -1639,6 +1688,24 @@ export default function BreweryProjectCreateScreen() {
     const flavorNotes = getReadyTags();
     const businessRegistrationNumber = formatBusinessRegistrationNumber(taxInfo.businessNumber);
     const contactPhone = creatorInfo.phone.trim();
+    const rawMaterials = getRawMaterialsForApi();
+    const supportOptionIngredients = rawMaterials
+      .map((item) => item.name)
+      .filter((name): name is string => Boolean(name));
+    const supportOption = {
+      name: basicInfo.title.trim() ? `${basicInfo.title.trim()} 기본 후원` : '기본 후원',
+      price: getOptionalNumberForApi(fundingInfo.pricePerBottle),
+      description: basicInfo.summary.trim() || undefined,
+      volume: getOptionalNumberForApi(productInfo.volume),
+      alcohol: basicInfo.alcoholContent.trim() || productInfo.alcoholContent.trim() || undefined,
+      alcoholPercentage: basicInfo.alcoholContent.trim() || productInfo.alcoholContent.trim() || undefined,
+      expectedDeliveryDate: fundingInfo.expectedDeliveryDate || undefined,
+      mainIngredient: basicInfo.mainIngredient.trim() || supportOptionIngredients[0] || undefined,
+      ingredients: supportOptionIngredients,
+      stock: getOptionalNumberForApi(fundingInfo.bottleQuantity),
+      remainingStock: getOptionalNumberForApi(fundingInfo.bottleQuantity),
+      maxPerUser: 10,
+    };
 
     return {
       ...getRecipeDraftLinkPayload(),
@@ -1665,11 +1732,12 @@ export default function BreweryProjectCreateScreen() {
         expectedDeliveryDate: fundingInfo.expectedDeliveryDate || undefined,
         shippingFee: FIXED_PROJECT_SHIPPING_FEE,
       },
+      supportOptions: [supportOption],
       legalInfo: {
         productType: 'MAKGEOLLI',
         volume: getOptionalNumberForApi(productInfo.volume),
         alcoholPercentage: getOptionalNumberForApi(productInfo.alcoholContent || basicInfo.alcoholContent),
-        rawMaterials: getRawMaterialsForApi(),
+        rawMaterials,
         businessRegistrationNumber: businessRegistrationNumber || undefined,
         businessAddress: taxInfo.address.trim() || undefined,
       },
@@ -2250,6 +2318,16 @@ export default function BreweryProjectCreateScreen() {
       showAlert('임시저장 내용을 불러왔습니다.');
     } catch (error) {
       showAlert(getFundingApiErrorMessage(error, '임시저장 내용을 불러오지 못했습니다.'));
+    }
+  };
+
+  const handleLoadSavedDraft = async () => {
+    if (isLoadingSavedDraft) return;
+    setIsLoadingSavedDraft(true);
+    try {
+      await loadSavedDraft();
+    } finally {
+      setIsLoadingSavedDraft(false);
     }
   };
 
@@ -3712,6 +3790,24 @@ export default function BreweryProjectCreateScreen() {
             })}
           </ScrollView>
         </View>
+        {hasTempSave && (
+          <View style={styles.restoreBanner}>
+            <View style={styles.restoreBannerTextBox}>
+              <Text style={styles.restoreBannerTitle}>이전에 저장한 임시저장이 있습니다.</Text>
+              <Text style={styles.restoreBannerDesc} numberOfLines={1}>
+                {tempSaveTimestamp ? `${new Date(tempSaveTimestamp).toLocaleString('ko-KR')} 저장` : '서버에 저장된 작성 내용을 불러올 수 있습니다.'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.restoreBannerButton, isLoadingSavedDraft && styles.disabledButton]}
+              disabled={isLoadingSavedDraft}
+              onPress={() => { void handleLoadSavedDraft(); }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.restoreBannerButtonText}>{isLoadingSavedDraft ? '불러오는 중' : '불러오기'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.mainContent, { paddingBottom: insets.bottom + 132 }]}>
           {renderTab()}
         </ScrollView>
@@ -3739,7 +3835,7 @@ export default function BreweryProjectCreateScreen() {
         mode={tempSaveMode}
         timestamp={tempSaveTimestamp}
         onClose={() => setShowTempSaveModal(false)}
-        onLoad={() => { void loadSavedDraft(); }}
+        onLoad={() => { void handleLoadSavedDraft(); }}
         onDelete={() => { void deleteSavedDraft(); }}
         onOverwrite={() => { void overwriteSavedDraft(); }}
         onExitWithoutLoad={handleExitWithoutLoadingSavedDraft}
@@ -4532,8 +4628,8 @@ function PreviewModal({
   visible: boolean;
   insetsTop: number;
   onClose: () => void;
-  basicInfo: { category: string; title: string; summary: string; mainIngredient: string; subIngredient: string; alcoholContent: string; images: string[] };
-  fundingInfo: { duration: string; startDate: string; pricePerBottle: string; bottleQuantity: string; goalAmount: string };
+  basicInfo: { category: string; title: string; shortTitle: string; summary: string; mainIngredient: string; subIngredient: string; alcoholContent: string; images: string[] };
+  fundingInfo: { duration: string; startDate: string; expectedDeliveryDate: string; pricePerBottle: string; bottleQuantity: string; goalAmount: string };
   productInfo: { volume: string; alcoholContent: string };
   projectPlan: { introduction: string; videoUrl: string; budget: string; schedule: string };
   breweryProfile: { name: string; profileImage: string; bio: string };
@@ -4543,6 +4639,28 @@ function PreviewModal({
   goalAmount: string;
   onOpenGuide: () => void;
 }) {
+  const title = cleanPreviewText(basicInfo.title) || '프로젝트 제목을 입력해주세요';
+  const shortTitle = cleanPreviewText(basicInfo.shortTitle);
+  const summary = cleanPreviewText(basicInfo.summary);
+  const introduction = cleanPreviewText(projectPlan.introduction);
+  const breweryName = cleanPreviewText(breweryProfile.name) || '양조장 이름';
+  const breweryAddress = cleanPreviewText(taxInfo.address) || '위치 미정';
+  const mainIngredient = cleanPreviewText(basicInfo.mainIngredient);
+  const subIngredient = cleanPreviewText(basicInfo.subIngredient);
+  const alcohol = cleanPreviewText(productInfo.alcoholContent) || cleanPreviewText(basicInfo.alcoholContent);
+  const volume = cleanPreviewText(productInfo.volume);
+  const expectedDeliveryDate = cleanPreviewDate(fundingInfo.expectedDeliveryDate);
+  const startDate = cleanPreviewDate(fundingInfo.startDate);
+  const pricePerBottle = cleanPreviewText(fundingInfo.pricePerBottle);
+  const bottleQuantity = cleanPreviewText(fundingInfo.bottleQuantity);
+  const targetAmount = cleanPreviewText(fundingInfo.goalAmount || goalAmount);
+  const policy = cleanPreviewText(trustInfo.projectPolicy);
+  const expectedDifficulties = cleanPreviewText(trustInfo.expectedDifficulties);
+  const budgetPlan = cleanPreviewText(projectPlan.budget);
+  const schedulePlan = cleanPreviewText(projectPlan.schedule);
+  const videoUrl = cleanPreviewText(projectPlan.videoUrl);
+  const ingredientsText = [mainIngredient, subIngredient].filter(Boolean).join(', ');
+
   return (
     <Modal visible={visible} animationType="fade">
       <View style={styles.previewScreen}>
@@ -4558,8 +4676,8 @@ function PreviewModal({
             {basicInfo.images[0] ? <Image source={{ uri: basicInfo.images[0] }} style={styles.previewImageFill} /> : <ImageIcon size={48} color="#9CA3AF" />}
           </View>
           <View style={styles.previewInner}>
-            <Text style={styles.previewTitle}>{basicInfo.title || '프로젝트 제목을 입력해주세요'}</Text>
-            <Text style={styles.previewSummary}>{basicInfo.summary || '프로젝트 요약을 입력해주세요'}</Text>
+            <Text style={styles.previewTitle}>{title}</Text>
+            {shortTitle ? <Text style={styles.previewSummary}>{shortTitle}</Text> : null}
             <View style={styles.previewStatsCard}>
               <View style={styles.previewStatGrid}>
                 <View style={styles.previewStat}>
@@ -4580,56 +4698,67 @@ function PreviewModal({
                 <Calendar size={16} color="#4B5563" />
                 <Text style={styles.previewCalendarText}>{fundingInfo.duration}일 진행 예정</Text>
               </View>
-              <Text style={styles.previewStartDate}>{fundingInfo.startDate || '시작일 미정'}</Text>
+              <Text style={styles.previewStartDate}>{startDate || '시작일 미정'}</Text>
+              {expectedDeliveryDate ? (
+                <Text style={styles.previewStartDate}>예상 배송일 {expectedDeliveryDate}</Text>
+              ) : null}
             </View>
             <View style={styles.creatorPreviewCard}>
               <View style={styles.creatorPreviewImage}>
                 {breweryProfile.profileImage ? <Image source={{ uri: breweryProfile.profileImage }} style={styles.creatorPreviewImageFill} /> : <User size={24} color="#9CA3AF" />}
               </View>
               <View style={styles.creatorPreviewText}>
-                <Text style={styles.creatorPreviewName}>{breweryProfile.name || '양조장 이름'}</Text>
-                <Text style={styles.creatorPreviewCategory}>{taxInfo.address || '위치 미정'}</Text>
+                <Text style={styles.creatorPreviewName}>{breweryName}</Text>
+                <Text style={styles.creatorPreviewCategory}>{breweryAddress}</Text>
               </View>
               <View style={styles.creatorBadge}>
-                <Text style={styles.creatorBadgeText} numberOfLines={1}>{basicInfo.mainIngredient || '메인재료'}</Text>
+                <Text style={styles.creatorBadgeText} numberOfLines={1}>{mainIngredient || '메인 재료'}</Text>
               </View>
             </View>
             <PreviewSection title="프로젝트 소개">
-              {(basicInfo.mainIngredient || basicInfo.subIngredient || productInfo.alcoholContent || basicInfo.alcoholContent) && (
+              {(mainIngredient || subIngredient || alcohol || volume || expectedDeliveryDate) && (
                 <View style={styles.previewInfoGrid}>
-                  {basicInfo.mainIngredient && <PreviewMiniInfo label="메인재료" value={basicInfo.mainIngredient} />}
-                  {basicInfo.subIngredient && <PreviewMiniInfo label="서브재료" value={basicInfo.subIngredient} />}
-                  {(productInfo.alcoholContent || basicInfo.alcoholContent) && <PreviewMiniInfo label="도수" value={alcoholText(productInfo.alcoholContent || basicInfo.alcoholContent)} />}
+                  {mainIngredient ? <PreviewMiniInfo label="주원료" value={mainIngredient} /> : null}
+                  {subIngredient ? <PreviewMiniInfo label="부원료" value={subIngredient} /> : null}
+                  {alcohol ? <PreviewMiniInfo label="도수" value={alcoholText(alcohol)} /> : null}
+                  {volume ? <PreviewMiniInfo label="용량" value={volumeText(volume)} /> : null}
+                  {expectedDeliveryDate ? <PreviewMiniInfo label="예상 배송일" value={expectedDeliveryDate} /> : null}
                 </View>
               )}
-              {basicInfo.summary && (
+              {summary ? (
                 <View style={styles.previewBlueNote}>
-                  <Text style={styles.previewBlueNoteTitle}>📝 프로젝트 요약</Text>
-                  <Text style={styles.previewBlueNoteText}>{basicInfo.summary}</Text>
+                  <Text style={styles.previewBlueNoteTitle}>프로젝트 요약</Text>
+                  <Text style={styles.previewBlueNoteText}>{summary}</Text>
                 </View>
-              )}
-              {projectPlan.introduction && <Text style={styles.previewParagraph}>{projectPlan.introduction}</Text>}
-              {projectPlan.videoUrl && (
+              ) : null}
+              <Text style={styles.previewParagraph}>{introduction || '프로젝트 소개를 입력해주세요.'}</Text>
+              {videoUrl ? (
                 <View style={styles.previewUrlBox}>
                   <Text style={styles.previewUrlLabel}>프로젝트 영상 URL</Text>
-                  <Text style={styles.previewUrlText} numberOfLines={2}>{projectPlan.videoUrl}</Text>
+                  <Text style={styles.previewUrlText} numberOfLines={2}>{videoUrl}</Text>
                 </View>
-              )}
+              ) : null}
             </PreviewSection>
-            {(fundingInfo.pricePerBottle || fundingInfo.bottleQuantity || fundingInfo.goalAmount) && (
+            {ingredientsText ? (
+              <PreviewSection title="원료 정보">
+                <Text style={styles.previewParagraph}>{ingredientsText}</Text>
+              </PreviewSection>
+            ) : null}
+            {(pricePerBottle || bottleQuantity || targetAmount || expectedDeliveryDate) && (
               <PreviewSection title="가격 안내">
-                {fundingInfo.pricePerBottle && <PreviewPriceBlock label="병당 단가" value={`${currency(fundingInfo.pricePerBottle)}원`} sub={volumeText(productInfo.volume)} dark />}
-                {fundingInfo.bottleQuantity && <PreviewPriceBlock label="총 판매 수량" value={`${currency(fundingInfo.bottleQuantity)}병`} sub="목표 수량" />}
-                {fundingInfo.goalAmount && (
+                {pricePerBottle ? <PreviewPriceBlock label="후원 옵션 가격" value={`${currency(pricePerBottle)}원`} sub={volume ? volumeText(volume) : undefined} dark /> : null}
+                {bottleQuantity ? <PreviewPriceBlock label="총 판매 수량" value={`${currency(bottleQuantity)}병`} sub="목표 수량" /> : null}
+                {expectedDeliveryDate ? <PreviewMiniInfo label="예상 배송일" value={expectedDeliveryDate} /> : null}
+                {targetAmount ? (
                   <View style={styles.previewGoalBox}>
                     <Text style={styles.previewGoalLabel}>펀딩 목표 금액</Text>
-                    <Text style={styles.previewGoalValue}>{currency(fundingInfo.goalAmount)}원</Text>
+                    <Text style={styles.previewGoalValue}>{currency(targetAmount)}원</Text>
                   </View>
-                )}
+                ) : null}
               </PreviewSection>
             )}
-            {projectPlan.budget && <PreviewSection title="프로젝트 예산"><Text style={styles.previewParagraph}>{projectPlan.budget}</Text></PreviewSection>}
-            {projectPlan.schedule && <PreviewSection title="프로젝트 일정"><Text style={styles.previewParagraph}>{projectPlan.schedule}</Text></PreviewSection>}
+            {budgetPlan ? <PreviewSection title="프로젝트 예산"><Text style={styles.previewParagraph}>{budgetPlan}</Text></PreviewSection> : null}
+            {schedulePlan ? <PreviewSection title="프로젝트 일정"><Text style={styles.previewParagraph}>{schedulePlan}</Text></PreviewSection> : null}
             <PreviewSection title="맛 지표">
               <Text style={styles.previewSummary}>양조장이 예상하는 이 전통주의 맛 프로필입니다.</Text>
               <RadarChart tasteProfile={tasteProfile} />
@@ -4639,15 +4768,18 @@ function PreviewModal({
                 { label: '산미', value: tasteProfile.acidity },
                 { label: '바디감', value: tasteProfile.body },
                 { label: '탄산감', value: tasteProfile.carbonation },
-              ].map((item) => (
-                <View key={item.label} style={styles.previewTasteRow}>
-                  <Text style={styles.previewTasteLabel}>{item.label}</Text>
-                  <View style={styles.previewTasteTrack}>
-                    <View style={[styles.previewTasteFill, { width: `${item.value}%` }]} />
+              ].map((item) => {
+                const value = Math.max(0, Math.min(100, Number(item.value) || 0));
+                return (
+                  <View key={item.label} style={styles.previewTasteRow}>
+                    <Text style={styles.previewTasteLabel}>{item.label}</Text>
+                    <View style={styles.previewTasteTrack}>
+                      <View style={[styles.previewTasteFill, { width: `${value}%` }]} />
+                    </View>
+                    <Text style={styles.previewTasteValue}>{value}%</Text>
                   </View>
-                  <Text style={styles.previewTasteValue}>{item.value}%</Text>
-                </View>
-              ))}
+                );
+              })}
             </PreviewSection>
             <PreviewSection title="안내사항">
               <Text style={styles.previewGuideTitle}>📌 주담 크라우드 펀딩 안내</Text>
@@ -4658,10 +4790,10 @@ function PreviewModal({
               </TouchableOpacity>
               <View style={styles.previewDivider} />
               <Text style={styles.previewGuideTitle}>📄 프로젝트 정책</Text>
-              <Text style={styles.previewGrayParagraph}>{trustInfo.projectPolicy}</Text>
+              <Text style={styles.previewGrayParagraph}>{policy || '프로젝트 정책을 입력해주세요.'}</Text>
               <View style={styles.previewDivider} />
               <Text style={styles.previewGuideTitle}>⚠️ 예상되는 어려움</Text>
-              <Text style={styles.previewGrayParagraph}>{trustInfo.expectedDifficulties}</Text>
+              <Text style={styles.previewGrayParagraph}>{expectedDifficulties || '예상되는 어려움을 입력해주세요.'}</Text>
             </PreviewSection>
           </View>
         </ScrollView>
@@ -4724,6 +4856,31 @@ const styles = StyleSheet.create({
   tabLabelActive: { color: '#111' },
   tabUnderline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, backgroundColor: '#111' },
   mainContent: { paddingHorizontal: 16, paddingTop: 24 },
+  restoreBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 14,
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  restoreBannerTextBox: { flex: 1, minWidth: 0 },
+  restoreBannerTitle: { fontSize: 13, fontWeight: '900', color: '#111827' },
+  restoreBannerDesc: { marginTop: 3, fontSize: 12, fontWeight: '700', color: '#6B7280' },
+  restoreBannerButton: {
+    minWidth: 78,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  restoreBannerButtonText: { fontSize: 13, fontWeight: '900', color: '#FFF' },
   tabContent: { gap: 24 },
   formGroup: { gap: 8 },
   label: { fontSize: 14, fontWeight: '900', color: '#111' },

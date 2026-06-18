@@ -30,7 +30,7 @@ import {
 } from '@/features/funding/api';
 import { mapBreweryLogs } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
-import { pickMultipleImages } from '@/utils/imagePicker';
+import { pickSingleImage } from '@/utils/imagePicker';
 
 function todayText() {
   const today = new Date();
@@ -168,25 +168,19 @@ export default function BreweryJournalManageScreen() {
   };
 
   const pickImages = async () => {
-    const result = await pickMultipleImages('brewery-journal', 5, 0.9);
+    const result = await pickSingleImage('brewery-journal', 0.9);
     if (result.canceled && result.denied) {
       setMessage('양조일지 이미지를 등록하려면 갤러리 접근 권한이 필요합니다.');
       return;
     }
     if (result.canceled) return;
-    const selectedImages = result.files.map((file, index) => ({
-      uri: file.uri,
-      name: file.name || getImageFileName(file.uri, index),
-      mimeType: file.type || getImageMimeType(file.name),
-    }));
-    setImages((prev) => [...prev, ...selectedImages.map((asset) => asset.uri)].slice(0, 5));
-    setImageFilesByUri((prev) => {
-      const next = { ...prev };
-      selectedImages.forEach((asset) => {
-        next[asset.uri] = asset;
-      });
-      return next;
-    });
+    const selectedImage = {
+      uri: result.file.uri,
+      name: result.file.name || getImageFileName(result.file.uri, 0),
+      mimeType: result.file.type || getImageMimeType(result.file.name),
+    };
+    setImages([selectedImage.uri]);
+    setImageFilesByUri({ [selectedImage.uri]: selectedImage });
   };
 
   const saveJournal = async () => {

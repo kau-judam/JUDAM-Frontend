@@ -18,12 +18,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { recipesData } from '@/constants/data';
-import { createFundingDraft, generateFundingDraftAiImage } from '@/features/funding/api';
-import { normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import {
   createRecipe,
   decodeRecipeJwtPayload,
   fetchIngredientRegions,
+  generateRecipeAiImage,
   getRecipeAccessToken,
   isJwtExpired,
   suggestRecipeSubIngredients,
@@ -142,12 +141,6 @@ export default function RecipeCreateScreen() {
   const getMainIngredientText = () => mainIngredients.map((ingredient) => ingredient.trim()).filter(Boolean).join(', ');
 
   const getSelectedFlavorTags = () => [...selectedFlavorTags, ...customFlavorTags];
-
-  const getCurrentBreweryId = () => {
-    if (!user || user.type !== 'brewery') return null;
-    const breweryId = Number(user.id);
-    return Number.isFinite(breweryId) && breweryId > 0 ? breweryId : null;
-  };
 
   const getAiAbvRangeText = () => {
     if (!alcoholRange) return '';
@@ -312,50 +305,33 @@ export default function RecipeCreateScreen() {
       showNotice('\uBA54\uC778 \uC7AC\uB8CC\uC640 \uC11C\uBE0C \uC7AC\uB8CC\uB97C \uBA3C\uC800 \uC785\uB825\uD574\uC8FC\uC138\uC694.');
       return;
     }
-    const breweryId = getCurrentBreweryId();
-    if (!breweryId) {
-      showNotice(
-        'AI \uC774\uBBF8\uC9C0 \uC0DD\uC131\uC744 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC5B4\uC694.',
-        '\uD380\uB529 AI \uC774\uBBF8\uC9C0 API\uB294 \uC591\uC870\uC7A5 \uC784\uC2DC\uC800\uC7A5 draftId\uAC00 \uD544\uC694\uD574\uC11C \uC591\uC870\uC7A5 \uACC4\uC815\uC5D0\uC11C\uB9CC \uD638\uCD9C\uD560 \uC218 \uC788\uC5B4\uC694.'
-      );
-      return;
-    }
     setIsGeneratingRecipeImage(true);
     try {
       const mainIngredient = getMainIngredientText();
       const selectedTags = getSelectedFlavorTags();
-      const draft = await createFundingDraft({
-        breweryId,
-        title: title.trim() || mainIngredient,
-        mainIngredient,
-        subIngredient: selectedSubIngredients.join(', '),
-        summary: description.trim() || concept.trim(),
-      });
       const payload = {
         name: title.trim() || mainIngredient,
         description: description.trim() || concept.trim() || [mainIngredient, selectedSubIngredients.join(', ')].filter(Boolean).join(', '),
         flavorTags: selectedTags,
         region: user?.breweryLocation || '',
+        mainIngredient,
+        subIngredients: selectedSubIngredients,
       };
-      console.log('Recipe image AI request via funding API', { draftId: draft.draftId, ...payload });
-      const result = await generateFundingDraftAiImage(draft.draftId, payload);
-      console.log('Recipe image AI response via funding API', result);
-      const responseImageUrls = normalizeFundingImageUrls(result.images);
-      const generatedImageUrls = responseImageUrls.length
-        ? responseImageUrls
-        : normalizeFundingImageUrls([result.imageUrl, result.thumbnailUrl]);
-      const nextImageUrl = generatedImageUrls[0];
+      console.log('Recipe image AI request', payload);
+      const result = await generateRecipeAiImage(payload);
+      console.log('Recipe image AI response', result);
+      const nextImageUrl = result.imageUrl;
       if (!nextImageUrl) {
         showNotice(
           'AI \uC0DD\uC131\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
-          result.message || '\uC0DD\uC131\uB41C \uC774\uBBF8\uC9C0 URL\uC744 \uD655\uC778\uD560 \uC218 \uC5C6\uC5B4\uC694.'
+          result.prompt ? '\uC774\uBBF8\uC9C0 \uD504\uB86C\uD504\uD2B8\uB9CC \uC0DD\uC131\uB418\uC5C8\uC5B4\uC694. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC8FC\uC138\uC694.' : '\uC0DD\uC131\uB41C \uC774\uBBF8\uC9C0 URL\uC744 \uD655\uC778\uD560 \uC218 \uC5C6\uC5B4\uC694.'
         );
         return;
       }
       setImagePreview(nextImageUrl);
       setImageFile(null);
     } catch (error) {
-      console.warn('Failed to generate recipe image via funding AI image API', error);
+      console.warn('Failed to generate recipe image', error);
       showNotice(
         'AI \uC0DD\uC131\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
         getApiErrorMessage(error, '\uC774\uBBF8\uC9C0\uB97C \uC0DD\uC131\uD558\uC9C0 \uBABB\uD588\uC5B4\uC694.')

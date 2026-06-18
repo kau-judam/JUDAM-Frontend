@@ -111,6 +111,7 @@ import {
   getProjectAlcoholContent,
   getProjectBottleSize,
   getProjectEstimatedDelivery,
+  getPrimaryRewardItem,
   getProjectShippingFee,
   getProjectUnitPrice,
 } from '@/features/funding/supportConfig';
@@ -164,10 +165,16 @@ function getSupportOptionLimit(option: FundingSupportOption | null | undefined) 
   return limits.length > 0 ? Math.min(...limits) : null;
 }
 
-function getSupportOptionStockLabel(option: FundingSupportOption) {
-  if (typeof option.remainingStock === 'number') return `${option.remainingStock.toLocaleString()}개 남음`;
-  if (typeof option.stock === 'number') return `총 ${option.stock.toLocaleString()}개`;
-  return '';
+function getProjectMainIngredient(project: FundingProject) {
+  return project.mainIngredients || project.ingredients?.[0]?.ingredient || '-';
+}
+
+function getProjectIngredientSummary(project: FundingProject) {
+  const ingredientText = project.ingredients
+    ?.map((item) => [item.ingredient, item.origin].filter(Boolean).join(' '))
+    .filter(Boolean)
+    .join(', ');
+  return project.subIngredients || ingredientText || project.mainIngredients || '-';
 }
 
 function isGarbledKoreanMessage(message: string) {
@@ -430,6 +437,7 @@ export default function FundingDetailScreen() {
   const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
   const { projects, updateProjectJournals, fundingReviews, mergeProject, mergeProjects, mergeFundingReviews } = useFunding();
   const projectRef = useRef<(typeof projects)[number] | null>(null);
+  const detailScrollRef = useRef<ScrollView | null>(null);
   const rawProjectId = Array.isArray(id) ? id[0] : id;
   const projectId = Number(rawProjectId);
   const rawFromProjectId = Array.isArray(fromProjectId) ? fromProjectId[0] : fromProjectId;
@@ -441,7 +449,31 @@ export default function FundingDetailScreen() {
     const shortTitle = project?.shortTitle?.trim() || '';
     return shortTitle && shortTitle !== title ? shortTitle : '';
   }, [project?.shortTitle, project?.title]);
+  const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">(initialTab);
+  const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetail, setReportDetail] = useState("");
+  const [feedbackModal, setFeedbackModal] = useState<{ title: string; body: string } | null>(null);
+  const [showFundingOptionModal, setShowFundingOptionModal] = useState(false);
+  const [supportOptions, setSupportOptions] = useState<FundingSupportOption[]>([]);
+  const [selectedQuantity, setSelectedQuantity] = useState(1);
+  const [supportOptionId, setSupportOptionId] = useState<number | null>(null);
+  const [tabHeaderY, setTabHeaderY] = useState(0);
+  const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [reviewPermission, setReviewPermission] = useState<{
+    canWriteReview: boolean;
+    canReview: boolean;
+    hasWrittenReview?: boolean;
+    myReviewId?: number;
+  } | null>(null);
   const handleHeaderBack = useCallback(() => {
+    if (getTabParam(activeTab) === "qna" || getTabParam(activeTab) === "journal") {
+      router.replace('/funding' as any);
+      return;
+    }
     if (router.canGoBack()) {
       router.back();
       return;
@@ -451,28 +483,7 @@ export default function FundingDetailScreen() {
       return;
     }
     router.replace('/funding' as any);
-  }, [previousProjectId, projectId]);
-  
-  const [activeTab, setActiveTab] = useState<"소개" | "양조일지" | "Q&A" | "후기">(initialTab);
-  const [showFundingGuideModal, setShowFundingGuideModal] = useState(false);
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
-  const [reportReason, setReportReason] = useState("");
-  const [reportDetail, setReportDetail] = useState("");
-  const [feedbackModal, setFeedbackModal] = useState<{ title: string; body: string } | null>(null);
-  const [reviewEditPrompt, setReviewEditPrompt] = useState<FundingReview | null>(null);
-  const [showFundingOptionModal, setShowFundingOptionModal] = useState(false);
-  const [supportOptions, setSupportOptions] = useState<FundingSupportOption[]>([]);
-  const [selectedQuantity, setSelectedQuantity] = useState(1);
-  const [supportOptionId, setSupportOptionId] = useState<number | null>(null);
-  const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
-  const [isDetailLoading, setIsDetailLoading] = useState(false);
-  const [reviewPermission, setReviewPermission] = useState<{
-    canWriteReview: boolean;
-    canReview: boolean;
-    hasWrittenReview?: boolean;
-    myReviewId?: number;
-  } | null>(null);
+  }, [activeTab, previousProjectId, projectId]);
   const [ownBreweryProfile, setOwnBreweryProfile] = useState<BreweryProfile | null>(null);
   const [isOwnBreweryProfileLoading, setIsOwnBreweryProfileLoading] = useState(false);
   const isOwnBreweryProject = useMemo(
@@ -960,11 +971,13 @@ export default function FundingDetailScreen() {
   const selectedSupportOption =
     supportOptions.find((option) => normalizeSupportOptionId(option.optionId) === supportOptionId) || null;
   const selectedSupportOptionPrice = selectedSupportOption?.price ?? unitPrice;
-  const selectedSupportOptionName = selectedSupportOption?.name || project.rewardItems?.[0] || `${project.title} ${bottleSize} x 1`;
+  const selectedSupportOptionName = project.title || selectedSupportOption?.name || getPrimaryRewardItem(project);
   const selectedSupportOptionLimit = getSupportOptionLimit(selectedSupportOption);
   const optionTotalAmount = selectedSupportOptionPrice * selectedQuantity + shippingFee;
   const totalBudgetAmount = projectBudget.reduce((sum, item) => sum + item.amount, 0);
   const mainIngredientLabel = getFundingMainIngredientLabel(project);
+  const mainIngredient = getProjectMainIngredient(project);
+  const ingredientSummary = getProjectIngredientSummary(project);
   const officialBreweryInfo = project.breweryInfo;
   const dashboardBreweryProfile = isOwnBreweryProject ? ownBreweryProfile : null;
   const officialBreweryName =
@@ -1183,6 +1196,9 @@ export default function FundingDetailScreen() {
   const handleTabChange = (nextTab: "소개" | "양조일지" | "Q&A" | "후기") => {
     setActiveTab(nextTab);
     router.setParams({ tab: getTabParam(nextTab) } as any);
+    requestAnimationFrame(() => {
+      detailScrollRef.current?.scrollTo({ y: Math.max(0, tabHeaderY), animated: true });
+    });
   };
 
   const handleAddComment = async () => {
@@ -1841,7 +1857,7 @@ export default function FundingDetailScreen() {
       });
       return;
     }
-    const canStartReview = canWriteFundingReview || Boolean(myReview) || Boolean(reviewPermission?.hasWrittenReview && reviewPermission.myReviewId);
+    const canStartReview = canWriteFundingReview;
     if (!canStartReview) {
       setFeedbackModal({
         title: '후기 작성 불가',
@@ -1849,12 +1865,11 @@ export default function FundingDetailScreen() {
       });
       return;
     }
-    if (myReview) {
-      setReviewEditPrompt(myReview);
-      return;
-    }
-    if (reviewPermission?.hasWrittenReview && reviewPermission.myReviewId) {
-      router.push(`/archive/review/${project.id}?reviewId=${reviewPermission.myReviewId}` as any);
+    if (myReview || reviewPermission?.hasWrittenReview) {
+      setFeedbackModal({
+        title: '이미 작성한 후기입니다',
+        body: '이 펀딩에는 후기를 한 번만 작성할 수 있어요.',
+      });
       return;
     }
     router.push(`/archive/review/${project.id}` as any);
@@ -1974,6 +1989,7 @@ export default function FundingDetailScreen() {
 
       {/* ── Main Scroll ── */}
       <ScrollView 
+        ref={detailScrollRef}
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false} 
         keyboardShouldPersistTaps="always"
@@ -2090,7 +2106,10 @@ export default function FundingDetailScreen() {
         )}
 
         {/* 5. Sticky Tabs */}
-        <View style={styles.stickyTabWrapper}>
+        <View
+          style={styles.stickyTabWrapper}
+          onLayout={(event) => setTabHeaderY(event.nativeEvent.layout.y)}
+        >
           <View style={styles.tabContainer}>
              {(["소개", "양조일지", "Q&A", "후기"] as const).map(tab => (
                <TouchableOpacity 
@@ -2860,7 +2879,6 @@ export default function FundingDetailScreen() {
                   {supportOptions.map((option) => {
                     const optionId = normalizeSupportOptionId(option.optionId);
                     const selected = optionId === supportOptionId;
-                    const stockLabel = getSupportOptionStockLabel(option);
                     return (
                       <TouchableOpacity
                         key={`${option.optionId}-${option.name}`}
@@ -2870,18 +2888,10 @@ export default function FundingDetailScreen() {
                       >
                         <View style={styles.supportOptionTop}>
                           <Text style={[styles.supportOptionName, selected && styles.supportOptionNameSelected]} numberOfLines={2}>
-                            {option.name}
+                            {project.title || option.name}
                           </Text>
                           <Text style={styles.supportOptionPrice}>{option.price.toLocaleString()}원</Text>
                         </View>
-                        {option.description ? (
-                          <Text style={styles.supportOptionDesc} numberOfLines={2}>{option.description}</Text>
-                        ) : null}
-                        {(stockLabel || option.maxPerUser) ? (
-                          <Text style={styles.supportOptionMeta}>
-                            {[stockLabel, option.maxPerUser ? `1인 최대 ${option.maxPerUser}개` : ''].filter(Boolean).join(' · ')}
-                          </Text>
-                        ) : null}
                       </TouchableOpacity>
                     );
                   })}
@@ -2896,6 +2906,17 @@ export default function FundingDetailScreen() {
                 <View style={styles.optionSpecCard}>
                   <Text style={styles.optionSpecLabel}>도수</Text>
                   <Text style={styles.optionSpecValue}>{alcoholContent}</Text>
+                </View>
+              </View>
+
+              <View style={styles.optionIngredientBox}>
+                <View style={styles.optionIngredientRow}>
+                  <Text style={styles.optionIngredientLabel}>{mainIngredientLabel}</Text>
+                  <Text style={styles.optionIngredientValue}>{mainIngredient}</Text>
+                </View>
+                <View style={styles.optionIngredientRow}>
+                  <Text style={styles.optionIngredientLabel}>재료</Text>
+                  <Text style={styles.optionIngredientValue}>{ingredientSummary}</Text>
                 </View>
               </View>
 
@@ -3043,33 +3064,6 @@ export default function FundingDetailScreen() {
             <TouchableOpacity style={styles.actionPrimaryButton} onPress={() => setFeedbackModal(null)}>
               <Text style={styles.actionPrimaryText}>확인</Text>
             </TouchableOpacity>
-          </Animated.View>
-        </View>
-      </Modal>
-
-      <Modal visible={Boolean(reviewEditPrompt)} animationType="fade" transparent>
-        <View style={styles.actionModalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setReviewEditPrompt(null)} />
-          <Animated.View entering={SlideInDown} style={styles.actionModal}>
-            <Text style={styles.actionModalTitle}>이미 작성한 후기입니다</Text>
-            <Text style={styles.actionModalBody}>이 펀딩에는 후기를 한 번만 작성할 수 있어요. 기존 후기를 수정하시겠습니까?</Text>
-            <View style={styles.reportFooter}>
-              <TouchableOpacity style={styles.reportCancelButton} onPress={() => setReviewEditPrompt(null)}>
-                <Text style={styles.reportCancelText}>취소</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.reportSubmitButton, { backgroundColor: '#111' }]}
-                onPress={() => {
-                  const targetReview = reviewEditPrompt;
-                  setReviewEditPrompt(null);
-                  if (targetReview) {
-                    router.push(`/archive/review/${project.id}?reviewId=${targetReview.id}` as any);
-                  }
-                }}
-              >
-                <Text style={styles.reportSubmitText}>수정하기</Text>
-              </TouchableOpacity>
-            </View>
           </Animated.View>
         </View>
       </Modal>
@@ -3419,12 +3413,14 @@ const styles = StyleSheet.create({
   supportOptionName: { flex: 1, fontSize: 14, color: '#374151', fontWeight: '900', lineHeight: 20 },
   supportOptionNameSelected: { color: '#111' },
   supportOptionPrice: { fontSize: 14, color: '#111', fontWeight: '900' },
-  supportOptionDesc: { fontSize: 12, color: '#6B7280', fontWeight: '700', lineHeight: 18 },
-  supportOptionMeta: { fontSize: 11, color: '#9CA3AF', fontWeight: '800' },
   optionSpecGrid: { flexDirection: 'row', gap: 8 },
   optionSpecCard: { flex: 1, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 14, padding: 12 },
   optionSpecLabel: { fontSize: 12, color: '#6B7280', fontWeight: '700', marginBottom: 4 },
   optionSpecValue: { fontSize: 14, color: '#111', fontWeight: '900' },
+  optionIngredientBox: { borderRadius: 14, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', padding: 12, gap: 8 },
+  optionIngredientRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  optionIngredientLabel: { width: 72, fontSize: 12, color: '#6B7280', fontWeight: '800' },
+  optionIngredientValue: { flex: 1, fontSize: 13, color: '#111', fontWeight: '800', lineHeight: 18, textAlign: 'right' },
   quantityBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#E5E7EB' },
   quantityControl: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
   quantityControlDisabled: { opacity: 0.35 },

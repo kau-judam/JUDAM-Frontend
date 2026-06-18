@@ -373,12 +373,6 @@ export default function AdminBreweryApplicationReviewScreen() {
                 <InfoRow icon={<FileText size={15} color="#6B7280" />} label="OCR" value={getOcrStatusLabel(application.ocrStatus)} />
                 <InfoRow icon={<FileText size={15} color="#6B7280" />} label="신청일" value={formatDateTime(application.createdAt)} />
 
-                {application.ocrSummary ? (
-                  <View style={styles.ocrBox}>
-                    <Text style={styles.ocrLabel}>OCR 요약</Text>
-                    <Text style={styles.ocrText}>{application.ocrSummary}</Text>
-                  </View>
-                ) : null}
                 {application.ocrError ? (
                   <View style={[styles.ocrBox, styles.ocrErrorBox]}>
                     <Text style={[styles.ocrLabel, styles.ocrErrorLabel]}>OCR 오류</Text>
@@ -397,16 +391,13 @@ export default function AdminBreweryApplicationReviewScreen() {
 
                 {expanded ? (
                   <View style={styles.detailBox}>
-                    <DetailSection title="신청자 정보">
-                      <DetailLine label="신청자" value={formatText(application.applicantName)} />
-                      <DetailLine label="이메일" value={formatText(application.email)} />
+                    <DetailSection title="신청 정보">
                       <DetailLine label="전화번호" value={formatText(application.phoneNumber)} />
                       <DetailLine label="상태" value={getApplicationStatusLabel(application.status)} />
                     </DetailSection>
 
                     <DetailSection title="양조장 정보">
                       <DetailLine label="양조장명" value={formatText(application.breweryName)} />
-                      <DetailLine label="대표자명" value={formatText(application.representativeName)} />
                       <DetailLine label="사업자번호" value={formatText(application.businessNumber || application.licenseNumber)} />
                       <DetailLine label="주소" value={formatText(address)} />
                     </DetailSection>
@@ -414,7 +405,6 @@ export default function AdminBreweryApplicationReviewScreen() {
                     <DetailSection title="서류 및 OCR">
                       <DetailLine label="OCR 상태" value={getOcrStatusLabel(application.ocrStatus)} />
                       <DetailLine label="OCR 확인일" value={formatDateTime(application.ocrCheckedAt)} />
-                      <DetailParagraph label="OCR 요약" value={application.ocrSummary} />
                       <DetailParagraph label="OCR 오류" value={application.ocrError} danger />
                       <TouchableOpacity
                         style={[styles.documentButton, !documentUrl && styles.disabledButton]}

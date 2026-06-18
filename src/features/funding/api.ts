@@ -1,4 +1,4 @@
-import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
+﻿import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
 export const JUDAM_FUNDING_API_BASE_URL = 'http://43.202.24.223:3000';
 
@@ -1313,6 +1313,14 @@ export type FundingSupportOptionsResponse = {
 };
 
 type FundingSupportOptionsApiResponse = FundingSupportOptionsResponse | FundingApiEnvelope<FundingSupportOptionsResponse>;
+
+function normalizeFundingSupportOptionName(name: string, fallbackName?: string) {
+  const cleanedName = name.replace(/\s*\uAE30\uBCF8\s*\uD6C4\uC6D0(?:\uC784)?\s*$/i, '').trim();
+  if (/\uC544\uC9C1\s*\uC11C\uBE0C\uC7AC\uB8CC\s*api\s*\uC5F0\uACB0\s*\uC548\uD568/i.test(cleanedName)) {
+    return fallbackName?.trim() || '';
+  }
+  return cleanedName || fallbackName?.trim() || name;
+}
 
 type FundingDetailApiResponse = FundingDetailResponse | FundingApiEnvelope<FundingDetailResponse>;
 
@@ -4195,6 +4203,7 @@ export async function getFundingSupportOptions(fundingId: number) {
   const response = getFundingResponseData<FundingSupportOptionsResponse>(result);
   const supportOptions = (response.supportOptions ?? []).map((option) => ({
     ...option,
+    name: normalizeFundingSupportOptionName(option.name),
     volume: option.volume ?? response.volume ?? undefined,
     alcoholPercentage: option.alcoholPercentage ?? response.alcoholPercentage ?? undefined,
     expectedDeliveryDate: option.expectedDeliveryDate ?? response.expectedDeliveryDate ?? undefined,

@@ -275,13 +275,16 @@ export default function FundingSupportScreen() {
   const selectedSupportOptionStockLabel = getSupportOptionStockLabel(selectedSupportOption);
   const unitPrice = selectedSupportOption?.price ?? (project ? getProjectUnitPrice(project) : 0);
   const shippingFee = project ? getProjectShippingFee(project) : 0;
-  const primaryRewardItem = selectedSupportOption?.name || (project ? getPrimaryRewardItem(project) : '');
+  const primaryRewardItem = project?.title || selectedSupportOption?.name || (project ? getPrimaryRewardItem(project) : '');
   const bottleSize = project ? getProjectBottleSize(project) : '';
   const alcoholContent = project ? getProjectAlcoholContent(project) : '';
   const estimatedDelivery = project ? getProjectEstimatedDelivery(project) : '';
   const mainIngredientLabel = project ? getFundingMainIngredientLabel(project) : '메인 재료';
   const mainIngredient = project ? getProjectMainIngredient(project) : '-';
   const ingredientSummary = project ? getProjectIngredientSummary(project) : '-';
+  const paymentOrderName = project && primaryRewardItem && primaryRewardItem !== project.title
+    ? `${project.title} ${primaryRewardItem}`
+    : project?.title || primaryRewardItem;
   const rewardAmount = unitPrice * quantity;
   const extraAmount = Number(additionalSupport) || 0;
   const totalAmount = rewardAmount + shippingFee + extraAmount;
@@ -460,7 +463,7 @@ export default function FundingSupportScreen() {
           orderId: tossOrderId,
           numericOrderId,
           amount: String(paymentAmount),
-          orderName: order.orderName || `${project.title} ${primaryRewardItem}`.trim(),
+          orderName: order.orderName || paymentOrderName.trim(),
           customerName: order.customerName || shippingInfo.recipientName.trim() || user.name,
           customerEmail: order.customerEmail || supporterInfo.email.trim(),
           customerMobilePhone: digitsOnly(order.customerMobilePhone || supporterInfo.phone || shippingInfo.phone),
@@ -1256,7 +1259,7 @@ function ConfirmationModal({
           <Text style={styles.confirmBody}>{project.brewery}의 프로젝트에 아래 금액으로 후원합니다.</Text>
           <View style={styles.confirmProjectBox}>
             <Text style={styles.confirmProjectTitle} numberOfLines={2}>{project.title}</Text>
-            <Text style={styles.confirmReward}>{primaryRewardItem} · {quantity}병</Text>
+            <Text style={styles.confirmReward}>{primaryRewardItem}</Text>
           </View>
           <View style={styles.confirmSummaryBox}>
             <SummaryRow label="리워드" value={`${rewardAmount.toLocaleString()}원`} />

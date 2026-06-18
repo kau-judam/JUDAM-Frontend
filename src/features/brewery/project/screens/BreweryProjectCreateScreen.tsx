@@ -55,7 +55,6 @@ import {
 } from '@/utils/phoneVerificationSms';
 import {
   createFundingDraft,
-  deleteFundingDraft,
   generateFundingDraftAiImage,
   getFundingApiErrorMessage,
   getFundingApiSafeMessage,
@@ -981,6 +980,7 @@ export default function BreweryProjectCreateScreen() {
   const [tempSaveTimestamp, setTempSaveTimestamp] = useState('');
   const [hasTempSave, setHasTempSave] = useState(false);
   const [isLoadingSavedDraft, setIsLoadingSavedDraft] = useState(false);
+  const [hasResolvedSavedDraftPrompt, setHasResolvedSavedDraftPrompt] = useState(false);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [alertIcon, setAlertIcon] = useState<SimpleModalIcon>('alert');
@@ -1243,6 +1243,7 @@ export default function BreweryProjectCreateScreen() {
           await SafeStorage.removeItem(tempSaveKey);
           setTempSaveTimestamp('');
           setHasTempSave(false);
+          setHasResolvedSavedDraftPrompt(false);
           return;
         }
         setTempSaveTimestamp(parsed.timestamp || '');
@@ -2191,6 +2192,7 @@ export default function BreweryProjectCreateScreen() {
       await SafeStorage.removeItem(tempSaveKey);
       setHasTempSave(false);
       setTempSaveTimestamp('');
+      setHasResolvedSavedDraftPrompt(false);
       return null;
     }
   };
@@ -2214,6 +2216,7 @@ export default function BreweryProjectCreateScreen() {
       }));
       setHasTempSave(true);
       setTempSaveTimestamp(localTimestamp);
+      setHasResolvedSavedDraftPrompt(true);
 
       try {
         const draftId = await ensureServerDraft();
@@ -2283,6 +2286,7 @@ export default function BreweryProjectCreateScreen() {
         applyDraftPayload(serverDraft);
         setTempSaveTimestamp(serverDraft.timestamp || '');
         setHasTempSave(true);
+        setHasResolvedSavedDraftPrompt(true);
         setShowTempSaveModal(false);
         showAlert('임시저장 내용을 불러왔습니다.');
       } catch (error) {
@@ -2317,6 +2321,7 @@ export default function BreweryProjectCreateScreen() {
       await SafeStorage.removeItem(tempSaveKey);
       setHasTempSave(false);
       setTempSaveTimestamp('');
+      setHasResolvedSavedDraftPrompt(false);
       setShowTempSaveModal(false);
       showAlert('서버 임시저장 ID를 확인하지 못했습니다. 서버에 저장된 임시저장만 불러올 수 있습니다.');
       return;
@@ -2329,6 +2334,7 @@ export default function BreweryProjectCreateScreen() {
       applyDraftPayload(serverDraft);
       setTempSaveTimestamp(serverDraft.timestamp || '');
       setHasTempSave(true);
+      setHasResolvedSavedDraftPrompt(true);
       setShowTempSaveModal(false);
       showAlert('임시저장 내용을 불러왔습니다.');
     } catch (error) {
@@ -2346,29 +2352,9 @@ export default function BreweryProjectCreateScreen() {
     }
   };
 
-  const deleteSavedDraft = async () => {
-    const draft = await getSavedDraft();
-    const draftId = getDraftId(draft);
-    if (draftId && !isEditMode) {
-      try {
-        await deleteFundingDraft(draftId);
-      } catch (error) {
-        const message = getFundingApiErrorMessage(error, '');
-        if (!message.includes('찾을 수 없습니다') && !message.includes('404')) {
-          showAlert(message || '서버 임시저장 삭제 중 문제가 발생했습니다.');
-          return;
-        }
-      }
-    }
-    await SafeStorage.removeItem(tempSaveKey);
-    setHasTempSave(false);
-    setTempSaveTimestamp('');
-    setShowTempSaveModal(false);
-    showAlert(isEditMode ? '수정 임시저장 내용이 삭제되었습니다.' : '임시저장 내용이 삭제되었습니다.');
-  };
-
   const overwriteSavedDraft = async () => {
     setShowTempSaveModal(false);
+    setHasResolvedSavedDraftPrompt(true);
     await saveDraft({ showSavedModal: true });
   };
 
@@ -2390,6 +2376,15 @@ export default function BreweryProjectCreateScreen() {
   };
 
   const handleSave = async () => {
+    if (!isEditMode && !hasResolvedSavedDraftPrompt) {
+      const savedDraft = await getSavedDraft();
+      if (savedDraft) {
+        setTempSaveTimestamp(savedDraft.timestamp || tempSaveTimestamp);
+        setTempSaveMode('existing');
+        setShowTempSaveModal(true);
+        return;
+      }
+    }
     await saveDraft({ showSavedModal: true });
   };
 
@@ -3887,24 +3882,6 @@ export default function BreweryProjectCreateScreen() {
             })}
           </ScrollView>
         </View>
-        {hasTempSave && (
-          <View style={styles.restoreBanner}>
-            <View style={styles.restoreBannerTextBox}>
-              <Text style={styles.restoreBannerTitle}>이전에 저장한 임시저장이 있습니다.</Text>
-              <Text style={styles.restoreBannerDesc} numberOfLines={1}>
-                {tempSaveTimestamp ? `${new Date(tempSaveTimestamp).toLocaleString('ko-KR')} 저장` : '서버에 저장된 작성 내용을 불러올 수 있습니다.'}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.restoreBannerButton, isLoadingSavedDraft && styles.disabledButton]}
-              disabled={isLoadingSavedDraft}
-              onPress={() => { void handleLoadSavedDraft(); }}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.restoreBannerButtonText}>{isLoadingSavedDraft ? '불러오는 중' : '불러오기'}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.mainContent, { paddingBottom: insets.bottom + 132 }]}>
           {renderTab()}
         </ScrollView>
@@ -3933,7 +3910,6 @@ export default function BreweryProjectCreateScreen() {
         timestamp={tempSaveTimestamp}
         onClose={() => setShowTempSaveModal(false)}
         onLoad={() => { void handleLoadSavedDraft(); }}
-        onDelete={() => { void deleteSavedDraft(); }}
         onOverwrite={() => { void overwriteSavedDraft(); }}
         onExitWithoutLoad={handleExitWithoutLoadingSavedDraft}
       />
@@ -4525,7 +4501,6 @@ function TempSaveModal({
   timestamp,
   onClose,
   onLoad,
-  onDelete,
   onOverwrite,
   onExitWithoutLoad,
 }: {
@@ -4534,13 +4509,13 @@ function TempSaveModal({
   timestamp: string;
   onClose: () => void;
   onLoad: () => void;
-  onDelete: () => void;
   onOverwrite: () => void;
   onExitWithoutLoad: () => void;
 }) {
   const label = timestamp ? new Date(timestamp).toLocaleString('ko-KR') : '';
   const isSaved = mode === 'saved';
   const isExit = mode === 'exitExisting';
+  const isExisting = mode === 'existing';
   return (
     <Modal transparent visible={visible} animationType="fade">
       <View style={styles.modalBackdrop}>
@@ -4548,8 +4523,14 @@ function TempSaveModal({
           <View style={[styles.modalIconCircle, styles.blueCircle]}>
             <FileCheck size={32} color="#2563EB" />
           </View>
-          <Text style={styles.modalTitle}>{isSaved ? '임시저장 되었습니다.' : '임시 저장된 작성 내용'}</Text>
-          <Text style={styles.modalBody}>{label ? `${label}에 저장됨` : '저장된 시간이 없습니다.'}</Text>
+          <Text style={styles.modalTitle}>
+            {isSaved ? '임시저장 되었습니다.' : isExisting ? '이전에 임시저장한 내용이 있습니다.' : '임시 저장된 작성 내용'}
+          </Text>
+          <Text style={styles.modalBody}>
+            {isExisting
+              ? `이전 내용을 불러오시겠습니까?${label ? `\n${label} 저장` : ''}`
+              : label ? `${label}에 저장됨` : '저장된 시간이 없습니다.'}
+          </Text>
           {isSaved ? (
             <TouchableOpacity style={styles.modalPrimary} onPress={onClose}>
               <Text style={styles.modalPrimaryText}>확인</Text>
@@ -4565,16 +4546,11 @@ function TempSaveModal({
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity style={styles.modalSecondaryWide} onPress={onOverwrite}>
-                  <Text style={styles.modalSecondaryText}>현재 내용으로 새로 저장</Text>
-                </TouchableOpacity>
-              )}
-              {!isExit && (
-                <TouchableOpacity style={styles.deleteButton} onPress={onDelete}>
-                  <Text style={styles.deleteButtonText}>삭제</Text>
+                  <Text style={styles.modalSecondaryText}>현재 내용으로 저장</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity style={styles.modalPlain} onPress={onClose}>
-                <Text style={styles.modalPlainText}>{isExit ? '계속 작성하기' : '닫기'}</Text>
+                <Text style={styles.modalPlainText}>{isExit ? '계속 작성하기' : '취소'}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -4953,31 +4929,6 @@ const styles = StyleSheet.create({
   tabLabelActive: { color: '#111' },
   tabUnderline: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 2, backgroundColor: '#111' },
   mainContent: { paddingHorizontal: 16, paddingTop: 24 },
-  restoreBanner: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 14,
-    backgroundColor: '#F9FAFB',
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  restoreBannerTextBox: { flex: 1, minWidth: 0 },
-  restoreBannerTitle: { fontSize: 13, fontWeight: '900', color: '#111827' },
-  restoreBannerDesc: { marginTop: 3, fontSize: 12, fontWeight: '700', color: '#6B7280' },
-  restoreBannerButton: {
-    minWidth: 78,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: '#111827',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  restoreBannerButtonText: { fontSize: 13, fontWeight: '900', color: '#FFF' },
   tabContent: { gap: 24 },
   formGroup: { gap: 8 },
   label: { fontSize: 14, fontWeight: '900', color: '#111' },

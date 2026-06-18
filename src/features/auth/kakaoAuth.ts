@@ -146,20 +146,106 @@ function getKakaoNativeErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function getKakaoNativeErrorCode(error: unknown) {
+  if (error && typeof error === 'object' && 'code' in error) {
+    return String((error as { code?: unknown }).code || '');
+  }
+  return '';
+}
+
+function isKakaoNativeCancelError(error: unknown) {
+  const code = getKakaoNativeErrorCode(error).toLowerCase();
+  const message = getKakaoNativeErrorMessage(error).toLowerCase();
+  return (
+    code.includes('cancel') ||
+    code === 'koe320' ||
+    message.includes('cancel') ||
+    message.includes('cancelled') ||
+    message.includes('canceled') ||
+    message.includes('user') && message.includes('cancel')
+  );
+}
+
+function getKakaoModuleFunction<TArgs extends unknown[], TResult>(
+  moduleValue: unknown,
+  functionName: string,
+): ((...args: TArgs) => TResult) | null {
+  const moduleObject = moduleValue as Record<string, unknown> | null | undefined;
+  const defaultObject = moduleObject?.default as Record<string, unknown> | null | undefined;
+  const fn = moduleObject?.[functionName] || defaultObject?.[functionName];
+  return typeof fn === 'function' ? (fn as (...args: TArgs) => TResult) : null;
+}
+
 export async function tryLoginWithKakaoTalk(): Promise<KakaoNativeLoginResult | null> {
   if (Platform.OS === 'web') return null;
 
   try {
     await logKakaoDebugInfo('KakaoNativeLogin');
-    const kakaoUser = await import('@react-native-kakao/user');
-    const isAvailable = await kakaoUser.isKakaoTalkLoginAvailable();
+  } catch (debugError) {
+    console.warn('[KakaoNativeLogin] Kakao debug logging failed. Continue login fallback flow.', debugError);
+  }
+
+  let kakaoUser: unknown;
+  try {
+    kakaoUser = await import('@react-native-kakao/user');
+  } catch (error) {
+    console.warn('[KakaoNativeLogin] Kakao user native module is not available. Falling back to web OAuth.', {
+      message: getKakaoNativeErrorMessage(error),
+      error,
+    });
+    return null;
+  }
+
+  const isKakaoTalkLoginAvailable = getKakaoModuleFunction<[], Promise<boolean> | boolean>(
+    kakaoUser,
+    'isKakaoTalkLoginAvailable',
+  );
+  if (!isKakaoTalkLoginAvailable) {
+    console.warn('[KakaoNativeLogin] isKakaoTalkLoginAvailable is not available. Falling back to web OAuth.');
+    return null;
+  }
+
+  let isAvailable = false;
+  try {
+    isAvailable = Boolean(await isKakaoTalkLoginAvailable());
     console.info('[KakaoNativeLogin] KakaoTalk login available', isAvailable);
+  } catch (error) {
+    console.warn('[KakaoNativeLogin] KakaoTalk availability check failed. Falling back to web OAuth.', {
+      message: getKakaoNativeErrorMessage(error),
+      error,
+    });
+    return null;
+  }
 
-    if (!isAvailable) {
-      return null;
-    }
+  if (!isAvailable) {
+    return null;
+  }
 
-    const token = await kakaoUser.login();
+  const loginWithKakaoTalk = getKakaoModuleFunction<[], Promise<{
+    accessToken?: string;
+    refreshToken?: string;
+    idToken?: string;
+  }> | {
+    accessToken?: string;
+    refreshToken?: string;
+    idToken?: string;
+  }>(kakaoUser, 'loginWithKakaoTalk');
+  const login = loginWithKakaoTalk || getKakaoModuleFunction<[], Promise<{
+    accessToken?: string;
+    refreshToken?: string;
+    idToken?: string;
+  }> | {
+    accessToken?: string;
+    refreshToken?: string;
+    idToken?: string;
+  }>(kakaoUser, 'login');
+  if (!login) {
+    console.warn('[KakaoNativeLogin] KakaoTalk login function is not available. Falling back to web OAuth.');
+    return null;
+  }
+
+  try {
+    const token = await login();
     if (!token?.accessToken) {
       throw new Error('KakaoTalk login did not return an accessToken.');
     }
@@ -172,10 +258,16 @@ export async function tryLoginWithKakaoTalk(): Promise<KakaoNativeLoginResult | 
       source: 'kakaotalk',
     };
   } catch (error) {
-    console.warn('[KakaoNativeLogin] KakaoTalk login failed. Falling back to web OAuth.', {
+    const logPayload = {
       message: getKakaoNativeErrorMessage(error),
+      code: getKakaoNativeErrorCode(error),
       error,
-    });
+    };
+    if (isKakaoNativeCancelError(error)) {
+      console.info('[KakaoNativeLogin] KakaoTalk login was cancelled by user. Falling back to web OAuth.', logPayload);
+    } else {
+      console.warn('[KakaoNativeLogin] KakaoTalk login failed. Falling back to web OAuth.', logPayload);
+    }
     return null;
   }
 }

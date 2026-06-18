@@ -243,21 +243,21 @@ export default function BreweryVerificationScreen() {
 
   const handleVerifyCode = async () => {
     if (!verificationCode) {
-      Alert.alert('알림', '인증 요청을 먼저 진행해주세요.');
+      Alert.alert('알림', '인증 문자 요청 정보를 확인하지 못했습니다. 인증 문자를 다시 보내주세요.');
       return;
     }
     setIsVerificationChecking(true);
     try {
       const result = await confirmPhoneVerification(formData.phone, verificationCode);
       if (!result.verified || !result.phoneVerificationToken) {
-        Alert.alert('알림', '아직 인증이 완료되지 않았습니다. 문자를 보낸 뒤 다시 확인해주세요.');
+        Alert.alert('알림', '아직 인증 문자가 확인되지 않았습니다. 잠시 후 다시 시도해주세요.');
         return;
       }
       Alert.alert('알림', '인증이 완료되었습니다.');
       setPhoneVerificationToken(result.phoneVerificationToken);
       setIsPhoneVerified(true);
     } catch (error) {
-      Alert.alert('오류', error instanceof Error ? error.message : '인증 확인에 실패했습니다.');
+      Alert.alert('오류', error instanceof Error ? error.message : '아직 인증 문자가 확인되지 않았습니다. 잠시 후 다시 시도해주세요.');
     } finally {
       setIsVerificationChecking(false);
     }
@@ -283,7 +283,7 @@ export default function BreweryVerificationScreen() {
     }
 
     if (!isEditMode && !phoneVerificationToken) {
-      Alert.alert('알림', '연락처 인증 정보를 확인하지 못했습니다. 인증 확인을 다시 진행해주세요.');
+      Alert.alert('알림', '연락처 인증 정보를 확인하지 못했습니다. 인증 완료를 다시 진행해주세요.');
       return;
     }
 
@@ -675,7 +675,7 @@ export default function BreweryVerificationScreen() {
                     disabled={isPhoneVerified}
                   >
                     <Text style={styles.smallBtnTxt}>
-                      {isPhoneVerified ? "완료" : (isVerificationSent ? "인증번호 재전송" : "인증")}
+                      {isPhoneVerified ? '완료' : (isVerificationSent ? '인증 문자 다시 보내기' : '인증 문자 보내기')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -685,14 +685,14 @@ export default function BreweryVerificationScreen() {
                     <MessageSquare size={18} color="#1E293B" />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.verificationGuideText}>{verificationGuide}</Text>
-                      <Text style={styles.verificationGuideSubText}>문자를 보낸 뒤 10~30초 후 인증 확인을 눌러주세요.</Text>
+                      <Text style={styles.verificationGuideSubText}>문자앱에서 전송 버튼을 누른 뒤 앱으로 돌아와 인증 완료를 눌러주세요.</Text>
                     </View>
                     <TouchableOpacity 
                       style={[styles.smallBtn, isVerificationChecking && styles.verifyBtnDisabled]}
                       onPress={handleVerifyCode}
                       disabled={isVerificationChecking}
                     >
-                      <Text style={styles.smallBtnTxt}>{isVerificationChecking ? '확인중' : '인증 확인'}</Text>
+                      <Text style={styles.smallBtnTxt}>{isVerificationChecking ? '확인중' : '인증 완료'}</Text>
                     </TouchableOpacity>
                   </Animated.View>
                 )}

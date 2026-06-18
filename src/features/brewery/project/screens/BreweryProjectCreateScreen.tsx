@@ -2780,20 +2780,20 @@ export default function BreweryProjectCreateScreen() {
 
   const handleVerifyPhone = async () => {
     if (!phoneVerificationCode) {
-      showAlert('먼저 인증 요청을 진행해주세요.');
+      showAlert('인증 문자 요청 정보를 확인하지 못했습니다. 인증 문자를 다시 보내주세요.');
       return;
     }
     try {
       const result = await confirmPhoneVerification(digitsOnly(creatorInfo.phone), phoneVerificationCode);
       if (!result.verified || !result.phoneVerificationToken) {
-        throw new Error('전화번호 인증이 완료되지 않았습니다.');
+        throw new Error('아직 인증 문자가 확인되지 않았습니다. 잠시 후 다시 시도해주세요.');
       }
       setPhoneVerified(true);
       setPhoneTimer(0);
       setPhoneVerificationGuideMessage('');
       showAlert('인증이 완료되었습니다.');
     } catch (error) {
-      showAlert(getFundingApiErrorMessage(error, '전화번호 인증 확인에 실패했습니다.'));
+      showAlert(getFundingApiErrorMessage(error, '아직 인증 문자가 확인되지 않았습니다. 잠시 후 다시 시도해주세요.'));
     }
   };
 
@@ -3579,7 +3579,7 @@ export default function BreweryProjectCreateScreen() {
                   onPress={handleSendPhoneVerification}
                   disabled={!canSendPhoneVerification}
                 >
-                  <Text style={styles.inlineBlackButtonText}>{phoneVerificationSent ? '인증번호 재전송' : '인증하기'}</Text>
+                  <Text style={styles.inlineBlackButtonText}>{phoneVerificationSent ? '인증 문자 다시 보내기' : '인증 문자 보내기'}</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={styles.doneBadge}>
@@ -3602,10 +3602,10 @@ export default function BreweryProjectCreateScreen() {
                   )}
                 </View>
                 <Text style={styles.helper}>
-                  {phoneVerificationGuideMessage || '안내된 인증 코드를 문자로 보낸 뒤 인증 확인을 눌러주세요.'}
+                  {phoneVerificationGuideMessage || '문자앱에서 전송 버튼을 누른 뒤 앱으로 돌아와 인증 완료를 눌러주세요.'}
                 </Text>
                 <TouchableOpacity style={styles.inlineBlackButton} onPress={handleVerifyPhone}>
-                  <Text style={styles.inlineBlackButtonText}>인증 확인</Text>
+                  <Text style={styles.inlineBlackButtonText}>인증 완료</Text>
                 </TouchableOpacity>
               </View>
             )}

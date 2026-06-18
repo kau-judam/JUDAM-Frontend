@@ -172,6 +172,8 @@ export type PasswordResetPhoneConfirmPayload = {
   email: string;
   phoneNumber: string;
   verificationCode: string;
+  verificationId?: string;
+  requestId?: string;
 };
 
 export type PasswordResetPhoneConfirmResponse = {
@@ -196,6 +198,8 @@ export type PhoneVerificationRequestResponse = {
   verificationCode?: string;
   sendTo?: string;
   guideMessage?: string;
+  verificationId?: string;
+  requestId?: string;
 };
 
 export type PhoneVerificationConfirmResponse = {

@@ -7,7 +7,6 @@ import {
   EyeOff,
   Lock,
   Mail,
-  MessageSquare,
   Phone,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -129,7 +128,7 @@ export default function PasswordResetScreen() {
       });
       setEmail(result.email || normalizedEmail);
       setPhoneNumber(formatPhoneNumber(result.phoneNumber || normalizedPhoneNumber));
-      setVerificationCode('');
+      setVerificationCode(result.verificationCode || '');
       setPasswordResetToken('');
       setIsResetCodeVerified(false);
       const smsOpened = await openPhoneVerificationSmsApp(result);
@@ -149,7 +148,7 @@ export default function PasswordResetScreen() {
 
   const handleVerifyCode = async () => {
     if (!verificationCode.trim()) {
-      showNotice('인증번호를 입력해주세요.');
+      showNotice('인증 문자 요청 정보를 확인하지 못했습니다. 인증 문자를 다시 보내주세요.');
       return;
     }
 
@@ -158,18 +157,18 @@ export default function PasswordResetScreen() {
       const result = await confirmPhonePasswordReset({
         email: email.trim().toLowerCase(),
         phoneNumber: digitsOnly(phoneNumber),
-        verificationCode: verificationCode.trim(),
+        verificationCode,
       });
       const resetToken = result.resetToken || result.passwordResetToken || result.token;
       if (!resetToken) {
-        throw new Error('비밀번호 재설정 토큰을 받지 못했습니다. 인증번호를 다시 확인해주세요.');
+        throw new Error('아직 인증 문자가 확인되지 않았습니다. 잠시 후 다시 시도해주세요.');
       }
       setPasswordResetToken(resetToken);
       setIsResetCodeVerified(true);
       showNotice('인증이 완료되었습니다.');
       setStep('newPassword');
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : '인증번호 확인에 실패했습니다.');
+      showNotice(error instanceof Error ? error.message : '아직 인증 문자가 확인되지 않았습니다. 잠시 후 다시 시도해주세요.');
     } finally {
       setIsLoading(false);
     }
@@ -189,12 +188,12 @@ export default function PasswordResetScreen() {
       return;
     }
     if (!isResetCodeVerified) {
-      showNotice('인증번호 확인을 먼저 완료해주세요.');
+      showNotice('인증 완료를 먼저 진행해주세요.');
       setStep('verify');
       return;
     }
     if (!passwordResetToken) {
-      showNotice('비밀번호 재설정 인증이 만료되었습니다. 인증번호를 다시 확인해주세요.');
+      showNotice('비밀번호 재설정 인증이 만료되었습니다. 인증 문자를 다시 보내주세요.');
       setIsResetCodeVerified(false);
       setStep('verify');
       return;
@@ -298,14 +297,6 @@ export default function PasswordResetScreen() {
                         <Text style={styles.verificationGuideText}>{phoneVerificationGuide}</Text>
                       ) : null}
                     </View>
-                    <Field
-                      label="인증번호"
-                      icon={<MessageSquare size={20} color="#9CA3AF" />}
-                      placeholder="인증번호 입력"
-                      value={verificationCode}
-                      onChangeText={setVerificationCode}
-                      keyboardType="number-pad"
-                    />
                     <TouchableOpacity
                       activeOpacity={0.85}
                       style={[styles.primaryButton, isLoading && styles.disabledButton]}

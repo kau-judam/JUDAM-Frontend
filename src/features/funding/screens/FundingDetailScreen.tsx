@@ -2852,10 +2852,6 @@ export default function FundingDetailScreen() {
         </View>
 
         <View style={styles.shareReportArea}>
-          <TouchableOpacity style={styles.shareReportButton} onPress={() => setShowShareModal(true)} activeOpacity={0.85}>
-            <Share2 size={16} color="#4B5563" />
-            <Text style={styles.shareReportText}>공유하기</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={styles.shareReportButton} onPress={() => setShowReportModal(true)} activeOpacity={0.85}>
             <AlertTriangle size={16} color="#4B5563" />
             <Text style={styles.shareReportText}>신고하기</Text>

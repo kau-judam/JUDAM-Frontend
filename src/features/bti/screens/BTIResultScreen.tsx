@@ -13,13 +13,12 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Home, Lock, RotateCcw, Share2 } from 'lucide-react-native';
+import { ArrowLeft, Home, Lock, RotateCcw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { getBtiDisplayType, getBtiResult, getBtiTasteAxisValuesFromScores, getBtiTasteAxisValuesFromTasteVector, normalizeBtiTasteAxisValue, resolveBtiType } from '@/features/bti/data';
 import { getMyPageApiErrorMessage, getMyPageSulbti, saveMyPageSulbti, submitMyPageSulbtiFeedback, type MyPageSulbtiResult } from '@/features/mypage/api';
-import { DEFAULT_JUDAM_SHARE_IMAGE_URL, shareJudamLink } from '@/utils/share';
 
 const BTI_CHARACTER_IMAGES: Record<string, ImageSourcePropType> = {
   SHFC: require('@/assets/images/BTI/1.png'),
@@ -201,25 +200,6 @@ export default function BTIResultScreen() {
     }),
     [result, user?.sulbtiProfile]
   );
-
-  const handleShare = async () => {
-    if (!result) return;
-    const shareUrl = 'https://kaujudam.com/sulbti';
-    const shareTitle = '나의 술BTI 결과';
-    const shareDescription = `나의 술BTI는 ${displayType} - ${result.name}입니다. 주담에서 나에게 맞는 막걸리 펀딩을 찾아보세요.`;
-    try {
-      await shareJudamLink({
-        title: shareTitle,
-        description: shareDescription,
-        url: shareUrl,
-        imageUrl: DEFAULT_JUDAM_SHARE_IMAGE_URL,
-        buttonTitle: '술BTI 하러가기',
-        nativeMessage: `${shareTitle}\n${shareDescription}\n${shareUrl}`,
-      });
-    } catch {
-      Alert.alert('공유 실패', '결과를 공유하지 못했습니다. 다시 시도해주세요.');
-    }
-  };
 
   const handleFeedbackChoice = (choice: 'yes' | 'no') => {
     setFeedbackChoice(choice);
@@ -563,11 +543,6 @@ export default function BTIResultScreen() {
             </TouchableOpacity>
           </View>
         ) : null}
-
-        <TouchableOpacity style={styles.primaryButton} activeOpacity={0.86} onPress={handleShare}>
-          <Share2 size={19} color="#FFF" />
-          <Text style={styles.primaryButtonText}>결과 공유하기</Text>
-        </TouchableOpacity>
 
         <View style={styles.actionRow}>
           <TouchableOpacity style={styles.secondaryButton} activeOpacity={0.86} onPress={() => router.push('/bti-test' as any)}>

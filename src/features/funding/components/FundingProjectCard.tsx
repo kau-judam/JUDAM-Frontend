@@ -18,6 +18,7 @@ interface FundingProjectCardProps {
   favorite: boolean;
   ownProject?: boolean;
   showTasteMatch?: boolean;
+  showFavoriteButton?: boolean;
   tasteProfile?: TasteProfile | null;
   onPress: () => void;
   onFavoritePress: (projectId: number) => void;
@@ -28,6 +29,7 @@ function FundingProjectCard({
   favorite,
   ownProject = false,
   showTasteMatch = false,
+  showFavoriteButton = true,
   tasteProfile = null,
   onPress,
   onFavoritePress,
@@ -64,10 +66,12 @@ function FundingProjectCard({
               <Text style={styles.emptyThumbText}>이미지 없음</Text>
             </View>
           )}
-          <TouchableOpacity style={styles.heartBtn} onPress={handleFavoritePress}>
-            <Heart size={25} color={favorite ? '#EF4444' : '#FFF'} fill={favorite ? '#EF4444' : 'rgba(17,17,17,0.35)'} />
-            <Text style={[styles.heartCount, favorite && styles.heartCountActive]}>{favoriteCountLabel}</Text>
-          </TouchableOpacity>
+          {showFavoriteButton && (
+            <TouchableOpacity style={styles.heartBtn} onPress={handleFavoritePress}>
+              <Heart size={25} color={favorite ? '#EF4444' : '#FFF'} fill={favorite ? '#EF4444' : 'rgba(17,17,17,0.35)'} />
+              <Text style={[styles.heartCount, favorite && styles.heartCountActive]}>{favoriteCountLabel}</Text>
+            </TouchableOpacity>
+          )}
         </View>
         <View style={styles.infoBox}>
           <View style={styles.tagRow}>

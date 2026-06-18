@@ -71,7 +71,6 @@ import {
   submitFundingDraft,
   uploadFundingDocument,
   uploadFundingDraftFile,
-  verifyBreweryAccount,
   type FundingDocumentType,
   type FundingDraftPreviewResponse,
   loadFundingBreweryInfo,
@@ -461,9 +460,6 @@ function getProjectDraftSubmitIssues(draft: any, userEmail?: string | null, opti
 
   if (!isValidProjectPhone(String(creatorInfo.phone || ''))) addIssue('양조장 정보', '휴대폰 번호가 서버에 올바르게 저장되지 않았습니다.');
   if (!draft?.phoneVerified) addIssue('양조장 정보', '휴대폰 인증 완료 상태가 서버에 반영되지 않았습니다.');
-  if (!String(creatorInfo.accountBank || '').trim()) addIssue('양조장 정보', '입금 계좌 은행이 서버에 저장되지 않았습니다.');
-  if (!String(creatorInfo.accountNumber || '').trim()) addIssue('양조장 정보', '계좌번호가 서버에 저장되지 않았습니다.');
-  if (!draft?.accountVerified) addIssue('양조장 정보', '입금 계좌 인증 완료 상태가 서버에 반영되지 않았습니다.');
   if (!String(taxInfo.businessType || '').trim()) addIssue('양조장 정보', '사업자 유형이 서버에 저장되지 않았습니다.');
   if (!String(taxInfo.businessName || '').trim()) addIssue('양조장 정보', '상호명(법인명)이 서버에 저장되지 않았습니다.');
   if (digitsOnly(String(taxInfo.businessNumber || '')).length !== 10) addIssue('양조장 정보', '사업자 등록번호 10자리가 서버에 저장되지 않았습니다.');
@@ -994,8 +990,7 @@ export default function BreweryProjectCreateScreen() {
   const [phoneVerificationGuideMessage, setPhoneVerificationGuideMessage] = useState('');
   const [phoneVerified, setPhoneVerified] = useState(false);
   const [phoneTimer, setPhoneTimer] = useState(0);
-  const [accountVerified, setAccountVerified] = useState(false);
-  const [isAccountVerifying, setIsAccountVerifying] = useState(false);
+  const [, setAccountVerified] = useState(false);
   const [tagDraft, setTagDraft] = useState('');
   const [isImageReordering, setIsImageReordering] = useState(false);
   const [isAiImageGenerating, setIsAiImageGenerating] = useState(false);
@@ -1309,10 +1304,7 @@ export default function BreweryProjectCreateScreen() {
       projectPlan.introduction,
       taxInfo.businessName || user?.breweryName,
       creatorInfo.phone,
-      creatorInfo.accountBank,
-      creatorInfo.accountNumber,
       phoneVerified,
-      accountVerified,
       taxInfo.businessType,
       taxInfo.businessName,
       taxInfo.businessNumber,
@@ -1332,11 +1324,8 @@ export default function BreweryProjectCreateScreen() {
 
     return total > 0 ? Math.round((completed / total) * 100) : 0;
   }, [
-    accountVerified,
     basicInfo,
     creatorInfo.phone,
-    creatorInfo.accountBank,
-    creatorInfo.accountNumber,
     fundingInfo,
     phoneVerified,
     productInfo,
@@ -1416,9 +1405,6 @@ export default function BreweryProjectCreateScreen() {
 
     if (!isValidProjectPhone(creatorInfo.phone)) addIssue('양조장 정보', '휴대폰 번호를 확인해주세요.');
     if (!phoneVerified) addIssue('양조장 정보', '휴대폰 인증을 완료해주세요.');
-    if (!creatorInfo.accountBank.trim()) addIssue('양조장 정보', '입금 계좌 은행을 선택해주세요.');
-    if (!creatorInfo.accountNumber.trim()) addIssue('양조장 정보', '계좌번호를 입력해주세요.');
-    if (!accountVerified) addIssue('양조장 정보', '입금 계좌 인증을 완료해주세요.');
     if (!taxInfo.businessType) addIssue('양조장 정보', '사업자 유형을 선택해주세요.');
     if (!taxInfo.businessName.trim()) addIssue('양조장 정보', '상호명(법인명)을 입력해주세요.');
     if (businessNumberDigits.length !== 10) addIssue('양조장 정보', '사업자 등록번호 10자리를 입력해주세요.');
@@ -1442,10 +1428,7 @@ export default function BreweryProjectCreateScreen() {
     if (uniqueIssues.length === 0) return '';
     return `제출 전에 아래 항목을 확인해주세요.\n\n${uniqueIssues.slice(0, 8).map((issue) => `- ${issue}`).join('\n')}`;
   }, [
-    accountVerified,
     basicInfo,
-    creatorInfo.accountBank,
-    creatorInfo.accountNumber,
     creatorInfo.phone,
     deliveryDateWarning,
     durationWarning,
@@ -1587,7 +1570,7 @@ export default function BreweryProjectCreateScreen() {
     trustInfo,
     uploadedFiles,
     phoneVerified,
-    accountVerified,
+    accountVerified: true,
   });
 
   const openBreweryProfileConfirm = () => {
@@ -1787,7 +1770,7 @@ export default function BreweryProjectCreateScreen() {
         businessCategory: taxInfo.businessCategory.trim() || undefined,
         businessItem: taxInfo.businessItem.trim() || undefined,
         phoneVerified,
-        accountVerified,
+        accountVerified: true,
         businessRegistrationFileUrl: getOptionalHttpUrl(uploadedFiles.businessLicense),
       },
       notices: {
@@ -1815,7 +1798,7 @@ export default function BreweryProjectCreateScreen() {
     businessCategory: taxInfo.businessCategory.trim(),
     businessItem: taxInfo.businessItem.trim(),
     phoneVerified,
-    accountVerified,
+    accountVerified: true,
     ...overrides,
   });
 
@@ -1828,8 +1811,6 @@ export default function BreweryProjectCreateScreen() {
     const businessAddress = taxInfo.address.trim();
     const contactEmail = taxInfo.email.trim() || user?.email || '';
     const contactPhone = creatorInfo.phone.trim();
-    const bankName = creatorInfo.accountBank.trim();
-    const accountNumber = creatorInfo.accountNumber.trim();
     const accountHolder = representativeName || user?.name || '';
     const missingFields: string[] = [];
 
@@ -1839,8 +1820,6 @@ export default function BreweryProjectCreateScreen() {
     if (!businessAddress) missingFields.push('사업장 소재지');
     if (!contactEmail) missingFields.push('이메일 주소');
     if (!isValidProjectPhone(contactPhone)) missingFields.push('휴대폰 번호');
-    if (!bankName) missingFields.push('은행');
-    if (!accountNumber) missingFields.push('계좌번호');
     if (!accountHolder) missingFields.push('예금주');
 
     if (missingFields.length > 0) {
@@ -2464,7 +2443,6 @@ export default function BreweryProjectCreateScreen() {
       businessLicenseUrl: application.documentUrl || '',
       businessLicense: application.documentUrl || '',
       phoneVerified: Boolean(application.phoneNumber || user?.phone),
-      missingFields: ['정산 은행', '계좌번호', '예금주'],
     };
   };
 
@@ -2578,7 +2556,7 @@ export default function BreweryProjectCreateScreen() {
     setPhoneVerificationGuideMessage('');
     setPhoneTimer(0);
     setAccountVerified(false);
-    showAlert('양조장 정보를 불러왔습니다. 본인 인증과 입금 계좌는 직접 입력해주세요.');
+    showAlert('양조장 정보를 불러왔습니다. 본인 인증은 직접 진행해주세요.');
   };
 
   const handleImageFileUpload = async () => {
@@ -2816,72 +2794,6 @@ export default function BreweryProjectCreateScreen() {
       showAlert('인증이 완료되었습니다.');
     } catch (error) {
       showAlert(getFundingApiErrorMessage(error, '전화번호 인증 확인에 실패했습니다.'));
-    }
-  };
-
-  const handleVerifyAccount = async () => {
-    const bankName = creatorInfo.accountBank.trim();
-    const accountNumber = creatorInfo.accountNumber.trim();
-    const accountHolder = taxInfo.ceoName.trim() || user?.name || '';
-    if (!bankName || !accountNumber) {
-      showAlert('은행과 계좌번호를 입력해주세요.');
-      return;
-    }
-    if (!accountHolder) {
-      showAlert('계좌 인증을 위해 대표자명 또는 예금주 이름을 입력해주세요.');
-      return;
-    }
-    setIsAccountVerifying(true);
-    try {
-      const result = await verifyBreweryAccount({ bankName, accountNumber, accountHolder });
-      if (!result.verified) {
-        throw new Error(getFundingApiSafeMessage(result.message, '계좌 인증에 실패했습니다.'));
-      }
-      const verifiedBankName = result.bankName || bankName;
-      const verifiedAccountNumber = result.accountNumber || accountNumber;
-      const verifiedAccountHolder = result.accountHolder || accountHolder;
-      const draftId = await ensureServerDraft();
-      const savedDraft = await getSavedDraft();
-      const verifiedCreatorInfo = {
-        ...creatorInfo,
-        accountBank: verifiedBankName,
-        accountNumber: verifiedAccountNumber,
-      };
-
-      await updateFundingDraft(draftId, withCurrentFundingId({
-        breweryInfo: {
-          bankName: verifiedBankName,
-          accountNumber: verifiedAccountNumber,
-          accountHolder: verifiedAccountHolder,
-          accountVerified: true,
-        },
-      }));
-      await saveFundingBreweryInfo(draftId, withCurrentFundingId(createBreweryInfoForApi({
-        bankName: verifiedBankName,
-        accountNumber: verifiedAccountNumber,
-        accountHolder: verifiedAccountHolder,
-        accountVerified: true,
-      })));
-      logCurrentDraftPair('account-verify:brewery-info-saved', draftId);
-      await SafeStorage.setItem(tempSaveKey, JSON.stringify({
-        ...createDraftPayload(),
-        creatorInfo: verifiedCreatorInfo,
-        accountVerified: true,
-        serverDraft: savedDraft?.serverDraft,
-      }));
-
-      setCreatorInfo((prev) => ({
-        ...prev,
-        accountBank: verifiedBankName,
-        accountNumber: verifiedAccountNumber,
-      }));
-      setAccountVerified(true);
-      showAlert(getFundingApiSafeMessage(result.message, '인증완료!'));
-    } catch (error) {
-      setAccountVerified(false);
-      showAlert(getFundingApiErrorMessage(error, '계좌 인증에 실패했습니다.'));
-    } finally {
-      setIsAccountVerifying(false);
     }
   };
 
@@ -3697,52 +3609,35 @@ export default function BreweryProjectCreateScreen() {
                 </TouchableOpacity>
               </View>
             )}
-            <View style={styles.formGroup}>
-              <Text style={styles.smallSubLabel}>신분증/사업자등록증 <Text style={styles.required}>*</Text></Text>
-              <UploadButton fileName={getUploadedFileName(uploadedFiles.idCard)} onPress={() => { void handleDocumentUpload('idCard'); }} />
-            </View>
-          </View>
           <View style={styles.formGroup}>
-            <View style={styles.rowBetween}>
-              <RequiredLabel label="입금 계좌" required />
-              {!accountVerified ? (
-                <TouchableOpacity
-                  style={[styles.loadButton, (!creatorInfo.accountBank || !creatorInfo.accountNumber || isAccountVerifying) && styles.disabledButton]}
-                  onPress={handleVerifyAccount}
-                  disabled={!creatorInfo.accountBank || !creatorInfo.accountNumber || isAccountVerifying}
-                >
-                  <Text style={styles.loadButtonText}>{isAccountVerifying ? '인증 중...' : '인증하기'}</Text>
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.smallDoneBadge}>
-                  <Text style={styles.doneBadgeText}>인증완료!</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.helper}>후원금을 받을 계좌를 등록해주세요.</Text>
-            <View style={styles.accountFields}>
-              <BankSelectButton
-                value={creatorInfo.accountBank}
-                placeholder="은행 선택"
-                disabled={accountVerified}
-                onPress={() => setShowBankModal(true)}
-              />
-              <TextInput
-                style={[styles.input, styles.accountNumberInput, accountVerified && styles.inputDisabled]}
-                value={creatorInfo.accountNumber}
-                onChangeText={(value) => {
-                  setCreatorInfo((prev) => ({ ...prev, accountNumber: digitsOnly(value).slice(0, 20) }));
-                  setAccountVerified(false);
-                }}
-                placeholder="계좌번호를 입력해주세요"
-                placeholderTextColor="#9CA3AF"
-                keyboardType="number-pad"
-                editable={!accountVerified}
-                maxLength={20}
-              />
-            </View>
+            <Text style={styles.smallSubLabel}>신분증/사업자등록증 <Text style={styles.required}>*</Text></Text>
+            <UploadButton fileName={getUploadedFileName(uploadedFiles.idCard)} onPress={() => { void handleDocumentUpload('idCard'); }} />
           </View>
-          <View style={styles.taxBox}>
+        </View>
+        <View style={styles.formGroup}>
+          <RequiredLabel label="입금 계좌" required />
+          <Text style={styles.helper}>후원금을 받을 계좌를 등록해주세요.</Text>
+          <View style={styles.accountFields}>
+            <BankSelectButton
+              value={creatorInfo.accountBank}
+              placeholder="은행 선택"
+              onPress={() => setShowBankModal(true)}
+            />
+            <TextInput
+              style={[styles.input, styles.accountNumberInput]}
+              value={creatorInfo.accountNumber}
+              onChangeText={(value) => {
+                setCreatorInfo((prev) => ({ ...prev, accountNumber: digitsOnly(value).slice(0, 20) }));
+                setAccountVerified(false);
+              }}
+              placeholder="계좌번호를 입력해주세요"
+              placeholderTextColor="#9CA3AF"
+              keyboardType="number-pad"
+              maxLength={20}
+            />
+          </View>
+        </View>
+        <View style={styles.taxBox}>
             <View>
               <Text style={styles.taxTitle}>세금 계산서 발행 정보</Text>
               <Text style={styles.helper}>정확한 정산 및 세무 처리를 위해 사업자 등록 정보를 정확히 입력해 주세요</Text>
@@ -4313,9 +4208,9 @@ function FileCard({ title, desc, fileName, onPress }: { title: string; desc: str
   );
 }
 
-function BankSelectButton({ value, placeholder, onPress, disabled }: { value: string; placeholder: string; onPress: () => void; disabled?: boolean }) {
+function BankSelectButton({ value, placeholder, onPress }: { value: string; placeholder: string; onPress: () => void }) {
   return (
-    <TouchableOpacity style={[styles.selectLike, disabled && styles.inputDisabled]} onPress={onPress} disabled={disabled}>
+    <TouchableOpacity style={styles.selectLike} onPress={onPress}>
       <Text style={[styles.selectText, !value && styles.selectPlaceholder]}>{value || placeholder}</Text>
     </TouchableOpacity>
   );

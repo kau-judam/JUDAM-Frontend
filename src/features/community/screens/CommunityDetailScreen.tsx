@@ -574,64 +574,6 @@ export default function CommunityDetailScreen() {
     setExpandedComments((prev) => new Set([...prev, commentId]));
   };
 
-  const handleReplyLike = async (commentId: number, replyId: number) => {
-    if (!user) {
-      showLoginRequired('답글 좋아요는 로그인이 필요합니다.');
-      return;
-    }
-    const targetComment = comments.find((comment) => comment.id === commentId);
-    const targetReply = targetComment?.replies?.find((reply) => reply.id === replyId);
-    if (!targetReply) return;
-    const nextLiked = !targetReply.liked;
-
-    setComments((prev) =>
-      prev.map((comment) =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              replies: getCommentReplies(comment).map((reply) =>
-                reply.id === replyId
-                  ? { ...reply, liked: nextLiked, likes: Math.max(0, reply.likes + (nextLiked ? 1 : -1)) }
-                  : reply
-              ),
-            }
-          : comment
-      )
-    );
-
-    if (apiPostLoadFailed || post.id > 1000000000000) return;
-
-    try {
-      const response = nextLiked
-        ? await registerCommunityCommentLike(post.id, replyId)
-        : await deleteCommunityCommentLike(post.id, replyId);
-      setComments((prev) =>
-        prev.map((comment) =>
-          comment.id === commentId
-            ? {
-                ...comment,
-                replies: getCommentReplies(comment).map((reply) =>
-                  reply.id === replyId ? { ...reply, liked: nextLiked, likes: response.data.like_count } : reply
-                ),
-              }
-            : comment
-        )
-      );
-    } catch (error) {
-      console.warn('Failed to update community reply like', error);
-      setComments((prev) =>
-        prev.map((comment) =>
-          comment.id === commentId
-            ? {
-                ...comment,
-                replies: getCommentReplies(comment).map((reply) => (reply.id === replyId ? targetReply : reply)),
-              }
-            : comment
-        )
-      );
-    }
-  };
-
   const toggleExpandComment = async (commentId: number) => {
     const targetComment = comments.find((comment) => comment.id === commentId);
     const willOpen = !expandedComments.has(commentId);
@@ -798,10 +740,6 @@ export default function CommunityDetailScreen() {
                             <Text style={styles.replyTime}>{reply.timestamp}</Text>
                           </View>
                           <Text style={styles.commentText}>{reply.content}</Text>
-                          <TouchableOpacity style={styles.replyLikeButton} onPress={() => handleReplyLike(comment.id, reply.id)}>
-                            <ThumbsUp size={12} color={reply.liked ? '#111' : '#9CA3AF'} fill={reply.liked ? '#111' : 'transparent'} />
-                            <Text style={[styles.replyLikeText, reply.liked && styles.commentActionActive]}>{reply.likes}</Text>
-                          </TouchableOpacity>
                         </View>
                       </View>
                     ))}
@@ -976,8 +914,6 @@ const styles = StyleSheet.create({
   replyAvatarInitial: { color: '#FFF', fontSize: 12, fontWeight: '900' },
   replyContentWrap: { flex: 1, backgroundColor: '#FFF', borderRadius: 14, borderWidth: 1, borderColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 10 },
   replyTime: { marginLeft: 'auto', fontSize: 11, fontWeight: '600', color: '#9CA3AF' },
-  replyLikeButton: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 5, marginTop: 8 },
-  replyLikeText: { fontSize: 11, fontWeight: '800', color: '#6B7280' },
   replyInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, marginLeft: 6 },
   replyInput: { flex: 1, height: 40, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#F9FAFB', paddingHorizontal: 14, fontSize: 13, fontWeight: '600', color: '#111' },
   replySubmitButton: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },

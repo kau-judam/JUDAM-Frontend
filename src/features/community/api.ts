@@ -117,6 +117,7 @@ type UpdateCommunityPostResponse = {
     post_id: number;
     title: string;
     content: string;
+    board_type: CommunityBoardType | string;
     image_urls: string[];
     updated_at: string;
   };
@@ -405,6 +406,7 @@ export async function createCommunityPost(payload: {
 export async function updateCommunityPost(postId: number, payload: {
   title: string;
   content: string;
+  boardType?: CommunityBoardType;
   existingImageUrls?: string[];
   images?: (string | CommunityImageFile)[];
 }) {

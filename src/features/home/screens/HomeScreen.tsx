@@ -23,6 +23,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { PageHeader } from '@/components/PageHeader';
+import { StatsGrid } from '@/components/StatsGrid';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { RecipeCard } from '@/components/recipe-card';
@@ -339,36 +340,39 @@ export default function HomeScreen() {
             <Text style={styles.sectionSubtitle}>함께 만들어가는 전통주 문화</Text>
           </View>
 
-          <View style={styles.statsGrid}>
-            <View style={styles.statsItem}>
-              <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
-                <Users size={20} color="#FFF" />
-              </View>
-              <Text style={styles.statsValue}>{formatCountWithUnit(fundingStats.totalBackerCount, '명')}</Text>
-              <Text style={styles.statsLabel}>총 참여자</Text>
-            </View>
-            <View style={styles.statsItem}>
-              <View style={[styles.statsIconCircle, { backgroundColor: colors.primary }]}>
-                <Factory size={20} color="#FFF" />
-              </View>
-              <Text style={styles.statsValue}>{totalRaisedAmountText}</Text>
-              <Text style={styles.statsLabel}>누적 모금</Text>
-            </View>
-            <View style={styles.statsItem}>
-              <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
-                <TrendingUp size={20} color="#FFF" />
-              </View>
-              <Text style={styles.statsValue}>{formatCountWithUnit(homeStats.activeFundingCount, '개')}</Text>
-              <Text style={styles.statsLabel}>진행중인 펀딩</Text>
-            </View>
-            <View style={styles.statsItem}>
-              <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
-                <Trophy size={20} color="#FFF" />
-              </View>
-              <Text style={styles.statsValue}>{formatCountWithUnit(homeStats.successfulFundingCount, '개')}</Text>
-              <Text style={styles.statsLabel}>성공한 펀딩</Text>
-            </View>
-          </View>
+          <StatsGrid
+            items={[
+              {
+                key: 'backers',
+                icon: <Users size={20} color="#FFF" />,
+                value: formatCountWithUnit(fundingStats.totalBackerCount, '명'),
+                label: '총 참여자',
+                description: '함께한 사람들',
+              },
+              {
+                key: 'amount',
+                icon: <Factory size={20} color="#FFF" />,
+                value: totalRaisedAmountText,
+                label: '누적 모금액',
+                description: '전통주에 모인 마음',
+                tone: 'accent',
+              },
+              {
+                key: 'active',
+                icon: <TrendingUp size={20} color="#FFF" />,
+                value: formatCountWithUnit(homeStats.activeFundingCount, '개'),
+                label: '진행중인 펀딩',
+                description: '지금 참여 가능',
+              },
+              {
+                key: 'success',
+                icon: <Trophy size={20} color="#FFF" />,
+                value: formatCountWithUnit(homeStats.successfulFundingCount, '개'),
+                label: '성공한 펀딩',
+                description: '완성된 프로젝트',
+              },
+            ]}
+          />
         </View>
 
       </ScrollView>
@@ -429,11 +433,6 @@ const styles = StyleSheet.create({
   recipeSection: { paddingVertical: 60, paddingHorizontal: 20 },
   recipeList: { gap: 12 },
   statsSection: { paddingTop: 60, paddingBottom: 30, paddingHorizontal: 20 },
-  statsHeader: { alignItems: 'center', marginBottom: 40 },
+  statsHeader: { alignItems: 'center', marginBottom: 28 },
   statsIcon: { marginBottom: 16 },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  statsItem: { width: (SCREEN_WIDTH - 50) / 2, backgroundColor: '#F9FAFB', borderRadius: 20, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#F3F4F6' },
-  statsIconCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  statsValue: { fontSize: 24, fontWeight: '900', color: '#111', marginBottom: 4 },
-  statsLabel: { fontSize: 12, color: '#6B7280', fontWeight: '700' },
 });

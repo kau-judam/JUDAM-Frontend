@@ -118,7 +118,6 @@ import {
 import {
   isFundingReviewOwnedByUser,
   shouldShowFundingBreweryBadge,
-  type FundingReview,
 } from '@/features/funding/reviews';
 import { normalizeFundingImageUrl, normalizeFundingImageUrls } from '@/features/funding/imageUrls';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
@@ -130,6 +129,7 @@ type FundingQuestionComment = {
   id: number;
   serverQuestionId?: number;
   userName: string;
+  profileImage?: string | null;
   content: string;
   date: string;
   likes: number;
@@ -140,6 +140,7 @@ type FundingQuestionComment = {
   replies: {
     id: number;
     userName: string;
+    profileImage?: string | null;
     content: string;
     date: string;
     likes: number;
@@ -461,6 +462,7 @@ export default function FundingDetailScreen() {
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [supportOptionId, setSupportOptionId] = useState<number | null>(null);
   const [tabHeaderY, setTabHeaderY] = useState(0);
+  const [isFloatingTabVisible, setIsFloatingTabVisible] = useState(false);
   const [activeHeroImageIndex, setActiveHeroImageIndex] = useState(0);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [reviewPermission, setReviewPermission] = useState<{
@@ -518,6 +520,7 @@ export default function FundingDetailScreen() {
   const [likedJournals, setLikedJournals] = useState<Set<string>>(new Set());
   const [likedJournalComments, setLikedJournalComments] = useState<Set<string>>(new Set());
   const [likedJournalReplies, setLikedJournalReplies] = useState<Set<string>>(new Set());
+  const currentUserProfileImage = useMemo(() => normalizeFundingImageUrl(user?.profileImage) || '', [user?.profileImage]);
 
   const loadFundingReviewState = useCallback(() => {
     let mounted = true;
@@ -741,6 +744,7 @@ export default function FundingDetailScreen() {
             id: item.questionId,
             serverQuestionId: item.questionId,
             userName: isMine ? user.name : item.writerNickname || '사용자',
+            profileImage: normalizeFundingImageUrl(isMine ? currentUserProfileImage : item.writerProfileImage) || null,
             content: item.content || item.title,
             date: new Date(item.createdAt).toLocaleDateString("ko-KR"),
             likes: Math.max(item.likeCount || 0, item.liked ? 1 : 0),
@@ -753,6 +757,7 @@ export default function FundingDetailScreen() {
               return {
                 id: reply.replyId,
                 userName: isMyReply ? user.name : reply.writerNickname || '사용자',
+                profileImage: normalizeFundingImageUrl(isMyReply ? currentUserProfileImage : reply.writerProfileImage) || null,
                 content: reply.content,
                 date: new Date(reply.createdAt).toLocaleDateString("ko-KR"),
                 likes: Math.max(reply.likeCount || 0, reply.liked ? 1 : 0),
@@ -790,6 +795,7 @@ export default function FundingDetailScreen() {
     };
   }, [
     activeTab,
+    currentUserProfileImage,
     project?.brewery,
     project?.breweryId,
     project?.breweryUserId,
@@ -886,11 +892,11 @@ export default function FundingDetailScreen() {
   const tasteItems = useMemo(() => {
     if (!tasteProfile) return [];
     return [
-      { label: "단맛", value: tasteProfile.sweetness },
-      { label: "잔향", value: tasteProfile.aroma },
-      { label: "산미", value: tasteProfile.acidity },
-      { label: "바디감", value: tasteProfile.body },
-      { label: "탄산감", value: tasteProfile.carbonation },
+      { label: "단맛", desc: "달콤한 정도", value: tasteProfile.sweetness },
+      { label: "잔향", desc: "향이 나는 정도", value: tasteProfile.aroma },
+      { label: "산미", desc: "산뜻한 정도", value: tasteProfile.acidity },
+      { label: "바디감", desc: "묵직함과 풍미", value: tasteProfile.body },
+      { label: "탄산감", desc: "탄산 느낌", value: tasteProfile.carbonation },
     ];
   }, [tasteProfile]);
   const recommendedProjects = useMemo(() => {
@@ -1201,6 +1207,26 @@ export default function FundingDetailScreen() {
     });
   };
 
+  const handleDetailScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const nextVisible = tabHeaderY > 0 && event.nativeEvent.contentOffset.y >= Math.max(0, tabHeaderY - 4);
+    setIsFloatingTabVisible((prev) => (prev === nextVisible ? prev : nextVisible));
+  };
+
+  const renderTabBar = () => (
+    <View style={styles.tabContainer}>
+       {(["소개", "양조일지", "Q&A", "후기"] as const).map(tab => (
+         <TouchableOpacity
+           key={tab}
+           style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
+           onPress={() => handleTabChange(tab)}
+           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+         >
+            <Text style={[styles.tabBtnTxt, activeTab === tab && styles.tabBtnTxtActive]}>{tab}</Text>
+         </TouchableOpacity>
+       ))}
+    </View>
+  );
+
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
     if (!user) {
@@ -1222,6 +1248,7 @@ export default function FundingDetailScreen() {
         id: localCommentId,
         serverQuestionId,
         userName: user?.name || "나",
+        profileImage: currentUserProfileImage || null,
         content,
         date: new Date().toLocaleDateString("ko-KR"),
         likes: 0,
@@ -1263,6 +1290,7 @@ export default function FundingDetailScreen() {
       const newReply = {
         id: response.replyId > 0 && !usedReplyIds.has(response.replyId) ? response.replyId : localReplyId,
         userName: user?.name || "나",
+        profileImage: currentUserProfileImage || null,
         content,
         date: new Date().toLocaleDateString("ko-KR"),
         likes: 0,
@@ -1857,6 +1885,13 @@ export default function FundingDetailScreen() {
       });
       return;
     }
+    if (!canAccessFundingReviews(project)) {
+      setFeedbackModal({
+        title: '후기 작성 불가',
+        body: '펀딩 성공 후 후기를 작성할 수 있습니다.',
+      });
+      return;
+    }
     const canStartReview = canWriteFundingReview;
     if (!canStartReview) {
       setFeedbackModal({
@@ -1987,13 +2022,20 @@ export default function FundingDetailScreen() {
         </View>
       </View>
 
+      {isFloatingTabVisible && (
+        <View pointerEvents="auto" style={[styles.floatingTabWrapper, { top: insets.top + 52 }]}>
+          {renderTabBar()}
+        </View>
+      )}
+
       {/* ── Main Scroll ── */}
       <ScrollView 
         ref={detailScrollRef}
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false} 
         keyboardShouldPersistTaps="always"
-        stickyHeaderIndices={[canManageOwnBreweryProject ? 5 : 4]}
+        onScroll={handleDetailScroll}
+        scrollEventThrottle={16}
         contentContainerStyle={{ paddingBottom: 120 }}
       >
         {/* 1. Hero Visual */}
@@ -2110,17 +2152,7 @@ export default function FundingDetailScreen() {
           style={styles.stickyTabWrapper}
           onLayout={(event) => setTabHeaderY(event.nativeEvent.layout.y)}
         >
-          <View style={styles.tabContainer}>
-             {(["소개", "양조일지", "Q&A", "후기"] as const).map(tab => (
-               <TouchableOpacity 
-                 key={tab} 
-                 style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]} 
-                 onPress={() => handleTabChange(tab)}
-               >
-                  <Text style={[styles.tabBtnTxt, activeTab === tab && styles.tabBtnTxtActive]}>{tab}</Text>
-               </TouchableOpacity>
-             ))}
-          </View>
+          {renderTabBar()}
         </View>
 
         {/* 6. Tab Content */}
@@ -2258,8 +2290,9 @@ export default function FundingDetailScreen() {
                    <Text style={styles.sectionSub}>양조장이 예상하는 이 전통주의 맛 프로필입니다.</Text>
                    {tasteProfile ? (
                      <>
-                       <View style={styles.radarContainer}>
-                          <Svg viewBox="0 0 400 400" width="100%" height="250">
+                       <View style={styles.radarCard}>
+                          <Text style={styles.radarTitle}>맛 지표 미리보기</Text>
+                          <Svg width="100%" height={310} viewBox="0 0 400 400">
                             {[1, 0.75, 0.5, 0.25].map((scale) => (
                               <Polygon
                                 key={scale}
@@ -2296,8 +2329,8 @@ export default function FundingDetailScreen() {
                                 [200 - (tasteProfile.body / 100) * 88.1, 200 + (tasteProfile.body / 100) * 121.35],
                                 [200 - (tasteProfile.carbonation / 100) * 142.5, 200 - (tasteProfile.carbonation / 100) * 46.35],
                               ].map(p => p.join(',')).join(' ')}
-                              fill="rgba(0, 0, 0, 0.2)"
-                              stroke="rgba(0, 0, 0, 0.8)"
+                              fill="rgba(0,0,0,0.2)"
+                              stroke="rgba(0,0,0,0.8)"
                               strokeWidth="2"
                             />
                             {[
@@ -2307,24 +2340,34 @@ export default function FundingDetailScreen() {
                               { x: 200 - (tasteProfile.body / 100) * 88.1, y: 200 + (tasteProfile.body / 100) * 121.35 },
                               { x: 200 - (tasteProfile.carbonation / 100) * 142.5, y: 200 - (tasteProfile.carbonation / 100) * 46.35 },
                             ].map((point, i) => (
-                              <Circle key={`circle-${i}`} cx={point.x} cy={point.y} r="4" fill="black" />
+                              <Circle key={`circle-${i}`} cx={point.x} cy={point.y} r="4" fill="#000" />
                             ))}
-                            <SvgText x="200" y="35" textAnchor="middle" fontSize="14" fontWeight="bold" fill="#374151">단맛</SvgText>
-                            <SvgText x="360" y="158" textAnchor="start" fontSize="14" fontWeight="bold" fill="#374151">잔향</SvgText>
-                            <SvgText x="295" y="345" textAnchor="start" fontSize="14" fontWeight="bold" fill="#374151">산미</SvgText>
-                            <SvgText x="105" y="345" textAnchor="end" fontSize="14" fontWeight="bold" fill="#374151">바디감</SvgText>
-                            <SvgText x="40" y="158" textAnchor="end" fontSize="14" fontWeight="bold" fill="#374151">탄산감</SvgText>
+                            <SvgText x="200" y="35" textAnchor="middle" fontSize="12" fontWeight="700" fill="#374151">단맛</SvgText>
+                            <SvgText x="360" y="158" textAnchor="start" fontSize="12" fontWeight="700" fill="#374151">잔향</SvgText>
+                            <SvgText x="295" y="345" textAnchor="start" fontSize="12" fontWeight="700" fill="#374151">산미</SvgText>
+                            <SvgText x="105" y="345" textAnchor="end" fontSize="12" fontWeight="700" fill="#374151">바디감</SvgText>
+                            <SvgText x="40" y="158" textAnchor="end" fontSize="12" fontWeight="700" fill="#374151">탄산감</SvgText>
                           </Svg>
                        </View>
                        <View style={styles.tasteGrid}>
                           {tasteItems.map(t => (
                             <View key={t.label} style={styles.tasteItemBox}>
-                               <Text style={styles.tasteLab}>{t.label}</Text>
-                               <View style={styles.tasteRowWrap}>
-                                  <View style={styles.tasteBarBg}>
-                                     <View style={[styles.tasteBarFill, { width: `${t.value}%` }]} />
+                               <View style={styles.tasteHeaderRow}>
+                                  <View style={styles.tasteTextGroup}>
+                                    <Text style={styles.tasteLab}>{t.label}</Text>
+                                    <Text style={styles.tasteDesc}>{t.desc}</Text>
                                   </View>
                                   <Text style={styles.tasteVal}>{t.value}%</Text>
+                               </View>
+                               <View style={styles.tasteSliderArea}>
+                                  <View style={styles.tasteBarBg}>
+                                    <View style={[styles.tasteBarFill, { width: `${t.value}%` }]} />
+                                    <View style={[styles.tasteThumb, { left: `${Math.max(0, Math.min(100, t.value))}%` }]} />
+                                  </View>
+                               </View>
+                               <View style={styles.tasteEndRow}>
+                                  <Text style={styles.tasteEndText}>약함</Text>
+                                  <Text style={styles.tasteEndText}>강함</Text>
                                </View>
                             </View>
                           ))}
@@ -2618,9 +2661,13 @@ export default function FundingDetailScreen() {
                         return (
                         <View key={getQnaCommentRenderKey(c, index)} style={[styles.commentCard, index === comments.length - 1 && { borderBottomWidth: 0 }]}>
                            <View style={styles.commentTop}>
-                              <LinearGradient colors={['#E5E7EB', '#D1D5DB']} style={styles.commentAvatar}>
-                                 <Text style={styles.avatarTxt}>{c.userName[0]}</Text>
-                              </LinearGradient>
+                              {c.profileImage ? (
+                                <Image source={{ uri: c.profileImage }} style={styles.commentAvatarImage} />
+                              ) : (
+                                <LinearGradient colors={['#E5E7EB', '#D1D5DB']} style={styles.commentAvatar}>
+                                   <Text style={styles.avatarTxt}>{c.userName[0]}</Text>
+                                </LinearGradient>
+                              )}
                               <View style={{ flex: 1 }}>
                                  <View style={styles.commentMeta}>
                                     <Text style={styles.commentUser}>{c.userName}</Text>
@@ -2652,9 +2699,13 @@ export default function FundingDetailScreen() {
                              <View style={styles.repliesWrapper}>
                                {c.replies.map((r, replyIndex) => (
                                  <View key={getQnaReplyRenderKey(c, r.id, replyIndex)} style={styles.replyCard}>
-                                    <LinearGradient colors={['#F3F4F6', '#E5E7EB']} style={styles.replyAvatar}>
-                                       <Text style={styles.replyAvatarTxt}>{r.userName[0]}</Text>
-                                    </LinearGradient>
+                                    {r.profileImage ? (
+                                      <Image source={{ uri: r.profileImage }} style={styles.replyAvatarImage} />
+                                    ) : (
+                                      <LinearGradient colors={['#F3F4F6', '#E5E7EB']} style={styles.replyAvatar}>
+                                         <Text style={styles.replyAvatarTxt}>{r.userName[0]}</Text>
+                                      </LinearGradient>
+                                    )}
                                     <View style={{ flex: 1 }}>
                                        <View style={styles.commentMeta}>
                                           <Text style={styles.commentUser}>{r.userName}</Text>
@@ -3214,6 +3265,19 @@ const styles = StyleSheet.create({
   ownerJournalAction: { width: '100%', minHeight: 48, borderRadius: 18, backgroundColor: '#111', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   ownerJournalActionText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
   stickyTabWrapper: { backgroundColor: '#F9FAFB', zIndex: 40, paddingBottom: 24, paddingHorizontal: 16 },
+  floatingTabWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 200,
+    elevation: 30,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
   tabContainer: { flexDirection: 'row', backgroundColor: '#FFF', borderRadius: 20, padding: 6, borderWidth: 1, borderColor: '#E5E7EB' },
   tabBtn: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 14 },
   tabBtnActive: { backgroundColor: '#111', elevation: 2, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4 },
@@ -3255,14 +3319,21 @@ const styles = StyleSheet.create({
   schDesc: { flex: 1, fontSize: 14, color: '#4B5563', lineHeight: 22 },
   schAlert: { marginTop: 8, padding: 16, backgroundColor: '#EFF6FF', borderRadius: 16 },
   schAlertTxt: { fontSize: 12, color: '#1E3A8A', lineHeight: 20 },
-  radarContainer: { alignItems: 'center', marginBottom: 24 },
-  tasteGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12 },
-  tasteItemBox: { width: '48%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 12 },
-  tasteLab: { fontSize: 13, fontWeight: '600', color: '#374151' },
-  tasteRowWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tasteBarBg: { width: 60, height: 6, backgroundColor: '#E5E7EB', borderRadius: 3, overflow: 'hidden' },
-  tasteBarFill: { height: '100%', backgroundColor: '#111', borderRadius: 3 },
-  tasteVal: { fontSize: 13, fontWeight: '800', color: '#111', width: 32, textAlign: 'right' },
+  tasteGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 20, marginBottom: 24 },
+  tasteItemBox: { width: '48%', minWidth: 0, gap: 8 },
+  tasteHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  tasteTextGroup: { flex: 1, minWidth: 0 },
+  tasteLab: { fontSize: 13, fontWeight: '900', color: '#111' },
+  tasteDesc: { marginTop: 2, fontSize: 11, lineHeight: 16, fontWeight: '700', color: '#9CA3AF' },
+  tasteVal: { flexShrink: 0, fontSize: 18, fontWeight: '900', color: '#111', textAlign: 'right' },
+  tasteSliderArea: { minHeight: 28, justifyContent: 'center' },
+  tasteBarBg: { width: '100%', height: 8, backgroundColor: '#E5E7EB', borderRadius: 999, position: 'relative' },
+  tasteBarFill: { height: '100%', backgroundColor: '#111', borderRadius: 999 },
+  tasteThumb: { position: 'absolute', top: -6, width: 20, height: 20, borderRadius: 10, marginLeft: -10, backgroundColor: '#111' },
+  tasteEndRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tasteEndText: { fontSize: 11, fontWeight: '700', color: '#9CA3AF' },
+  radarCard: { borderWidth: 2, borderColor: '#E5E7EB', borderRadius: 12, padding: 18, alignItems: 'center', marginBottom: 24 },
+  radarTitle: { fontSize: 14, fontWeight: '900', color: '#111', marginBottom: 12 },
   guideHeading: { fontSize: 16, fontWeight: '800', color: '#111', marginBottom: 16 },
   guideBox: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16 },
   guideBoxPlain: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16 },
@@ -3329,6 +3400,7 @@ const styles = StyleSheet.create({
   commentCard: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6', paddingBottom: 24 },
   commentTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 12 },
   commentAvatar: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  commentAvatarImage: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E5E7EB' },
   avatarTxt: { fontSize: 14, fontWeight: '800', color: '#111' },
   commentMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   commentUser: { fontSize: 14, fontWeight: '800', color: '#111' },
@@ -3340,6 +3412,7 @@ const styles = StyleSheet.create({
   repliesWrapper: { marginTop: 16, marginLeft: 52 },
   replyCard: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 16 },
   replyAvatar: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  replyAvatarImage: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E5E7EB' },
   replyAvatarTxt: { fontSize: 12, fontWeight: '800', color: '#111' },
   replyLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   replyLikeTxt: { fontSize: 12, color: '#6B7280', fontWeight: '600' },

@@ -3435,6 +3435,10 @@ export default function BreweryProjectCreateScreen() {
           <View style={styles.grayGuide}>
             <Text style={styles.grayGuideText}>💡 이 전통주의 맛을 표현해주세요. 각 지표를 조절하면 실시간으로 레이더 차트에 반영됩니다.</Text>
           </View>
+          <View style={styles.radarCard}>
+            <Text style={styles.radarTitle}>맛 지표 미리보기</Text>
+            <RadarChart tasteProfile={tasteProfile} />
+          </View>
           <View style={styles.tasteControlGrid}>
             {[
               { key: 'sweetness', label: '단맛', desc: '달콤한 정도' },
@@ -3451,10 +3455,6 @@ export default function BreweryProjectCreateScreen() {
                 onChange={(next) => setTasteProfile((prev) => ({ ...prev, [taste.key]: next }))}
               />
             ))}
-          </View>
-          <View style={styles.radarCard}>
-            <Text style={styles.radarTitle}>맛 지표 미리보기</Text>
-            <RadarChart tasteProfile={tasteProfile} />
           </View>
         </View>
       );

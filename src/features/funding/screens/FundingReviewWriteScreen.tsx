@@ -16,7 +16,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { AlertCircle, BookOpen, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Image as ImageIcon, Plus, Star, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getFundingProjectImageSource } from '@/constants/data';
+import { getFundingProjectImageSource, isSuccessfulFundingStatus } from '@/constants/data';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFunding } from '@/contexts/FundingContext';
 import FundingAlertModal, { type FundingAlertButton, type FundingAlertTone } from '@/features/funding/components/FundingAlertModal';
@@ -198,7 +198,12 @@ export default function FundingReviewWriteScreen() {
   );
   const isEditMode = Boolean(editableReview && isFundingReviewOwnedByUser(editableReview, user));
   const reviewParamBlocked = hasReviewIdParam;
-  const canCreateReviewFromServer = Boolean(reviewPermission && (reviewPermission.canWriteReview || reviewPermission.canReview));
+  const canWriteReviewForSuccessfulProject = !project || isSuccessfulFundingStatus(project.status);
+  const canCreateReviewFromServer = Boolean(
+    reviewPermission &&
+    (reviewPermission.canWriteReview || reviewPermission.canReview) &&
+    canWriteReviewForSuccessfulProject
+  );
   const canUseReviewForm = Boolean(user) && (isArchiveMode || isEditMode || canCreateReviewFromServer) && !reviewParamBlocked;
   const headerTitle = isArchiveMode
     ? isEditMode
@@ -467,7 +472,7 @@ export default function FundingReviewWriteScreen() {
       return;
     }
     if (!isArchiveMode && !isEditMode && !canCreateReviewFromServer) {
-      showReviewAlert('후기 작성 불가', '후원 완료 후 후기를 작성할 수 있습니다.', 'warning');
+      showReviewAlert('후기 작성 불가', '펀딩 성공 후 후기를 작성할 수 있습니다.', 'warning');
       return;
     }
     if (isNormalArchiveMode && !normalDrinkName.trim()) {
@@ -661,22 +666,32 @@ export default function FundingReviewWriteScreen() {
   }
 
   if (!canUseReviewForm) {
+    const blockedReviewTitle = user ? '후기 작성 불가' : '로그인이 필요합니다';
+    const blockedReviewBody = reviewParamBlocked
+      ? '본인이 작성한 후기만 수정할 수 있습니다.'
+      : user && !canCreateReviewFromServer
+        ? '펀딩 성공 후 후기를 작성할 수 있습니다.'
+        : user
+          ? '이 펀딩 프로젝트에 참여한 사용자만 리뷰를 작성할 수 있습니다.'
+          : '후기 작성은 로그인 후 이용할 수 있습니다.';
+    const closeBlockedReviewModal = () => {
+      if (user) {
+        router.back();
+        return;
+      }
+      router.push('/login' as any);
+    };
+
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
-        <AlertCircle size={48} color="#F59E0B" />
-        <Text style={styles.noticeTitle}>{user ? '리뷰 작성 권한이 없습니다' : '로그인이 필요합니다'}</Text>
-        <Text style={styles.noticeBody}>
-          {reviewParamBlocked
-            ? '본인이 작성한 후기만 수정할 수 있습니다.'
-            : user && !canCreateReviewFromServer
-              ? '후원 완료 후 후기를 작성할 수 있습니다.'
-            : user
-              ? '이 펀딩 프로젝트에 참여한 사용자만 리뷰를 작성할 수 있습니다.'
-              : '후기 작성은 로그인 후 이용할 수 있습니다.'}
-        </Text>
-        <TouchableOpacity style={styles.noticeButton} onPress={() => (user ? router.back() : router.push('/login' as any))}>
-          <Text style={styles.noticeButtonText}>{user ? '돌아가기' : '로그인하기'}</Text>
-        </TouchableOpacity>
+        <FundingAlertModal
+          visible
+          title={blockedReviewTitle}
+          body={blockedReviewBody}
+          tone="warning"
+          buttons={[{ label: user ? '확인' : '로그인하기', onPress: closeBlockedReviewModal }]}
+          onClose={closeBlockedReviewModal}
+        />
       </View>
     );
   }

@@ -104,6 +104,12 @@ function getArchiveTagIds(tags: string[], tagIdByName: Record<string, number>) {
     .filter((tagId): tagId is number => Number.isFinite(tagId));
 }
 
+function isSuccessfulParticipatedFunding(funding: Pick<MyPageParticipatedFunding, 'fundingStatus'>) {
+  const status = String(funding.fundingStatus || '').trim();
+  const normalized = status.toUpperCase();
+  return normalized === 'SUCCESS' || status.includes('성공') || status.includes('달성');
+}
+
 function RatingStars({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   return (
     <View style={styles.ratingWrap}>
@@ -197,7 +203,8 @@ export default function ArchiveWriteScreen() {
     getMyPageParticipatedFundings()
       .then((items) => {
         if (!mounted) return;
-        setSelectedFunding(items.find((item) => item.fundingId === projectId) || null);
+        const matchedFunding = items.find((item) => item.fundingId === projectId);
+        setSelectedFunding(matchedFunding && isSuccessfulParticipatedFunding(matchedFunding) ? matchedFunding : null);
       })
       .catch((error) => {
         console.warn(getMyPageApiErrorMessage(error, '참여 펀딩 정보를 불러오지 못했습니다.'));
@@ -336,7 +343,7 @@ export default function ArchiveWriteScreen() {
       return;
     }
     if (!canUseFundingArchive) {
-      showAlert('펀딩 정보를 찾을 수 없습니다', '선택한 펀딩 정보를 다시 확인해주세요.', 'warning');
+      showAlert('펀딩 성공 후 기록할 수 있습니다', '펀딩 성공으로 종료된 술만 아카이브에 기록할 수 있습니다.', 'warning');
       return;
     }
     if (archiveKind === 'normal' && !drinkName.trim()) {
@@ -432,8 +439,8 @@ export default function ArchiveWriteScreen() {
     return (
       <View style={[styles.noticeScreen, { paddingTop: insets.top + 32 }]}>
         <AlertCircle size={44} color="#F59E0B" />
-        <Text style={styles.noticeTitle}>펀딩 정보를 찾을 수 없습니다</Text>
-        <Text style={styles.noticeBody}>아카이브에 기록할 펀딩 정보가 없습니다.</Text>
+        <Text style={styles.noticeTitle}>펀딩 성공 후 기록할 수 있습니다</Text>
+        <Text style={styles.noticeBody}>펀딩 성공으로 종료된 술만 아카이브에 기록할 수 있습니다.</Text>
         <TouchableOpacity style={styles.noticeButton} onPress={() => router.back()}>
           <Text style={styles.noticeButtonText}>돌아가기</Text>
         </TouchableOpacity>

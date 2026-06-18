@@ -1,5 +1,6 @@
 import * as ExpoLinking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
+import { Platform } from 'react-native';
 
 import type { KakaoLoginUrlResponse } from '@/features/auth/api';
 import { logKakaoDebugInfo } from '@/utils/kakaoDebug';
@@ -18,6 +19,13 @@ export type PendingKakaoAuthRequest = {
   keepLoggedIn?: boolean;
   redirectUri?: string;
   createdAt: number;
+};
+
+export type KakaoNativeLoginResult = {
+  accessToken: string;
+  refreshToken?: string;
+  idToken?: string;
+  source: 'kakaotalk';
 };
 
 let activeKakaoCallbackKey: string | null = null;
@@ -132,6 +140,44 @@ export async function getPendingKakaoAuthRequest() {
 
 export async function clearPendingKakaoAuthRequest() {
   await SafeStorage.removeItem(KAKAO_AUTH_REQUEST_KEY);
+}
+
+function getKakaoNativeErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export async function tryLoginWithKakaoTalk(): Promise<KakaoNativeLoginResult | null> {
+  if (Platform.OS === 'web') return null;
+
+  try {
+    await logKakaoDebugInfo('KakaoNativeLogin');
+    const kakaoUser = await import('@react-native-kakao/user');
+    const isAvailable = await kakaoUser.isKakaoTalkLoginAvailable();
+    console.info('[KakaoNativeLogin] KakaoTalk login available', isAvailable);
+
+    if (!isAvailable) {
+      return null;
+    }
+
+    const token = await kakaoUser.login();
+    if (!token?.accessToken) {
+      throw new Error('KakaoTalk login did not return an accessToken.');
+    }
+
+    console.info('[KakaoNativeLogin] KakaoTalk login succeeded.');
+    return {
+      accessToken: token.accessToken,
+      refreshToken: token.refreshToken,
+      idToken: token.idToken,
+      source: 'kakaotalk',
+    };
+  } catch (error) {
+    console.warn('[KakaoNativeLogin] KakaoTalk login failed. Falling back to web OAuth.', {
+      message: getKakaoNativeErrorMessage(error),
+      error,
+    });
+    return null;
+  }
 }
 
 export async function openKakaoAuthSession(kakaoUrl: string, appRedirectUri = KAKAO_APP_CALLBACK_URL) {

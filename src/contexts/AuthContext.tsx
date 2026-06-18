@@ -10,6 +10,7 @@ import {
   getAuthSessionAccessToken,
   getAuthSessionRefreshToken,
   loginWithEmail,
+  loginWithKakaoAccessToken as requestKakaoAccessTokenLogin,
   loginWithKakaoCode as requestKakaoLogin,
   saveAuthTokens,
   signupWithEmail,
@@ -66,6 +67,7 @@ interface AuthContextType {
   isAuthReady: boolean;
   login: (email: string, password: string, type: UserType, keepLoggedIn?: boolean) => Promise<User>;
   loginWithKakaoCode: (code: string, keepLoggedIn?: boolean, redirectUri?: string) => Promise<KakaoLoginResult>;
+  loginWithKakaoAccessToken: (accessToken: string, keepLoggedIn?: boolean) => Promise<KakaoLoginResult>;
   logout: () => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
   verifyBrewery: (data: BreweryVerificationData) => Promise<void>;
@@ -285,8 +287,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return nextUser;
   };
 
-  const loginWithKakaoCode = useCallback(async (code: string, keepLoggedIn = false, redirectUri?: string) => {
-    const session = await requestKakaoLogin(code, redirectUri);
+  const handleKakaoLoginSession = useCallback(async (session: KakaoLoginResponse, keepLoggedIn = false) => {
     const apiUser = session?.user;
     const shouldSignup =
       Boolean(session?.isNewUser || session?.signupRequired || session?.requiresSignup) ||
@@ -311,6 +312,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return { status: "loggedIn" as const, user: nextUser };
   }, []);
+
+  const loginWithKakaoCode = useCallback(async (code: string, keepLoggedIn = false, redirectUri?: string) => {
+    const session = await requestKakaoLogin(code, redirectUri);
+    return handleKakaoLoginSession(session, keepLoggedIn);
+  }, [handleKakaoLoginSession]);
+
+  const loginWithKakaoAccessToken = useCallback(async (accessToken: string, keepLoggedIn = false) => {
+    const session = await requestKakaoAccessTokenLogin(accessToken);
+    return handleKakaoLoginSession(session, keepLoggedIn);
+  }, [handleKakaoLoginSession]);
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -484,7 +495,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isAuthReady, login, loginWithKakaoCode, logout, signup, verifyBrewery, updateUser, updateUserRole }}>
+    <AuthContext.Provider value={{ user, isAuthReady, login, loginWithKakaoCode, loginWithKakaoAccessToken, logout, signup, verifyBrewery, updateUser, updateUserRole }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,6 @@
 import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
-export const JUDAM_AI_CHAT_API_BASE_URL = 'http://43.202.24.223:3000';
+export const JUDAM_AI_CHAT_API_BASE_URL = 'https://api.kaujudam.com';
 
 export type AIChatHistoryItem = {
   role: 'user' | 'assistant';

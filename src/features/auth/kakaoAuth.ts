@@ -2,6 +2,7 @@ import * as ExpoLinking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 
 import type { KakaoLoginUrlResponse } from '@/features/auth/api';
+import { logKakaoDebugInfo } from '@/utils/kakaoDebug';
 import SafeStorage from '@/utils/storage';
 
 export const KAKAO_APP_CALLBACK_URL = 'judamfrontend://kakao/callback';
@@ -140,11 +141,18 @@ export async function openKakaoAuthSession(kakaoUrl: string, appRedirectUri = KA
   });
 
   try {
+    await logKakaoDebugInfo('KakaoLogin');
+    console.info('[KakaoLogin] Opening Kakao auth session', {
+      appRedirectUri,
+      kakaoUrlHost: new URL(kakaoUrl).host,
+    });
+
     return await Promise.race([
       WebBrowser.openAuthSessionAsync(kakaoUrl, appRedirectUri),
       timeoutPromise,
     ]);
   } catch (error) {
+    console.warn('[KakaoLogin] Kakao auth session failed', error);
     try {
       WebBrowser.dismissBrowser();
       (WebBrowser as unknown as { dismissAuthSession?: () => void }).dismissAuthSession?.();

@@ -72,6 +72,7 @@
       "@react-native-community/datetimepicker",
       "expo-font",
       "./plugins/withAndroidCleartextTraffic",
+      "./plugins/withAndroidKakaoQueries",
       [
         "expo-build-properties",
         {
@@ -85,7 +86,11 @@
       [
         "@react-native-kakao/core",
         {
-          "nativeAppKey": "f3b606d0a36f4db4e35d523e00648e8a"
+          "nativeAppKey": "f3b606d0a36f4db4e35d523e00648e8a",
+          "android": {
+            "authCodeHandlerActivity": true,
+            "forwardKakaoLinkIntentFilterToMainActivity": true
+          }
         }
       ]
     ],

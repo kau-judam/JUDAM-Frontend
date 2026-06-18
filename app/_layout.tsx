@@ -12,6 +12,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { CommunityProvider } from '@/contexts/CommunityContext';
 import { FavoritesProvider } from '@/contexts/FavoritesContext';
 import { FundingProvider } from '@/contexts/FundingContext';
+import { logKakaoDebugInfo } from '@/utils/kakaoDebug';
 
 export const unstable_settings = {
   initialRouteName: 'index',
@@ -26,6 +27,7 @@ export default function RootLayout() {
     }
 
     NavigationBar.setVisibilityAsync('hidden');
+    void logKakaoDebugInfo('AppStart');
   }, []);
 
   return (

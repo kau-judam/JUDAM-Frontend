@@ -3,7 +3,7 @@ import { ImageSourcePropType } from 'react-native';
 import type { Recipe } from '@/constants/data';
 import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
-export const JUDAM_API_BASE_URL = 'http://43.202.24.223:3000';
+export const JUDAM_API_BASE_URL = 'https://api.kaujudam.com';
 
 export type RecipeSort = 'newest' | 'popular';
 

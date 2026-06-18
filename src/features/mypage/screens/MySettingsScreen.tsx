@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
-import { AlertTriangle, ArrowLeft, ChevronRight, LockKeyhole, RefreshCw, X } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, ChevronRight, HelpCircle, LockKeyhole, RefreshCw, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -131,6 +131,11 @@ export default function MySettingsScreen() {
             icon={<RefreshCw size={18} color="#6B7280" />}
             title="온보딩 다시 보기"
             onPress={openOnboarding}
+          />
+          <SettingsRow
+            icon={<HelpCircle size={18} color="#6B7280" />}
+            title="고객센터 문의"
+            onPress={() => router.push('/mypage/support' as any)}
           />
         </View>
 

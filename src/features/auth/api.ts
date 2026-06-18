@@ -1,6 +1,6 @@
 import SafeStorage from '@/utils/storage';
 
-export const JUDAM_AUTH_API_BASE_URL = 'http://43.202.24.223:3000';
+export const JUDAM_AUTH_API_BASE_URL = 'https://api.kaujudam.com';
 
 type AuthApiEnvelope<T> = {
   status?: number;

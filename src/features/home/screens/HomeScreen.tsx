@@ -34,7 +34,7 @@ import type { FundingProject, Recipe } from '@/constants/data';
 import { fetchPopularRecipes } from '@/features/recipe/api';
 import { getFundingApiErrorMessage, getFundingList } from '@/features/funding/api';
 import { mergeFundingListItem } from '@/features/funding/apiMappers';
-import { getEmptyStatsSummary, getStatsSummary, type HomeStatsSummary } from '@/features/stats/api';
+import { getEmptyStatsSummary, getStatsSummary, type FundingStatsSummary, type HomeStatsSummary } from '@/features/stats/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -101,6 +101,7 @@ export default function HomeScreen() {
   const [popularRecipes, setPopularRecipes] = useState<Recipe[]>(() => getPopularRecipes(3));
   const [popularFundingProjects, setPopularFundingProjects] = useState<FundingProject[]>([]);
   const [homeStats, setHomeStats] = useState<HomeStatsSummary>(() => getEmptyStatsSummary().home);
+  const [fundingStats, setFundingStats] = useState<FundingStatsSummary>(() => getEmptyStatsSummary().funding);
   const totalRaisedAmountText = formatWon(homeStats.totalFundingAmount);
 
   useEffect(() => {
@@ -157,7 +158,9 @@ export default function HomeScreen() {
 
     getStatsSummary()
       .then((stats) => {
-        if (mounted) setHomeStats(stats.home);
+        if (!mounted) return;
+        setHomeStats(stats.home);
+        setFundingStats(stats.funding);
       })
       .catch((error) => {
         console.warn(getFundingApiErrorMessage(error, '통계를 불러오지 못했습니다.'));
@@ -341,8 +344,8 @@ export default function HomeScreen() {
               <View style={[styles.statsIconCircle, { backgroundColor: '#111' }]}>
                 <Users size={20} color="#FFF" />
               </View>
-              <Text style={styles.statsValue}>{formatCountWithUnit(homeStats.memberCount, '명')}</Text>
-              <Text style={styles.statsLabel}>가입 회원</Text>
+              <Text style={styles.statsValue}>{formatCountWithUnit(fundingStats.totalBackerCount, '명')}</Text>
+              <Text style={styles.statsLabel}>총 참여자</Text>
             </View>
             <View style={styles.statsItem}>
               <View style={[styles.statsIconCircle, { backgroundColor: colors.primary }]}>

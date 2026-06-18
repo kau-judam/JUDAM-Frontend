@@ -3,7 +3,7 @@ import { ImageSourcePropType } from 'react-native';
 import type { Post } from '@/contexts/CommunityContext';
 import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
-export const JUDAM_COMMUNITY_API_BASE_URL = 'http://43.202.24.223:3000';
+export const JUDAM_COMMUNITY_API_BASE_URL = 'https://api.kaujudam.com';
 
 export type CommunityBoardType = 'FREE' | 'INFO';
 export type CommunitySort = 'newest' | 'popular';

@@ -1,7 +1,7 @@
 import type { BtiSurveyPayload, BtiSurveyTasteVector } from '@/features/bti/data';
 import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
-const JUDAM_API_BASE_URL = 'http://43.202.24.223:3000';
+const JUDAM_API_BASE_URL = 'https://api.kaujudam.com';
 
 type SurveyConvertEnvelope = {
   status?: number;

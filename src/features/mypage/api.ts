@@ -1,7 +1,7 @@
 import type { BtiSurveyTasteVector } from '@/features/bti/data';
 import { getAuthAccessToken, refreshAuthAccessToken } from '@/features/auth/api';
 
-export const JUDAM_MYPAGE_API_BASE_URL = 'http://43.202.24.223:3000';
+export const JUDAM_MYPAGE_API_BASE_URL = 'https://api.kaujudam.com';
 
 type MyPageApiErrorBody = {
   status?: number;

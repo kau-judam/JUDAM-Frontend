@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -446,7 +448,10 @@ export default function AdminFundingReviewScreen() {
       </ScrollView>
 
       <Modal visible={Boolean(rejectTarget)} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <View style={styles.rejectModal}>
             <View style={styles.rejectModalHeader}>
               <Text style={styles.rejectModalTitle}>펀딩 반려</Text>
@@ -454,31 +459,33 @@ export default function AdminFundingReviewScreen() {
                 <X size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.rejectTargetText}>{selectedRejectTitle}</Text>
-            <TextInput
-              style={styles.rejectInput}
-              value={rejectReason}
-              onChangeText={setRejectReason}
-              placeholder="반려 사유를 입력해주세요."
-              placeholderTextColor="#9CA3AF"
-              multiline
-              textAlignVertical="top"
-            />
-            <View style={styles.rejectModalActions}>
-              <TouchableOpacity style={styles.cancelButton} onPress={closeRejectModal} activeOpacity={0.85}>
-                <Text style={styles.cancelText}>취소</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.rejectSubmitButton, actionState?.type === 'reject' && styles.disabledButton]}
-                disabled={actionState?.type === 'reject'}
-                onPress={handleRejectSubmit}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.rejectSubmitText}>{actionState?.type === 'reject' ? '처리 중' : '반려하기'}</Text>
-              </TouchableOpacity>
-            </View>
+            <ScrollView contentContainerStyle={styles.rejectModalContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              <Text style={styles.rejectTargetText}>{selectedRejectTitle}</Text>
+              <TextInput
+                style={styles.rejectInput}
+                value={rejectReason}
+                onChangeText={setRejectReason}
+                placeholder="반려 사유를 입력해주세요."
+                placeholderTextColor="#9CA3AF"
+                multiline
+                textAlignVertical="top"
+              />
+              <View style={styles.rejectModalActions}>
+                <TouchableOpacity style={styles.cancelButton} onPress={closeRejectModal} activeOpacity={0.85}>
+                  <Text style={styles.cancelText}>취소</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.rejectSubmitButton, actionState?.type === 'reject' && styles.disabledButton]}
+                  disabled={actionState?.type === 'reject'}
+                  onPress={handleRejectSubmit}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.rejectSubmitText}>{actionState?.type === 'reject' ? '처리 중' : '반려하기'}</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -604,7 +611,8 @@ const styles = StyleSheet.create({
   approveText: { fontSize: 14, color: '#FFFFFF', fontWeight: '900' },
   disabledButton: { opacity: 0.55 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(17,24,39,0.48)', alignItems: 'center', justifyContent: 'center', padding: 20 },
-  rejectModal: { width: '100%', borderRadius: 20, backgroundColor: '#FFFFFF', padding: 18 },
+  rejectModal: { width: '100%', maxHeight: '86%', borderRadius: 20, backgroundColor: '#FFFFFF', padding: 18 },
+  rejectModalContent: { paddingBottom: 2 },
   rejectModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rejectModalTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
   modalCloseButton: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },

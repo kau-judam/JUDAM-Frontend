@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AlertCircle, BookOpen, Camera, Check, ChevronDown, ChevronLeft, ChevronUp, Star, Wine, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,6 +30,7 @@ import {
   type MyPageImageUploadFile,
   type MyPageParticipatedFunding,
 } from '@/features/mypage/api';
+import { pickMultipleImages } from '@/utils/imagePicker';
 
 type ArchiveKind = 'normal' | 'funding';
 
@@ -156,6 +156,7 @@ export default function ArchiveWriteScreen() {
   const [recordDay, setRecordDay] = useState(initialDateParts.day);
   const [rating, setRating] = useState(0);
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+  const [imageFilesByUri, setImageFilesByUri] = useState<Record<string, MyPageImageUploadFile>>({});
   const [serverImageIdsByUrl, setServerImageIdsByUrl] = useState<Record<string, number>>({});
   const [reviewText, setReviewText] = useState('');
   const [mood, setMood] = useState('');
@@ -228,6 +229,7 @@ export default function ArchiveWriteScreen() {
         setMood(archive.mood || '');
         setPairing(archive.pairing || '');
         setUploadedImages(archive.images.map((image) => image.imageUrl));
+        setImageFilesByUri({});
         setServerImageIdsByUrl(
           archive.images.reduce<Record<string, number>>((map, image) => {
             map[image.imageUrl] = image.imageId;
@@ -265,22 +267,21 @@ export default function ArchiveWriteScreen() {
   };
 
   const pickImages = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
+    const remaining = 3 - uploadedImages.length;
+    const result = await pickMultipleImages('archive', remaining, 0.9);
+    if (result.canceled && result.denied) {
       showAlert('권한 필요', '사진을 첨부하려면 갤러리 접근 권한이 필요합니다.', 'warning');
       return;
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      selectionLimit: 3 - uploadedImages.length,
-      quality: 0.9,
-    });
-
     if (result.canceled) return;
-    const uris = result.assets.map((asset) => asset.uri).filter(Boolean);
-    setUploadedImages((prev) => [...prev, ...uris].slice(0, 3));
+    setUploadedImages((prev) => [...prev, ...result.files.map((file) => file.uri)].slice(0, 3));
+    setImageFilesByUri((prev) => {
+      const next = { ...prev };
+      result.files.forEach((file) => {
+        next[file.uri] = file;
+      });
+      return next;
+    });
   };
 
   const toggleTag = (tag: string) => {
@@ -313,6 +314,7 @@ export default function ArchiveWriteScreen() {
       setMood(review.mood || '');
       setPairing(review.pairing || '');
       setUploadedImages(normalizeReviewImages(review.images || []));
+      setImageFilesByUri({});
       setServerImageIdsByUrl(
         (review.images || []).reduce<Record<string, number>>((map, image) => {
           map[image.imageUrl] = image.imageId;
@@ -364,7 +366,9 @@ export default function ArchiveWriteScreen() {
 
     setIsSaving(true);
     try {
-      const newImages = uploadedImages.filter(isLocalArchiveImage).map(getArchiveImageFile);
+      const newImages = uploadedImages
+        .filter(isLocalArchiveImage)
+        .map((uri, index) => imageFilesByUri[uri] || getArchiveImageFile(uri, index));
       const deletedServerImageIds = Object.entries(serverImageIdsByUrl)
         .filter(([imageUrl]) => !uploadedImages.includes(imageUrl))
         .map(([, imageId]) => imageId);
@@ -518,7 +522,14 @@ export default function ArchiveWriteScreen() {
             {uploadedImages.map((image, index) => (
               <View key={`${image}-${index}`} style={styles.imageThumbWrap}>
                 <Image source={{ uri: image }} style={styles.imageThumb} />
-                <TouchableOpacity style={styles.imageRemove} onPress={() => setUploadedImages((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}>
+                <TouchableOpacity style={styles.imageRemove} onPress={() => {
+                  setUploadedImages((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+                  setImageFilesByUri((prev) => {
+                    const next = { ...prev };
+                    delete next[image];
+                    return next;
+                  });
+                }}>
                   <X size={13} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>

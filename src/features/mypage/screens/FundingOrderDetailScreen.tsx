@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -638,7 +640,10 @@ function InquiryModal({
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
+      <KeyboardAvoidingView
+        style={styles.modalBackdrop}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <View style={styles.modalCard}>
           <View style={styles.modalHeader}>
             <View style={styles.modalTitleRow}>
@@ -649,7 +654,11 @@ function InquiryModal({
               <X size={20} color="#6B7280" />
             </TouchableOpacity>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalContent}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.modalContent}
+            keyboardShouldPersistTaps="handled"
+          >
             <View style={styles.targetBox}>
               <Text style={styles.targetLabel}>문의 대상</Text>
               <Text style={styles.targetName}>{brewery}</Text>
@@ -680,7 +689,7 @@ function InquiryModal({
             </View>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

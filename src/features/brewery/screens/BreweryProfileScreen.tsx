@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Image, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Building2, Camera, Mail, Phone } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +15,7 @@ import {
   uploadBreweryProfileImage,
   type BreweryProfile,
 } from '@/features/brewery/api';
+import { pickSingleImage } from '@/utils/imagePicker';
 
 type BreweryProfileForm = {
   profileImage?: string;
@@ -262,32 +262,21 @@ export default function BreweryProfileScreen() {
   const pickProfileImage = async () => {
     if (!canEditInline || isSaving) return;
 
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
+    const result = await pickSingleImage('brewery-profile', 0.85, {
+      allowsEditing: true,
+      aspect: [4, 3],
+    });
+    if (result.canceled && result.denied) {
       Alert.alert('권한 필요', '대표 이미지를 변경하려면 갤러리 접근 권한이 필요합니다.');
       return;
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.85,
-    });
-
     if (result.canceled) return;
-    const asset = result.assets?.[0];
-    if (!asset?.uri) return;
 
-    updateField('profileImage', asset.uri);
+    updateField('profileImage', result.file.uri);
 
     try {
       setIsSaving(true);
-      const response = await uploadBreweryProfileImage({
-        uri: asset.uri,
-        name: asset.fileName || asset.uri.split('/').pop() || `brewery-profile-${Date.now()}.jpg`,
-        type: asset.mimeType || 'image/jpeg',
-      });
+      const response = await uploadBreweryProfileImage(result.file);
       const nextProfileImage = response.profile?.profileImageUrl || response.profileImageUrl;
       updateField('profileImage', nextProfileImage);
       if (response.profile) setServerProfile(response.profile);

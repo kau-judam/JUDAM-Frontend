@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,7 +13,6 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { ArrowLeft, Camera, CheckCircle2, ChevronRight, Hash, Lock, Mail, Phone, UserRound, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,6 +25,7 @@ import {
   updateMyPageProfileImage,
 } from '@/features/mypage/api';
 import { showLoginRequired } from '@/utils/authPrompt';
+import { pickSingleImage } from '@/utils/imagePicker';
 import { formatPhoneNumber } from '@/utils/validation';
 
 type EditableField = 'nickname';
@@ -159,27 +161,16 @@ export default function ProfileScreen() {
 
   const pickProfileImage = async () => {
     if (saving) return;
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
+    const result = await pickSingleImage('profile', 0.85);
+    if (result.canceled && result.denied) {
       Alert.alert('권한 필요', '프로필 사진을 변경하려면 갤러리 접근 권한이 필요합니다.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.85,
-    });
     if (result.canceled) return;
-    const asset = result.assets?.[0];
-    if (!asset?.uri) return;
 
     try {
       setSaving(true);
-      const response = await updateMyPageProfileImage({
-        uri: asset.uri,
-        name: asset.fileName || asset.uri.split('/').pop() || `profile-${Date.now()}.jpg`,
-        type: asset.mimeType || 'image/jpeg',
-      });
+      const response = await updateMyPageProfileImage(result.file);
       await updateUser({
         profileImage: response.profileImageUrl,
         breweryProfileImage: response.profileImageUrl,
@@ -233,7 +224,11 @@ export default function ProfileScreen() {
       </ScrollView>
 
       <Modal visible={!!editingField} animationType="slide" transparent onRequestClose={closeEdit}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={0}
+        >
           <TouchableOpacity style={styles.modalDim} activeOpacity={1} onPress={closeEdit} />
           <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]}>
             <View style={styles.sheetHeader}>
@@ -279,7 +274,7 @@ export default function ProfileScreen() {
               <Text style={styles.saveButtonText}>{saving ? '저장 중...' : '저장'}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

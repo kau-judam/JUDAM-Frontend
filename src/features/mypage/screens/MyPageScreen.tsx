@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -474,7 +476,10 @@ export default function MyPageScreen() {
 
       {/* Support Modal */}
       <Modal visible={supportVisible} animationType="slide" transparent>
-         <View style={styles.modalOverlay}>
+         <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+         >
             <View style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
                <View style={styles.modalHeader}>
                   <View style={styles.dragHandle} />
@@ -484,7 +489,12 @@ export default function MyPageScreen() {
                   <Text style={styles.modalTitle}>고객센터</Text>
                </View>
 
-               <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll}>
+               <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  style={styles.modalScroll}
+                  contentContainerStyle={styles.modalScrollContent}
+                  keyboardShouldPersistTaps="handled"
+               >
                   <View style={styles.emailCard}>
                      <View style={styles.emailIcon}><Mail size={20} color="#FFF" /></View>
                      <View>
@@ -517,10 +527,9 @@ export default function MyPageScreen() {
                     placeholderTextColor="#9CA3AF"
                   />
                   <Button label="문의 보내기" style={styles.sendBtn} />
-                  <View style={{ height: 40 }} />
                </ScrollView>
             </View>
-         </View>
+         </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -623,6 +632,7 @@ const styles = StyleSheet.create({
   closeBtn: { position: 'absolute', right: 20, top: 40 },
   modalTitle: { fontSize: 18, fontWeight: '900', color: '#111' },
   modalScroll: { flex: 1, paddingHorizontal: 24 },
+  modalScrollContent: { paddingBottom: 40 },
   emailCard: { backgroundColor: '#F9FAFB', borderRadius: 24, padding: 20, flexDirection: 'row', gap: 16, alignItems: 'center', marginBottom: 24 },
   emailIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
   emailLabel: { fontSize: 12, color: '#9CA3AF', fontWeight: '700' },

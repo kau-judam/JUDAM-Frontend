@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AlertCircle, ChevronLeft, Image as ImageIcon, Plus, Trash2, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,6 +30,7 @@ import {
 } from '@/features/funding/api';
 import { mapBreweryLogs } from '@/features/funding/apiMappers';
 import { isFundingProjectOwnedByBrewery } from '@/features/funding/ownership';
+import { pickMultipleImages } from '@/utils/imagePicker';
 
 function todayText() {
   const today = new Date();
@@ -168,30 +168,17 @@ export default function BreweryJournalManageScreen() {
   };
 
   const pickImages = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
+    const result = await pickMultipleImages('brewery-journal', 5, 0.9);
+    if (result.canceled && result.denied) {
       setMessage('양조일지 이미지를 등록하려면 갤러리 접근 권한이 필요합니다.');
       return;
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsMultipleSelection: true,
-      selectionLimit: 5,
-      quality: 0.9,
-    });
-
     if (result.canceled) return;
-    const selectedImages = result.assets.reduce<FundingUploadFile[]>((files, asset, index) => {
-        if (!asset.uri) return files;
-        const name = asset.fileName || getImageFileName(asset.uri, index);
-        files.push({
-          uri: asset.uri,
-          name,
-          mimeType: asset.mimeType || getImageMimeType(name),
-        });
-        return files;
-      }, []);
+    const selectedImages = result.files.map((file, index) => ({
+      uri: file.uri,
+      name: file.name || getImageFileName(file.uri, index),
+      mimeType: file.type || getImageMimeType(file.name),
+    }));
     setImages((prev) => [...prev, ...selectedImages.map((asset) => asset.uri)].slice(0, 5));
     setImageFilesByUri((prev) => {
       const next = { ...prev };

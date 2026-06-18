@@ -10,6 +10,8 @@ import {
   Alert,
   StatusBar,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -1040,7 +1042,10 @@ export default function BreweryDashboardScreen() {
 
       {/* Modal - Brewing Journal */}
       {selectedProject && (
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setSelectedProject(null)} />
           <Animated.View entering={SlideInUp} style={styles.modalSheet}>
              <View style={styles.modalHandle} />
@@ -1073,7 +1078,11 @@ export default function BreweryDashboardScreen() {
                 })}
              </ScrollView>
 
-             <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+             <ScrollView
+               style={styles.modalList}
+               showsVerticalScrollIndicator={false}
+               keyboardShouldPersistTaps="handled"
+             >
                 {currentJournalEntry.isCompleted && !isEditMode ? (
                   <View style={styles.journalForm}>
                     <Text style={styles.listLab}>기록 내용</Text>
@@ -1136,12 +1145,15 @@ export default function BreweryDashboardScreen() {
                 )}
              </ScrollView>
           </Animated.View>
-        </View>
+        </KeyboardAvoidingView>
       )}
 
       {/* Modal - Delivery */}
       {selectedDeliveryProject && (
-        <View style={styles.centerModalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.centerModalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closeDeliveryModal} />
           <Animated.View entering={SlideInUp} style={[styles.modalSheet, styles.deliveryModalSheet]}>
             <View style={styles.modalHeader}>
@@ -1283,7 +1295,7 @@ export default function BreweryDashboardScreen() {
               </ScrollView>
             )}
           </Animated.View>
-        </View>
+        </KeyboardAvoidingView>
       )}
 
       {/* Modal - Insight Payment */}

@@ -211,7 +211,7 @@ function PasswordConfirmModal({
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onCancel}>
       <KeyboardAvoidingView
         style={styles.modalOverlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.modalCard}>
           <View style={styles.modalHeader}>

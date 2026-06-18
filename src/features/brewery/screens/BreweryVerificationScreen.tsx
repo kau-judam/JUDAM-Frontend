@@ -18,7 +18,6 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
 import { 
   ArrowLeft, 
   FileText, 
@@ -40,6 +39,7 @@ import {
   buildPhoneVerificationRequestGuideMessage,
   openPhoneVerificationSmsApp,
 } from '@/utils/phoneVerificationSms';
+import { pickSingleImage } from '@/utils/imagePicker';
 import { formatBusinessNumber, formatPhoneNumber, isValidBusinessNumber, isValidPhone } from '@/utils/validation';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 
@@ -396,27 +396,18 @@ export default function BreweryVerificationScreen() {
 
   const pickBusinessLicenseFromPhoto = async () => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permission.granted) {
+      const result = await pickSingleImage('business-license', 0.9);
+      if (result.canceled && result.denied) {
         Alert.alert('알림', '사업자등록증 사진을 선택하려면 갤러리 접근 권한이 필요합니다.');
         return;
       }
+      if (result.canceled) return;
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 0.9,
-      });
-
-      if (result.canceled || !result.assets?.length) return;
-
-      const asset = result.assets[0];
       const file: BusinessLicenseFile = {
-        name: getBusinessLicenseFileName(asset.fileName, asset.mimeType),
-        uri: asset.uri,
-        mimeType: getBusinessLicenseMimeType(asset.fileName, asset.mimeType),
-        size: asset.fileSize,
+        name: getBusinessLicenseFileName(result.file.name, result.file.type),
+        uri: result.file.uri,
+        mimeType: getBusinessLicenseMimeType(result.file.name, result.file.type),
+        size: result.asset.fileSize,
         source: 'photo',
       };
 

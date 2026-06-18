@@ -12,6 +12,12 @@
     },
     "android": {
       "package": "com.judam.frontend",
+      "softwareKeyboardLayoutMode": "resize",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",

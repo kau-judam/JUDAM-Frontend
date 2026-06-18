@@ -7,7 +7,6 @@ export type StatsGridItem = {
   value: string;
   label: string;
   description?: string;
-  tone?: 'dark' | 'accent';
 };
 
 type StatsGridProps = {
@@ -19,7 +18,7 @@ export function StatsGrid({ items }: StatsGridProps) {
     <View style={styles.grid}>
       {items.map((item) => (
         <View key={item.key} style={styles.card}>
-          <View style={[styles.iconBox, item.tone === 'accent' ? styles.iconBoxAccent : styles.iconBoxDark]}>
+          <View style={styles.iconBox}>
             {item.icon}
           </View>
           <Text style={styles.value} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72}>
@@ -71,12 +70,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
-  },
-  iconBoxDark: {
     backgroundColor: '#111827',
-  },
-  iconBoxAccent: {
-    backgroundColor: '#991B1B',
   },
   value: {
     width: '100%',

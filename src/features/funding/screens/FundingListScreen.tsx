@@ -19,7 +19,9 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Factory,
   ShieldCheck,
+  Trophy,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp } from 'react-native-reanimated';
@@ -544,15 +546,14 @@ export default function FundingListScreen() {
               },
               {
                 key: 'amount',
-                icon: <Text style={styles.statsIconText}>원</Text>,
+                icon: <Factory size={20} color="#FFF" />,
                 value: totalRaisedMilestoneText,
                 label: '누적 모금액',
                 description: '전통주에 모인 금액',
-                tone: 'accent',
               },
               {
                 key: 'success',
-                icon: <ShieldCheck size={20} color="#FFF" />,
+                icon: <Trophy size={20} color="#FFF" />,
                 value: formatCountWithUnit(serverFundingStats.successfulProjectCount, '개'),
                 label: '성공 프로젝트',
                 description: '여러분의 선택',
@@ -620,5 +621,4 @@ const styles = StyleSheet.create({
   statsSection: { padding: 24, paddingTop: 80, alignItems: 'center', backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   statsTitle: { fontSize: 32, fontWeight: '800', color: '#111', marginBottom: 8, letterSpacing: -0.5 },
   statsSubtitle: { fontSize: 15, color: '#9CA3AF', marginBottom: 28, fontWeight: '500' },
-  statsIconText: { fontSize: 13, lineHeight: 18, fontWeight: '900', color: '#FFF' },
 });

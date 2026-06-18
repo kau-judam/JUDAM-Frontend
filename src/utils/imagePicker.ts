@@ -51,10 +51,12 @@ export function normalizePickedImageFile(asset: ImagePicker.ImagePickerAsset, fa
 
 async function requestImageLibraryPermission() {
   const currentPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
-  return currentPermission.granted
+  return currentPermission.granted || currentPermission.accessPrivileges === 'limited'
     ? currentPermission
     : ImagePicker.requestMediaLibraryPermissionsAsync();
 }
+
+const imageMediaTypes = ['images'] as unknown as ImagePicker.ImagePickerOptions['mediaTypes'];
 
 export async function pickSingleImage(
   fallbackPrefix = 'image',
@@ -68,7 +70,7 @@ export async function pickSingleImage(
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: imageMediaTypes,
     allowsEditing: false,
     quality,
     ...options,
@@ -98,7 +100,7 @@ export async function pickMultipleImages(
   }
 
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: imageMediaTypes,
     allowsMultipleSelection: true,
     selectionLimit: limit,
     quality,

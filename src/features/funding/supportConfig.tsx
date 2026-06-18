@@ -79,7 +79,13 @@ export function getProjectEstimatedDelivery(project: FundingProject) {
 }
 
 export function getPrimaryRewardItem(project: FundingProject) {
-  return project.rewardItems?.[0] || `${project.title} ${getProjectBottleSize(project)} x 1`;
+  const rewardItem = project.rewardItems?.[0]
+    ?.replace(/\s*\uAE30\uBCF8\s*\uD6C4\uC6D0(?:\uC784)?\s*$/i, '')
+    .trim();
+  if (rewardItem && !/\uC544\uC9C1\s*\uC11C\uBE0C\uC7AC\uB8CC\s*api\s*\uC5F0\uACB0\s*\uC548\uD568/i.test(rewardItem)) {
+    return rewardItem;
+  }
+  return project.title;
 }
 
 export function getPaymentSummary(method: PaymentMethod | null) {

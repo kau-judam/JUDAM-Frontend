@@ -123,6 +123,22 @@ export type SuggestSummaryPayload = SuggestFlavorTagsPayload & {
   concept: string | null;
 };
 
+export type RecipeAiImagePayload = {
+  name?: string;
+  description?: string;
+  flavorTags?: string[];
+  region?: string;
+  mainIngredient?: string;
+  subIngredients?: string[];
+};
+
+export type RecipeAiImageResult = {
+  imageUrl: string | null;
+  imageKey: string | null;
+  prompt: string | null;
+  mimeType: string | null;
+};
+
 type RecipeListResponse = {
   recipes: RecipeListItemDto[];
   totalElements: number;
@@ -663,6 +679,14 @@ export async function suggestRecipeSummary(payload: SuggestSummaryPayload) {
     body: JSON.stringify(payload),
   });
   return data.data?.summary ?? data.summary ?? '';
+}
+
+export async function generateRecipeAiImage(payload: RecipeAiImagePayload): Promise<RecipeAiImageResult> {
+  const response = await requestJson<{ status: number; message: string; data: RecipeAiImageResult }>(
+    '/api/ai/image/generate',
+    { method: 'POST', auth: true, body: JSON.stringify(payload) },
+  );
+  return response.data;
 }
 
 export async function deleteRecipe(recipeId: number) {

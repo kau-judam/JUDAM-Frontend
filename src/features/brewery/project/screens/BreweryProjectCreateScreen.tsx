@@ -3450,7 +3450,7 @@ export default function BreweryProjectCreateScreen() {
           <View style={styles.grayGuide}>
             <Text style={styles.grayGuideText}>💡 이 전통주의 맛을 표현해주세요. 각 지표를 조절하면 실시간으로 레이더 차트에 반영됩니다.</Text>
           </View>
-          <View style={styles.tasteControlList}>
+          <View style={styles.tasteControlGrid}>
             {[
               { key: 'sweetness', label: '단맛', desc: '달콤한 정도' },
               { key: 'aroma', label: '잔향', desc: '향이 나는 정도' },
@@ -4913,7 +4913,8 @@ const styles = StyleSheet.create({
   dashedFullButton: { height: 48, borderWidth: 2, borderColor: '#D1D5DB', borderStyle: 'dashed', borderRadius: 12, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
   dashedFullButtonText: { fontSize: 14, fontWeight: '800', color: '#4B5563' },
   tasteControlList: { gap: 20 },
-  tasteBlock: { gap: 8 },
+  tasteControlGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 20 },
+  tasteBlock: { width: '48%', minWidth: 0, gap: 8 },
   tastePercent: { fontSize: 18, fontWeight: '900', color: '#111' },
   tasteSliderTouchArea: { minHeight: 28, justifyContent: 'center' },
   tasteTrack: { width: '100%', height: 8, borderRadius: 999, backgroundColor: '#E5E7EB', position: 'relative' },

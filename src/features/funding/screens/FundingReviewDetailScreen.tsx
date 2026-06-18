@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Heart, MessageCircle, Package, Send, ChevronLeft, Pencil, Trash2 } from 'lucide-react-native';
+import { Heart, MessageCircle, Package, Send, ChevronLeft, Trash2 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -256,11 +256,6 @@ export default function FundingReviewDetailScreen() {
     }
   };
 
-  const handleEditReview = () => {
-    if (!project || !review) return;
-    router.push(`/archive/review/${project.id}?reviewId=${review.id}` as any);
-  };
-
   const handleDeleteReview = async () => {
     if (!project || !review) return;
     try {
@@ -431,10 +426,6 @@ export default function FundingReviewDetailScreen() {
 
         {canManageReview && (
           <View style={styles.manageRow}>
-            <TouchableOpacity style={styles.manageButton} onPress={handleEditReview} activeOpacity={0.84}>
-              <Pencil size={15} color="#111827" />
-              <Text style={styles.manageButtonText}>수정</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={[styles.manageButton, styles.manageDangerButton]} onPress={handleDeleteReviewPress} activeOpacity={0.84}>
               <Trash2 size={15} color="#DC2626" />
               <Text style={styles.manageDangerText}>삭제</Text>

@@ -180,15 +180,11 @@ export default function FundingReviewWriteScreen() {
   const projectImageSource = useMemo(() => (project ? getFundingProjectImageSource(project) : undefined), [project]);
   const [reviewPermission, setReviewPermission] = useState<{ canWriteReview: boolean; canReview: boolean } | null>(null);
   const [isReviewPermissionLoading, setIsReviewPermissionLoading] = useState(Boolean(user && !isArchiveMode));
-  const requestedReview = useMemo(
-    () => (hasReviewIdParam ? fundingReviews.find((item) => item.projectId === projectId && item.id === targetReviewId) || null : null),
-    [fundingReviews, hasReviewIdParam, projectId, targetReviewId]
-  );
   const ownExistingReview = useMemo(
     () => fundingReviews.find((item) => item.projectId === projectId && isFundingReviewOwnedByUser(item, user)) || null,
     [fundingReviews, projectId, user]
   );
-  const editableReview = hasReviewIdParam ? requestedReview : ownExistingReview;
+  const editableReview = hasReviewIdParam ? null : ownExistingReview;
   const editableReviewForRefresh = useMemo(
     () => editableReview
       ? {
@@ -201,7 +197,7 @@ export default function FundingReviewWriteScreen() {
     [editableReview]
   );
   const isEditMode = Boolean(editableReview && isFundingReviewOwnedByUser(editableReview, user));
-  const reviewParamBlocked = hasReviewIdParam && (!requestedReview || !isFundingReviewOwnedByUser(requestedReview, user));
+  const reviewParamBlocked = hasReviewIdParam;
   const canCreateReviewFromServer = Boolean(reviewPermission && (reviewPermission.canWriteReview || reviewPermission.canReview));
   const canUseReviewForm = Boolean(user) && (isArchiveMode || isEditMode || canCreateReviewFromServer) && !reviewParamBlocked;
   const headerTitle = isArchiveMode

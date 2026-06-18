@@ -329,6 +329,14 @@ function formatProjectIngredients(value: { ingredient: string; origin: string }[
     .join(', ');
 }
 
+function normalizeSupportOptionNameForDisplay(name: string | null | undefined) {
+  const cleanedName = sanitizeApiText(name).replace(/\s*\uAE30\uBCF8\s*\uD6C4\uC6D0(?:\uC784)?\s*$/i, '').trim();
+  if (/\uC544\uC9C1\s*\uC11C\uBE0C\uC7AC\uB8CC\s*api\s*\uC5F0\uACB0\s*\uC548\uD568/i.test(cleanedName)) {
+    return '';
+  }
+  return cleanedName;
+}
+
 function getFundingDetailIngredients(detail: FundingDetailResponse) {
   const rawMaterials = normalizeProjectIngredients(detail.legalInfo?.rawMaterials);
   if (rawMaterials.length > 0) return rawMaterials;
@@ -486,6 +494,7 @@ export function mergeFundingListItem(existing: FundingProject | undefined, item:
 
 export function mergeFundingDetail(existing: FundingProject, detail: FundingDetailResponse): FundingProject {
   const supportOption = detail.supportOptions?.[0];
+  const supportOptionName = normalizeSupportOptionNameForDisplay(supportOption?.name);
   const bottleSize =
     formatVolumeSpec(detail.bottleSize) ||
     formatVolumeSpec(detail.volume) ||
@@ -567,7 +576,7 @@ export function mergeFundingDetail(existing: FundingProject, detail: FundingDeta
     totalQuantity: sameProject ? detail.totalQuantity ?? existing.totalQuantity : existing.totalQuantity,
     targetQuantity: sameProject ? detail.totalQuantity ?? existing.targetQuantity : existing.targetQuantity,
     shippingFee: sameProject ? detail.shippingFee ?? existing.shippingFee : existing.shippingFee,
-    rewardItems: sameProject && sanitizeApiText(supportOption?.name) ? [sanitizeApiText(supportOption?.name)] : existing.rewardItems,
+    rewardItems: sameProject && supportOptionName ? [supportOptionName] : existing.rewardItems,
     bottleSize: sameProject ? bottleSize || existing.bottleSize : existing.bottleSize,
     volume: sameProject ? bottleSize || existing.volume : existing.volume,
     alcoholContent: sameProject ? alcoholContent || existing.alcoholContent : existing.alcoholContent,
@@ -728,10 +737,11 @@ export function mergeSupportOption(existing: FundingProject, option: FundingSupp
   const optionIngredientText = formatProjectIngredients(optionIngredients);
   const mainIngredient = sanitizeApiText(option.mainIngredient) || sanitizeApiText(option.primaryIngredient) || optionIngredientText;
   const subIngredients = joinTextList(option.subIngredients) || sanitizeApiText(option.subIngredient);
+  const optionName = normalizeSupportOptionNameForDisplay(option.name);
   return {
     ...existing,
     pricePerBottle: option.price,
-    rewardItems: sanitizeApiText(option.name) ? [sanitizeApiText(option.name)] : existing.rewardItems,
+    rewardItems: optionName ? [optionName] : existing.rewardItems,
     bottleSize: bottleSize || existing.bottleSize,
     volume: bottleSize || existing.volume,
     alcoholContent: alcoholContent || existing.alcoholContent,

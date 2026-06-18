@@ -10,11 +10,10 @@ import {
 import { router } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Clock3, Heart, Package, TrendingUp, Users } from 'lucide-react-native';
+import { ArrowLeft, Clock3, Package, TrendingUp, Users } from 'lucide-react-native';
 
 import { Progress } from '@/components/ui/progress';
 import { getFundingMainIngredientLabel } from '@/features/funding/projectLabels';
-import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
 import { getMyPageApiErrorMessage, getMyPageParticipatedFundings, type MyPageParticipatedFunding } from '@/features/mypage/api';
 import {
@@ -95,7 +94,6 @@ function mapParticipatedFundingToProject(item: MyPageParticipatedFunding): MyFun
 export default function FundedProjectsScreen() {
   const insets = useSafeAreaInsets();
   const { projects, participatedFundings } = useFunding();
-  const { isFavoriteFunding, toggleFavoriteFunding } = useFavorites();
   const [serverFundings, setServerFundings] = useState<MyFundingProject[]>([]);
   const [serverLoadAttempted, setServerLoadAttempted] = useState(false);
   const [page, setPage] = useState(1);
@@ -187,8 +185,6 @@ export default function FundedProjectsScreen() {
             <FundingParticipationCard
               key={project.id}
               project={project}
-              favorite={isFavoriteFunding(project.id)}
-              onFavoritePress={() => toggleFavoriteFunding(project.id)}
             />
           ))}
         </View>
@@ -263,12 +259,8 @@ function SummaryStat({ label, value, bordered }: { label: string; value: string;
 
 function FundingParticipationCard({
   project,
-  favorite,
-  onFavoritePress,
 }: {
   project: MyFundingProject;
-  favorite: boolean;
-  onFavoritePress: () => void;
 }) {
   const progress = Math.min(Math.round((project.currentAmount / project.goalAmount) * 100), 100);
   const completed = isCompletedFundingStatus(project.status);
@@ -285,16 +277,6 @@ function FundingParticipationCard({
       <View style={styles.cardBody}>
         <View style={styles.thumbnailWrap}>
           <Image source={getFundingProjectImageSource(project)} style={styles.thumbnail} />
-          <TouchableOpacity
-            style={styles.heartButton}
-            activeOpacity={0.8}
-            onPress={(event) => {
-              event.stopPropagation();
-              onFavoritePress();
-            }}
-          >
-            <Heart size={15} color="#FFFFFF" fill={favorite ? '#FFFFFF' : 'transparent'} />
-          </TouchableOpacity>
         </View>
 
         <View style={styles.cardInfo}>
@@ -430,17 +412,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
   },
   thumbnail: { width: '100%', height: '100%', resizeMode: 'cover' },
-  heartButton: {
-    position: 'absolute',
-    left: 7,
-    bottom: 7,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   cardInfo: { flex: 1, minWidth: 0, justifyContent: 'space-between' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
   breweryName: { maxWidth: 58, fontSize: 10, fontWeight: '900', color: '#374151' },

@@ -36,6 +36,11 @@ export type NicknameCheckResult = {
 export type MyPagePhoneVerificationRequestResponse = {
   phoneNumber?: string;
   requested?: boolean;
+  verificationCode?: string;
+  sendTo?: string;
+  guideMessage?: string;
+  verificationId?: string;
+  requestId?: string;
   message?: string;
 };
 

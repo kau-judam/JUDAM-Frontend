@@ -179,7 +179,6 @@ export default function SignupScreen() {
   const [isPassVerifying, setIsPassVerifying] = useState(false);
   const [isPhoneVerificationSent, setIsPhoneVerificationSent] = useState(false);
   const [phoneVerificationCode, setPhoneVerificationCode] = useState('');
-  const [phoneVerificationCheckCount, setPhoneVerificationCheckCount] = useState(0);
   const [isPhoneVerificationChecking, setIsPhoneVerificationChecking] = useState(false);
   const [phoneVerificationGuide, setPhoneVerificationGuide] = useState('');
   const [phoneVerificationToken, setPhoneVerificationToken] = useState<string | undefined>();
@@ -283,7 +282,6 @@ export default function SignupScreen() {
       setIsPhoneVerified(false);
       setIsPhoneVerificationSent(false);
       setPhoneVerificationCode('');
-      setPhoneVerificationCheckCount(0);
       setPhoneVerificationGuide('');
       setPhoneVerificationToken(undefined);
     }
@@ -353,7 +351,6 @@ export default function SignupScreen() {
       const result = await requestPhoneVerification(digitsOnly(formData.phone));
       setIsPhoneVerificationSent(true);
       setPhoneVerificationCode(result.verificationCode || '');
-      setPhoneVerificationCheckCount(0);
       const smsOpened = await openPhoneVerificationSmsApp(result);
       setPhoneVerificationGuide(
         smsOpened ? buildPhoneVerificationGuideMessage(result) : buildPhoneVerificationRequestGuideMessage(result)
@@ -370,7 +367,7 @@ export default function SignupScreen() {
 
   const handleConfirmPhoneVerification = useCallback(async (silent = false) => {
     if (!phoneVerificationCode) {
-      if (!silent) showNotice('인증 요청을 먼저 진행해주세요.');
+      if (!silent) showNotice('인증 문자 요청 정보를 확인하지 못했습니다. 인증 문자를 다시 보내주세요.');
       return;
     }
     setIsPhoneVerificationChecking(true);
@@ -384,21 +381,11 @@ export default function SignupScreen() {
       setIsPhoneVerified(true);
       showNotice('본인인증이 완료되었습니다.');
     } catch (error) {
-      if (!silent) showNotice(error instanceof Error ? error.message : '본인인증 확인에 실패했습니다.');
+      if (!silent) showNotice(error instanceof Error ? error.message : '아직 인증 문자가 확인되지 않았습니다. 잠시 후 다시 시도해주세요.');
     } finally {
       setIsPhoneVerificationChecking(false);
     }
   }, [formData.phone, phoneVerificationCode]);
-
-  useEffect(() => {
-    if (!isPhoneVerificationSent || isPhoneVerified || !phoneVerificationCode || phoneVerificationCheckCount >= 3) return;
-    const timer = setTimeout(() => {
-      setPhoneVerificationCheckCount((prev) => prev + 1);
-      void handleConfirmPhoneVerification(true);
-    }, 10000);
-
-    return () => clearTimeout(timer);
-  }, [handleConfirmPhoneVerification, isPhoneVerificationSent, isPhoneVerified, phoneVerificationCode, phoneVerificationCheckCount]);
 
   const handleSignup = async () => {
     if (!isNameChecked || !isNameAvailable) {
@@ -727,7 +714,7 @@ export default function SignupScreen() {
                     >
                       <ShieldCheck size={15} color="#FFF" />
                       <Text style={styles.smallBtnTxt}>
-                        {isPhoneVerified ? '완료' : isPassVerifying ? '확인중' : isPhoneVerificationSent ? '재요청' : '인증하기'}
+                        {isPhoneVerified ? '완료' : isPassVerifying ? '준비중' : isPhoneVerificationSent ? '다시 보내기' : '인증 문자 보내기'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -738,7 +725,7 @@ export default function SignupScreen() {
                           {phoneVerificationGuide}
                         </Text>
                         <Text style={styles.phoneVerificationSubText}>
-                          문자를 보낸 뒤 10~30초 정도 기다리면 자동으로 확인해요.
+                          문자앱에서 전송 버튼을 누른 뒤 앱으로 돌아와 인증 완료를 눌러주세요.
                         </Text>
                       </View>
                       <View style={styles.row}>
@@ -748,7 +735,7 @@ export default function SignupScreen() {
                           disabled={isPhoneVerificationChecking}
                         >
                           <Text style={styles.verifyStatusButtonText}>
-                            {isPhoneVerificationChecking ? '확인 중...' : '인증 확인'}
+                            {isPhoneVerificationChecking ? '확인 중...' : '인증 완료'}
                           </Text>
                         </TouchableOpacity>
                       </View>

@@ -3,6 +3,7 @@ import { Alert, Share as NativeShare } from 'react-native';
 import { logKakaoDebugInfo } from '@/utils/kakaoDebug';
 
 export const DEFAULT_JUDAM_SHARE_IMAGE_URL = 'https://kaujudam.com/og-image.png';
+const ENABLE_KAKAO_SHARE = false;
 
 export type JudamShareOptions = {
   title: string;
@@ -34,6 +35,10 @@ async function tryShareWithKakao(options: JudamShareOptions & {
   imageUrl: string;
   buttonTitle: string;
 }) {
+  if (!ENABLE_KAKAO_SHARE) {
+    return false;
+  }
+
   try {
     await logKakaoDebugInfo('KakaoShare');
   } catch (debugError) {

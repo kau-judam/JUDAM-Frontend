@@ -1694,7 +1694,16 @@ function normalizeAdminFundingDraftItem(value: unknown): AdminFundingDraft | nul
     imageUrls,
     basicInfo: Object.keys(basicInfo).length ? {
       title,
-      shortTitle: readFundingApiString(basicInfo, ['shortTitle', 'short_title']),
+      shortTitle: readFundingApiString(basicInfo, [
+        'shortTitle',
+        'short_title',
+        'subtitle',
+        'subTitle',
+        'sub_title',
+        'tagline',
+        'shortDescription',
+        'short_description',
+      ]),
       category: readFundingApiString(basicInfo, ['category']) || undefined,
       mainIngredient: readFundingApiString(basicInfo, ['mainIngredient', 'primaryIngredient', 'main_ingredient', 'primary_ingredient']) || undefined,
       subIngredients: readFundingApiStringArray(basicInfo, ['subIngredients', 'sub_ingredients']),
@@ -1863,7 +1872,16 @@ function normalizeFundingDraftListItem(source: Record<string, unknown>): Funding
     draftId: readFundingApiNumber(source, ['draftId', 'draft_id']),
     breweryId: readFundingApiNumber(source, ['breweryId', 'brewery_id']),
     title: readFundingApiString(source, ['title']),
-    shortTitle: readFundingApiString(source, ['shortTitle', 'short_title']),
+    shortTitle: readFundingApiString(source, [
+      'shortTitle',
+      'short_title',
+      'subtitle',
+      'subTitle',
+      'sub_title',
+      'tagline',
+      'shortDescription',
+      'short_description',
+    ]),
     category: readFundingApiString(source, ['category']),
     status: readFundingApiString(source, ['status']),
     progressRate: readFundingApiNumber(source, ['progressRate', 'progress_rate']),
@@ -2012,7 +2030,16 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
     progressRate,
     basicInfo: {
       title: readFundingApiString(basicInfo, ['title']),
-      shortTitle: readFundingApiString(basicInfo, ['shortTitle', 'short_title']),
+      shortTitle: readFundingApiString(basicInfo, [
+        'shortTitle',
+        'short_title',
+        'subtitle',
+        'subTitle',
+        'sub_title',
+        'tagline',
+        'shortDescription',
+        'short_description',
+      ]),
       category: readFundingApiString(basicInfo, ['category']),
       mainIngredient: readFundingApiString(basicInfo, ['mainIngredient', 'main_ingredient'])
         || primarySupportOption?.mainIngredient

@@ -4733,7 +4733,7 @@ function PreviewModal({
   visible: boolean;
   insetsTop: number;
   onClose: () => void;
-  basicInfo: { category: string; title: string; summary: string; mainIngredient: string; subIngredient: string; alcoholContent: string; images: string[] };
+  basicInfo: { category: string; title: string; shortTitle: string; summary: string; mainIngredient: string; subIngredient: string; alcoholContent: string; images: string[] };
   fundingInfo: { duration: string; startDate: string; expectedDeliveryDate: string; pricePerBottle: string; bottleQuantity: string; goalAmount: string };
   productInfo: { volume: string; alcoholContent: string };
   projectPlan: { introduction: string; videoUrl: string; budget: string; schedule: string };
@@ -4745,6 +4745,7 @@ function PreviewModal({
   onOpenGuide: () => void;
 }) {
   const title = cleanPreviewText(basicInfo.title) || '프로젝트 제목을 입력해주세요';
+  const shortTitle = cleanPreviewText(basicInfo.shortTitle);
   const summary = cleanPreviewText(basicInfo.summary);
   const introduction = cleanPreviewText(projectPlan.introduction);
   const breweryName = cleanPreviewText(breweryProfile.name) || '양조장 이름';
@@ -4781,7 +4782,7 @@ function PreviewModal({
           </View>
           <View style={styles.previewInner}>
             <Text style={styles.previewTitle}>{title}</Text>
-            <Text style={styles.previewSummary}>{summary || '프로젝트 요약을 입력해주세요'}</Text>
+            {shortTitle ? <Text style={styles.previewSummary}>{shortTitle}</Text> : null}
             <View style={styles.previewStatsCard}>
               <View style={styles.previewStatGrid}>
                 <View style={styles.previewStat}>

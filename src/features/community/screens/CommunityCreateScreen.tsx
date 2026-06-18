@@ -205,13 +205,17 @@ export default function CommunityCreateScreen() {
         const response = await updateCommunityPost(editingPost.id, {
           title: trimmedTitle,
           content: trimmedContent,
+          boardType,
           existingImageUrls,
           images: localImageUris,
         });
+        const updatedBoardType = response.post.board_type === 'INFO' ? 'INFO' : 'FREE';
         updatePost(editingPost.id, {
           ...postPayload,
+          category: updatedBoardType === 'FREE' ? '자유게시판' : '정보게시판',
           image: response.post.image_urls[0],
           imageUrls: response.post.image_urls,
+          tags: [updatedBoardType],
         });
       } catch (error) {
         console.warn('Failed to update community post', error);

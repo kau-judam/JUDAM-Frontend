@@ -214,6 +214,7 @@ export type FundingDraftPreviewResponse = {
     aromaIntensity?: number;
     finish?: number;
     aftertaste?: number;
+    tasteInput?: Record<string, number | string | null | undefined>;
     flavor?: string[];
     flavorNotes?: string[];
   };
@@ -227,7 +228,11 @@ export type FundingDraftPreviewResponse = {
     budgetPlanGuide?: string;
     schedulePlanGuide?: string;
     policy?: string;
+    risks?: string;
+    expectedDifficulties?: string;
+    difficulties?: string;
   };
+  supportOptions?: FundingSupportOption[];
   breweryInfo?: {
     breweryUserId?: number | string;
     breweryName?: string;
@@ -433,6 +438,7 @@ type FundingDraftUpdatePayload = FundingBasicInfoPayload & {
     businessRegistrationFileUrl?: string;
     businessLicenseUrl?: string;
   };
+  supportOptions?: Partial<FundingSupportOption>[];
   notices?: FundingNoticesPayload;
 };
 
@@ -1915,6 +1921,35 @@ function normalizeFundingDraftAiImageResponse(response: unknown): FundingDraftAi
   };
 }
 
+function normalizeFundingSupportOption(source: Record<string, unknown>, index = 0): FundingSupportOption {
+  const ingredients = readFundingApiArray<unknown>(source, ['ingredients', 'ingredientList', 'ingredient_list']);
+  const subIngredients = readFundingApiStringArray(source, ['subIngredients', 'sub_ingredients']);
+  return {
+    optionId: readFundingApiString(source, ['optionId', 'option_id', 'supportOptionId', 'support_option_id', 'id'])
+      || readFundingApiNumber(source, ['optionId', 'option_id', 'supportOptionId', 'support_option_id', 'id'])
+      || index + 1,
+    name: readFundingApiString(source, ['name', 'optionName', 'option_name', 'title']),
+    price: readFundingApiNumber(source, ['price', 'amount', 'optionPrice', 'option_price']),
+    description: readFundingApiString(source, ['description', 'desc', 'summary']),
+    volume: readFundingApiString(source, ['volume']) || readFundingApiNumber(source, ['volume']) || undefined,
+    alcohol: readFundingApiString(source, ['alcohol']) || readFundingApiNumber(source, ['alcohol']) || undefined,
+    alcoholPercentage: readFundingApiString(source, ['alcoholPercentage', 'alcohol_percentage'])
+      || readFundingApiNumber(source, ['alcoholPercentage', 'alcohol_percentage'])
+      || undefined,
+    expectedDeliveryDate: readFundingApiString(source, ['expectedDeliveryDate', 'expected_delivery_date']) || null,
+    mainIngredient: readFundingApiString(source, ['mainIngredient', 'main_ingredient']),
+    primaryIngredient: readFundingApiString(source, ['primaryIngredient', 'primary_ingredient']),
+    mainIngredientLabel: readFundingApiString(source, ['mainIngredientLabel', 'main_ingredient_label']),
+    primaryIngredientLabel: readFundingApiString(source, ['primaryIngredientLabel', 'primary_ingredient_label']),
+    subIngredient: readFundingApiString(source, ['subIngredient', 'sub_ingredient']),
+    subIngredients,
+    ingredients,
+    stock: readFundingApiOptionalNumber(source, ['stock', 'totalQuantity', 'total_quantity']),
+    remainingStock: readFundingApiOptionalNumber(source, ['remainingStock', 'remaining_stock']),
+    maxPerUser: readFundingApiOptionalNumber(source, ['maxPerUser', 'max_per_user']),
+  };
+}
+
 function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPreviewResponse {
   const responseData = response && typeof response === 'object' ? response as Record<string, unknown> : {};
   const data = getFundingApiObject(response);
@@ -1922,9 +1957,19 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
   const schedule = getFundingPreviewNestedObject(data, responseData, ['schedule']);
   const legalInfo = getFundingPreviewNestedObject(data, responseData, ['legalInfo', 'legal_info']);
   const tasteProfile = getFundingPreviewNestedObject(data, responseData, ['tasteProfile', 'taste_profile']);
-  const plan = getFundingPreviewNestedObject(data, responseData, ['plan']);
+  const tasteInput = getFundingPreviewNestedObject(tasteProfile, {}, ['tasteInput', 'taste_input']);
+  const plan = getFundingPreviewNestedObject(data, responseData, ['plan', 'projectPlan', 'project_plan']);
   const breweryInfo = getFundingPreviewNestedObject(data, responseData, ['breweryInfo', 'brewery_info', 'breweryProfile', 'brewery_profile']);
   const notices = getFundingPreviewNestedObject(data, responseData, ['notices']);
+  const supportOptions = (
+    readFundingApiArray<Record<string, unknown>>(data, ['supportOptions', 'support_options', 'options']).length
+      ? readFundingApiArray<Record<string, unknown>>(data, ['supportOptions', 'support_options', 'options'])
+      : readFundingApiArray<Record<string, unknown>>(responseData, ['supportOptions', 'support_options', 'options'])
+  ).map(normalizeFundingSupportOption);
+  const primarySupportOption = supportOptions[0];
+  const primarySupportOptionRecord = primarySupportOption
+    ? primarySupportOption as unknown as Record<string, unknown>
+    : {};
   const dataPreviewImages = readFundingApiUrlArray(
     data,
     ['images', 'imageUrls', 'image_urls', 'allImageUrls', 'all_image_urls'],
@@ -1961,10 +2006,19 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       title: readFundingApiString(basicInfo, ['title']),
       shortTitle: readFundingApiString(basicInfo, ['shortTitle', 'short_title']),
       category: readFundingApiString(basicInfo, ['category']),
-      mainIngredient: readFundingApiString(basicInfo, ['mainIngredient', 'main_ingredient']),
-      subIngredients: readFundingApiArray<string>(basicInfo, ['subIngredients', 'sub_ingredients']),
-      alcoholPercentage: readFundingApiNumber(basicInfo, ['alcoholPercentage', 'alcohol_percentage']) || undefined,
-      summary: readFundingApiString(basicInfo, ['summary']),
+      mainIngredient: readFundingApiString(basicInfo, ['mainIngredient', 'main_ingredient'])
+        || primarySupportOption?.mainIngredient
+        || primarySupportOption?.primaryIngredient
+        || '',
+      subIngredients: readFundingApiArray<string>(basicInfo, ['subIngredients', 'sub_ingredients']).length
+        ? readFundingApiArray<string>(basicInfo, ['subIngredients', 'sub_ingredients'])
+        : primarySupportOption?.subIngredients?.length
+          ? primarySupportOption.subIngredients
+          : [],
+      alcoholPercentage: readFundingApiOptionalNumber(basicInfo, ['alcoholContent', 'alcohol_content', 'alcoholPercentage', 'alcohol_percentage'])
+        ?? readFundingApiOptionalNumber(primarySupportOptionRecord, ['alcoholPercentage', 'alcohol_percentage', 'alcohol'])
+        ?? undefined,
+      summary: readFundingApiString(basicInfo, ['summary', 'shortSummary', 'short_summary', 'projectSummary', 'project_summary']),
       thumbnailUrl: readFundingApiString(basicInfo, ['thumbnailUrl', 'thumbnail_url']),
       imageUrls: basicImageUrls.length ? basicImageUrls : previewImages,
       allImageUrls: allBasicImageUrls.length ? allBasicImageUrls : previewImages,
@@ -1972,39 +2026,76 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       tags: readFundingApiArray<string>(basicInfo, ['tags']),
     },
     schedule: {
-      pricePerBottle: readFundingApiNumber(schedule, ['pricePerBottle', 'price_per_bottle']) || undefined,
-      totalQuantity: readFundingApiNumber(schedule, ['totalQuantity', 'total_quantity']) || undefined,
+      pricePerBottle: readFundingApiOptionalNumber(schedule, ['pricePerBottle', 'price_per_bottle'])
+        ?? primarySupportOption?.price
+        ?? undefined,
+      totalQuantity: readFundingApiOptionalNumber(schedule, ['totalQuantity', 'total_quantity'])
+        ?? primarySupportOption?.stock
+        ?? primarySupportOption?.remainingStock
+        ?? undefined,
       targetAmount: readFundingApiNumber(schedule, ['targetAmount', 'target_amount']) || undefined,
       fundingStartDate: readFundingApiString(schedule, ['fundingStartDate', 'funding_start_date']),
       fundingPeriodDays: readFundingApiNumber(schedule, ['fundingPeriodDays', 'funding_period_days']) || undefined,
       fundingEndDate: readFundingApiString(schedule, ['fundingEndDate', 'funding_end_date']),
-      expectedDeliveryDate: readFundingApiString(schedule, ['expectedDeliveryDate', 'expected_delivery_date']),
+      expectedDeliveryDate: readFundingApiString(plan, ['expectedDeliveryDate', 'expected_delivery_date'])
+        || readFundingApiString(schedule, ['expectedDeliveryDate', 'expected_delivery_date'])
+        || primarySupportOption?.expectedDeliveryDate
+        || '',
     },
     legalInfo: {
       productType: readFundingApiString(legalInfo, ['productType', 'product_type']),
-      volume: readFundingApiNumber(legalInfo, ['volume']) || undefined,
-      alcoholPercentage: readFundingApiNumber(legalInfo, ['alcoholPercentage', 'alcohol_percentage']) || undefined,
-      mainIngredient: readFundingApiString(legalInfo, ['mainIngredient', 'main_ingredient']),
-      primaryIngredient: readFundingApiString(legalInfo, ['primaryIngredient', 'primary_ingredient']),
+      volume: readFundingApiOptionalNumber(legalInfo, ['volume'])
+        ?? readFundingApiOptionalNumber(primarySupportOptionRecord, ['volume'])
+        ?? undefined,
+      alcoholPercentage: readFundingApiOptionalNumber(legalInfo, ['alcoholContent', 'alcohol_content', 'alcoholPercentage', 'alcohol_percentage'])
+        ?? readFundingApiOptionalNumber(basicInfo, ['alcoholContent', 'alcohol_content', 'alcoholPercentage', 'alcohol_percentage'])
+        ?? readFundingApiOptionalNumber(primarySupportOptionRecord, ['alcoholPercentage', 'alcohol_percentage', 'alcohol'])
+        ?? undefined,
+      mainIngredient: readFundingApiString(legalInfo, ['mainIngredient', 'main_ingredient'])
+        || primarySupportOption?.mainIngredient
+        || '',
+      primaryIngredient: readFundingApiString(legalInfo, ['primaryIngredient', 'primary_ingredient'])
+        || primarySupportOption?.primaryIngredient
+        || '',
       subIngredient: readFundingApiString(legalInfo, ['subIngredient', 'sub_ingredient']),
       subIngredients: readFundingApiStringArray(legalInfo, ['subIngredients', 'sub_ingredients'], ['subIngredient', 'sub_ingredient']),
       rawMaterials: normalizeFundingRawMaterials(readFundingApiArray<FundingRawMaterialResponse>(legalInfo, ['rawMaterials', 'raw_materials'])),
     },
     tasteProfile: {
-      sweetness: readFundingApiOptionalNumber(tasteProfile, ['sweetness']),
-      acidity: readFundingApiOptionalNumber(tasteProfile, ['acidity']),
-      body: readFundingApiOptionalNumber(tasteProfile, ['body']),
-      carbonation: readFundingApiOptionalNumber(tasteProfile, ['carbonation']),
-      alcohol: readFundingApiOptionalNumber(tasteProfile, ['alcohol']),
-      alcoholIntensity: readFundingApiOptionalNumber(tasteProfile, ['alcoholIntensity', 'alcohol_intensity']),
-      aromaIntensity: readFundingApiOptionalNumber(tasteProfile, ['aromaIntensity', 'aroma_intensity']),
-      finish: readFundingApiOptionalNumber(tasteProfile, ['finish']),
-      aftertaste: readFundingApiOptionalNumber(tasteProfile, ['aftertaste', 'after_taste']),
+      sweetness: readFundingApiOptionalNumber(tasteInput, ['sweetness']) ?? readFundingApiOptionalNumber(tasteProfile, ['sweetness']),
+      acidity: readFundingApiOptionalNumber(tasteInput, ['acidity']) ?? readFundingApiOptionalNumber(tasteProfile, ['acidity']),
+      body: readFundingApiOptionalNumber(tasteInput, ['body']) ?? readFundingApiOptionalNumber(tasteProfile, ['body']),
+      carbonation: readFundingApiOptionalNumber(tasteInput, ['carbonation']) ?? readFundingApiOptionalNumber(tasteProfile, ['carbonation']),
+      alcohol: readFundingApiOptionalNumber(tasteInput, ['alcohol']) ?? readFundingApiOptionalNumber(tasteProfile, ['alcohol']),
+      alcoholIntensity: readFundingApiOptionalNumber(tasteInput, ['alcoholIntensity', 'alcohol_intensity']) ?? readFundingApiOptionalNumber(tasteProfile, ['alcoholIntensity', 'alcohol_intensity']),
+      aromaIntensity: readFundingApiOptionalNumber(tasteInput, ['aromaIntensity', 'aroma_intensity']) ?? readFundingApiOptionalNumber(tasteProfile, ['aromaIntensity', 'aroma_intensity']),
+      finish: readFundingApiOptionalNumber(tasteInput, ['finish']) ?? readFundingApiOptionalNumber(tasteProfile, ['finish']),
+      aftertaste: readFundingApiOptionalNumber(tasteInput, ['aftertaste', 'after_taste']) ?? readFundingApiOptionalNumber(tasteProfile, ['aftertaste', 'after_taste']),
+      tasteInput: {
+        sweetness: readFundingApiOptionalNumber(tasteInput, ['sweetness']),
+        acidity: readFundingApiOptionalNumber(tasteInput, ['acidity']),
+        body: readFundingApiOptionalNumber(tasteInput, ['body']),
+        carbonation: readFundingApiOptionalNumber(tasteInput, ['carbonation']),
+        flavor: readFundingApiOptionalNumber(tasteInput, ['flavor']),
+        alcohol: readFundingApiOptionalNumber(tasteInput, ['alcohol']),
+        alcoholIntensity: readFundingApiOptionalNumber(tasteInput, ['alcoholIntensity', 'alcohol_intensity']),
+        aromaIntensity: readFundingApiOptionalNumber(tasteInput, ['aromaIntensity', 'aroma_intensity']),
+        finish: readFundingApiOptionalNumber(tasteInput, ['finish']),
+        aftertaste: readFundingApiOptionalNumber(tasteInput, ['aftertaste', 'after_taste']),
+      },
       flavor: readFundingApiStringArray(tasteProfile, ['flavor'], ['flavor']),
       flavorNotes: readFundingApiStringArray(tasteProfile, ['flavorNotes', 'flavor_notes'], ['flavor']),
     },
     plan: {
-      introduction: readFundingApiString(plan, ['introduction']),
+      introduction: readFundingApiString(plan, [
+        'introduction',
+        'projectIntroduction',
+        'project_introduction',
+        'story',
+        'projectStory',
+        'project_story',
+        'description',
+      ]),
       videoUrl: readFundingApiString(plan, ['videoUrl', 'video_url']),
       budgetPlan: readFundingApiArrayOrString<{ category: string; amount: number }>(plan, [
         'budgetPlanRaw',
@@ -2033,7 +2124,12 @@ function normalizeFundingDraftPreviewResponse(response: unknown): FundingDraftPr
       budgetPlanGuide: readFundingApiString(plan, ['budgetPlanGuide', 'budget_plan_guide']),
       schedulePlanGuide: readFundingApiString(plan, ['schedulePlanGuide', 'schedule_plan_guide']),
       policy: readFundingApiString(plan, ['policyRaw', 'policy_raw', 'policyText', 'policy_text', 'policy', 'projectPolicy', 'project_policy']),
+      risks: readFundingApiString(plan, ['risks', 'risk']) || readFundingApiString(data, ['risks', 'risk']),
+      expectedDifficulties: readFundingApiString(plan, ['expectedDifficulties', 'expected_difficulties'])
+        || readFundingApiString(data, ['expectedDifficulties', 'expected_difficulties']),
+      difficulties: readFundingApiString(plan, ['difficulties']) || readFundingApiString(data, ['difficulties']),
     },
+    supportOptions,
     breweryInfo: {
       breweryUserId: readFundingApiString(breweryInfo, ['breweryUserId', 'brewery_user_id']) || readFundingApiNumber(breweryInfo, ['breweryUserId', 'brewery_user_id']) || undefined,
       breweryName: readFundingApiString(breweryInfo, ['breweryName', 'brewery_name']),

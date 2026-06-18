@@ -25,6 +25,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { PageHeader } from '@/components/PageHeader';
+import { StatsGrid } from '@/components/StatsGrid';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFavorites } from '@/contexts/FavoritesContext';
 import { useFunding } from '@/contexts/FundingContext';
@@ -525,34 +526,39 @@ export default function FundingListScreen() {
             <Text style={styles.statsSubtitle}>함께 만들어가는 전통주의 미래</Text>
           </Animated.View>
 
-          <View style={styles.statsGrid}>
-            <StatCard 
-              icon={<TrendingUp size={22} color="#FFF" />} 
-              val={formatCountWithUnit(serverFundingStats.supportableFundingCount, '개')}
-              label="참여 가능 펀딩"
-              sub="지금 후원 가능"
-            />
-            <StatCard 
-              icon={<Users size={22} color="#FFF" />} 
-              val={formatCountWithUnit(serverFundingStats.totalBackerCount, '명')}
-              label="총 참여자" 
-              sub="함께한 사람들"
-            />
-            <StatCard 
-              icon={<Text style={{ fontSize: 18, color: '#FFF' }}>✓</Text>} 
-              val={formatCountWithUnit(serverFundingStats.successfulProjectCount, '개')}
-              label="성공 프로젝트" 
-              sub="여러분의 선택"
-            />
-          </View>
-
-          <View style={styles.milestoneContainer}>
-            <View style={styles.milestoneBox}>
-              <Text style={styles.milestoneTxt}>
-                총 <Text style={styles.milestoneVal}>{totalRaisedMilestoneText}</Text> 이상 모금 달성
-              </Text>
-            </View>
-          </View>
+          <StatsGrid
+            items={[
+              {
+                key: 'supportable',
+                icon: <TrendingUp size={20} color="#FFF" />,
+                value: formatCountWithUnit(serverFundingStats.supportableFundingCount, '개'),
+                label: '참여 가능 펀딩',
+                description: '지금 후원 가능',
+              },
+              {
+                key: 'backers',
+                icon: <Users size={20} color="#FFF" />,
+                value: formatCountWithUnit(serverFundingStats.totalBackerCount, '명'),
+                label: '총 참여자',
+                description: '함께한 사람들',
+              },
+              {
+                key: 'amount',
+                icon: <Text style={styles.statsIconText}>원</Text>,
+                value: totalRaisedMilestoneText,
+                label: '누적 모금액',
+                description: '전통주에 모인 금액',
+                tone: 'accent',
+              },
+              {
+                key: 'success',
+                icon: <ShieldCheck size={20} color="#FFF" />,
+                value: formatCountWithUnit(serverFundingStats.successfulProjectCount, '개'),
+                label: '성공 프로젝트',
+                description: '여러분의 선택',
+              },
+            ]}
+          />
         </View>
       </ScrollView>
       <FundingAlertModal
@@ -563,17 +569,6 @@ export default function FundingListScreen() {
         buttons={alertModal?.buttons}
         onClose={() => setAlertModal(null)}
       />
-    </View>
-  );
-}
-
-function StatCard({ icon, val, label, sub }: any) {
-  return (
-    <View style={styles.statCard}>
-      <View style={styles.statIconBox}>{icon}</View>
-      <Text style={styles.statVal}>{val}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statSubLabel}>{sub}</Text>
     </View>
   );
 }
@@ -624,15 +619,6 @@ const styles = StyleSheet.create({
   pageBtnTxtActive: { color: '#FFF' },
   statsSection: { padding: 24, paddingTop: 80, alignItems: 'center', backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   statsTitle: { fontSize: 32, fontWeight: '800', color: '#111', marginBottom: 8, letterSpacing: -0.5 },
-  statsSubtitle: { fontSize: 15, color: '#9CA3AF', marginBottom: 48, fontWeight: '500' },
-  statsGrid: { flexDirection: 'row', gap: 12, width: '100%' },
-  statCard: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: 28, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#F3F4F6' },
-  statIconBox: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  statVal: { fontSize: 26, fontWeight: '900', color: '#111', marginBottom: 4 },
-  statLabel: { fontSize: 12, fontWeight: '700', color: '#1F2937', marginBottom: 2 },
-  statSubLabel: { fontSize: 10, color: '#9CA3AF', fontWeight: '500' },
-  milestoneContainer: { marginTop: 40 },
-  milestoneBox: { backgroundColor: '#111', paddingHorizontal: 28, paddingVertical: 16, borderRadius: 32, elevation: 10, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 15 },
-  milestoneTxt: { color: '#FFF', fontSize: 15, fontWeight: '500' },
-  milestoneVal: { fontSize: 20, fontWeight: '900' },
+  statsSubtitle: { fontSize: 15, color: '#9CA3AF', marginBottom: 28, fontWeight: '500' },
+  statsIconText: { fontSize: 13, lineHeight: 18, fontWeight: '900', color: '#FFF' },
 });

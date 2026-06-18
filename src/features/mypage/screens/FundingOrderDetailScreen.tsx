@@ -377,6 +377,14 @@ export default function FundingOrderDetailScreen() {
     Alert.alert('복사 완료', `운송장 번호 ${order.trackingNumber}가 복사되었습니다.`);
   };
 
+  const handleReviewWritePress = () => {
+    if (!isSuccessProject(order.project)) {
+      Alert.alert('후기 작성 불가', '펀딩 성공 후 후기를 작성할 수 있습니다.');
+      return;
+    }
+    router.push(`/archive/review/${order.fundingId}` as any);
+  };
+
   const submitInquiry = () => {
     if (!inquiryTitle.trim() || !inquiryEmail.trim() || !inquiryContent.trim()) {
       Alert.alert('입력 확인', '문의 제목, 이메일, 문의 내용을 모두 입력해주세요.');
@@ -524,7 +532,7 @@ export default function FundingOrderDetailScreen() {
         </SectionCard>
 
         {order.deliveryStatus === '완료' && !order.hasReview && (
-          <TouchableOpacity style={styles.reviewCta} activeOpacity={0.86} onPress={() => router.push(`/archive/review/${order.fundingId}` as any)}>
+          <TouchableOpacity style={styles.reviewCta} activeOpacity={0.86} onPress={handleReviewWritePress}>
             <View style={styles.reviewIconBox}>
               <Star size={20} color="#FBBF24" fill="#FBBF24" />
             </View>

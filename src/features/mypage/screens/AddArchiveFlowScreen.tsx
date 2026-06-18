@@ -23,6 +23,12 @@ import {
 
 type Step = 'select-type' | 'select-funding';
 
+function isSuccessfulParticipatedFunding(funding: Pick<MyPageParticipatedFunding, 'fundingStatus'>) {
+  const status = String(funding.fundingStatus || '').trim();
+  const normalized = status.toUpperCase();
+  return normalized === 'SUCCESS' || status.includes('성공') || status.includes('달성');
+}
+
 export default function AddArchiveFlowScreen() {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<Step>('select-type');
@@ -39,7 +45,7 @@ export default function AddArchiveFlowScreen() {
     getMyPageParticipatedFundings({ excludeArchived: true })
         .then((items) => {
           if (!active) return;
-          setFundingOptions(items);
+          setFundingOptions(items.filter(isSuccessfulParticipatedFunding));
         })
         .catch((error) => {
           if (!active) return;
@@ -138,7 +144,7 @@ export default function AddArchiveFlowScreen() {
           <View style={styles.fundingContent}>
             <View style={styles.introBlock}>
               <Text style={styles.questionTitle}>어떤 펀딩 술인가요?</Text>
-              <Text style={styles.questionDesc}>결제 완료된 참여 펀딩 목록에서 선택해주세요.</Text>
+              <Text style={styles.questionDesc}>펀딩 성공으로 종료된 참여 펀딩 목록에서 선택해주세요.</Text>
             </View>
 
             {isFundingLoading ? (
@@ -154,7 +160,7 @@ export default function AddArchiveFlowScreen() {
             ) : fundingOptions.length === 0 ? (
               <EmptyBox>
                 <Text style={styles.emptyTitle}>참여한 펀딩이 없어요</Text>
-                <Text style={styles.emptyText}>결제 완료된 펀딩이 있으면 이곳에서 술 기록을 작성할 수 있어요.</Text>
+                <Text style={styles.emptyText}>펀딩 성공으로 종료된 참여 펀딩이 있으면 이곳에서 술 기록을 작성할 수 있어요.</Text>
               </EmptyBox>
             ) : (
               <View style={styles.projectList}>

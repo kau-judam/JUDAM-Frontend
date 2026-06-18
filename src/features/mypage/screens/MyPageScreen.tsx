@@ -24,7 +24,6 @@ import {
   Mail,
   ChevronRight,
   MessageCircle,
-  HelpCircle,
   LogOut,
   X,
   ChevronDown,
@@ -467,7 +466,6 @@ export default function MyPageScreen() {
                   onPress={() => router.push('/brewery/verification' as any)}
                 />
               )}
-              <MenuItem icon={<HelpCircle size={18} color="#6B7280" />} title="고객센터" onPress={() => router.push('/mypage/support' as any)} />
               <MenuItem icon={<Scroll size={18} color="#6B7280" />} title="약관 및 정책" onPress={() => router.push('/terms' as any)} />
               <MenuItem icon={<LogOut size={18} color="#EF4444" />} title="로그아웃" danger last onPress={logout} />
            </View>

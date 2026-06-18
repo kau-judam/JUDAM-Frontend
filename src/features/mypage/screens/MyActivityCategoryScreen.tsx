@@ -7,8 +7,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RecipeCard } from '@/components/recipe-card';
 import type { FundingProject } from '@/constants/data';
+import { useFunding } from '@/contexts/FundingContext';
+import FundingProjectCard from '@/features/funding/components/FundingProjectCard';
 import {
   getMyPageApiErrorMessage,
+  getMyPageActivityInterests,
   getMyPageActivityQna,
   getMyPageFundingJournalComments,
   getMyPageInterestedRecipes,
@@ -17,6 +20,7 @@ import {
   getMyPageMyRecipes,
   getMyPagePostComments,
   getMyPageRecipeComments,
+  type MyPageActivityInterestsResult,
   type MyPageActivityQnaResult,
   type MyPageFundingJournalCommentsResult,
   type MyPageCommunityPostActivityDto,
@@ -153,6 +157,19 @@ export function MyActivityCategoryScreen({ title, tabs, description }: ActivityC
 
               if (item.kind === 'community' && item.community) {
                 return <CommunityActivityCard key={item.id} item={item.community} />;
+              }
+
+              if (item.kind === 'funding' && item.funding) {
+                return (
+                  <FundingProjectCard
+                    key={item.id}
+                    project={item.funding}
+                    favorite={Boolean(item.funding.liked)}
+                    showFavoriteButton={false}
+                    onPress={() => item.route && router.push(item.route as any)}
+                    onFavoritePress={() => undefined}
+                  />
+                );
               }
 
               if (item.kind === 'comment') {
@@ -346,6 +363,41 @@ function mapMyPagePostComment(item: MyPagePostCommentActivityDto): ActivityItem 
   };
 }
 
+function mapMyPageFundingInterest(item: MyPageActivityInterestsResult['interests'][number], project?: FundingProject): ActivityItem {
+  const fallbackFunding: FundingProject = {
+    id: item.targetId,
+    title: item.title,
+    brewery: project?.brewery || '',
+    location: '',
+    category: project?.category || '',
+    image: item.thumbnailUrl || '',
+    images: item.thumbnailUrl ? [item.thumbnailUrl] : [],
+    liked: true,
+    favoriteCount: 0,
+    goalAmount: 0,
+    currentAmount: 0,
+    backers: 0,
+    daysLeft: 0,
+    status: 'ONGOING',
+    projectSummary: item.summary || '',
+    shortDescription: item.summary || '',
+  };
+  const funding: FundingProject = project ? { ...project, liked: true } : fallbackFunding;
+
+  return {
+    id: `funding-interest-${item.targetId}`,
+    eyebrow: '관심 펀딩',
+    title: item.title,
+    description: item.summary || '',
+    meta: formatActivityDate(item.interestedAt),
+    statLabel: '분류',
+    statValue: '펀딩',
+    kind: 'funding',
+    funding,
+    route: `/funding/${item.targetId}`,
+  };
+}
+
 function mapMyPageFundingQna(item: MyPageActivityQnaResult['qna'][number]): ActivityItem {
   return {
     id: `funding-qna-${item.questionId}`,
@@ -476,6 +528,8 @@ export function RecipeActivityScreen() {
 }
 
 export function FundingActivityScreen() {
+  const { projects } = useFunding();
+  const [liked, setLiked] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
   const [commented, setCommented] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
   const [qna, setQna] = useState<LoadState<ActivityItem[]>>({ loading: true, error: null, data: [] });
 
@@ -484,15 +538,33 @@ export function FundingActivityScreen() {
       let active = true;
 
       const load = async () => {
+        setLiked((prev) => ({ ...prev, loading: true, error: null }));
         setCommented((prev) => ({ ...prev, loading: true, error: null }));
         setQna((prev) => ({ ...prev, loading: true, error: null }));
 
-        const [commentsResult, qnaResult] = await Promise.allSettled([
+        const [interestsResult, commentsResult, qnaResult] = await Promise.allSettled([
+          getMyPageActivityInterests({ type: 'FUNDING' }),
           getMyPageFundingJournalComments(),
           getMyPageActivityQna(),
         ]);
 
         if (!active) return;
+
+        if (interestsResult.status === 'fulfilled') {
+          setLiked({
+            loading: false,
+            error: null,
+            data: (interestsResult.value.interests ?? []).map((item) =>
+              mapMyPageFundingInterest(item, projects.find((project) => project.id === item.targetId))
+            ),
+          });
+        } else {
+          setLiked({
+            loading: false,
+            error: getMyPageApiErrorMessage(interestsResult.reason, '관심 펀딩 목록을 불러오지 못했습니다.'),
+            data: [],
+          });
+        }
 
         if (commentsResult.status === 'fulfilled') {
           setCommented({ loading: false, error: null, data: (commentsResult.value.comments ?? []).map(mapMyPageFundingJournalComment) });
@@ -521,7 +593,7 @@ export function FundingActivityScreen() {
       return () => {
         active = false;
       };
-    }, [])
+    }, [projects])
   );
 
   return (
@@ -529,6 +601,15 @@ export function FundingActivityScreen() {
       title="펀딩"
       description="펀딩 프로젝트에 관심을 표시하거나 댓글을 남겨보세요"
       tabs={[
+        {
+          id: 'liked',
+          label: '관심',
+          Icon: Heart,
+          emptyTitle: '관심 표시한 펀딩이 없습니다',
+          items: liked.data,
+          loading: liked.loading,
+          error: liked.error,
+        },
         {
           id: 'commented',
           label: '댓글',

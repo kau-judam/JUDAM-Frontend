@@ -72,6 +72,20 @@ const mapDashboardNotification = (notification: BreweryDashboardNotification): N
   metadata: notification.metadata ?? null,
 });
 
+const shouldOnlyMarkAsRead = (notification: Notification) => {
+  if (
+    notification.type === 'brewery_application_submitted' ||
+    notification.type === 'brewery_application_approved' ||
+    notification.type === 'brewery_application_rejected' ||
+    notification.type === 'funding_new'
+  ) {
+    return true;
+  }
+
+  const text = `${notification.title} ${notification.content}`;
+  return /양조장\s*인증|펀딩\s*프로젝트\s*심사|프로젝트\s*심사/.test(text);
+};
+
 export default function NotificationScreen() {
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<"all" | "unread">("all");
@@ -185,7 +199,7 @@ export default function NotificationScreen() {
                   style={[styles.card, !n.read && styles.cardUnread]}
                   onPress={() => {
                     handleMarkAsRead(n.id);
-                    if (n.link) router.push(n.link as any);
+                    if (!shouldOnlyMarkAsRead(n) && n.link) router.push(n.link as any);
                   }}
                   activeOpacity={0.7}
                 >

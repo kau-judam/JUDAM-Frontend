@@ -39,7 +39,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useAuth } from '@/contexts/AuthContext';
+import { type KakaoLoginResult, useAuth } from '@/contexts/AuthContext';
 import {
   checkEmailAvailability,
   checkNicknameAvailability,
@@ -54,6 +54,7 @@ import {
   getKakaoRedirectUri,
   openKakaoAuthSession,
   savePendingKakaoAuthRequest,
+  tryLoginWithKakaoTalk,
 } from '@/features/auth/kakaoAuth';
 import {
   digitsOnly,
@@ -151,9 +152,30 @@ function getFirstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function routeAfterKakaoSignupResult(kakaoResult: KakaoLoginResult) {
+  RNStatusBar.setHidden(false, 'fade');
+
+  if (kakaoResult.status === 'signupRequired') {
+    router.replace({
+      pathname: '/(auth)/signup',
+      params: {
+        kakaoEmail: kakaoResult.email,
+        kakaoNickname: kakaoResult.nickname,
+        kakaoProfileImage: kakaoResult.profileImage || undefined,
+        kakaoId: kakaoResult.kakaoId ? String(kakaoResult.kakaoId) : undefined,
+        kakaoSignupToken: kakaoResult.kakaoSignupToken,
+        kakaoNeedsProfileCompletion: kakaoResult.kakaoSignupToken ? undefined : 'true',
+      },
+    } as any);
+    return;
+  }
+
+  router.replace('/(tabs)');
+}
+
 export default function SignupScreen() {
   const insets = useSafeAreaInsets();
-  const { signup } = useAuth();
+  const { signup, loginWithKakaoAccessToken } = useAuth();
   const params = useLocalSearchParams<{
     kakaoEmail?: string;
     kakaoNickname?: string;
@@ -445,6 +467,17 @@ export default function SignupScreen() {
   const handleKakaoSignup = async () => {
     setIsLoading(true);
     try {
+      const nativeLogin = await tryLoginWithKakaoTalk();
+      if (nativeLogin?.accessToken) {
+        try {
+          const kakaoResult = await loginWithKakaoAccessToken(nativeLogin.accessToken, false);
+          routeAfterKakaoSignupResult(kakaoResult);
+          return;
+        } catch (nativeBackendError) {
+          console.warn('[KakaoNativeLogin] Backend accessToken signup failed. Falling back to web OAuth.', nativeBackendError);
+        }
+      }
+
       const appRedirectUri = createKakaoAppRedirectUrl();
       const kakao = await getKakaoLoginUrl(appRedirectUri);
       const kakaoUrl = getKakaoAuthUrl(kakao);

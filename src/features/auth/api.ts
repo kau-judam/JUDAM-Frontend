@@ -826,6 +826,14 @@ export async function loginWithKakaoCode(code: string, redirectUri?: string) {
   return unwrapAuthData<KakaoLoginResponse>(response);
 }
 
+export async function loginWithKakaoAccessToken(accessToken: string) {
+  const response = await requestAuthJson<AuthApiEnvelope<KakaoLoginResponse>>('/api/auth/kakao/login', {
+    method: 'POST',
+    body: JSON.stringify({ accessToken }),
+  });
+  return unwrapAuthData<KakaoLoginResponse>(response);
+}
+
 function createAuthFormFile(file: BreweryApplicationFile) {
   return {
     uri: file.uri,

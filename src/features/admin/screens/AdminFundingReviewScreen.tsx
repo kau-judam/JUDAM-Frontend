@@ -61,52 +61,86 @@ function getAdminDraftStatusLabel(status?: string) {
   return '심사 대상 아님';
 }
 
+function hasDisplayValue(value: unknown) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') {
+    const text = value.trim();
+    return text.length > 0 && text !== '-' && text !== '정보 없음';
+  }
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function hasAnyDisplayValue(values: unknown[]) {
+  return values.some(hasDisplayValue);
+}
+
+function toDisplayText(value: unknown): string {
+  if (!hasDisplayValue(value)) return '';
+  if (typeof value === 'boolean') return value ? '예' : '아니오';
+  if (Array.isArray(value)) return value.map(toDisplayText).filter(Boolean).join(', ');
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([, itemValue]) => hasDisplayValue(itemValue))
+      .map(([key, itemValue]) => `${key}: ${toDisplayText(itemValue)}`)
+      .join('\n');
+  }
+  return String(value).trim();
+}
+
 function formatDateTime(value?: string) {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return value;
+  if (!hasDisplayValue(value)) return undefined;
+  const rawValue = String(value);
+  const date = new Date(rawValue);
+  if (!Number.isFinite(date.getTime())) return rawValue;
   return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 function formatCurrency(value?: number) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
   return `${value.toLocaleString()}원`;
 }
 
 function formatNumber(value?: number, unit = '') {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
   return `${value.toLocaleString()}${unit}`;
 }
 
 function formatText(value?: string | number | boolean | null) {
-  if (value === null || value === undefined) return '-';
+  if (!hasDisplayValue(value)) return undefined;
   const text = String(value).trim();
-  return text || '-';
+  return text || undefined;
 }
 
 function formatList(values?: string[]) {
   const list = values?.map((item) => item.trim()).filter(Boolean) || [];
-  return list.length ? list.join(', ') : '-';
+  return list.length ? list.join(', ') : undefined;
 }
 
 function formatPlanValue(value?: string | { category?: string; amount?: number; step?: string; description?: string; date?: string }[]) {
-  if (!value) return '-';
-  if (typeof value === 'string') return value.trim() || '-';
-  if (!Array.isArray(value) || value.length === 0) return '-';
-  return value
-    .map((item) => item.category
-      ? `${item.category}: ${formatCurrency(item.amount)}`
-      : [item.step, item.description, item.date].filter(Boolean).join(' / '))
+  if (!hasDisplayValue(value)) return undefined;
+  if (typeof value === 'string') return value.trim() || undefined;
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const text = value
+    .map((item) => {
+      if (item.category) {
+        return [item.category, formatCurrency(item.amount)].filter(Boolean).join(': ');
+      }
+      return [item.step, item.description, item.date].filter(Boolean).join(' / ');
+    })
     .filter(Boolean)
     .join('\n');
+  return text || undefined;
 }
 
 function formatRawMaterials(rawMaterials?: { name: string; origin: string }[]) {
-  if (!rawMaterials?.length) return '-';
-  return rawMaterials
+  if (!rawMaterials?.length) return undefined;
+  const text = rawMaterials
     .map((item) => [item.name, item.origin].filter(Boolean).join(' / '))
     .filter(Boolean)
     .join(', ');
+  return text || undefined;
 }
 
 export default function AdminFundingReviewScreen() {
@@ -325,6 +359,74 @@ export default function AdminFundingReviewScreen() {
             const approving = actionState?.type === 'approve' && actionState.draftId === draft.draftId;
             const rejecting = actionState?.type === 'reject' && actionState.draftId === draft.draftId;
             const imageUrls = draft.images?.length ? draft.images : draft.imageUrls || [];
+            const basicInfoValues = [
+              draft.basicInfo?.title,
+              draft.title,
+              draft.basicInfo?.shortTitle,
+              draft.basicInfo?.category,
+              draft.category,
+              draft.basicInfo?.mainIngredient,
+              draft.mainIngredient,
+              draft.basicInfo?.subIngredients,
+              draft.basicInfo?.alcoholPercentage,
+              draft.basicInfo?.summary,
+              draft.summary,
+            ];
+            const scheduleValues = [
+              draft.schedule?.targetAmount,
+              draft.targetAmount,
+              draft.schedule?.pricePerBottle,
+              draft.pricePerBottle,
+              draft.schedule?.totalQuantity,
+              draft.totalQuantity,
+              draft.schedule?.fundingStartDate,
+              draft.schedule?.fundingPeriodDays,
+              draft.schedule?.fundingEndDate,
+              draft.schedule?.expectedDeliveryDate,
+            ];
+            const legalInfoValues = [
+              draft.legalInfo?.productType,
+              draft.legalInfo?.volume,
+              draft.legalInfo?.alcoholPercentage,
+              draft.legalInfo?.mainIngredient,
+              draft.legalInfo?.primaryIngredient,
+              draft.legalInfo?.subIngredients,
+              draft.legalInfo?.subIngredient,
+              draft.legalInfo?.rawMaterials,
+            ];
+            const planValues = [
+              draft.plan?.introduction,
+              draft.plan?.budgetPlan,
+              draft.plan?.projectBudget,
+              draft.plan?.schedulePlan,
+              draft.plan?.projectSchedule,
+              draft.plan?.policy,
+              draft.notices?.policy,
+              draft.notices?.riskNotice,
+            ];
+            const breweryInfoValues = [
+              draft.breweryInfo?.breweryName,
+              draft.breweryName,
+              draft.breweryInfo?.creatorName,
+              draft.breweryInfo?.representativeName,
+              draft.breweryInfo?.businessRegistrationNumber,
+              draft.breweryInfo?.businessAddress,
+              draft.breweryInfo?.businessAddressDetail,
+              draft.breweryInfo?.contactPhone,
+              draft.breweryInfo?.contactEmail,
+              draft.breweryInfo?.bankName,
+              draft.breweryInfo?.accountNumber,
+              draft.breweryInfo?.accountHolder,
+              draft.breweryInfo?.creatorIntroduction,
+            ];
+            const detailValues = [
+              ...basicInfoValues,
+              ...scheduleValues,
+              ...legalInfoValues,
+              ...planValues,
+              ...breweryInfoValues,
+              imageUrls,
+            ];
             return (
               <View key={draft.draftId} style={styles.card}>
                 <View style={styles.cardHeader}>
@@ -350,7 +452,7 @@ export default function AdminFundingReviewScreen() {
                   {expanded ? <ChevronUp size={18} color="#4B5563" /> : <ChevronDown size={18} color="#4B5563" />}
                 </TouchableOpacity>
 
-                {expanded ? (
+                {expanded && hasAnyDisplayValue(detailValues) ? (
                   <View style={styles.detailBox}>
                     <DetailSection title="기본 정보">
                       <DetailLine label="프로젝트명" value={draft.basicInfo?.title || draft.title || '-'} />
@@ -517,40 +619,59 @@ function CenteredNotice({
   );
 }
 
-function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value?: unknown }) {
+  const displayValue = toDisplayText(value);
+  if (!displayValue) return null;
   return (
     <View style={styles.infoRow}>
       {icon}
       <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={styles.infoValue} numberOfLines={1}>{value}</Text>
+      <Text style={styles.infoValue} numberOfLines={1}>{displayValue}</Text>
     </View>
   );
 }
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const childArray = React.Children.toArray(children);
+  const hasEmptyHint = childArray.some((child) => React.isValidElement(child) && child.type === Text);
+  if (hasEmptyHint) return null;
+
+  const visibleChildren = childArray.filter((child) => {
+    if (!React.isValidElement(child)) return hasDisplayValue(child);
+    const childProps = child.props as { value?: unknown; children?: React.ReactNode };
+    if ('value' in childProps) return hasDisplayValue(childProps.value);
+    if ('children' in childProps) return hasDisplayValue(childProps.children);
+    return true;
+  });
+
+  if (!visibleChildren.length) return null;
+
   return (
     <View style={styles.detailSection}>
       <Text style={styles.detailSectionTitle}>{title}</Text>
-      <View style={styles.detailSectionBody}>{children}</View>
+      <View style={styles.detailSectionBody}>{visibleChildren}</View>
     </View>
   );
 }
 
-function DetailLine({ label, value }: { label: string; value: string }) {
+function DetailLine({ label, value }: { label: string; value?: unknown }) {
+  const displayValue = toDisplayText(value);
+  if (!displayValue) return null;
   return (
     <View style={styles.detailLine}>
       <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
+      <Text style={styles.detailValue}>{displayValue}</Text>
     </View>
   );
 }
 
-function DetailParagraph({ label, value }: { label?: string; value?: string | null }) {
-  if (!value?.trim()) return null;
+function DetailParagraph({ label, value }: { label?: string; value?: unknown }) {
+  const displayValue = toDisplayText(value);
+  if (!displayValue) return null;
   return (
     <View style={styles.detailParagraphBox}>
       {label ? <Text style={styles.detailParagraphLabel}>{label}</Text> : null}
-      <Text style={styles.detailParagraph}>{value.trim()}</Text>
+      <Text style={styles.detailParagraph}>{displayValue}</Text>
     </View>
   );
 }

@@ -355,7 +355,6 @@ export default function HomeScreen() {
                 value: totalRaisedAmountText,
                 label: '누적 모금액',
                 description: '전통주에 모인 마음',
-                tone: 'accent',
               },
               {
                 key: 'active',

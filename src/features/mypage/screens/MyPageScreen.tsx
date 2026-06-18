@@ -45,8 +45,7 @@ import { Button } from '@/components/ui/button';
 import { getFundingApiErrorMessage, getMyFundingOrders, isFundingApiMissingEndpointError } from '@/features/funding/api';
 import { showLoginRequired } from '@/utils/authPrompt';
 import { getBtiResult, resolveBtiType, resolveSulbtiCode } from '@/features/bti/data';
-import { getMyPageApiErrorMessage, getMyPageBadges, getMyPageProfile, getMyPageSulbti, getMyPageSulbtiShareLink, getMyPageSummary, MyPageSummary, type MyPageSulbtiResult } from '@/features/mypage/api';
-import { DEFAULT_JUDAM_SHARE_IMAGE_URL, shareJudamLink } from '@/utils/share';
+import { getMyPageApiErrorMessage, getMyPageBadges, getMyPageProfile, getMyPageSulbti, getMyPageSummary, MyPageSummary, type MyPageSulbtiResult } from '@/features/mypage/api';
 
 const FAQ_ITEMS = [
   { id: 1, q: "펀딩 취소·환불은 어떻게 하나요?", a: "펀딩 취소는 마감일 전까지 마이페이지에서 직접 취소하실 수 있습니다. 단, 제조가 시작된 경우 취소가 불가할 수 있습니다." },
@@ -91,10 +90,11 @@ function getSulbtiResultTitle(result: MyPageSulbtiResult | null, fallback = '') 
   return result.title || result.characterName || source.character_name || fallback;
 }
 
-function getSulbtiResultDescription(result: MyPageSulbtiResult | null) {
-  if (!result) return '';
-  const source = result as MyPageSulbtiResultWithAliases;
-  return result.description || result.alcoholLabel || source.alcohol_label || '';
+function formatSulbtiCardTitle(title: string) {
+  return title
+    .replace(/\s*\((?:고도수|중도수|저도수)\)\s*/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 export default function MyPageScreen() {
@@ -328,7 +328,7 @@ export default function MyPageScreen() {
   const sulbtiType = resolveBtiType(sulbtiCode);
   const btiResult = sulbtiCode ? getBtiResult(sulbtiCode) : null;
   const sulbtiTitle = getSulbtiResultTitle(sulbtiResult, btiResult?.name || '');
-  const sulbtiDescription = getSulbtiResultDescription(sulbtiResult);
+  const sulbtiCardTitle = formatSulbtiCardTitle(sulbtiTitle || btiResult?.name || '');
   const canShowSulbtiResult = Boolean(sulbtiCode && hasSulbtiResult(sulbtiResult));
   const openBtiResult = () => {
     if (!sulbtiCode) {
@@ -346,44 +346,6 @@ export default function MyPageScreen() {
   };
   const startBtiTest = () => {
     router.push('/bti-test' as any);
-  };
-  const shareSulbtiResult = async () => {
-    if (!canShowSulbtiResult) {
-      startBtiTest();
-      return;
-    }
-
-    const fallbackShareUrl = 'https://kaujudam.com/sulbti';
-    let shareUrl = fallbackShareUrl;
-    let shareTitle = '나의 술BTI';
-    let shareDescription = `${sulbtiTitle || btiResult?.name || sulbtiCode} (${sulbtiCode})`;
-    if (sulbtiDescription) {
-      shareDescription = `${shareDescription}\n${sulbtiDescription}`;
-    }
-    let imageUrl = DEFAULT_JUDAM_SHARE_IMAGE_URL;
-
-    try {
-      const share = await getMyPageSulbtiShareLink();
-      shareUrl = share.shareUrl?.trim() || fallbackShareUrl;
-      shareTitle = share.title?.trim() || shareTitle;
-      shareDescription = share.summary?.trim() || shareDescription;
-      imageUrl = share.imageUrl || share.thumbnailUrl || imageUrl;
-    } catch (error) {
-      console.warn(getMyPageApiErrorMessage(error, '술BTI 공유 링크를 불러오지 못했습니다.'));
-    }
-
-    try {
-      await shareJudamLink({
-        title: shareTitle,
-        description: shareDescription,
-        url: shareUrl,
-        imageUrl,
-        buttonTitle: '술BTI 하러가기',
-        nativeMessage: `${shareTitle}\n${shareDescription}\n${shareUrl}`,
-      });
-    } catch {
-      Alert.alert('공유 실패', '결과를 공유하지 못했습니다. 다시 시도해주세요.');
-    }
   };
   const fundedCount = summary?.participatedFundingCount;
   const archiveCount = summary?.archiveCount;
@@ -437,38 +399,34 @@ export default function MyPageScreen() {
 
         {/* 2. BTI Card */}
         <View style={styles.btiContainer}>
-           <View style={styles.btiCard}>
+           <TouchableOpacity
+             style={styles.btiCard}
+             activeOpacity={0.9}
+             disabled={isSulbtiLoading}
+             onPress={canShowSulbtiResult ? openBtiResult : startBtiTest}
+           >
               <View style={styles.btiIconBox}><Text style={{fontSize: 24}}>🍶</Text></View>
               <View style={styles.btiTxtBox}>
-                 <Text style={styles.btiTitle}>나의 술BTI</Text>
+                 <Text style={styles.btiTitle}>
+                   {canShowSulbtiResult ? `나의 술BTI ${sulbtiType || sulbtiCode}` : '나의 술BTI 확인하기'}
+                 </Text>
                  {isSulbtiLoading ? (
                    <Text style={styles.btiDesc}>술BTI 상태를 확인하고 있어요.</Text>
                  ) : canShowSulbtiResult ? (
-                   <>
-                     <Text style={styles.btiResultName}>{sulbtiTitle || btiResult?.name || '술BTI 결과'}</Text>
-                     <Text style={styles.btiDesc}>
-                       {[sulbtiType || sulbtiCode, sulbtiDescription].filter(Boolean).join(' · ')}
-                     </Text>
-                   </>
+                   <Text style={styles.btiDesc}>{sulbtiCardTitle || '술BTI 결과'}</Text>
                  ) : (
-                   <Text style={styles.btiDesc}>술BTI 검사를 완료하면 취향에 맞는 펀딩을 추천받을 수 있어요.</Text>
+                   <Text style={styles.btiDesc}>아직 테스트를 진행하지 않으셨어요</Text>
                  )}
               </View>
-           </View>
-           {canShowSulbtiResult ? (
-             <View style={styles.btiActionRow}>
-               <TouchableOpacity style={styles.btiActionButton} activeOpacity={0.85} onPress={openBtiResult}>
-                 <Text style={styles.btiActionPrimaryTxt}>결과 보기</Text>
-               </TouchableOpacity>
-               <TouchableOpacity style={[styles.btiActionButton, styles.btiActionSecondaryButton]} activeOpacity={0.85} onPress={shareSulbtiResult}>
-                 <Text style={styles.btiActionSecondaryTxt}>결과 공유하기</Text>
-               </TouchableOpacity>
-             </View>
-           ) : (
+              <ArrowRight size={20} color="#9CA3AF" />
+           </TouchableOpacity>
+           <View style={styles.btiLinkRow}>
              <TouchableOpacity style={styles.btiLinkBtn} onPress={startBtiTest} disabled={isSulbtiLoading}>
-                <Text style={styles.btiLinkTxt}>{isSulbtiLoading ? '술BTI 확인 중...' : '술BTI 시작하기'}</Text>
+                <Text style={styles.btiLinkTxt}>
+                  {isSulbtiLoading ? '술BTI 확인 중...' : canShowSulbtiResult ? '🍶 술BTI 다시 검사하기' : '🍶 술BTI 검사하러 가기'}
+                </Text>
              </TouchableOpacity>
-           )}
+           </View>
         </View>
 
         {/* 3. Stats Grid */}
@@ -631,15 +589,10 @@ const styles = StyleSheet.create({
   btiIconBox: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' },
   btiTxtBox: { flex: 1 },
   btiTitle: { fontSize: 15, fontWeight: '800', color: '#111' },
-  btiResultName: { fontSize: 14, fontWeight: '900', color: '#111827', marginTop: 4 },
   btiDesc: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-  btiLinkBtn: { marginTop: 10, alignItems: 'center', padding: 12 },
+  btiLinkRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  btiLinkBtn: { alignItems: 'center', paddingVertical: 12, paddingHorizontal: 6 },
   btiLinkTxt: { fontSize: 13, fontWeight: '700', color: '#6B7280' },
-  btiActionRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  btiActionButton: { flex: 1, height: 44, borderRadius: 14, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
-  btiActionSecondaryButton: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E5E7EB' },
-  btiActionPrimaryTxt: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
-  btiActionSecondaryTxt: { color: '#111827', fontSize: 13, fontWeight: '900' },
   statsGrid: { flexDirection: 'row', backgroundColor: '#FFF', marginHorizontal: 20, borderRadius: 24, padding: 12, borderWidth: 1, borderColor: '#F3F4F6' },
   statItem: { flex: 1, alignItems: 'center', gap: 6, paddingVertical: 10 },
   statIconBox: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center' },
